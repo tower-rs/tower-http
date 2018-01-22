@@ -1,0 +1,12 @@
+[package]
+name = "tower-http"
+version = "0.1.0"
+authors = ["Carl Lerche <me@carllerche.com>"]
+
+[workspace]
+members = [
+  "tower-add-origin",
+]
+
+[dependencies]
+tower-add-origin = { path = "tower-add-origin" }
