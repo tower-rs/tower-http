@@ -3,16 +3,31 @@ extern crate http;
 extern crate tower;
 
 use futures::Poll;
-use http::Request;
-use http::uri::{Authority, Scheme};
+use http::{Request, HttpTryFrom};
+use http::uri::{self, Authority, Scheme, Uri};
 use tower::Service;
 
 /// Wraps an HTTP service, injecting authority and scheme on every request.
+#[derive(Debug)]
 pub struct AddOrigin<T> {
     inner: T,
     scheme: Scheme,
     authority: Authority,
 }
+
+/// Configure an `AddOrigin` instance
+#[derive(Debug, Default)]
+pub struct Builder {
+    uri: Option<Uri>,
+}
+
+/// Errors that can happen when building an `AddOrigin`.
+#[derive(Debug)]
+pub struct BuilderError {
+    _p: (),
+}
+
+// ===== impl AddOrigin ======
 
 impl<T> AddOrigin<T> {
     /// Create a new `AddOrigin`
@@ -81,5 +96,59 @@ where T: Service<Request = Request<B>>,
 
         // Call the inner service
         self.inner.call(request)
+    }
+}
+
+// ===== impl Builder ======
+
+impl Builder {
+    /// Return a new, default builder
+    pub fn new() -> Self {
+        Builder::default()
+    }
+
+    /// Set the URI to use as the origin for all requests.
+    pub fn uri<T>(&mut self, uri: T) -> &mut Self
+    where Uri: HttpTryFrom<T>,
+    {
+        self.uri = Uri::try_from(uri)
+            .map(Some)
+            .unwrap_or(None);
+
+        self
+    }
+
+    pub fn build<T>(&mut self, inner: T) -> Result<AddOrigin<T>, BuilderError> {
+        // Create the error just in case. It is a zero sized type anyway right
+        // now.
+        let err = BuilderError { _p: () };
+
+        let uri = match self.uri.take() {
+            Some(uri) => uri,
+            None => return Err(err),
+        };
+
+        let parts = uri::Parts::from(uri);
+
+        // Get the scheme
+        let scheme = match parts.scheme {
+            Some(scheme) => scheme,
+            None => return Err(err),
+        };
+
+        // Get the authority
+        let authority = match parts.authority {
+            Some(authority) => authority,
+            None => return Err(err),
+        };
+
+        // Ensure that the path is unsued
+        match parts.path_and_query {
+            None => {}
+            Some(ref path) if path == "/" => {}
+            _ => return Err(err),
+        }
+
+        Ok(AddOrigin::new(inner, scheme, authority))
     }
 }

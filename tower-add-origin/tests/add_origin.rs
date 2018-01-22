@@ -38,3 +38,19 @@ fn adds_origin_to_requests() {
 
     send_response.respond(response);
 }
+
+#[test]
+fn does_not_build_with_relative_uri() {
+    let _ = Builder::new()
+        .uri("/")
+        .build(())
+        .unwrap_err();
+}
+
+#[test]
+fn does_not_build_with_path() {
+    let _ = Builder::new()
+        .uri("http://www.example.com/foo")
+        .build(())
+        .unwrap_err();
+}
