@@ -1,13 +1,13 @@
 extern crate http;
-extern crate tower;
 extern crate tower_add_origin;
 extern crate tower_mock;
+extern crate tower_service;
 
 use http::{Request, Response};
 use http::uri::*;
-use tower::Service;
 use tower_add_origin::*;
 use tower_mock::*;
+use tower_service::Service;
 
 #[test]
 fn adds_origin_to_requests() {
