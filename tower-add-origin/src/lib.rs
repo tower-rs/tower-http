@@ -1,11 +1,11 @@
 extern crate futures;
 extern crate http;
-extern crate tower;
+extern crate tower_service;
 
 use futures::Poll;
 use http::{Request, HttpTryFrom};
 use http::uri::{self, Authority, Scheme, Uri};
-use tower::Service;
+use tower_service::Service;
 
 /// Wraps an HTTP service, injecting authority and scheme on every request.
 #[derive(Debug)]
