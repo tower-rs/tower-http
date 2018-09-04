@@ -65,10 +65,9 @@ impl<T> AddOrigin<T> {
     }
 }
 
-impl<T, B> Service for AddOrigin<T>
-where T: Service<Request = Request<B>>,
+impl<T, B> Service<Request<B>> for AddOrigin<T>
+where T: Service<Request<B>>,
 {
-    type Request = Request<B>;
     type Response = T::Response;
     type Error = T::Error;
     type Future = T::Future;
@@ -77,7 +76,7 @@ where T: Service<Request = Request<B>>,
         self.inner.poll_ready()
     }
 
-    fn call(&mut self, req: Self::Request) -> Self::Future {
+    fn call(&mut self, req: Request<B>) -> Self::Future {
         // Split the request into the head and the body.
         let (mut head, body) = req.into_parts();
 
