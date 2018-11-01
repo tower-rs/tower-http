@@ -6,7 +6,7 @@ authors = ["Carl Lerche <me@carllerche.com>"]
 [dependencies]
 futures = "0.1"
 http = "0.1"
-tower-service = { git = "https://github.com/tower-rs/tower", branch = "generic-request" }
+tower-service = { git = "https://github.com/tower-rs/tower" }
 
 [dev-dependencies]
-tower-mock = { git = "https://github.com/tower-rs/tower", branch = "generic-request" }
+tower-mock = { git = "https://github.com/tower-rs/tower" }
