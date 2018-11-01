@@ -9,4 +9,8 @@ members = [
 ]
 
 [dependencies]
+futures = "0.1"
+http = "0.1"
 tower-add-origin = { path = "tower-add-origin" }
+tower-service = { git = "https://github.com/tower-rs/tower" }
+
