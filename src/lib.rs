@@ -11,6 +11,8 @@ pub mod add_origin {
     };
 }
 pub mod service;
+mod trailers;
 
 pub use add_origin::AddOrigin;
 pub use service::HttpService;
+pub use trailers::BodyTrailers;
