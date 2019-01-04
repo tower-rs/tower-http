@@ -8,7 +8,7 @@ use http::uri::{self, Authority, Scheme, Uri};
 use tower_service::Service;
 
 /// Wraps an HTTP service, injecting authority and scheme on every request.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AddOrigin<T> {
     inner: T,
     scheme: Scheme,
