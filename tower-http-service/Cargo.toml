@@ -1,0 +1,11 @@
+[package]
+name = "tower-http-service"
+version = "0.1.0"
+authors = ["Carl Lerche <me@carllerche.com>"]
+
+[dependencies]
+bytes = "0.4.11"
+futures = "0.1.25"
+http = "0.1.16"
+tokio-buf = "0.1.0"
+tower-service = "0.2.0"
