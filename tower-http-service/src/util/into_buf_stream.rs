@@ -7,6 +7,7 @@ use tokio_buf::{BufStream, SizeHint};
 /// See [`into_buf_stream`] function documentation for more details.
 ///
 /// [`into_buf_stream`]: #
+#[derive(Debug)]
 pub struct IntoBufStream<T> {
     inner: T,
 }

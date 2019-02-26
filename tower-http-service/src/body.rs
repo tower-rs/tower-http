@@ -3,6 +3,7 @@ use futures::{Async, Poll};
 use http::HeaderMap;
 use tokio_buf::{SizeHint, BufStream};
 
+/// Trait representing a streaming body of a Request or Response.
 pub trait Body {
     /// Values yielded by the `Body`.
     type Item: Buf;

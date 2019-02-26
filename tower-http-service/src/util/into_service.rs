@@ -8,6 +8,7 @@ use tower_service::Service;
 /// See [`into_service`] function documentation for more details.
 ///
 /// [`into_service`]: #
+#[derive(Debug)]
 pub struct IntoService<T> {
     inner: T,
 }

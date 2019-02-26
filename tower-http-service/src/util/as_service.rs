@@ -8,6 +8,7 @@ use tower_service::Service;
 /// See [`as_service`] function documentation for more details.
 ///
 /// [`as_service`]: #
+#[derive(Debug)]
 pub struct AsService<'a, T: 'a> {
     inner: &'a mut T,
 }

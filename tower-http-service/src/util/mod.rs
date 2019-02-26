@@ -1,3 +1,5 @@
+//! Types and utilities for working with `HttpService` and `Body`.
+
 mod as_service;
 mod body_ext;
 mod into_buf_stream;
