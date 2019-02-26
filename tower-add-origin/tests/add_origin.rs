@@ -4,8 +4,8 @@ extern crate tower_mock;
 extern crate tower_service;
 
 use http::{Request, Response};
-use http::uri::*;
-use tower_add_origin::*;
+use http::uri::{Authority, Scheme};
+use tower_add_origin::{AddOrigin, Builder};
 use tower_mock::*;
 use tower_service::Service;
 

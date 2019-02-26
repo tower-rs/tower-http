@@ -2,5 +2,4 @@
 members = [
   "tower-add-origin",
   "tower-http-service",
-  "tower-http",
 ]
