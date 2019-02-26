@@ -43,12 +43,12 @@ pub trait HttpService<RequestBody>: Sealed<RequestBody> {
     /// Since `HttpService` does not directly implement `Service`, if an
     /// `HttpService` instance needs to be used where a `T: Service` is
     /// required, it must be wrapped with a type that provides that
-    /// implementation. `LiftService` does this.
+    /// implementation. `IntoService` does this.
     fn into_service(self) -> util::IntoService<Self> where Self: Sized {
         util::IntoService::new(self)
     }
 
-    /// Same as `lift` but operates on an HttpService reference.
+    /// Same as `into_service` but operates on an HttpService reference.
     fn as_service(&mut self) -> util::AsService<Self> where Self: Sized {
         util::AsService::new(self)
     }

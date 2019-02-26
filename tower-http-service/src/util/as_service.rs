@@ -5,9 +5,9 @@ use tower_service::Service;
 
 /// Wraps an `HttpService` reference, implementing `tower_service::Service`.
 ///
-/// See [`lift`] function documentation for more details.
+/// See [`as_service`] function documentation for more details.
 ///
-/// [`lift`]: #
+/// [`as_service`]: #
 pub struct AsService<'a, T: 'a> {
     inner: &'a mut T,
 }
