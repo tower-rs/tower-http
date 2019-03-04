@@ -4,8 +4,8 @@ extern crate tower_mock;
 extern crate tower_service;
 
 use http::{Request, Response};
-use http::uri::*;
-use tower_add_origin::*;
+use http::uri::{Authority, Scheme};
+use tower_add_origin::{AddOrigin, Builder};
 use tower_mock::*;
 use tower_service::Service;
 
@@ -14,7 +14,7 @@ fn adds_origin_to_requests() {
     let scheme = Scheme::HTTP;
     let authority: Authority = "www.example.com".parse().unwrap();
 
-    let (mock, mut handle) = Mock::<_, _, ()>::new();
+    let (mock, mut handle) = Mock::new();
     let mut add_origin = AddOrigin::new(mock, scheme.clone(), authority.clone());
 
     let request = Request::get("/")
