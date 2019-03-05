@@ -28,7 +28,7 @@ pub trait Body {
     /// return `None`.
     ///
     /// A return value of `false` **does not** guarantee that a value will be
-    /// returend from `poll_stream` or `poll_trailers`.
+    /// returned from `poll_stream` or `poll_trailers`.
     fn is_end_stream(&self) -> bool {
         false
     }
