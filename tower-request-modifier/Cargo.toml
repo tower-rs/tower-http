@@ -1,5 +1,5 @@
 [package]
-name = "tower-add-origin"
+name = "tower-request-modifier"
 version = "0.1.0"
 authors = ["Carl Lerche <me@carllerche.com>"]
 
@@ -9,4 +9,4 @@ http = "0.1"
 tower-service = "0.2"
 
 [dev-dependencies]
-tower-mock = { git = "https://github.com/tower-rs/tower" }
+tower-test = { git = "https://github.com/tower-rs/tower" }
