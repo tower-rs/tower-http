@@ -1,0 +1,16 @@
+[package]
+name = "tower-http"
+version = "0.1.0"
+authors = ["Carl Lerche <me@carllerche.com>"]
+edition = "2018"
+
+[dependencies]
+futures = "0.1.25"
+http = "0.1.16"
+tower-service = "0.2"
+tower-http-service = { version = "0.1.0", path = "../tower-http-service" }
+tower-util = { git = "https://github.com/tower-rs/tower" }
+
+# bytes = "0.4.11"
+# tokio-buf = "0.1.0"
+# tower-service = "0.2.0"
