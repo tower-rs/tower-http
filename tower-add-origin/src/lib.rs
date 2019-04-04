@@ -3,8 +3,8 @@ extern crate http;
 extern crate tower_service;
 
 use futures::Poll;
-use http::{Request, HttpTryFrom};
 use http::uri::{self, Authority, Scheme, Uri};
+use http::{HttpTryFrom, Request};
 use tower_service::Service;
 
 /// Wraps an HTTP service, injecting authority and scheme on every request.
@@ -66,7 +66,8 @@ impl<T> AddOrigin<T> {
 }
 
 impl<T, B> Service<Request<B>> for AddOrigin<T>
-where T: Service<Request<B>>,
+where
+    T: Service<Request<B>>,
 {
     type Response = T::Response;
     type Error = T::Error;
@@ -88,8 +89,7 @@ where T: Service<Request<B>>,
         uri.authority = Some(self.authority.clone());
 
         // Update the the request URI
-        head.uri = http::Uri::from_parts(uri)
-            .expect("valid uri");
+        head.uri = http::Uri::from_parts(uri).expect("valid uri");
 
         let request = Request::from_parts(head, body);
 
@@ -108,11 +108,10 @@ impl Builder {
 
     /// Set the URI to use as the origin for all requests.
     pub fn uri<T>(&mut self, uri: T) -> &mut Self
-    where Uri: HttpTryFrom<T>,
+    where
+        Uri: HttpTryFrom<T>,
     {
-        self.uri = Uri::try_from(uri)
-            .map(Some)
-            .unwrap_or(None);
+        self.uri = Uri::try_from(uri).map(Some).unwrap_or(None);
 
         self
     }

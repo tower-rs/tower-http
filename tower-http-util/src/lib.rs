@@ -4,16 +4,10 @@
 
 //! Specialization of `tower::Service` for working with HTTP services.
 
-extern crate bytes;
-extern crate futures;
-extern crate http;
-extern crate tokio_buf;
-extern crate tower_service;
+pub mod body;
+pub mod service;
 
-mod body;
 mod sealed;
-mod service;
-pub mod util;
 
-pub use body::Body;
+pub use body::BodyExt;
 pub use service::HttpService;

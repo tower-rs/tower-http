@@ -1,10 +1,10 @@
 extern crate futures;
+extern crate http_body;
 extern crate tokio_buf;
-extern crate tower_http_service;
 
 use futures::Poll;
+use http_body::Body;
 use tokio_buf::{BufStream, SizeHint};
-use tower_http_service::Body;
 
 struct Mock {
     size_hint: SizeHint,
@@ -47,6 +47,11 @@ fn buf_stream_is_end_stream() {
         }
 
         let mock = Mock { size_hint };
-        assert_eq!(is_end_stream, mock.is_end_stream(), "size_hint = {:?}", mock.size_hint);
+        assert_eq!(
+            is_end_stream,
+            mock.is_end_stream(),
+            "size_hint = {:?}",
+            mock.size_hint
+        );
     }
 }

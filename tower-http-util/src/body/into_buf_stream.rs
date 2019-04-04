@@ -1,5 +1,5 @@
-use Body;
 use futures::Poll;
+use http_body::Body;
 use tokio_buf::{BufStream, SizeHint};
 
 /// Wraps a `Body` instance, implementing `tokio_buf::BufStream`.

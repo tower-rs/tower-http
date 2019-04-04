@@ -1,10 +1,17 @@
-use Body;
-use http::{Request, Response};
+//! Types and utilities for working with `HttpService`
+
+mod as_service;
+mod into_service;
+
+pub use self::as_service::AsService;
+pub use self::into_service::IntoService;
+
 use futures::{Future, Poll};
+use http::{Request, Response};
+use http_body::Body;
 use tower_service::Service;
 
-use sealed::Sealed;
-use util::{AsService, IntoService};
+use crate::sealed::Sealed;
 
 /// An HTTP service
 ///
@@ -34,12 +41,18 @@ pub trait HttpService<RequestBody>: Sealed<RequestBody> {
     /// `HttpService` instance needs to be used where a `T: Service` is
     /// required, it must be wrapped with a type that provides that
     /// implementation. `IntoService` does this.
-    fn into_service(self) -> IntoService<Self> where Self: Sized {
+    fn into_service(self) -> IntoService<Self>
+    where
+        Self: Sized,
+    {
         IntoService::new(self)
     }
 
     /// Same as `into_service` but operates on an HttpService reference.
-    fn as_service(&mut self) -> AsService<Self> where Self: Sized {
+    fn as_service(&mut self) -> AsService<Self>
+    where
+        Self: Sized,
+    {
         AsService::new(self)
     }
 }
@@ -66,4 +79,5 @@ impl<T, B1, B2> Sealed<B1> for T
 where
     T: Service<Request<B1>, Response = Response<B2>>,
     B2: Body,
-{}
+{
+}

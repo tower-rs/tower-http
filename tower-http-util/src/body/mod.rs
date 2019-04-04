@@ -1,5 +1,10 @@
-use Body;
-use util::IntoBufStream;
+//! Types and utilities for working with `Body`.
+
+mod into_buf_stream;
+
+pub use self::into_buf_stream::IntoBufStream;
+
+use http_body::Body;
 
 /// An extension trait for `Body` providing additional adapters.
 pub trait BodyExt: Body {

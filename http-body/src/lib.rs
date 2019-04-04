@@ -1,7 +1,12 @@
+extern crate bytes;
+extern crate futures;
+extern crate http;
+extern crate tokio_buf;
+
 use bytes::Buf;
 use futures::{Async, Poll};
 use http::HeaderMap;
-use tokio_buf::{SizeHint, BufStream};
+use tokio_buf::{BufStream, SizeHint};
 
 /// Trait representing a streaming body of a Request or Response.
 pub trait Body {
