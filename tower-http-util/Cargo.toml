@@ -1,11 +1,13 @@
 [package]
-name = "tower-http-service"
+name = "tower-http-util"
 version = "0.1.0"
 authors = ["Carl Lerche <me@carllerche.com>"]
+edition = "2018"
 
 [dependencies]
-bytes = "0.4.11"
 futures = "0.1.25"
 http = "0.1.16"
+http-body = { version = "0.1.0", path = "../http-body" }
 tokio-buf = "0.1.0"
 tower-service = "0.2.0"
+# bytes = "0.4.11"

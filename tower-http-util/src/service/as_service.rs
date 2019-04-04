@@ -1,4 +1,4 @@
-use HttpService;
+use super::HttpService;
 use futures::Poll;
 use http::{Request, Response};
 use tower_service::Service;
@@ -21,7 +21,7 @@ impl<'a, T> AsService<'a, T> {
 
 impl<'a, T, ReqBody> Service<Request<ReqBody>> for AsService<'a, T>
 where
-    T: HttpService<ReqBody>
+    T: HttpService<ReqBody>,
 {
     type Response = Response<T::ResponseBody>;
     type Error = T::Error;
