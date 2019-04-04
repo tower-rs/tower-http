@@ -1,0 +1,19 @@
+trigger: ["master"]
+pr: ["master"]
+
+jobs:
+- template: ci/azure-rustfmt.yml
+  parameters:
+    name: rustfmt
+
+# Basic test run on all platforms
+- template: ci/azure-test-stable.yml
+  parameters:
+    name: Linux_Stable
+    displayName: Test
+    vmImage: ubuntu-16.04
+    crates:
+      - http-body
+      - tower-add-origin
+      - tower-http-util
+      - tower-http
