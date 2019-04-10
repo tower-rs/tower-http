@@ -10,14 +10,12 @@ use std::sync::Arc;
 use tower_service::Service;
 
 /// Wraps an HTTP service, injecting authority and scheme on every request.
-pub struct RequestModifier<T, B>
-{
+pub struct RequestModifier<T, B> {
     inner: T,
     modifiers: Arc<Vec<Box<dyn Fn(Request<B>) -> Request<B> + Send + Sync>>>,
 }
 
-impl<T, B> std::fmt::Debug for RequestModifier<T, B>
-{
+impl<T, B> std::fmt::Debug for RequestModifier<T, B> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         writeln!(f, "RequestModifier with {} modifiers", self.modifiers.len())
     }
@@ -44,8 +42,7 @@ pub struct BuilderError {
 
 // ===== impl RequestModifier ======
 
-impl<T, B> RequestModifier<T, B>
-{
+impl<T, B> RequestModifier<T, B> {
     /// Create a new `RequestModifier`
     pub fn new(
         inner: T,
@@ -205,8 +202,7 @@ impl<B> Builder<B> {
         self
     }
 
-    pub fn build<T>(self, inner: T) -> Result<RequestModifier<T, B>, BuilderError>
-    {
+    pub fn build<T>(self, inner: T) -> Result<RequestModifier<T, B>, BuilderError> {
         let modifiers = self.modifiers.into_iter().collect::<Result<Vec<_>, _>>()?;
         Ok(RequestModifier::new(inner, Arc::new(modifiers)))
     }
