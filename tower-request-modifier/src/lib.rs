@@ -10,7 +10,6 @@ use std::sync::Arc;
 use tower_service::Service;
 
 /// Wraps an HTTP service, injecting authority and scheme on every request.
-#[derive(Clone)]
 pub struct RequestModifier<T, B> {
     inner: T,
     modifiers: Arc<Vec<Box<dyn Fn(Request<B>) -> Request<B> + Send + Sync>>>,
@@ -94,9 +93,21 @@ where
     }
 }
 
+impl<T, B> Clone for RequestModifier<T, B>
+where
+    T: Clone,
+{
+    fn clone(&self) -> Self {
+        RequestModifier {
+            inner: self.inner.clone(),
+            modifiers: self.modifiers.clone(),
+        }
+    }
+}
+
 // ===== impl Builder ======
 
-impl<B: Default> Builder<B> {
+impl<B> Builder<B> {
     /// Return a new, default builder
     pub fn new() -> Self {
         Builder::default()
