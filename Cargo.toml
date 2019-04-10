@@ -1,7 +1,7 @@
 [workspace]
 members = [
   "http-body",
-  "tower-add-origin",
-  "tower-http-util",
   "tower-http",
+  "tower-http-util",
+  "tower-request-modifier",
 ]

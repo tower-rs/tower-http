@@ -14,6 +14,6 @@ jobs:
     vmImage: ubuntu-16.04
     crates:
       - http-body
-      - tower-add-origin
+      - tower-request-modifier
       - tower-http-util
       - tower-http
