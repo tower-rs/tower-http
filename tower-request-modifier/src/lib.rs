@@ -11,18 +11,12 @@ use tower_service::Service;
 
 /// Wraps an HTTP service, injecting authority and scheme on every request.
 pub struct RequestModifier<T, B>
-where
-    T: Clone,
-    B: Clone,
 {
     inner: T,
     modifiers: Arc<Vec<Box<dyn Fn(Request<B>) -> Request<B> + Send + Sync>>>,
 }
 
 impl<T, B> std::fmt::Debug for RequestModifier<T, B>
-where
-    T: Clone,
-    B: Clone,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         writeln!(f, "RequestModifier with {} modifiers", self.modifiers.len())
@@ -51,9 +45,6 @@ pub struct BuilderError {
 // ===== impl RequestModifier ======
 
 impl<T, B> RequestModifier<T, B>
-where
-    T: Clone,
-    B: Clone,
 {
     /// Create a new `RequestModifier`
     pub fn new(
@@ -84,8 +75,7 @@ where
 
 impl<T, B> Service<Request<B>> for RequestModifier<T, B>
 where
-    T: Service<Request<B>> + Clone,
-    B: Clone,
+    T: Service<Request<B>>,
 {
     type Response = T::Response;
     type Error = T::Error;
@@ -109,7 +99,6 @@ where
 impl<T, B> Clone for RequestModifier<T, B>
 where
     T: Clone,
-    B: Clone,
 {
     fn clone(&self) -> Self {
         RequestModifier {
@@ -217,9 +206,6 @@ impl<B> Builder<B> {
     }
 
     pub fn build<T>(self, inner: T) -> Result<RequestModifier<T, B>, BuilderError>
-    where
-        T: Clone,
-        B: Clone,
     {
         let modifiers = self.modifiers.into_iter().collect::<Result<Vec<_>, _>>()?;
         Ok(RequestModifier::new(inner, Arc::new(modifiers)))
