@@ -96,7 +96,7 @@ where
 
 // ===== impl Builder ======
 
-impl<B: Default> Builder<B> {
+impl<B> Builder<B> {
     /// Return a new, default builder
     pub fn new() -> Self {
         Builder::default()
