@@ -10,13 +10,20 @@ use std::sync::Arc;
 use tower_service::Service;
 
 /// Wraps an HTTP service, injecting authority and scheme on every request.
-#[derive(Clone)]
-pub struct RequestModifier<T, B> {
+pub struct RequestModifier<T, B>
+where
+    T: Clone,
+    B: Clone,
+{
     inner: T,
     modifiers: Arc<Vec<Box<dyn Fn(Request<B>) -> Request<B> + Send + Sync>>>,
 }
 
-impl<T, B> std::fmt::Debug for RequestModifier<T, B> {
+impl<T, B> std::fmt::Debug for RequestModifier<T, B>
+where
+    T: Clone,
+    B: Clone,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         writeln!(f, "RequestModifier with {} modifiers", self.modifiers.len())
     }
@@ -43,7 +50,11 @@ pub struct BuilderError {
 
 // ===== impl RequestModifier ======
 
-impl<T, B> RequestModifier<T, B> {
+impl<T, B> RequestModifier<T, B>
+where
+    T: Clone,
+    B: Clone,
+{
     /// Create a new `RequestModifier`
     pub fn new(
         inner: T,
@@ -73,7 +84,8 @@ impl<T, B> RequestModifier<T, B> {
 
 impl<T, B> Service<Request<B>> for RequestModifier<T, B>
 where
-    T: Service<Request<B>>,
+    T: Service<Request<B>> + Clone,
+    B: Clone,
 {
     type Response = T::Response;
     type Error = T::Error;
@@ -91,6 +103,19 @@ where
 
         // Call the inner service
         self.inner.call(req)
+    }
+}
+
+impl<T, B> Clone for RequestModifier<T, B>
+where
+    T: Clone,
+    B: Clone,
+{
+    fn clone(&self) -> Self {
+        RequestModifier {
+            inner: self.inner.clone(),
+            modifiers: self.modifiers.clone(),
+        }
     }
 }
 
@@ -191,7 +216,11 @@ impl<B> Builder<B> {
         self
     }
 
-    pub fn build<T>(self, inner: T) -> Result<RequestModifier<T, B>, BuilderError> {
+    pub fn build<T>(self, inner: T) -> Result<RequestModifier<T, B>, BuilderError>
+    where
+        T: Clone,
+        B: Clone,
+    {
         let modifiers = self.modifiers.into_iter().collect::<Result<Vec<_>, _>>()?;
         Ok(RequestModifier::new(inner, Arc::new(modifiers)))
     }
