@@ -5,9 +5,11 @@
 //! Specialization of `tower::Service` for working with HTTP services.
 
 pub mod body;
+pub mod connection;
 pub mod service;
 
 mod sealed;
 
 pub use body::BodyExt;
+pub use connection::{HttpConnection, HttpMakeConnection};
 pub use service::HttpService;
