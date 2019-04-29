@@ -20,6 +20,6 @@ http = "0.1"
 tower = "0.1"
 tokio-buf = "0.1"
 tower-hyper = { path = "../../tower-hyper" }
-# tower-http = { path = "../tower-http" }
-tower-http = { git = "https://github.com/tower-rs/tower-http" }
+tower-http = { path = "../tower-http" }
+# tower-http = { git = "https://github.com/tower-rs/tower-http" }
 hyper = "0.12"

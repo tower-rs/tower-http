@@ -10,7 +10,10 @@ extern crate webpki;
 extern crate webpki_roots;
 
 use futures::{Future, Poll};
-use http::Version;
+use http::{
+    uri::{Scheme, Uri},
+    Version,
+};
 use rustls::{ClientConfig, Session};
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::Arc;
@@ -57,7 +60,7 @@ where
     Target: AsRef<str> + 'static,
 {
     type Response = TlsConnection;
-    type Error = std::io::Error;
+    type Error = Box<std::error::Error + Send + Sync + 'static>;
     type Future = Box<Future<Item = Self::Response, Error = Self::Error> + Send + 'static>;
 
     fn poll_ready(&mut self) -> Poll<(), Self::Error> {
@@ -65,17 +68,35 @@ where
     }
 
     fn call(&mut self, target: Target) -> Self::Future {
-        let addr = target.as_ref().to_socket_addrs().unwrap().next().unwrap();
-        // TODO(lucio): how do we get a generic target that can extract the DNS from it
-        // and still provide a host:port combo to get the TcpStream?
-        let dns = DNSNameRef::try_from_ascii_str("http2.akamai.com") //(target.as_ref())
-            .unwrap()
-            .to_owned();
+        let uri = target.as_ref().parse::<Uri>().unwrap();
+        let auth = uri.authority_part().unwrap();
+        let host = auth.host();
+
+        let port = if let Some(port) = auth.port_u16() {
+            port
+        } else {
+            if let Some(scheme) = uri.scheme_part() {
+                if scheme == &Scheme::HTTP {
+                    80
+                } else if scheme == &Scheme::HTTPS {
+                    443
+                } else {
+                    panic!("not a valid http scheme")
+                }
+            } else {
+                panic!("No port provided and no scheme provided")
+            }
+        };
+
+        let addr = (host, port).to_socket_addrs().unwrap().next().unwrap();
+
+        let dns = DNSNameRef::try_from_ascii_str(host).unwrap().to_owned();
         let config = self.config.clone();
 
         let connect = TcpStream::connect(&addr)
             .and_then(move |io| tokio_rustls::TlsConnector::from(config).connect(dns.as_ref(), io))
-            .map(TlsConnection::from);
+            .map(TlsConnection::from)
+            .map_err(Into::into);
 
         Box::new(connect)
     }
