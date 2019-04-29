@@ -1,0 +1,25 @@
+[package]
+name = "tower-http-tls"
+version = "0.1.0"
+authors = ["Lucio Franco <luciofranco14@gmail.com>"]
+
+[dependencies]
+futures = "0.1"
+tower-http-util = { path = "../tower-http-util" }
+rustls = "0.15"
+tokio-rustls = "0.10.0-alpha.2"
+tokio-tcp = "0.1"
+tokio-io = "0.1"
+tower-service = "0.2"
+webpki = "0.19"
+webpki-roots = "0.16"
+http = "0.1"
+# trust-dns = "0.16"
+
+[dev-dependencies]
+tower = "0.1"
+tokio-buf = "0.1"
+tower-hyper = { path = "../../tower-hyper" }
+# tower-http = { path = "../tower-http" }
+tower-http = { git = "https://github.com/tower-rs/tower-http" }
+hyper = "0.12"
