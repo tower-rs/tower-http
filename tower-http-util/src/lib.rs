@@ -9,5 +9,5 @@ pub mod service;
 
 mod sealed;
 
-pub use body::BodyExt;
-pub use service::HttpService;
+pub use crate::body::BodyExt;
+pub use crate::service::HttpService;
