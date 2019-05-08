@@ -8,7 +8,7 @@ edition = "2018"
 [dependencies]
 futures = "0.1.25"
 http = "0.1.16"
-http-body = { version = "0.1.0", path = "../http-body" }
+http-body = "0.1"
 http-connection = { git = "https://github.com/hyperium/http-connection" }
 tokio-buf = "0.1.0"
 tokio-io = "0.1"

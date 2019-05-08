@@ -6,5 +6,5 @@ license = "MIT"
 edition = "2018"
 
 [dependencies]
-http-body = { version = "0.1.0", path = "../http-body" }
+http-body = "0.1"
 tower-http-util = { version = "0.1.0", path = "../tower-http-util" }
