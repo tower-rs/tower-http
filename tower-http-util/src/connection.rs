@@ -1,14 +1,11 @@
 //! Contains all Http Connection utilities.
 //!
-//! This module provides a `HttpMakeConnection` and a `HttpConnection` trait. These traits
-//! decorate an `AsyncRead + AsyncWrite` and a `MakeConnection` that provides HTTP aware
-//! connections.
+//! This module provides a `HttpMakeConnection`, this trait provides a
+//! HTTP aware connection. This is for use with libraries like `tower-hyper`.
 
 use futures::{Future, Poll};
-use http::Version;
-use std::net::SocketAddr;
+use http_connection::HttpConnection;
 use tokio_io::{AsyncRead, AsyncWrite};
-use tokio_tcp::TcpStream;
 use tower_service::Service;
 
 /// A Http aware connection creator.
@@ -17,7 +14,7 @@ use tower_service::Service;
 /// connections.
 pub trait HttpMakeConnection<Target>: sealed::Sealed<Target> {
     /// The transport provided by this service that is HTTP aware.
-    type Connection: HttpConnection;
+    type Connection: HttpConnection + AsyncRead + AsyncWrite;
 
     /// Errors produced by the connecting service
     type Error;
@@ -32,39 +29,12 @@ pub trait HttpMakeConnection<Target>: sealed::Sealed<Target> {
     fn make_connection(&mut self, target: Target) -> Self::Future;
 }
 
-/// Represents a HTTP aware connection.
-///
-/// This connection is a `AsyncRead + AsyncWrite` stream that provides information
-/// on what http versions were determinted `ALPN` negotiation or what the remote address
-/// this stream is connected too.
-pub trait HttpConnection: AsyncRead + AsyncWrite {
-    /// Returns the version that this stream is set too.
-    ///
-    /// For `version` this indicates that this stream is accepting http frames of the version
-    /// returned. If `None` is returned then there has been no prior negotiation for the http
-    /// version.
-    fn version(&self) -> Option<Version>;
-
-    /// Returns the remote address that this connection is connected to.
-    fn remote_addr(&self) -> Option<SocketAddr>;
-}
-
-impl HttpConnection for TcpStream {
-    fn version(&self) -> Option<Version> {
-        None
-    }
-
-    fn remote_addr(&self) -> Option<SocketAddr> {
-        self.peer_addr().ok()
-    }
-}
-
 impl<C, Target> sealed::Sealed<Target> for C where C: Service<Target> {}
 
 impl<C, Target> HttpMakeConnection<Target> for C
 where
     C: Service<Target>,
-    C::Response: HttpConnection,
+    C::Response: HttpConnection + AsyncRead + AsyncWrite,
 {
     type Connection = C::Response;
     type Error = C::Error;
