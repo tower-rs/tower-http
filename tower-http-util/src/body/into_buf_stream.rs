@@ -22,11 +22,11 @@ impl<T> BufStream for IntoBufStream<T>
 where
     T: Body,
 {
-    type Item = T::Item;
+    type Item = T::Data;
     type Error = T::Error;
 
     fn poll_buf(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-        self.inner.poll_buf()
+        self.inner.poll_data()
     }
 
     fn size_hint(&self) -> SizeHint {

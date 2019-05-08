@@ -13,7 +13,6 @@ jobs:
     displayName: Test
     vmImage: ubuntu-16.04
     crates:
-      - http-body
       - tower-request-modifier
       - tower-http-util
       - tower-http
