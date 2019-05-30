@@ -9,7 +9,3 @@ pub mod connection;
 pub mod service;
 
 mod sealed;
-
-pub use crate::body::BodyExt;
-pub use crate::connection::HttpMakeConnection;
-pub use crate::service::HttpService;
