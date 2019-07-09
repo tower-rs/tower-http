@@ -1,11 +1,14 @@
-extern crate futures;
-extern crate http;
-extern crate tower_service;
+#![doc(html_root_url = "https://docs.rs/tower-request-modifier/0.1.0")]
+#![deny(missing_docs, missing_debug_implementations, unreachable_pub)]
+#![cfg_attr(test, deny(warnings))]
+
+//! A `tower::Service` middleware to modify the request.
 
 use futures::Poll;
 use http::header::{HeaderName, HeaderValue};
 use http::uri::{self, Uri};
 use http::{HttpTryFrom, Request};
+use std::fmt;
 use std::sync::Arc;
 use tower_service::Service;
 
@@ -202,8 +205,15 @@ impl<B> Builder<B> {
         self
     }
 
+    /// Build the `RequestModifier` from the provided settings.
     pub fn build<T>(self, inner: T) -> Result<RequestModifier<T, B>, BuilderError> {
         let modifiers = self.modifiers.into_iter().collect::<Result<Vec<_>, _>>()?;
         Ok(RequestModifier::new(inner, Arc::new(modifiers)))
+    }
+}
+
+impl<B> fmt::Debug for Builder<B> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "RequestModifierBuilder")
     }
 }

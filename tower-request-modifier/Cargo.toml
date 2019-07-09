@@ -1,8 +1,23 @@
 [package]
 name = "tower-request-modifier"
+# When releasing to crates.io:
+# - Remove path dependencies
+# - Update html_root_url.
+# - Update doc url
+#   - Cargo.toml
+#   - README.md
+# - Update CHANGELOG.md.
+# - Create "v0.1.x" git tag.
 version = "0.1.0"
 authors = ["Carl Lerche <me@carllerche.com>"]
 license = "MIT"
+edition = "2018"
+documentation = "https://docs.rs/tower-request-modifier/0.1.0/tower_request_modifier"
+repository = "https://github.com/tower-rs/tower-http"
+homepage = "https://github.com/tower-rs/tower-http"
+description = """
+Tower service middleware to modify the request.
+"""
 
 [dependencies]
 futures = "0.1"
@@ -10,4 +25,4 @@ http = "0.1"
 tower-service = "0.2"
 
 [dev-dependencies]
-tower-test = { git = "https://github.com/tower-rs/tower" }
+tower-test = "0.1"
