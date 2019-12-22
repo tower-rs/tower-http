@@ -6,9 +6,10 @@ mod into_service;
 pub use self::as_service::AsService;
 pub use self::into_service::IntoService;
 
-use futures::{Future, Poll};
 use http::{Request, Response};
 use http_body::Body;
+use std::future::Future;
+use std::task::{Context, Poll};
 use tower_service::Service;
 
 use crate::sealed::Sealed;
@@ -26,10 +27,10 @@ pub trait HttpService<RequestBody>: Sealed<RequestBody> {
     type Error;
 
     /// The future response value.
-    type Future: Future<Item = Response<Self::ResponseBody>, Error = Self::Error>;
+    type Future: Future<Output = Result<Response<Self::ResponseBody>, Self::Error>>;
 
     /// Returns `Ready` when the service is able to process requests.
-    fn poll_ready(&mut self) -> Poll<(), Self::Error>;
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>>;
 
     /// Process the request and return the response asynchronously.
     fn call(&mut self, request: Request<RequestBody>) -> Self::Future;
@@ -66,8 +67,8 @@ where
     type Error = T::Error;
     type Future = T::Future;
 
-    fn poll_ready(&mut self) -> Poll<(), Self::Error> {
-        Service::poll_ready(self)
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Service::poll_ready(self, cx)
     }
 
     fn call(&mut self, request: Request<B1>) -> Self::Future {

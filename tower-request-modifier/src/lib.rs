@@ -4,12 +4,13 @@
 
 //! A `tower::Service` middleware to modify the request.
 
-use futures::Poll;
 use http::header::{HeaderName, HeaderValue};
 use http::uri::{self, Uri};
-use http::{HttpTryFrom, Request};
+use http::Request;
+use std::convert::TryFrom;
 use std::fmt;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 use tower_service::Service;
 
 /// Wraps an HTTP service, injecting authority and scheme on every request.
@@ -49,7 +50,7 @@ impl<T, B> RequestModifier<T, B> {
     /// Create a new `RequestModifier`
     pub fn new(
         inner: T,
-        modifiers: Arc<Vec<Box<Fn(Request<B>) -> Request<B> + Send + Sync>>>,
+        modifiers: Arc<Vec<Box<dyn Fn(Request<B>) -> Request<B> + Send + Sync>>>,
     ) -> Self {
         RequestModifier {
             inner: inner,
@@ -81,8 +82,8 @@ where
     type Error = T::Error;
     type Future = T::Future;
 
-    fn poll_ready(&mut self) -> Poll<(), Self::Error> {
-        self.inner.poll_ready()
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx)
     }
 
     fn call(&mut self, mut req: Request<B>) -> Self::Future {
@@ -120,7 +121,7 @@ impl<B> Builder<B> {
     fn make_add_header(
         name: HeaderName,
         val: HeaderValue,
-    ) -> Box<Fn(Request<B>) -> Request<B> + Send + Sync> {
+    ) -> Box<dyn Fn(Request<B>) -> Request<B> + Send + Sync> {
         Box::new(move |mut req: Request<B>| {
             req.headers_mut().append(name.clone(), val.clone());
             req
@@ -130,8 +131,8 @@ impl<B> Builder<B> {
     /// Set a header on all requests.
     pub fn add_header<T: ToString, R>(mut self, name: T, val: R) -> Self
     where
-        HeaderName: HttpTryFrom<T>,
-        HeaderValue: HttpTryFrom<R>,
+        HeaderName: TryFrom<T>,
+        HeaderValue: TryFrom<R>,
     {
         let name = HeaderName::try_from(name);
         let val = HeaderValue::try_from(val);
@@ -151,7 +152,7 @@ impl<B> Builder<B> {
     fn make_set_origin(
         scheme: uri::Scheme,
         authority: uri::Authority,
-    ) -> Box<Fn(Request<B>) -> Request<B> + Send + Sync> {
+    ) -> Box<dyn Fn(Request<B>) -> Request<B> + Send + Sync> {
         Box::new(move |req: Request<B>| {
             // Split the request into the head and the body.
             let (mut head, body) = req.into_parts();
@@ -173,7 +174,7 @@ impl<B> Builder<B> {
     /// Set the URI to use as the origin for all requests.
     pub fn set_origin<T>(mut self, uri: T) -> Self
     where
-        Uri: HttpTryFrom<T>,
+        Uri: TryFrom<T>,
     {
         let modification = Uri::try_from(uri)
             .map_err(|_| BuilderError { _p: () })
@@ -199,7 +200,7 @@ impl<B> Builder<B> {
     /// Run an arbitrary modifier on all requests
     pub fn add_modifier(
         mut self,
-        modifier: Box<Fn(Request<B>) -> Request<B> + Send + Sync>,
+        modifier: Box<dyn Fn(Request<B>) -> Request<B> + Send + Sync>,
     ) -> Self {
         self.modifiers.push(Ok(modifier));
         self

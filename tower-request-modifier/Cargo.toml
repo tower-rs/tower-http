@@ -20,9 +20,10 @@ Tower service middleware to modify the request.
 """
 
 [dependencies]
-futures = "0.1"
-http = "0.1"
-tower-service = "0.2"
+http = "0.2"
+tower-service = "0.3"
 
 [dev-dependencies]
-tower-test = "0.1"
+futures-test = "0.3"
+tokio = { version = "0.2", features = ["macros"] }
+tower-test = "0.3"
