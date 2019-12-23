@@ -5,17 +5,19 @@ extern crate tower_test;
 
 use http::uri::{Authority, Scheme};
 use http::{Request, Response};
+use tokio_test::{assert_ready_ok, task};
 use tower_request_modifier::BuilderError;
 use tower_request_modifier::{Builder, RequestModifier};
 use tower_service::Service;
 use tower_test::mock;
 
-#[test]
-fn adds_origin_to_requests() {
+#[tokio::test]
+async fn adds_origin_to_requests() {
     let scheme = Scheme::HTTP;
     let authority: Authority = "www.example.com".parse().unwrap();
 
     let (service, mut handle) = mock::pair();
+    let mut task = task::spawn(());
 
     let mut add_origin = Builder::new()
         .set_origin("http://www.example.com")
@@ -24,16 +26,16 @@ fn adds_origin_to_requests() {
 
     let request = Request::get("/").body(()).unwrap();
 
-    assert!(add_origin.poll_ready().is_ok());
+    assert_ready_ok!(task.enter(|cx, _| add_origin.poll_ready(cx)));
     let _response = add_origin.call(request);
 
     // Get the request
-    let request = handle.next_request().unwrap();
+    let request = handle.next_request().await.unwrap();
     let (request, send_response) = request;
 
     // Assert that the origin is set
-    assert_eq!(request.uri().scheme_part().unwrap(), &scheme);
-    assert_eq!(request.uri().authority_part().unwrap(), &authority);
+    assert_eq!(request.uri().scheme().unwrap(), &scheme);
+    assert_eq!(request.uri().authority().unwrap(), &authority);
 
     // Make everything happy:
     let response = Response::builder().status(204).body(());
@@ -41,12 +43,13 @@ fn adds_origin_to_requests() {
     send_response.send_response(response);
 }
 
-#[test]
-fn adds_header_to_requests() {
+#[tokio::test]
+async fn adds_header_to_requests() {
     let header = "authorization";
     let token = "Bearer ee2c2e06-0254-441d-b885-5bade6d7f3b2";
 
     let (service, mut handle) = mock::pair();
+    let mut task = task::spawn(());
 
     let mut add_token = Builder::new()
         .add_header(header, token)
@@ -55,11 +58,11 @@ fn adds_header_to_requests() {
 
     let request = Request::get("/").body(()).unwrap();
 
-    assert!(add_token.poll_ready().is_ok());
+    assert_ready_ok!(task.enter(|cx, _| add_token.poll_ready(cx)));
     let _response = add_token.call(request);
 
     // Get the request
-    let (request, send_response) = handle.next_request().unwrap();
+    let (request, send_response) = handle.next_request().await.unwrap();
 
     // Assert that the token header is set
     assert!(request.headers().contains_key(header.to_owned()));
@@ -70,9 +73,10 @@ fn adds_header_to_requests() {
     send_response.send_response(response);
 }
 
-#[test]
-fn run_arbitrary_modifier() {
+#[tokio::test]
+async fn run_arbitrary_modifier() {
     let (service, mut handle) = mock::pair();
+    let mut task = task::spawn(());
     let new_val = "new value";
     let new_uri = "http://www.example.com/";
 
@@ -93,11 +97,11 @@ fn run_arbitrary_modifier() {
         .body("initial value".to_owned())
         .unwrap();
 
-    assert!(replace_body.poll_ready().is_ok());
+    assert_ready_ok!(task.enter(|cx, _| replace_body.poll_ready(cx)));
     let _response = replace_body.call(request);
 
     // Get the request
-    let (request, send_response) = handle.next_request().unwrap();
+    let (request, send_response) = handle.next_request().await.unwrap();
 
     // Assert that the body is set
     assert_eq!(request.body(), &new_val);

@@ -1,6 +1,6 @@
 use super::HttpService;
-use futures::Poll;
 use http::{Request, Response};
+use std::task::{Context, Poll};
 use tower_service::Service;
 
 /// Wraps an `HttpService` instance, implementing `tower_service::Service`.
@@ -27,8 +27,8 @@ where
     type Error = T::Error;
     type Future = T::Future;
 
-    fn poll_ready(&mut self) -> Poll<(), Self::Error> {
-        self.inner.poll_ready()
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx)
     }
 
     fn call(&mut self, request: Request<ReqBody>) -> Self::Future {
