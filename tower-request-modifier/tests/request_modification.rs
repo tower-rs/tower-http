@@ -3,10 +3,9 @@ extern crate tower_request_modifier;
 extern crate tower_service;
 extern crate tower_test;
 
-use futures_test::task::noop_context;
 use http::uri::{Authority, Scheme};
 use http::{Request, Response};
-use std::task::Poll;
+use tokio_test::{assert_ready_ok, task};
 use tower_request_modifier::BuilderError;
 use tower_request_modifier::{Builder, RequestModifier};
 use tower_service::Service;
@@ -18,6 +17,7 @@ async fn adds_origin_to_requests() {
     let authority: Authority = "www.example.com".parse().unwrap();
 
     let (service, mut handle) = mock::pair();
+    let mut task = task::spawn(());
 
     let mut add_origin = Builder::new()
         .set_origin("http://www.example.com")
@@ -26,7 +26,7 @@ async fn adds_origin_to_requests() {
 
     let request = Request::get("/").body(()).unwrap();
 
-    assert!(is_ok(add_origin.poll_ready(&mut noop_context())));
+    assert_ready_ok!(task.enter(|cx, _| add_origin.poll_ready(cx)));
     let _response = add_origin.call(request);
 
     // Get the request
@@ -49,6 +49,7 @@ async fn adds_header_to_requests() {
     let token = "Bearer ee2c2e06-0254-441d-b885-5bade6d7f3b2";
 
     let (service, mut handle) = mock::pair();
+    let mut task = task::spawn(());
 
     let mut add_token = Builder::new()
         .add_header(header, token)
@@ -57,7 +58,7 @@ async fn adds_header_to_requests() {
 
     let request = Request::get("/").body(()).unwrap();
 
-    assert!(is_ok(add_token.poll_ready(&mut noop_context())));
+    assert_ready_ok!(task.enter(|cx, _| add_token.poll_ready(cx)));
     let _response = add_token.call(request);
 
     // Get the request
@@ -75,6 +76,7 @@ async fn adds_header_to_requests() {
 #[tokio::test]
 async fn run_arbitrary_modifier() {
     let (service, mut handle) = mock::pair();
+    let mut task = task::spawn(());
     let new_val = "new value";
     let new_uri = "http://www.example.com/";
 
@@ -95,7 +97,7 @@ async fn run_arbitrary_modifier() {
         .body("initial value".to_owned())
         .unwrap();
 
-    assert!(is_ok(replace_body.poll_ready(&mut noop_context())));
+    assert_ready_ok!(task.enter(|cx, _| replace_body.poll_ready(cx)));
     let _response = replace_body.call(request);
 
     // Get the request
@@ -138,11 +140,4 @@ fn can_build() {
         .add_modifier(Box::new(|req| req))
         .build(()) as Result<RequestModifier<(), ()>, BuilderError>)
         .unwrap();
-}
-
-fn is_ok<T, E>(poll: Poll<Result<T, E>>) -> bool {
-    match poll {
-        Poll::Ready(Ok(_)) => true,
-        _ => false,
-    }
 }
