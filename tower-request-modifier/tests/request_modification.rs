@@ -1,14 +1,12 @@
 extern crate http;
 extern crate tower_request_modifier;
-extern crate tower_service;
 extern crate tower_test;
 
 use http::uri::{Authority, Scheme};
 use http::{Request, Response};
 use tokio_test::{assert_ready_ok, task};
-use tower_request_modifier::BuilderError;
-use tower_request_modifier::{Builder, RequestModifier};
-use tower_service::Service;
+use tower::Service;
+use tower_request_modifier::Adaptor;
 use tower_test::mock;
 
 #[tokio::test]
@@ -19,10 +17,10 @@ async fn adds_origin_to_requests() {
     let (service, mut handle) = mock::pair();
     let mut task = task::spawn(());
 
-    let mut add_origin = Builder::new()
+    let mut add_origin = Adaptor::new(service)
         .set_origin("http://www.example.com")
-        .build(service)
-        .unwrap();
+        .unwrap()
+        .apply();
 
     let request = Request::get("/").body(()).unwrap();
 
@@ -51,10 +49,10 @@ async fn adds_header_to_requests() {
     let (service, mut handle) = mock::pair();
     let mut task = task::spawn(());
 
-    let mut add_token = Builder::new()
+    let mut add_token = Adaptor::new(service)
         .add_header(header, token)
-        .build(service)
-        .unwrap();
+        .unwrap()
+        .apply();
 
     let request = Request::get("/").body(()).unwrap();
 
@@ -80,8 +78,8 @@ async fn run_arbitrary_modifier() {
     let new_val = "new value";
     let new_uri = "http://www.example.com/";
 
-    let mut replace_body = Builder::new()
-        .add_modifier(Box::new(move |req| {
+    let mut replace_body = Adaptor::new(service)
+        .add_modifier(Box::new(move |req: Request<_>| {
             let (mut req, _) = req.into_parts();
 
             // Replace request URI
@@ -90,8 +88,7 @@ async fn run_arbitrary_modifier() {
             // Build new request with different body
             Request::from_parts(req, new_val.to_owned())
         }))
-        .build(service)
-        .unwrap();
+        .apply();
 
     let request = Request::get("http://example.org/")
         .body("initial value".to_owned())
@@ -116,28 +113,29 @@ async fn run_arbitrary_modifier() {
 
 #[test]
 fn does_not_build_with_relative_uri() {
-    let _ = (Builder::new().set_origin("/").build(())
-        as Result<RequestModifier<(), ()>, BuilderError>)
-        .unwrap_err();
+    let (service, _) = mock::pair::<Request<()>, ()>();
+    let _ = Adaptor::new(service).set_origin("/").unwrap_err();
 }
 
 #[test]
 fn does_not_build_with_path() {
-    let _ = (Builder::new()
+    let (service, _) = mock::pair::<Request<()>, ()>();
+    let _ = Adaptor::new(service)
         .set_origin("http://www.example.com/foo")
-        .build(()) as Result<RequestModifier<(), ()>, BuilderError>)
         .unwrap_err();
 }
 
 #[test]
 fn can_build() {
-    let _ = (Builder::new()
+    let (service, _) = mock::pair::<Request<()>, ()>();
+    let _ = Adaptor::new(service)
         .add_header(
             "authorization",
             "Bearer ee2c2e06-0254-441d-b885-5bade6d7f3b2",
         )
+        .unwrap()
         .set_origin("http://www.example.com")
+        .unwrap()
         .add_modifier(Box::new(|req| req))
-        .build(()) as Result<RequestModifier<(), ()>, BuilderError>)
-        .unwrap();
+        .apply();
 }
