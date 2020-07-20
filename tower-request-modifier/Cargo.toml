@@ -21,7 +21,7 @@ Tower service middleware to modify the request.
 
 [dependencies]
 http = "0.2"
-tower-service = "0.3"
+tower = { git = "https://github.com/hlb8122/tower", branch = "service-combinators", features = ["util"] }
 
 [dev-dependencies]
 tokio = { version = "0.2", features = ["macros"] }
