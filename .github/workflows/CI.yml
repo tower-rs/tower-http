@@ -22,8 +22,13 @@ jobs:
     - name: Check
       uses: actions-rs/cargo@v1
       with:
-        command: check
+        command: clippy
         args: --all --all-targets --all-features
+    - name: rustfmt
+      uses: actions-rs/cargo@v1
+      with:
+        command: fmt
+        args: --all -- --check
 
   cargo-hack:
     runs-on: ubuntu-latest
@@ -58,39 +63,6 @@ jobs:
       with:
         command: test
         args: --all --all-features
-
-  style:
-    # Check style.
-    needs: check
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@master
-    - uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        components: rustfmt
-        profile: minimal
-    - name: rustfmt
-      uses: actions-rs/cargo@v1
-      with:
-        command: fmt
-        args: --all -- --check
-  
-  # warnings:
-  #   # Check for any warnings. This is informational and thus is allowed to fail.
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #   - uses: actions/checkout@master
-  #   - uses: actions-rs/toolchain@v1
-  #     with:
-  #       toolchain: stable
-  #       components: clippy
-  #       profile: minimal
-  #   - name: Clippy
-  #     uses: actions-rs/clippy-check@v1
-  #     with:
-  #       token: ${{ secrets.GITHUB_TOKEN }}
-  #       args: --all --all-targets --all-features -- -D warnings
 
   deny-check:
     name: cargo-deny check
