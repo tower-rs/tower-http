@@ -1,11 +1,19 @@
 use crate::common::*;
+use std::fmt;
 
-// TODO(david): don't derive Debug. M is likely to be a closure
-#[derive(Debug)]
 pub struct SetResponseHeaderLayer<M, Res> {
     make: M,
     override_existing: bool,
     _marker: PhantomData<fn() -> Res>,
+}
+
+impl<M, Res> fmt::Debug for SetResponseHeaderLayer<M, Res> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SetResponseHeaderLayer")
+            .field("override_existing", &self.override_existing)
+            .field("make", &format_args!("{}", std::any::type_name::<M>()))
+            .finish()
+    }
 }
 
 impl<M, Res> SetResponseHeaderLayer<M, Res> {
@@ -54,11 +62,24 @@ where
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct SetResponseHeader<S, M> {
     inner: S,
     make: M,
     override_existing: bool,
+}
+
+impl<S, M> fmt::Debug for SetResponseHeader<S, M>
+where
+    S: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SetResponseHeaderLayer")
+            .field("inner", &self.inner)
+            .field("override_existing", &self.override_existing)
+            .field("make", &format_args!("{}", std::any::type_name::<M>()))
+            .finish()
+    }
 }
 
 impl<ReqBody, ResBody, S, M> Service<Request<ReqBody>> for SetResponseHeader<S, M>
