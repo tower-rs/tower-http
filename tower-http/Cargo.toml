@@ -31,7 +31,9 @@ tower = "0.4"
 [features]
 default = []
 full = [
+    "propagate-header",
 ]
+propagate-header = []
 
 [package.metadata.docs.rs]
 all-features = true
