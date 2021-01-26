@@ -52,7 +52,7 @@ propagate-header = []
 sensitive-header = []
 set-response-header = []
 trace = ["tracing"]
-util = []
+util = ["tracing"]
 wrap-in-span = ["tracing"]
 
 [package.metadata.docs.rs]
