@@ -1,0 +1,63 @@
+[package]
+name = "tower-http"
+description = "Tower middlewares and utilities for HTTP clients and servers"
+version = "0.1.0"
+authors = ["Tower Maintainers <team@tower-rs.com>"]
+edition = "2018"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/tower-rs/tower-http"
+homepage = "https://github.com/tower-rs/tower-http"
+# documentation = "https://docs.rs/tower/0.1.0"
+categories = ["asynchronous", "network-programming"]
+keywords = ["io", "async", "non-blocking", "futures", "service", "http"]
+
+[dependencies]
+futures-util = "0.3"
+http = "0.2"
+http-body = "0.4"
+pin-project = "1"
+tower-layer = "0.3"
+tower-service = "0.3"
+
+# optional dependencies
+async-compression = { version = "0.3", optional = true, features = ["deflate", "gzip", "brotli", "zstd", "tokio"] }
+hyper = { version = "0.14", optional = true, default_features = false, features = ["stream"] }
+metrics-lib = { package = "metrics", version = "0.13", features = ["std"], optional = true }
+tokio-util = { version = "0.6", optional = true, default_features = false, features = ["io", "codec"] }
+tracing = { version = "0.1", optional = true }
+
+[dev-dependencies]
+futures = "0.3"
+hyper = "0.14"
+tower = "0.4"
+
+[features]
+default = []
+full = [
+    "add-extension",
+    "compression",
+    "metrics",
+    "propagate-header",
+    "sensitive-header",
+    "set-response-header",
+    "trace",
+    "util",
+    "wrap-in-span",
+]
+add-extension = []
+compression = ["async-compression", "tokio-util", "hyper"]
+metrics = ["metrics-lib"]
+propagate-header = []
+sensitive-header = []
+set-response-header = []
+trace = ["tracing"]
+util = []
+wrap-in-span = ["tracing"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[package.metadata.playground]
+features = ["full"]

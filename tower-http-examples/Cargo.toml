@@ -1,0 +1,15 @@
+[package]
+name = "tower-http-examples"
+version = "0.1.0"
+authors = ["David Pedersen <david.pdrsn@gmail.com>"]
+edition = "2018"
+publish = false
+
+[dependencies]
+hyper = { version = "0.14", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
+tower = { version = "0.4", features = ["util"] }
+tower-http = { path = "../tower-http", features = ["full"] }
+uuid = { version = "0.8", features = ["v4"] }
+tracing = "0.1"
+tracing-subscriber = "0.2"
