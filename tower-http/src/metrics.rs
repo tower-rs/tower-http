@@ -15,6 +15,7 @@ pub struct MetricsLayer<T> {
     latency_unit: LatencyUnit,
     get_trace_status: T,
     what_to_record: WhatToRecord,
+    name: Option<String>,
 }
 
 impl Default for MetricsLayer<GetTraceStatusFromHttpStatus> {
@@ -37,6 +38,7 @@ impl MetricsLayer<GetTraceStatusFromHttpStatus> {
         Self {
             latency_unit: LatencyUnit::Millis,
             get_trace_status: GetTraceStatusFromHttpStatus,
+            name: None,
             what_to_record: WhatToRecord {
                 path_label: true,
                 method_label: true,
@@ -77,9 +79,21 @@ impl MetricsLayer<GetTraceStatusFromHttpStatus> {
         self
     }
 
+    /// Add a `name` label to metrics with the given value.
+    ///
+    /// Useful to tell metrics apart if you have multiple [`Metrics`] middlewares in the same
+    /// stack.
+    ///
+    /// By default the `name` label will be empty.
+    pub fn name<T>(mut self, name: T) -> Self where T: ToString {
+        self.name = Some(name.to_string());
+        self
+    }
+
     pub fn get_trace_status<K>(self, get_trace_status: K) -> MetricsLayer<K> {
         MetricsLayer {
             get_trace_status,
+            name: self.name,
             latency_unit: self.latency_unit,
             what_to_record: self.what_to_record,
         }
@@ -99,6 +113,7 @@ where
             get_trace_status: self.get_trace_status.clone(),
             what_to_record: self.what_to_record,
             in_flight_requests: ShareableCounter::new(),
+            name: self.name.clone(),
         }
     }
 }
@@ -110,6 +125,7 @@ pub struct Metrics<S, T> {
     get_trace_status: T,
     what_to_record: WhatToRecord,
     in_flight_requests: ShareableCounter,
+    name: Option<String>,
 }
 
 impl<ReqBody, ResBody, S, T> Service<Request<ReqBody>> for Metrics<S, T>
@@ -154,6 +170,7 @@ where
             user_agent,
             in_flight_requests: self.in_flight_requests.clone(),
             what_to_record: self.what_to_record,
+            name: self.name.clone(),
         }
     }
 }
@@ -184,6 +201,7 @@ pub struct ResponseFuture<F, T> {
     user_agent: Option<String>,
     in_flight_requests: ShareableCounter,
     what_to_record: WhatToRecord,
+    name: Option<String>,
 }
 
 impl<F, ResBody, E, T> Future for ResponseFuture<F, T>
@@ -198,7 +216,7 @@ where
         let result = ready!(this.future.poll(cx));
         let duration = this.start.elapsed();
 
-        let mut labels = Vec::with_capacity(5 /* the max number of labels */);
+        let mut labels = Vec::with_capacity(6 /* the max number of labels */);
 
         if let Some(path) = this.path.take() {
             labels.push(("path", SharedString::from(path)));
@@ -228,6 +246,10 @@ where
                     labels.push(("status", "error".into()));
                 }
             }
+        }
+
+        if let Some(name) = this.name.take() {
+            labels.push(("name", SharedString::from(name)));
         }
 
         match this.latency_unit {
