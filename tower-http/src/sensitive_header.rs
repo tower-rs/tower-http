@@ -10,21 +10,21 @@ use tower_layer::Layer;
 use tower_service::Service;
 
 #[derive(Clone, Debug)]
-pub struct SensitiveHeaderLayer {
+pub struct SetSensitiveHeaderLayer {
     header: HeaderName,
 }
 
-impl SensitiveHeaderLayer {
+impl SetSensitiveHeaderLayer {
     pub fn new(header: HeaderName) -> Self {
         Self { header }
     }
 }
 
-impl<S> Layer<S> for SensitiveHeaderLayer {
-    type Service = SensitiveHeader<S>;
+impl<S> Layer<S> for SetSensitiveHeaderLayer {
+    type Service = SetSensitiveHeader<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        SensitiveHeader {
+        SetSensitiveHeader {
             inner,
             header: self.header.clone(),
         }
@@ -32,12 +32,12 @@ impl<S> Layer<S> for SensitiveHeaderLayer {
 }
 
 #[derive(Clone, Debug)]
-pub struct SensitiveHeader<S> {
+pub struct SetSensitiveHeader<S> {
     inner: S,
     header: HeaderName,
 }
 
-impl<ReqBody, ResBody, S> Service<Request<ReqBody>> for SensitiveHeader<S>
+impl<ReqBody, ResBody, S> Service<Request<ReqBody>> for SetSensitiveHeader<S>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
 {
