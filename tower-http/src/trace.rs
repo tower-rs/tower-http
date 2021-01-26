@@ -37,7 +37,7 @@ impl TraceLayer<GetTraceStatusFromHttpStatus> {
             record_headers: false,
             span: None,
             latency_unit: LatencyUnit::Millis,
-            get_trace_status: GetTraceStatusFromHttpStatus,
+            get_trace_status: GetTraceStatusFromHttpStatus(()),
             record_full_uri: false,
         }
     }

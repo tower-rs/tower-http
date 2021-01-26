@@ -64,7 +64,7 @@ pub enum TraceStatus {
 }
 
 #[derive(Copy, Clone)]
-pub struct GetTraceStatusFromHttpStatus;
+pub struct GetTraceStatusFromHttpStatus(());
 
 impl<B, E> GetTraceStatus<Response<B>, E> for GetTraceStatusFromHttpStatus {
     fn trace_status(&self, result: &Result<Response<B>, E>) -> TraceStatus {
