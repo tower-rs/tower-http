@@ -39,7 +39,11 @@ impl<T> TraceLayer<T> {
         self
     }
 
-    // TODO(david): In docs, note which fields this span must contain
+    /// Provide a custom span. The span is expected to at least have the fields `method`, `path`,
+    /// and `headers`. If any of the fields are missing from the span they'll also be missing from
+    /// whatever output you may have configured.
+    ///
+    /// The default span uses `DEBUG` level and is called `http-request`.
     pub fn span(mut self, span: Span) -> Self {
         self.span = Some(span);
         self
