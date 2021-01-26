@@ -31,7 +31,9 @@ tower = "0.4"
 [features]
 default = []
 full = [
+    "set-response-header",
 ]
+set-response-header = []
 
 [package.metadata.docs.rs]
 all-features = true

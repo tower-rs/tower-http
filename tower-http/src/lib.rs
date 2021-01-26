@@ -37,3 +37,7 @@
 #![forbid(unsafe_code)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(test, allow(clippy::float_cmp))]
+
+#[cfg(feature = "set-response-header")]
+#[cfg_attr(docsrs, doc(cfg(feature = "set-response-header")))]
+pub mod set_response_header;

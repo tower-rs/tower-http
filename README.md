@@ -17,7 +17,7 @@ shouldn't be using it yet!).
 
 These are the middlewares included in this crate:
 
-<!-- Other PRs will list things here -->
+- `SetResponseHeader`: Set a header on the response.
 
 Middlewares uses the [`http`] crate as the HTTP interface so they're compatible with any library or framework that also uses [`http`]. For example hyper and actix.
 
