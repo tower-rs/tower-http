@@ -21,7 +21,7 @@ tower-layer = "0.3"
 tower-service = "0.3"
 
 # optional dependencies
-# will be filled out in other PRs
+tracing = { version = "0.1", optional = true }
 
 [dev-dependencies]
 futures = "0.3"
@@ -31,7 +31,9 @@ tower = "0.4"
 [features]
 default = []
 full = [
+    "trace",
 ]
+trace = ["tracing"]
 
 [package.metadata.docs.rs]
 all-features = true
