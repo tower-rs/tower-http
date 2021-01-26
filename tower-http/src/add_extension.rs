@@ -37,7 +37,7 @@ pub struct AddExtension<S, T> {
 impl<ResBody, S, T> Service<Request<ResBody>> for AddExtension<S, T>
 where
     S: Service<Request<ResBody>>,
-    T: 'static + Clone + Send + Sync,
+    T: Clone + Send + Sync + 'static,
 {
     type Response = S::Response;
     type Error = S::Error;
