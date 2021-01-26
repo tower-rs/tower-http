@@ -32,8 +32,10 @@ tower = "0.4"
 default = []
 full = [
     "add-extension",
+    "sensitive-header",
 ]
 add-extension = []
+sensitive-header = []
 
 [package.metadata.docs.rs]
 all-features = true

@@ -41,3 +41,7 @@
 #[cfg(feature = "add-extension")]
 #[cfg_attr(docsrs, doc(cfg(feature = "add-extension")))]
 pub mod add_extension;
+
+#[cfg(feature = "sensitive-header")]
+#[cfg_attr(docsrs, doc(cfg(feature = "sensitive-header")))]
+pub mod sensitive_header;

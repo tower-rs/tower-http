@@ -18,6 +18,7 @@ shouldn't be using it yet!).
 These are the middlewares included in this crate:
 
 - `AddExtension`: Stick some shareable value in [request extensions].
+- `SensitiveHeader`: Marks a given header as [sensitive] so it wont show up in logs.
 
 Middlewares uses the [`http`] crate as the HTTP interface so they're compatible with any library or framework that also uses [`http`]. For example hyper and actix.
 
@@ -27,3 +28,4 @@ All middlewares are disabled by default and can be enabled using a cargo feature
 
 [`http`]: https://crates.io/crates/http
 [@EmbarkStudios]: https://github.com/EmbarkStudios
+[sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
