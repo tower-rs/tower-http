@@ -26,11 +26,20 @@ impl Default for MetricsLayer<GetTraceStatusFromHttpStatus> {
 
 #[derive(Debug, Clone, Copy)]
 struct WhatToRecord {
+    latency_metric: bool,
+    http_requests_total_metric: bool,
+    in_flight_requests_metric: bool,
     path_label: bool,
     method_label: bool,
     http_version_label: bool,
     user_agent_label: bool,
     status_label: bool,
+}
+
+impl WhatToRecord {
+    fn any_metrics_recorded(&self) -> bool {
+        self.latency_metric || self.http_requests_total_metric || self.in_flight_requests_metric
+    }
 }
 
 impl MetricsLayer<GetTraceStatusFromHttpStatus> {
@@ -40,6 +49,9 @@ impl MetricsLayer<GetTraceStatusFromHttpStatus> {
             get_trace_status: GetTraceStatusFromHttpStatus,
             name: None,
             what_to_record: WhatToRecord {
+                latency_metric: true,
+                http_requests_total_metric: true,
+                in_flight_requests_metric: true,
                 path_label: true,
                 method_label: true,
                 http_version_label: true,
@@ -47,6 +59,21 @@ impl MetricsLayer<GetTraceStatusFromHttpStatus> {
                 status_label: true,
             },
         }
+    }
+
+    pub fn latency_metric(mut self, latency_metric: bool) -> Self {
+        self.what_to_record.latency_metric = latency_metric;
+        self
+    }
+
+    pub fn http_requests_total_metric(mut self, http_requests_total_metric: bool) -> Self {
+        self.what_to_record.http_requests_total_metric = http_requests_total_metric;
+        self
+    }
+
+    pub fn in_flight_requests_metric(mut self, in_flight_requests_metric: bool) -> Self {
+        self.what_to_record.in_flight_requests_metric = in_flight_requests_metric;
+        self
     }
 
     pub fn latency_unit(mut self, latency_unit: LatencyUnit) -> Self {
@@ -85,7 +112,10 @@ impl MetricsLayer<GetTraceStatusFromHttpStatus> {
     /// stack.
     ///
     /// By default the `name` label will be empty.
-    pub fn name<T>(mut self, name: T) -> Self where T: ToString {
+    pub fn name<T>(mut self, name: T) -> Self
+    where
+        T: ToString,
+    {
         self.name = Some(name.to_string());
         self
     }
@@ -218,52 +248,62 @@ where
 
         let mut labels = Vec::with_capacity(6 /* the max number of labels */);
 
-        if let Some(path) = this.path.take() {
-            labels.push(("path", SharedString::from(path)));
-        }
+        if this.what_to_record.any_metrics_recorded() {
+            if let Some(path) = this.path.take() {
+                labels.push(("path", SharedString::from(path)));
+            }
 
-        if let Some(method) = this.method.take() {
-            labels.push(("method", SharedString::from(method.to_string())));
-        }
+            if let Some(method) = this.method.take() {
+                labels.push(("method", SharedString::from(method.to_string())));
+            }
 
-        if let Some(http_version) = this.http_version.take() {
-            labels.push((
-                "http_version",
-                SharedString::from(format!("{:?}", http_version)),
-            ));
-        }
+            if let Some(http_version) = this.http_version.take() {
+                labels.push((
+                    "http_version",
+                    SharedString::from(format!("{:?}", http_version)),
+                ));
+            }
 
-        if let Some(user_agent) = this.user_agent.take() {
-            labels.push(("user_agent", SharedString::from(user_agent)));
-        }
+            if let Some(user_agent) = this.user_agent.take() {
+                labels.push(("user_agent", SharedString::from(user_agent)));
+            }
 
-        if this.what_to_record.status_label {
-            match this.get_trace_status.trace_status(&result) {
-                TraceStatus::Status(status) => {
-                    labels.push(("status", SharedString::from(status.to_string())));
+            if this.what_to_record.status_label {
+                match this.get_trace_status.trace_status(&result) {
+                    TraceStatus::Status(status) => {
+                        labels.push(("status", SharedString::from(status.to_string())));
+                    }
+                    TraceStatus::Error => {
+                        labels.push(("status", "error".into()));
+                    }
                 }
-                TraceStatus::Error => {
-                    labels.push(("status", "error".into()));
+            }
+
+            if let Some(name) = this.name.take() {
+                labels.push(("name", SharedString::from(name)));
+            }
+        }
+
+        // NOTE: Remember to update `WhatToRecord::any_metrics_recorded` when adding new metrics
+
+        if this.what_to_record.latency_metric {
+            match this.latency_unit {
+                LatencyUnit::Nanos => {
+                    histogram!("latency_ns", duration.as_nanos() as f64, &labels);
+                }
+                LatencyUnit::Millis => {
+                    histogram!("latency_ms", duration.as_millis() as f64, &labels);
                 }
             }
         }
 
-        if let Some(name) = this.name.take() {
-            labels.push(("name", SharedString::from(name)));
+        if this.what_to_record.http_requests_total_metric {
+            increment_counter!("http_requests_total", &labels);
         }
 
-        match this.latency_unit {
-            LatencyUnit::Nanos => {
-                histogram!("latency_ns", duration.as_nanos() as f64, &labels);
-            }
-            LatencyUnit::Millis => {
-                histogram!("latency_ms", duration.as_millis() as f64, &labels);
-            }
+        if this.what_to_record.in_flight_requests_metric {
+            gauge!("in_flight_requests", this.in_flight_requests.get() as f64);
         }
-
-        increment_counter!("http_requests_total", &labels);
-
-        gauge!("in_flight_requests", this.in_flight_requests.get() as f64);
 
         this.in_flight_requests.decrement();
 
