@@ -86,7 +86,7 @@ pub enum LatencyUnit {
     Nanos,
 }
 
-/// You might always want to log the literal HTTP status. gRPC for example its own status and
+/// You might not always want to log the literal HTTP status. gRPC for example its own status and
 /// always uses `200 OK` even for errors.
 // TODO(david): can we come up with a better name for this?
 pub trait GetTraceStatus<T, E> {
