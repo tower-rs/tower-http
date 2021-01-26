@@ -35,10 +35,9 @@
 )]
 #![deny(unreachable_pub, broken_intra_doc_links, private_in_public)]
 #![forbid(unsafe_code)]
-
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(test, allow(clippy::float_cmp))]
-#![cfg_attr(test, recursion_limit="1014")]
+#![cfg_attr(test, recursion_limit = "1014")]
 
 #[cfg(test)]
 mod tests;
