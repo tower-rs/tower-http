@@ -17,7 +17,7 @@ shouldn't be using it yet!).
 
 These are the middlewares included in this crate:
 
-<!-- Other PRs will list things here -->
+- `Compression`: Apply compression to responses. Uses the `Accept-Encoding` header to pick an encoding. Supports gzip, deflate, brotli, and zstd. Requires hyper because it uses `hyper::Body`.
 
 Middlewares uses the [`http`] crate as the HTTP interface so they're compatible with any library or framework that also uses [`http`]. For example hyper and actix.
 

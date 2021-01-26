@@ -21,7 +21,9 @@ tower-layer = "0.3"
 tower-service = "0.3"
 
 # optional dependencies
-# will be filled out in other PRs
+async-compression = { version = "0.3", optional = true, features = ["deflate", "gzip", "brotli", "zstd", "tokio"] }
+hyper = { version = "0.14", optional = true, default_features = false, features = ["stream"] }
+tokio-util = { version = "0.6", optional = true, default_features = false, features = ["io", "codec"] }
 
 [dev-dependencies]
 futures = "0.3"
@@ -31,7 +33,9 @@ tower = "0.4"
 [features]
 default = []
 full = [
+    "compression",
 ]
+compression = ["async-compression", "tokio-util", "hyper"]
 
 [package.metadata.docs.rs]
 all-features = true
