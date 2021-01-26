@@ -37,3 +37,7 @@
 #![forbid(unsafe_code)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(test, allow(clippy::float_cmp))]
+
+#[cfg(feature = "add-extension")]
+#[cfg_attr(docsrs, doc(cfg(feature = "add-extension")))]
+pub mod add_extension;
