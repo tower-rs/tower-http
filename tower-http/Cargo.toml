@@ -1,0 +1,41 @@
+[package]
+name = "tower-http"
+description = "Tower middlewares and utilities for HTTP clients and servers"
+version = "0.1.0"
+authors = ["Tower Maintainers <team@tower-rs.com>"]
+edition = "2018"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/tower-rs/tower-http"
+homepage = "https://github.com/tower-rs/tower-http"
+documentation = "https://docs.rs/tower-http/0.1.0/tower_http/"
+categories = ["asynchronous", "network-programming", "web-programming"]
+keywords = ["io", "async", "non-blocking", "futures", "service", "http"]
+
+[dependencies]
+futures-util = { version = "0.3", default_features = false, features = [] }
+http = "0.2"
+http-body = "0.4"
+pin-project = "1"
+tower-layer = "0.3"
+tower-service = "0.3"
+
+# optional dependencies
+# will be filled out in other PRs
+
+[dev-dependencies]
+futures = "0.3"
+hyper = "0.14"
+tower = "0.4"
+
+[features]
+default = []
+full = [
+]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[package.metadata.playground]
+features = ["full"]
