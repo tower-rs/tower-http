@@ -3,7 +3,10 @@ use http::{Method, Version};
 use metrics::{gauge, histogram, increment_counter, SharedString};
 use metrics_lib as metrics;
 use std::{
-    sync::atomic::{AtomicU32, Ordering},
+    sync::{
+        atomic::{AtomicU32, Ordering},
+        Arc,
+    },
     time::Instant,
 };
 
@@ -102,6 +105,7 @@ where
             latency_unit: self.latency_unit,
             get_trace_status: self.get_trace_status.clone(),
             what_to_record: self.what_to_record,
+            in_flight_requests: ShareableCounter::new(),
         }
     }
 }
@@ -112,6 +116,7 @@ pub struct Metrics<S, T> {
     latency_unit: LatencyUnit,
     get_trace_status: T,
     what_to_record: WhatToRecord,
+    in_flight_requests: ShareableCounter,
 }
 
 impl<ReqBody, ResBody, S, T> Service<Request<ReqBody>> for Metrics<S, T>
@@ -129,7 +134,7 @@ where
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
         let start = Instant::now();
-        InFlightRequests::increment();
+        self.in_flight_requests.increment();
 
         let path = then(self.what_to_record.path, || req.uri().path().to_owned());
         let method = then(self.what_to_record.method, || req.method().to_owned());
@@ -152,6 +157,7 @@ where
             method,
             http_version,
             user_agent,
+            in_flight_requests: self.in_flight_requests.clone(),
         }
     }
 }
@@ -180,6 +186,7 @@ pub struct ResponseFuture<F, T> {
     method: Option<Method>,
     http_version: Option<Version>,
     user_agent: Option<String>,
+    in_flight_requests: ShareableCounter,
 }
 
 impl<F, ResBody, E, T> Future for ResponseFuture<F, T>
@@ -235,29 +242,36 @@ where
             }
         }
 
-        let in_flight_requests = InFlightRequests::get() as f64;
+        let in_flight_requests = this.in_flight_requests.get() as f64;
         gauge!("in_flight_requests", in_flight_requests);
 
-        InFlightRequests::decrement();
+        this.in_flight_requests.decrement();
 
         Poll::Ready(result)
     }
 }
 
-struct InFlightRequests;
+#[derive(Clone, Debug)]
+struct ShareableCounter {
+    count: Arc<AtomicU32>,
+}
 
-static IN_FLIGHT_REQUESTS: AtomicU32 = AtomicU32::new(0);
-
-impl InFlightRequests {
-    fn get() -> u32 {
-        IN_FLIGHT_REQUESTS.load(Ordering::Relaxed)
+impl ShareableCounter {
+    fn new() -> Self {
+        Self {
+            count: Default::default(),
+        }
     }
 
-    fn increment() {
-        IN_FLIGHT_REQUESTS.fetch_add(1, Ordering::SeqCst);
+    fn get(&self) -> u32 {
+        self.count.load(Ordering::Relaxed)
     }
 
-    fn decrement() {
-        IN_FLIGHT_REQUESTS.fetch_sub(1, Ordering::SeqCst);
+    fn increment(&self) {
+        self.count.fetch_add(1, Ordering::SeqCst);
+    }
+
+    fn decrement(&self) {
+        self.count.fetch_sub(1, Ordering::SeqCst);
     }
 }
