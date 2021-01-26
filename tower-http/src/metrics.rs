@@ -25,12 +25,11 @@ impl Default for MetricsLayer<GetTraceStatusFromHttpStatus> {
 
 #[derive(Debug, Clone, Copy)]
 struct WhatToRecord {
-    path: bool,
-    method: bool,
-    http_version: bool,
-    user_agent: bool,
-    status: bool,
-    latency: bool,
+    path_label: bool,
+    method_label: bool,
+    http_version_label: bool,
+    user_agent_label: bool,
+    status_label: bool,
 }
 
 impl MetricsLayer<GetTraceStatusFromHttpStatus> {
@@ -39,12 +38,11 @@ impl MetricsLayer<GetTraceStatusFromHttpStatus> {
             latency_unit: LatencyUnit::Millis,
             get_trace_status: GetTraceStatusFromHttpStatus,
             what_to_record: WhatToRecord {
-                path: true,
-                method: true,
-                http_version: true,
-                user_agent: true,
-                status: true,
-                latency: true,
+                path_label: true,
+                method_label: true,
+                http_version_label: true,
+                user_agent_label: true,
+                status_label: true,
             },
         }
     }
@@ -54,33 +52,28 @@ impl MetricsLayer<GetTraceStatusFromHttpStatus> {
         self
     }
 
-    pub fn record_path(mut self, record_path: bool) -> Self {
-        self.what_to_record.path = record_path;
+    pub fn path_label(mut self, record_path: bool) -> Self {
+        self.what_to_record.path_label = record_path;
         self
     }
 
-    pub fn record_method(mut self, record_method: bool) -> Self {
-        self.what_to_record.method = record_method;
+    pub fn method_label(mut self, record_method: bool) -> Self {
+        self.what_to_record.method_label = record_method;
         self
     }
 
-    pub fn record_http_version(mut self, record_http_version: bool) -> Self {
-        self.what_to_record.http_version = record_http_version;
+    pub fn http_version_label(mut self, record_http_version: bool) -> Self {
+        self.what_to_record.http_version_label = record_http_version;
         self
     }
 
-    pub fn record_user_agent(mut self, record_user_agent: bool) -> Self {
-        self.what_to_record.user_agent = record_user_agent;
+    pub fn user_agent_label(mut self, record_user_agent: bool) -> Self {
+        self.what_to_record.user_agent_label = record_user_agent;
         self
     }
 
-    pub fn record_status(mut self, record_status: bool) -> Self {
-        self.what_to_record.status = record_status;
-        self
-    }
-
-    pub fn record_latency(mut self, record_latency: bool) -> Self {
-        self.what_to_record.latency = record_latency;
+    pub fn status_label(mut self, record_status: bool) -> Self {
+        self.what_to_record.status_label = record_status;
         self
     }
 
@@ -136,11 +129,13 @@ where
         let start = Instant::now();
         self.in_flight_requests.increment();
 
-        let path = then(self.what_to_record.path, || req.uri().path().to_owned());
-        let method = then(self.what_to_record.method, || req.method().to_owned());
-        let http_version = then(self.what_to_record.http_version, || req.version());
+        let path = then(self.what_to_record.path_label, || {
+            req.uri().path().to_owned()
+        });
+        let method = then(self.what_to_record.method_label, || req.method().to_owned());
+        let http_version = then(self.what_to_record.http_version_label, || req.version());
 
-        let user_agent = then(self.what_to_record.user_agent, || {
+        let user_agent = then(self.what_to_record.user_agent_label, || {
             req.headers()
                 .get(header::USER_AGENT)
                 .and_then(|value| value.to_str().ok())
@@ -158,6 +153,7 @@ where
             http_version,
             user_agent,
             in_flight_requests: self.in_flight_requests.clone(),
+            what_to_record: self.what_to_record,
         }
     }
 }
@@ -187,6 +183,7 @@ pub struct ResponseFuture<F, T> {
     http_version: Option<Version>,
     user_agent: Option<String>,
     in_flight_requests: ShareableCounter,
+    what_to_record: WhatToRecord,
 }
 
 impl<F, ResBody, E, T> Future for ResponseFuture<F, T>
@@ -222,16 +219,16 @@ where
             labels.push(("user_agent", SharedString::from(user_agent)));
         }
 
-        match this.get_trace_status.trace_status(&result) {
-            TraceStatus::Status(status) => {
-                labels.push(("status", SharedString::from(status.to_string())));
-            }
-            TraceStatus::Error => {
-                labels.push(("status", "error".into()));
+        if this.what_to_record.status_label {
+            match this.get_trace_status.trace_status(&result) {
+                TraceStatus::Status(status) => {
+                    labels.push(("status", SharedString::from(status.to_string())));
+                }
+                TraceStatus::Error => {
+                    labels.push(("status", "error".into()));
+                }
             }
         }
-
-        increment_counter!("http_requests_total", &labels);
 
         match this.latency_unit {
             LatencyUnit::Nanos => {
@@ -242,8 +239,9 @@ where
             }
         }
 
-        let in_flight_requests = this.in_flight_requests.get() as f64;
-        gauge!("in_flight_requests", in_flight_requests);
+        increment_counter!("http_requests_total", &labels);
+
+        gauge!("in_flight_requests", this.in_flight_requests.get() as f64);
 
         this.in_flight_requests.decrement();
 
