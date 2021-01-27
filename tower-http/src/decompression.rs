@@ -23,7 +23,7 @@ use bytes::{Buf, Bytes, BytesMut};
 use futures_core::{ready, Stream, TryFuture};
 use http::header::{self, HeaderValue, ACCEPT_ENCODING, CONTENT_ENCODING, CONTENT_LENGTH, RANGE};
 use http_body::Body;
-use pin_project_lite::pin_project;
+use pin_project::pin_project;
 use tokio_util::codec::{BytesCodec, FramedRead};
 use tokio_util::io::StreamReader;
 use tower_layer::Layer;
@@ -48,22 +48,20 @@ pub struct DecompressLayer {
     accept: AcceptEncoding,
 }
 
-pin_project! {
-    /// Response future of [`Decompress`].
-    #[derive(Debug)]
-    pub struct ResponseFuture<F> {
-        #[pin]
-        inner: F,
-        accept: AcceptEncoding,
-    }
+/// Response future of [`Decompress`].
+#[pin_project]
+#[derive(Debug)]
+pub struct ResponseFuture<F> {
+    #[pin]
+    inner: F,
+    accept: AcceptEncoding,
 }
 
-pin_project! {
-    /// Response body of [`Decompress`].
-    pub struct DecompressBody<B: Body> {
-        #[pin]
-        inner: BodyInner<B, B::Error>,
-    }
+#[pin_project]
+/// Response body of [`Decompress`].
+pub struct DecompressBody<B: Body> {
+    #[pin]
+    inner: BodyInner<B, B::Error>,
 }
 
 /// Error type of [`DecompressBody`].
@@ -75,126 +73,43 @@ pub enum Error<E> {
     Decompress(io::Error),
 }
 
-/// A wrapper around `pin_project!` to handle `cfg` attributes on enum variants.
-macro_rules! pin_project_cfg {
-    (
-        $(#[$($attr:tt)*])*
-        enum $name:ident $(<$($typaram:ident $(: $bound:path)?),*$(,)?>)? {
-            $($body:tt)*
-        }
-    ) => {
-        // Process the variants one by one with the push-down accumulation pattern.
-        pin_project_cfg! {
-            @accum
-            #[cfg(all())]
-            [$(#[$($attr)*])* enum $name <$($($typaram $(: $bound)?),*)?>]
-            {}
-
-            $($body)*
-        }
-    };
-    // Process a variant with `cfg`.
-    (
-        @accum
-        #[cfg(all($($pred_accum:tt)*))]
-        $outer:tt
-        {$($accum:tt)*}
-
-        #[cfg($($pred:tt)*)]
-        $(#[$($variant_attr:tt)*])* $variant:ident $variant_body:tt,
-        $($rest:tt)*
-    ) => {
-        // Create two versions of the enum with `cfg($pred)` and `cfg(not($pred))`.
-        pin_project_cfg! {
-            @accum
-            #[cfg(all($($pred_accum)* $($pred)*,))]
-            $outer
-            { $($accum)* $(#[$($variant_attr)*])* $variant $variant_body, }
-            $($rest)*
-        }
-        pin_project_cfg! {
-            @accum
-            #[cfg(all($($pred_accum)* not($($pred)*),))]
-            $outer
-            {$($accum)*}
-            $($rest)*
-        }
-    };
-    // Process a variant without `cfg`.
-    (
-        @accum
-        #[cfg(all($($pred_accum:tt)*))]
-        $outer:tt
-        {$($accum:tt)*}
-
-        $(#[$($variant_attr:tt)*])* $variant:ident $variant_body:tt,
-        $($rest:tt)*
-    ) => {
-        pin_project_cfg! {
-            @accum
-            #[cfg(all($($pred_accum)*))]
-            $outer
-            {
-                $($accum)*
-                $(#[$($variant_attr)*])* $variant $variant_body,
-            }
-            $($rest)*
-        }
-    };
-    // All variants have been processed. Construct the enum.
-    (
-        @accum
-        #[$cfg:meta]
-        [$($outer:tt)*]
-        $body:tt
-    ) => {
-        #[$cfg]
-        pin_project! {
-            $($outer)* $body
-        }
-    };
-}
-
 type BodyReader<B, E> = StreamReader<Adapter<B, E>, Bytes>;
 
-pin_project_cfg! {
-    #[project = BodyInnerProj]
-    #[derive(Debug)]
-    enum BodyInner<B, E> {
-        Identity {
-            #[pin]
-            inner: B,
-            marker: PhantomData<fn() -> E>,
-        },
-        #[cfg(feature = "gzip")]
-        Gzip {
-            #[pin]
-            inner: FramedRead<GzipDecoder<BodyReader<B, E>>, BytesCodec>,
-        },
-        #[cfg(feature = "deflate")]
-        Deflate {
-            #[pin]
-            inner: FramedRead<ZlibDecoder<BodyReader<B, E>>, BytesCodec>,
-        },
-        #[cfg(feature = "br")]
-        Brotli {
-            #[pin]
-            inner: FramedRead<BrotliDecoder<BodyReader<B, E>>, BytesCodec>,
-        },
-    }
+#[pin_project(project = BodyInnerProj)]
+#[derive(Debug)]
+enum BodyInner<B, E> {
+    Identity {
+        #[pin]
+        inner: B,
+        marker: PhantomData<fn() -> E>,
+    },
+    #[cfg(feature = "gzip")]
+    Gzip {
+        #[pin]
+        inner: FramedRead<GzipDecoder<BodyReader<B, E>>, BytesCodec>,
+    },
+    #[cfg(feature = "deflate")]
+    Deflate {
+        #[pin]
+        inner: FramedRead<ZlibDecoder<BodyReader<B, E>>, BytesCodec>,
+    },
+    #[cfg(feature = "br")]
+    Brotli {
+        #[pin]
+        inner: FramedRead<BrotliDecoder<BodyReader<B, E>>, BytesCodec>,
+    },
 }
 
-pin_project! {
-    /// A `TryStream<Error>` that captures the errors from the `Body` for later inspection.
-    ///
-    /// This is needed since the `io::Read` wrappers do not provide direct access to
-    /// the inner `Body::Error` values.
-    #[derive(Debug)]
-    struct Adapter<B, E> {
-        #[pin]
-        body: B,
-        error: Option<E>,
-    }
+/// A `TryStream<Error>` that captures the errors from the `Body` for later inspection.
+///
+/// This is needed since the `io::Read` wrappers do not provide direct access to
+/// the inner `Body::Error` values.
+#[pin_project]
+#[derive(Debug)]
+struct Adapter<B, E> {
+    #[pin]
+    body: B,
+    error: Option<E>,
 }
 
 #[derive(Debug, Clone, Copy)]
