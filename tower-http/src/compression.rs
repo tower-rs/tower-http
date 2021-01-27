@@ -1,9 +1,12 @@
 use async_compression::tokio::bufread::{BrotliEncoder, DeflateEncoder, GzipEncoder, ZstdEncoder};
-use futures_util::{ready, TryStreamExt};
+use bytes::{Buf, Bytes};
+use futures_core::Stream;
+use futures_util::ready;
 use http::{header, HeaderMap, HeaderValue, Request, Response};
-use hyper::Body;
+use http_body::Body;
 use pin_project::pin_project;
 use std::{
+    fmt,
     future::Future,
     io,
     pin::Pin,
@@ -35,16 +38,17 @@ impl<S> Layer<S> for CompressionLayer {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 pub struct Compression<S> {
     inner: S,
 }
 
-impl<ResBody, S> Service<Request<ResBody>> for Compression<S>
+impl<ReqBody, ResBody, S> Service<Request<ReqBody>> for Compression<S>
 where
-    S: Service<Request<ResBody>, Response = Response<Body>>,
+    S: Service<Request<ReqBody>, Response = Response<ResBody>>,
+    ResBody: Body,
 {
-    type Response = S::Response;
+    type Response = Response<CompressionBody<ResBody>>;
     type Error = S::Error;
     type Future = ResponseFuture<S::Future>;
 
@@ -53,11 +57,10 @@ where
         self.inner.poll_ready(cx)
     }
 
-    fn call(&mut self, req: Request<ResBody>) -> Self::Future {
-        let encoding = parse(req.headers()).unwrap_or(Encoding::Identity);
-
+    fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
+        let encoding = Encoding::from_headers(req.headers());
         ResponseFuture {
-            future: self.inner.call(req),
+            inner: self.inner.call(req),
             encoding,
         }
     }
@@ -67,73 +70,236 @@ where
 #[derive(Debug)]
 pub struct ResponseFuture<F> {
     #[pin]
-    future: F,
+    inner: F,
     encoding: Encoding,
 }
 
-impl<F, E> Future for ResponseFuture<F>
+impl<F, B, E> Future for ResponseFuture<F>
 where
-    F: Future<Output = Result<Response<Body>, E>>,
+    F: Future<Output = Result<http::Response<B>, E>>,
+    B: Body,
 {
-    type Output = F::Output;
+    type Output = Result<http::Response<CompressionBody<B>>, E>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
-        let res = ready!(this.future.poll(cx)?);
-
-        // do the encoding
-        let encoding = *this.encoding;
-        let mut res = res.map(move |body| {
-            let stream = body.map_err(|err| io::Error::new(io::ErrorKind::Other, err));
-
-            match encoding {
-                Encoding::Gzip => {
-                    let stream = FramedRead::new(
-                        GzipEncoder::new(StreamReader::new(stream)),
-                        BytesCodec::new(),
-                    );
-                    Body::wrap_stream(stream)
-                }
-                Encoding::Deflate => {
-                    let stream = FramedRead::new(
-                        DeflateEncoder::new(StreamReader::new(stream)),
-                        BytesCodec::new(),
-                    );
-                    Body::wrap_stream(stream)
-                }
-                Encoding::Brotli => {
-                    let stream = FramedRead::new(
-                        BrotliEncoder::new(StreamReader::new(stream)),
-                        BytesCodec::new(),
-                    );
-                    Body::wrap_stream(stream)
-                }
-                Encoding::Zstd => {
-                    let stream = FramedRead::new(
-                        ZstdEncoder::new(StreamReader::new(stream)),
-                        BytesCodec::new(),
-                    );
-                    Body::wrap_stream(stream)
-                }
-                Encoding::Identity => Body::wrap_stream(stream),
-            }
-        });
-
-        // update headers
-        if let Encoding::Identity = encoding {
-            // no need to mess with headers
-        } else {
-            let headers = res.headers_mut();
-            headers.append(
-                header::CONTENT_ENCODING,
-                HeaderValue::from_static(encoding.to_str()),
-            );
-            headers.remove(header::CONTENT_LENGTH);
-        }
-
-        Poll::Ready(Ok(res))
+        let res = ready!(this.inner.poll(cx)?);
+        Poll::Ready(Ok(CompressionBody::wrap_response(res, *this.encoding)))
     }
 }
+
+#[pin_project]
+pub struct CompressionBody<B: Body> {
+    #[pin]
+    inner: BodyInner<B, B::Error>,
+}
+
+impl<B> CompressionBody<B>
+where
+    B: Body,
+{
+    fn wrap_response(res: Response<B>, encoding: Encoding) -> Response<Self> {
+        let (mut parts, body) = res.into_parts();
+
+        let body = match encoding {
+            Encoding::Gzip => {
+                let read = StreamReader::new(Adapter { body, error: None });
+                let framed_read = FramedRead::new(GzipEncoder::new(read), BytesCodec::new());
+                CompressionBody {
+                    inner: BodyInner::Gzip(framed_read),
+                }
+            }
+            Encoding::Deflate => {
+                let read = StreamReader::new(Adapter { body, error: None });
+                let framed_read = FramedRead::new(DeflateEncoder::new(read), BytesCodec::new());
+                CompressionBody {
+                    inner: BodyInner::Deflate(framed_read),
+                }
+            }
+            Encoding::Brotli => {
+                let read = StreamReader::new(Adapter { body, error: None });
+                let framed_read = FramedRead::new(BrotliEncoder::new(read), BytesCodec::new());
+                CompressionBody {
+                    inner: BodyInner::Brotli(framed_read),
+                }
+            }
+            Encoding::Zstd => {
+                let read = StreamReader::new(Adapter { body, error: None });
+                let framed_read = FramedRead::new(ZstdEncoder::new(read), BytesCodec::new());
+                CompressionBody {
+                    inner: BodyInner::Zstd(framed_read),
+                }
+            }
+            Encoding::Identity => {
+                return Response::from_parts(
+                    parts,
+                    CompressionBody {
+                        inner: BodyInner::Identity(body),
+                    },
+                )
+            }
+        };
+
+        parts.headers.remove(header::CONTENT_LENGTH);
+
+        parts.headers.insert(
+            header::CONTENT_ENCODING,
+            HeaderValue::from_str(encoding.to_str()).unwrap(),
+        );
+
+        http::Response::from_parts(parts, body)
+    }
+}
+
+impl<B> Body for CompressionBody<B>
+where
+    B: Body,
+{
+    type Data = Bytes;
+    type Error = Error<B::Error>;
+
+    fn poll_data(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
+        let (bytes, inner) = match self.project().inner.project() {
+            BodyInnerProj::Gzip(mut framed_read) => (
+                ready!(framed_read.as_mut().poll_next(cx)),
+                framed_read.get_pin_mut().get_pin_mut().get_pin_mut(),
+            ),
+            BodyInnerProj::Deflate(mut framed_read) => (
+                ready!(framed_read.as_mut().poll_next(cx)),
+                framed_read.get_pin_mut().get_pin_mut().get_pin_mut(),
+            ),
+            BodyInnerProj::Brotli(mut framed_read) => (
+                ready!(framed_read.as_mut().poll_next(cx)),
+                framed_read.get_pin_mut().get_pin_mut().get_pin_mut(),
+            ),
+            BodyInnerProj::Zstd(mut framed_read) => (
+                ready!(framed_read.as_mut().poll_next(cx)),
+                framed_read.get_pin_mut().get_pin_mut().get_pin_mut(),
+            ),
+            BodyInnerProj::Identity(inner) => {
+                return match ready!(inner.poll_data(cx)) {
+                    Some(Ok(mut data)) => {
+                        Poll::Ready(Some(Ok(data.copy_to_bytes(data.remaining()))))
+                    }
+                    Some(Err(e)) => Poll::Ready(Some(Err(Error::Body(e)))),
+                    None => Poll::Ready(None),
+                };
+            }
+        };
+
+        match bytes {
+            Some(Ok(data)) => Poll::Ready(Some(Ok(data.freeze()))),
+            Some(Err(err)) => {
+                let err = inner
+                    .project()
+                    .error
+                    .take()
+                    .map(Error::Body)
+                    .unwrap_or(Error::Compress(err));
+                Poll::Ready(Some(Err(err)))
+            }
+            None => Poll::Ready(None),
+        }
+    }
+
+    fn poll_trailers(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<Option<http::HeaderMap>, Self::Error>> {
+        match self.project().inner.project() {
+            BodyInnerProj::Gzip(framed_read) => framed_read
+                .get_pin_mut()
+                .get_pin_mut()
+                .get_pin_mut()
+                .project()
+                .body
+                .poll_trailers(cx),
+            BodyInnerProj::Deflate(framed_read) => framed_read
+                .get_pin_mut()
+                .get_pin_mut()
+                .get_pin_mut()
+                .project()
+                .body
+                .poll_trailers(cx),
+            BodyInnerProj::Brotli(framed_read) => framed_read
+                .get_pin_mut()
+                .get_pin_mut()
+                .get_pin_mut()
+                .project()
+                .body
+                .poll_trailers(cx),
+            BodyInnerProj::Zstd(framed_read) => framed_read
+                .get_pin_mut()
+                .get_pin_mut()
+                .get_pin_mut()
+                .project()
+                .body
+                .poll_trailers(cx),
+            BodyInnerProj::Identity(inner) => inner.poll_trailers(cx),
+        }
+        .map_err(Error::Body)
+    }
+}
+
+#[pin_project(project = BodyInnerProj)]
+#[derive(Debug)]
+enum BodyInner<B, E> {
+    Identity(#[pin] B),
+    Gzip(#[pin] FramedRead<GzipEncoder<StreamReader<Adapter<B, E>, Bytes>>, BytesCodec>),
+    Deflate(#[pin] FramedRead<DeflateEncoder<StreamReader<Adapter<B, E>, Bytes>>, BytesCodec>),
+    Brotli(#[pin] FramedRead<BrotliEncoder<StreamReader<Adapter<B, E>, Bytes>>, BytesCodec>),
+    Zstd(#[pin] FramedRead<ZstdEncoder<StreamReader<Adapter<B, E>, Bytes>>, BytesCodec>),
+}
+
+#[pin_project]
+#[derive(Debug)]
+struct Adapter<B, E> {
+    #[pin]
+    body: B,
+    error: Option<E>,
+}
+
+impl<B: Body> Stream for Adapter<B, B::Error> {
+    type Item = io::Result<Bytes>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let this = self.project();
+
+        match ready!(this.body.poll_data(cx)) {
+            Some(Ok(mut data)) => Poll::Ready(Some(Ok(data.copy_to_bytes(data.remaining())))),
+            Some(Err(e)) => {
+                *this.error = Some(e);
+
+                // Return a placeholder, which should be discarded by the outer `DecompressBody`.
+                Poll::Ready(Some(Err(io::Error::from_raw_os_error(0))))
+            }
+            None => Poll::Ready(None),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum Error<E> {
+    Body(E),
+    Compress(io::Error),
+}
+
+impl<E> fmt::Display for Error<E>
+where
+    E: fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::Body(err) => err.fmt(f),
+            Error::Compress(err) => err.fmt(f),
+        }
+    }
+}
+
+impl<E> std::error::Error for Error<E> where E: std::error::Error {}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum Encoding {
@@ -165,24 +331,24 @@ impl Encoding {
             _ => None,
         }
     }
-}
 
-// based on https://github.com/http-rs/accept-encoding
-fn parse(headers: &HeaderMap) -> Option<Encoding> {
-    let mut preferred_encoding = None;
-    let mut max_qval = 0.0;
+    // based on https://github.com/http-rs/accept-encoding
+    fn from_headers(headers: &HeaderMap) -> Self {
+        let mut preferred_encoding = None;
+        let mut max_qval = 0.0;
 
-    for (encoding, qval) in encodings(headers) {
-        if (qval - 1.0f32).abs() < 0.01 {
-            preferred_encoding = Some(encoding);
-            break;
-        } else if qval > max_qval {
-            preferred_encoding = Some(encoding);
-            max_qval = qval;
+        for (encoding, qval) in encodings(headers) {
+            if (qval - 1.0f32).abs() < 0.01 {
+                preferred_encoding = Some(encoding);
+                break;
+            } else if qval > max_qval {
+                preferred_encoding = Some(encoding);
+                max_qval = qval;
+            }
         }
-    }
 
-    preferred_encoding
+        preferred_encoding.unwrap_or(Encoding::Identity)
+    }
 }
 
 // based on https://github.com/http-rs/accept-encoding
@@ -216,47 +382,4 @@ fn encodings(headers: &HeaderMap) -> Vec<(Encoding, f32)> {
             Some((encoding, qval))
         })
         .collect::<Vec<(Encoding, f32)>>()
-}
-
-#[cfg(test)]
-mod tests {
-    #[allow(unused_imports)]
-    use super::*;
-    use async_compression::tokio::bufread::GzipDecoder;
-    use futures::StreamExt;
-    use hyper::Error;
-    use tower::{service_fn, ServiceExt};
-
-    #[tokio::test]
-    async fn basic() {
-        let svc = CompressionLayer::new().layer(service_fn(echo));
-
-        let req = Request::builder()
-            .header("accept-encoding", "gzip")
-            .body(Body::wrap_stream(futures::stream::iter(vec![
-                Ok::<_, Error>("foo"),
-                Ok::<_, Error>("bar"),
-            ])))
-            .unwrap();
-
-        let res = svc.oneshot(req).await.unwrap();
-        let body = res
-            .into_body()
-            .map(|chunk| Ok::<_, io::Error>(chunk.unwrap()));
-        let body = GzipDecoder::new(StreamReader::new(body));
-        let body = FramedRead::new(body, BytesCodec::new())
-            .map(|chunk| chunk.unwrap())
-            .map(|chunk| chunk.to_vec())
-            .concat()
-            .await;
-
-        let body = String::from_utf8(body).unwrap();
-
-        assert_eq!(body, "foobar");
-    }
-
-    async fn echo(req: Request<Body>) -> Result<Response<Body>, Error> {
-        let body = req.into_body();
-        Ok(Response::new(body))
-    }
 }

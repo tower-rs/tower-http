@@ -13,6 +13,7 @@ categories = ["asynchronous", "network-programming", "web-programming"]
 keywords = ["io", "async", "non-blocking", "futures", "service", "http"]
 
 [dependencies]
+futures-core = "0.3"
 futures-util = { version = "0.3", default_features = false, features = [] }
 http = "0.2"
 http-body = "0.4"
@@ -22,6 +23,7 @@ tower-service = "0.3"
 
 # optional dependencies
 async-compression = { version = "0.3", optional = true, features = ["deflate", "gzip", "brotli", "zstd", "tokio"] }
+bytes = { version = "1", optional = true }
 hyper = { version = "0.14", optional = true, default_features = false, features = ["stream"] }
 tokio-util = { version = "0.6", optional = true, default_features = false, features = ["io", "codec"] }
 
@@ -36,7 +38,7 @@ default = []
 full = [
     "compression",
 ]
-compression = ["async-compression", "tokio-util", "hyper"]
+compression = ["async-compression", "tokio-util", "hyper", "bytes"]
 
 [package.metadata.docs.rs]
 all-features = true
