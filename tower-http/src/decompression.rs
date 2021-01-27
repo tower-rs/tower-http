@@ -629,6 +629,7 @@ impl AcceptEncoding {
         }
     }
 
+    #[cfg_attr(not(feature = "gzip"), allow(unused))]
     fn set_gzip(mut self, enable: bool) -> Self {
         #[cfg(feature = "gzip")]
         {
@@ -641,6 +642,7 @@ impl AcceptEncoding {
         }
     }
 
+    #[cfg_attr(not(feature = "deflate"), allow(unused))]
     fn set_deflate(mut self, enable: bool) -> Self {
         #[cfg(feature = "deflate")]
         {
@@ -653,6 +655,7 @@ impl AcceptEncoding {
         }
     }
 
+    #[cfg_attr(not(feature = "br"), allow(unused))]
     fn set_br(mut self, enable: bool) -> Self {
         #[cfg(feature = "br")]
         {
