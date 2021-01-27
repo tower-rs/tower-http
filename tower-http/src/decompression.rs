@@ -19,7 +19,6 @@ use async_compression::tokio::bufread::BrotliDecoder;
 use async_compression::tokio::bufread::GzipDecoder;
 #[cfg(feature = "deflate")]
 use async_compression::tokio::bufread::ZlibDecoder;
-use bitflags::bitflags;
 use bytes::{Buf, Bytes, BytesMut};
 use futures_core::{ready, Stream, TryFuture};
 use http::header::{self, HeaderValue, ACCEPT_ENCODING, CONTENT_ENCODING, CONTENT_LENGTH, RANGE};
@@ -27,6 +26,8 @@ use http_body::Body;
 use pin_project_lite::pin_project;
 use tokio_util::codec::{BytesCodec, FramedRead};
 use tokio_util::io::StreamReader;
+use tower_layer::Layer;
+use tower_service::Service;
 
 /// Decompresses response bodies of the underlying service.
 ///
@@ -196,15 +197,14 @@ pin_project! {
     }
 }
 
-bitflags! {
-    struct AcceptEncoding: u8 {
-        #[cfg(feature = "gzip")]
-        const GZIP = 0b001;
-        #[cfg(feature = "deflate")]
-        const DEFLATE = 0b010;
-        #[cfg(feature = "br")]
-        const BR = 0b100;
-    }
+#[derive(Debug, Clone, Copy)]
+struct AcceptEncoding {
+    #[cfg(feature = "gzip")]
+    gzip: bool,
+    #[cfg(feature = "deflate")]
+    deflate: bool,
+    #[cfg(feature = "br")]
+    br: bool,
 }
 
 impl<S> Decompress<S> {
@@ -280,9 +280,9 @@ impl<S> Decompress<S> {
     }
 }
 
-impl<S, ReqBody, ResBody> tower_service::Service<http::Request<ReqBody>> for Decompress<S>
+impl<S, ReqBody, ResBody> Service<http::Request<ReqBody>> for Decompress<S>
 where
-    S: tower_service::Service<http::Request<ReqBody>, Response = http::Response<ResBody>>,
+    S: Service<http::Request<ReqBody>, Response = http::Response<ResBody>>,
     ResBody: Body,
 {
     type Response = http::Response<DecompressBody<ResBody>>;
@@ -363,7 +363,7 @@ impl DecompressLayer {
     }
 }
 
-impl<S> tower_layer::Layer<S> for DecompressLayer {
+impl<S> Layer<S> for DecompressLayer {
     type Service = Decompress<S>;
 
     fn layer(&self, service: S) -> Self::Service {
@@ -393,14 +393,14 @@ where
 {
     /// Gets a reference to the underlying body.
     pub fn get_ref(&self) -> &B {
-        match self.inner {
-            BodyInner::Identity { ref inner, .. } => inner,
+        match &self.inner {
+            BodyInner::Identity { inner, .. } => inner,
             #[cfg(feature = "gzip")]
-            BodyInner::Gzip { ref inner } => &inner.get_ref().get_ref().get_ref().body,
+            BodyInner::Gzip { inner } => &inner.get_ref().get_ref().get_ref().body,
             #[cfg(feature = "deflate")]
-            BodyInner::Deflate { ref inner } => &inner.get_ref().get_ref().get_ref().body,
+            BodyInner::Deflate { inner } => &inner.get_ref().get_ref().get_ref().body,
             #[cfg(feature = "br")]
-            BodyInner::Brotli { ref inner } => &inner.get_ref().get_ref().get_ref().body,
+            BodyInner::Brotli { inner } => &inner.get_ref().get_ref().get_ref().body,
         }
     }
 
@@ -408,14 +408,14 @@ where
     ///
     /// It is inadvisable to directly read from the underlying body.
     pub fn get_mut(&mut self) -> &mut B {
-        match self.inner {
-            BodyInner::Identity { ref mut inner, .. } => inner,
+        match &mut self.inner {
+            BodyInner::Identity { inner, .. } => inner,
             #[cfg(feature = "gzip")]
-            BodyInner::Gzip { ref mut inner } => &mut inner.get_mut().get_mut().get_mut().body,
+            BodyInner::Gzip { inner } => &mut inner.get_mut().get_mut().get_mut().body,
             #[cfg(feature = "deflate")]
-            BodyInner::Deflate { ref mut inner } => &mut inner.get_mut().get_mut().get_mut().body,
+            BodyInner::Deflate { inner } => &mut inner.get_mut().get_mut().get_mut().body,
             #[cfg(feature = "br")]
-            BodyInner::Brotli { ref mut inner } => &mut inner.get_mut().get_mut().get_mut().body,
+            BodyInner::Brotli { inner } => &mut inner.get_mut().get_mut().get_mut().body,
         }
     }
 
@@ -617,18 +617,18 @@ where
 
 impl<E: Display> Display for Error<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match *self {
-            Error::Body(ref e) => e.fmt(f),
-            Error::Decompress(ref e) => Display::fmt(&e, f),
+        match &self {
+            Error::Body(e) => e.fmt(f),
+            Error::Decompress(e) => Display::fmt(&e, f),
         }
     }
 }
 
 impl<E: error::Error + 'static> error::Error for Error<E> {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match *self {
-            Error::Body(ref e) => Some(e),
-            Error::Decompress(ref e) => Some(e),
+        match &self {
+            Error::Body(e) => Some(e),
+            Error::Decompress(e) => Some(e),
         }
     }
 }
@@ -684,7 +684,7 @@ impl AcceptEncoding {
     fn gzip(&self) -> bool {
         #[cfg(feature = "gzip")]
         {
-            self.contains(AcceptEncoding::GZIP)
+            self.gzip
         }
         #[cfg(not(feature = "gzip"))]
         {
@@ -695,7 +695,7 @@ impl AcceptEncoding {
     fn deflate(&self) -> bool {
         #[cfg(feature = "deflate")]
         {
-            self.contains(AcceptEncoding::DEFLATE)
+            self.deflate
         }
         #[cfg(not(feature = "deflate"))]
         {
@@ -706,7 +706,7 @@ impl AcceptEncoding {
     fn br(&self) -> bool {
         #[cfg(feature = "br")]
         {
-            self.contains(AcceptEncoding::BR)
+            self.br
         }
         #[cfg(not(feature = "br"))]
         {
@@ -717,7 +717,7 @@ impl AcceptEncoding {
     fn set_gzip(mut self, enable: bool) -> Self {
         #[cfg(feature = "gzip")]
         {
-            self.set(AcceptEncoding::GZIP, enable);
+            self.gzip = enable;
             self
         }
         #[cfg(not(feature = "gzip"))]
@@ -729,7 +729,7 @@ impl AcceptEncoding {
     fn set_deflate(mut self, enable: bool) -> Self {
         #[cfg(feature = "deflate")]
         {
-            self.set(AcceptEncoding::DEFLATE, enable);
+            self.deflate = enable;
             self
         }
         #[cfg(not(feature = "deflate"))]
@@ -741,7 +741,7 @@ impl AcceptEncoding {
     fn set_br(mut self, enable: bool) -> Self {
         #[cfg(feature = "br")]
         {
-            self.set(AcceptEncoding::BR, enable);
+            self.br = enable;
             self
         }
         #[cfg(not(feature = "br"))]
@@ -753,6 +753,13 @@ impl AcceptEncoding {
 
 impl Default for AcceptEncoding {
     fn default() -> Self {
-        AcceptEncoding::all()
+        AcceptEncoding {
+            #[cfg(feature = "gzip")]
+            gzip: true,
+            #[cfg(feature = "deflate")]
+            deflate: true,
+            #[cfg(feature = "br")]
+            br: true,
+        }
     }
 }
