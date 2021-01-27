@@ -217,3 +217,46 @@ fn encodings(headers: &HeaderMap) -> Vec<(Encoding, f32)> {
         })
         .collect::<Vec<(Encoding, f32)>>()
 }
+
+#[cfg(test)]
+mod tests {
+    #[allow(unused_imports)]
+    use super::*;
+    use async_compression::tokio::bufread::GzipDecoder;
+    use futures::StreamExt;
+    use hyper::Error;
+    use tower::{service_fn, ServiceExt};
+
+    #[tokio::test]
+    async fn basic() {
+        let svc = CompressionLayer::new().layer(service_fn(echo));
+
+        let req = Request::builder()
+            .header("accept-encoding", "gzip")
+            .body(Body::wrap_stream(futures::stream::iter(vec![
+                Ok::<_, Error>("foo"),
+                Ok::<_, Error>("bar"),
+            ])))
+            .unwrap();
+
+        let res = svc.oneshot(req).await.unwrap();
+        let body = res
+            .into_body()
+            .map(|chunk| Ok::<_, io::Error>(chunk.unwrap()));
+        let body = GzipDecoder::new(StreamReader::new(body));
+        let body = FramedRead::new(body, BytesCodec::new())
+            .map(|chunk| chunk.unwrap())
+            .map(|chunk| chunk.to_vec())
+            .concat()
+            .await;
+
+        let body = String::from_utf8(body).unwrap();
+
+        assert_eq!(body, "foobar");
+    }
+
+    async fn echo(req: Request<Body>) -> Result<Response<Body>, Error> {
+        let body = req.into_body();
+        Ok(Response::new(body))
+    }
+}
