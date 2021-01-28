@@ -22,6 +22,7 @@ use async_compression::tokio::bufread::ZlibDecoder;
 use bytes::{Buf, Bytes, BytesMut};
 use futures_core::{ready, Stream, TryFuture};
 use http::header::{self, HeaderValue, ACCEPT_ENCODING, CONTENT_ENCODING, CONTENT_LENGTH, RANGE};
+use http::{HeaderMap, Request, Response};
 use http_body::Body;
 use pin_project::pin_project;
 use tokio_util::codec::{BytesCodec, FramedRead};
@@ -195,12 +196,12 @@ impl<S> Decompress<S> {
     }
 }
 
-impl<S, ReqBody, ResBody> Service<http::Request<ReqBody>> for Decompress<S>
+impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for Decompress<S>
 where
-    S: Service<http::Request<ReqBody>, Response = http::Response<ResBody>>,
+    S: Service<Request<ReqBody>, Response = Response<ResBody>>,
     ResBody: Body,
 {
-    type Response = http::Response<DecompressBody<ResBody>>;
+    type Response = Response<DecompressBody<ResBody>>;
     type Error = S::Error;
     type Future = ResponseFuture<S::Future>;
 
@@ -208,7 +209,7 @@ where
         self.inner.poll_ready(cx)
     }
 
-    fn call(&mut self, mut req: http::Request<ReqBody>) -> Self::Future {
+    fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
         if !req.headers().contains_key(RANGE) {
             if let header::Entry::Vacant(e) = req.headers_mut().entry(ACCEPT_ENCODING) {
                 if let Some(accept) = self.accept.to_header_value() {
@@ -291,10 +292,10 @@ impl<S> Layer<S> for DecompressLayer {
 
 impl<F, B> Future for ResponseFuture<F>
 where
-    F: TryFuture<Ok = http::Response<B>>,
+    F: TryFuture<Ok = Response<B>>,
     B: Body,
 {
-    type Output = Result<http::Response<DecompressBody<B>>, F::Error>;
+    type Output = Result<Response<DecompressBody<B>>, F::Error>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let res = ready!(self.as_mut().project().inner.try_poll(cx)?);
@@ -389,7 +390,7 @@ where
         not(any(feature = "br", feature = "gzip", feature = "deflate")),
         allow(unreachable_code)
     )]
-    fn wrap_response(res: http::Response<B>, accept: &AcceptEncoding) -> http::Response<Self> {
+    fn wrap_response(res: Response<B>, accept: &AcceptEncoding) -> Response<Self> {
         let (mut parts, body) = res.into_parts();
         if let header::Entry::Occupied(e) = parts.headers.entry(CONTENT_ENCODING) {
             let body = match e.get().as_bytes() {
@@ -399,13 +400,13 @@ where
                 b"deflate" if accept.deflate() => DecompressBody::deflate(body),
                 #[cfg(feature = "br")]
                 b"br" if accept.br() => DecompressBody::br(body),
-                _ => return http::Response::from_parts(parts, DecompressBody::identity(body)),
+                _ => return Response::from_parts(parts, DecompressBody::identity(body)),
             };
             e.remove();
             parts.headers.remove(CONTENT_LENGTH);
-            http::Response::from_parts(parts, body)
+            Response::from_parts(parts, body)
         } else {
-            http::Response::from_parts(parts, DecompressBody::identity(body))
+            Response::from_parts(parts, DecompressBody::identity(body))
         }
     }
 
@@ -498,7 +499,7 @@ where
     fn poll_trailers(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-    ) -> Poll<Result<Option<http::HeaderMap>, Self::Error>> {
+    ) -> Poll<Result<Option<HeaderMap>, Self::Error>> {
         match self.project().inner.project() {
             BodyInnerProj::Identity { inner, .. } => inner.poll_trailers(cx),
             #[cfg(feature = "gzip")]
