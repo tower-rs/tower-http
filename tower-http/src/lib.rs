@@ -58,12 +58,14 @@ pub trait GetTraceStatus<T, E> {
 }
 
 // TODO(david): can we come up with a better name for this?
+#[derive(Debug)]
+#[non_exhaustive]
 pub enum TraceStatus {
     Status(u16),
     Error,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct GetTraceStatusFromHttpStatus(());
 
 impl<B, E> GetTraceStatus<Response<B>, E> for GetTraceStatusFromHttpStatus {
