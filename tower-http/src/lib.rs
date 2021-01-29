@@ -12,7 +12,10 @@
 //! # Example
 //!
 //! ```rust
-//! use tower_http::add_extension::AddExtensionLayer;
+//! use tower_http::{
+//!     add_extension::AddExtensionLayer,
+//!     compression::CompressionLayer,
+//! };
 //! use tower::{ServiceBuilder, service_fn};
 //! use http::{Request, Response};
 //! use hyper::Body;
@@ -42,6 +45,9 @@
 //!     let service = ServiceBuilder::new()
 //!         // Share an `Arc<State>` with all requests
 //!         .layer(AddExtensionLayer::new(Arc::new(state)))
+//!         // Compress responses
+//!         .layer(CompressionLayer::new())
+//!         // Wrap a `Service` in our middleware stack
 //!         .service(service_fn(handler));
 //!
 //!     // Run our service using some HTTP server
