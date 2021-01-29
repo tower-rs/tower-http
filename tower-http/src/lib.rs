@@ -1,4 +1,76 @@
-//! TODO(david): root module docs
+//! `async fn(HttpRequest) -> Result<HttpResponse, Error>`
+//!
+//! # Overview
+//!
+//! tower-http is a library that provides HTTP specific middlewares and utilities built on top of
+//! [tower].
+//!
+//! All middlewares uses the [http] and [http-body] crates as the HTTP abstractions. That means
+//! they're compatible with any library or framework that also uses those crates, such as [hyper].
+//! Some middlewares might bring in other dependencies for doing various things.
+//!
+//! # Example
+//!
+//! ```rust
+//! use tower_http::add_extension::AddExtensionLayer;
+//! use tower::{ServiceBuilder, service_fn};
+//! use http::{Request, Response};
+//! use hyper::Body;
+//! use std::sync::Arc;
+//! # struct Error;
+//! # struct DatabaseConnectionPool;
+//! # impl DatabaseConnectionPool {
+//! #     fn new() -> DatabaseConnectionPool { DatabaseConnectionPool }
+//! # }
+//! # async fn run_http_service<T>(_: T) {}
+//!
+//! async fn handler(request: Request<Body>) -> Result<Response<Body>, Error> {
+//!     // ...
+//!     # todo!()
+//! }
+//!
+//! struct State {
+//!     pool: DatabaseConnectionPool,
+//! }
+//!
+//! #[tokio::main]
+//! async fn main() {
+//!     let state = State {
+//!         pool: DatabaseConnectionPool::new(),
+//!     };
+//!
+//!     let service = ServiceBuilder::new()
+//!         // Share an `Arc<State>` with all requests
+//!         .layer(AddExtensionLayer::new(Arc::new(state)))
+//!         .service(service_fn(handler));
+//!
+//!     // Run our service using some HTTP server
+//!     run_http_service(service).await;
+//! }
+//! ```
+//!
+//! # Feature toggles
+//!
+//! All middlewares are disabled by default and can be enabled using [cargo features].
+//!
+//! For example to enable [`AddExtension`] you would add this to your `Cargo.toml`:
+//!
+//! ```toml
+//! tower-http = { version = "0.1.0", features = ["add-extension"] }
+//! ```
+//!
+//! You can use `"full"` to enable everything:
+//!
+//! ```toml
+//! tower-http = { version = "0.1.0", features = ["full"] }
+//! ```
+//!
+//! [tower]: https://crates.io/crates/tower
+//! [http]: https://crates.io/crates/http
+//! [http-body]: https://crates.io/crates/http-body
+//! [hyper]: https://crates.io/crates/hyper
+//! [cargo features]: https://doc.rust-lang.org/cargo/reference/features.html
+//! [`AddExtension`]: crate::add_extension::AddExtension
 
 #![doc(html_root_url = "https://docs.rs/tower-http/0.1.0")]
 #![allow(elided_lifetimes_in_paths, clippy::type_complexity)]
