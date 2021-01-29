@@ -31,7 +31,9 @@ tower = "0.4"
 [features]
 default = []
 full = [
+    "add-extension",
 ]
+add-extension = []
 
 [package.metadata.docs.rs]
 all-features = true
