@@ -39,7 +39,7 @@ use tower_service::Service;
 /// This adds the `Accept-Encoding` header to requests and transparently decompresses response
 /// bodies based on the `Content-Encoding` header.
 #[derive(Debug, Clone)]
-pub struct Decompress<S> {
+pub struct Decompression<S> {
     inner: S,
     accept: AcceptEncoding,
 }
@@ -49,11 +49,11 @@ pub struct Decompress<S> {
 /// This adds the `Accept-Encoding` header to requests and transparently decompresses response
 /// bodies based on the `Content-Encoding` header.
 #[derive(Debug, Default, Clone)]
-pub struct DecompressLayer {
+pub struct DecompressionLayer {
     accept: AcceptEncoding,
 }
 
-/// Response future of [`Decompress`].
+/// Response future of [`Decompression`].
 #[pin_project]
 #[derive(Debug)]
 pub struct ResponseFuture<F> {
@@ -63,18 +63,18 @@ pub struct ResponseFuture<F> {
 }
 
 #[pin_project]
-/// Response body of [`Decompress`].
-pub struct DecompressBody<B: Body> {
+/// Response body of [`Decompression`].
+pub struct DecompressionBody<B: Body> {
     #[pin]
     inner: BodyInner<B, B::Error>,
 }
 
-/// Error type of [`DecompressBody`].
+/// Error type of [`DecompressionBody`].
 #[derive(Debug)]
 pub enum Error<E> {
     /// Error from the underlying body.
     Body(E),
-    /// Decompress error.
+    /// Decompression error.
     Decompress(io::Error),
 }
 
@@ -127,10 +127,10 @@ struct AcceptEncoding {
     br: bool,
 }
 
-impl<S> Decompress<S> {
-    /// Creates a new `Decompress` wrapping the `service`.
+impl<S> Decompression<S> {
+    /// Creates a new `Decompression` wrapping the `service`.
     pub fn new(service: S) -> Self {
-        Decompress {
+        Decompression {
             inner: service,
             accept: AcceptEncoding::default(),
         }
@@ -200,12 +200,12 @@ impl<S> Decompress<S> {
     }
 }
 
-impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for Decompress<S>
+impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for Decompression<S>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
     ResBody: Body,
 {
-    type Response = Response<DecompressBody<ResBody>>;
+    type Response = Response<DecompressionBody<ResBody>>;
     type Error = S::Error;
     type Future = ResponseFuture<S::Future>;
 
@@ -228,8 +228,8 @@ where
     }
 }
 
-impl DecompressLayer {
-    /// Creates a new `DecompressLayer`.
+impl DecompressionLayer {
+    /// Creates a new `DecompressionLayer`.
     pub fn new() -> Self {
         Default::default()
     }
@@ -283,11 +283,11 @@ impl DecompressLayer {
     }
 }
 
-impl<S> Layer<S> for DecompressLayer {
-    type Service = Decompress<S>;
+impl<S> Layer<S> for DecompressionLayer {
+    type Service = Decompression<S>;
 
     fn layer(&self, service: S) -> Self::Service {
-        Decompress {
+        Decompression {
             inner: service,
             accept: self.accept,
         }
@@ -299,15 +299,15 @@ where
     F: TryFuture<Ok = Response<B>>,
     B: Body,
 {
-    type Output = Result<Response<DecompressBody<B>>, F::Error>;
+    type Output = Result<Response<DecompressionBody<B>>, F::Error>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let res = ready!(self.as_mut().project().inner.try_poll(cx)?);
-        Poll::Ready(Ok(DecompressBody::wrap_response(res, &self.accept)))
+        Poll::Ready(Ok(DecompressionBody::wrap_response(res, &self.accept)))
     }
 }
 
-impl<B> DecompressBody<B>
+impl<B> DecompressionBody<B>
 where
     B: Body,
 {
@@ -403,23 +403,23 @@ where
         if let header::Entry::Occupied(e) = parts.headers.entry(CONTENT_ENCODING) {
             let body = match e.get().as_bytes() {
                 #[cfg(feature = "decompression-gzip")]
-                b"gzip" if accept.gzip() => DecompressBody::gzip(body),
+                b"gzip" if accept.gzip() => DecompressionBody::gzip(body),
                 #[cfg(feature = "decompression-deflate")]
-                b"deflate" if accept.deflate() => DecompressBody::deflate(body),
+                b"deflate" if accept.deflate() => DecompressionBody::deflate(body),
                 #[cfg(feature = "decompression-br")]
-                b"br" if accept.br() => DecompressBody::br(body),
-                _ => return Response::from_parts(parts, DecompressBody::identity(body)),
+                b"br" if accept.br() => DecompressionBody::br(body),
+                _ => return Response::from_parts(parts, DecompressionBody::identity(body)),
             };
             e.remove();
             parts.headers.remove(CONTENT_LENGTH);
             Response::from_parts(parts, body)
         } else {
-            Response::from_parts(parts, DecompressBody::identity(body))
+            Response::from_parts(parts, DecompressionBody::identity(body))
         }
     }
 
     fn identity(body: B) -> Self {
-        DecompressBody {
+        DecompressionBody {
             inner: BodyInner::Identity {
                 inner: body,
                 marker: PhantomData,
@@ -431,7 +431,7 @@ where
     fn gzip(body: B) -> Self {
         let read = StreamReader::new(Adapter { body, error: None });
         let inner = FramedRead::new(GzipDecoder::new(read), BytesCodec::new());
-        DecompressBody {
+        DecompressionBody {
             inner: BodyInner::Gzip { inner },
         }
     }
@@ -440,7 +440,7 @@ where
     fn deflate(body: B) -> Self {
         let read = StreamReader::new(Adapter { body, error: None });
         let inner = FramedRead::new(ZlibDecoder::new(read), BytesCodec::new());
-        DecompressBody {
+        DecompressionBody {
             inner: BodyInner::Deflate { inner },
         }
     }
@@ -449,13 +449,13 @@ where
     fn br(body: B) -> Self {
         let read = StreamReader::new(Adapter { body, error: None });
         let inner = FramedRead::new(BrotliDecoder::new(read), BytesCodec::new());
-        DecompressBody {
+        DecompressionBody {
             inner: BodyInner::Brotli { inner },
         }
     }
 }
 
-impl<B> Body for DecompressBody<B>
+impl<B> Body for DecompressionBody<B>
 where
     B: Body,
 {
@@ -559,17 +559,17 @@ impl<E: error::Error + 'static> error::Error for Error<E> {
 
 // Manually implement `Debug` because the `derive(Debug)` macro cannot figure out that
 // `B::Error: Debug` is required.
-impl<B> Debug for DecompressBody<B>
+impl<B> Debug for DecompressionBody<B>
 where
     B: Body + Debug,
     B::Error: Debug,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         #[derive(Debug)]
-        struct DecompressBody<'a, B: Body> {
+        struct DecompressionBody<'a, B: Body> {
             inner: &'a BodyInner<B, B::Error>,
         }
-        DecompressBody { inner: &self.inner }.fmt(f)
+        DecompressionBody { inner: &self.inner }.fmt(f)
     }
 }
 
@@ -582,7 +582,7 @@ impl<B: Body> Stream for Adapter<B, B::Error> {
             Some(Ok(mut data)) => Poll::Ready(Some(Ok(data.copy_to_bytes(data.remaining())))),
             Some(Err(e)) => {
                 *this.error = Some(e);
-                // Return a placeholder, which should be discarded by the outer `DecompressBody`.
+                // Return a placeholder, which should be discarded by the outer `DecompressionBody`.
                 Poll::Ready(Some(Err(io::Error::from_raw_os_error(0))))
             }
             None => Poll::Ready(None),
