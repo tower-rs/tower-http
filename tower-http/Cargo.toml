@@ -21,7 +21,7 @@ tower-layer = "0.3"
 tower-service = "0.3"
 
 # optional dependencies
-tracing = { version = "0.1", optional = true }
+tracing = { version = "0.1", optional = true, default-features = false }
 
 [dev-dependencies]
 futures = "0.3"
