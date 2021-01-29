@@ -21,10 +21,32 @@ impl SetSensitiveHeaderLayer {
 }
 
 impl<S> Layer<S> for SetSensitiveHeaderLayer {
-    type Service = SetSensitiveHeader<S>;
+    type Service = SetSensitiveRequestHeader<SetSensitiveResponseHeader<S>>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        SetSensitiveHeader {
+        SetSensitiveRequestHeader::new(
+            SetSensitiveResponseHeader::new(inner, self.header.clone()),
+            self.header.clone(),
+        )
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SetSensitiveRequestHeaderLayer {
+    header: HeaderName,
+}
+
+impl SetSensitiveRequestHeaderLayer {
+    pub fn new(header: HeaderName) -> Self {
+        Self { header }
+    }
+}
+
+impl<S> Layer<S> for SetSensitiveRequestHeaderLayer {
+    type Service = SetSensitiveRequestHeader<S>;
+
+    fn layer(&self, inner: S) -> Self::Service {
+        SetSensitiveRequestHeader {
             inner,
             header: self.header.clone(),
         }
@@ -32,12 +54,74 @@ impl<S> Layer<S> for SetSensitiveHeaderLayer {
 }
 
 #[derive(Clone, Debug)]
-pub struct SetSensitiveHeader<S> {
+pub struct SetSensitiveRequestHeader<S> {
     inner: S,
     header: HeaderName,
 }
 
-impl<ReqBody, ResBody, S> Service<Request<ReqBody>> for SetSensitiveHeader<S>
+impl<S> SetSensitiveRequestHeader<S> {
+    pub fn new(inner: S, header: HeaderName) -> Self {
+        Self { inner, header }
+    }
+}
+
+impl<ReqBody, ResBody, S> Service<Request<ReqBody>> for SetSensitiveRequestHeader<S>
+where
+    S: Service<Request<ReqBody>, Response = Response<ResBody>>,
+{
+    type Response = S::Response;
+    type Error = S::Error;
+    type Future = S::Future;
+
+    #[inline]
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx)
+    }
+
+    fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
+        if let Some(value) = req.headers_mut().get_mut(&self.header) {
+            value.set_sensitive(true);
+        }
+
+        self.inner.call(req)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SetSensitiveResponseHeaderLayer {
+    header: HeaderName,
+}
+
+impl SetSensitiveResponseHeaderLayer {
+    pub fn new(header: HeaderName) -> Self {
+        Self { header }
+    }
+}
+
+impl<S> Layer<S> for SetSensitiveResponseHeaderLayer {
+    type Service = SetSensitiveResponseHeader<S>;
+
+    fn layer(&self, inner: S) -> Self::Service {
+        SetSensitiveResponseHeader {
+            inner,
+            header: self.header.clone(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SetSensitiveResponseHeader<S> {
+    inner: S,
+    header: HeaderName,
+}
+
+impl<S> SetSensitiveResponseHeader<S> {
+    pub fn new(inner: S, header: HeaderName) -> Self {
+        Self { inner, header }
+    }
+}
+
+impl<ReqBody, ResBody, S> Service<Request<ReqBody>> for SetSensitiveResponseHeader<S>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
 {
@@ -50,11 +134,7 @@ where
         self.inner.poll_ready(cx)
     }
 
-    fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
-        if let Some(value) = req.headers_mut().get_mut(&self.header) {
-            value.set_sensitive(true);
-        }
-
+    fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
         ResponseFuture {
             future: self.inner.call(req),
             header: Some(self.header.clone()),

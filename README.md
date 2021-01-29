@@ -19,7 +19,8 @@ These are the middlewares included in this crate:
 
 - `AddExtension`: Stick some shareable value in [request extensions].
 - `SensitiveHeader`: Marks a given header as [sensitive] so it wont show up in logs.
-- `SetSensitiveHeader`: Marks a given header as [sensitive] so it wont show up in logs.
+- `SetSensitiveRequestHeader`: Marks a given request header as [sensitive].
+- `SetSensitiveResponseHeader`: Marks a given response header as [sensitive].
 
 Middlewares uses the [`http`] crate as the HTTP interface so they're compatible with any library or framework that also uses [`http`]. For example hyper and actix.
 
