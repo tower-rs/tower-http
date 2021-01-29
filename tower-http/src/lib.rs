@@ -38,51 +38,16 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(test, allow(clippy::float_cmp))]
 
-use http::Response;
-
 #[cfg(feature = "trace")]
 #[cfg_attr(docsrs, doc(cfg(feature = "trace")))]
 pub mod trace;
 
+pub mod classify_response;
+
+/// The unit some middlewares will use when dealing with latencies.
 #[derive(Debug, Clone, Copy)]
 #[non_exhaustive]
 pub enum LatencyUnit {
     Millis,
     Nanos,
-}
-
-/// You might not always want to log the literal HTTP status. gRPC for example has its own status
-/// and always uses `200 OK` even for errors.
-// TODO(david): can we come up with a better name for this?
-pub trait GetTraceStatus<T, E> {
-    fn trace_status(&self, result: &Result<T, E>) -> TraceStatus;
-}
-
-// TODO(david): can we come up with a better name for this?
-#[derive(Debug)]
-#[non_exhaustive]
-pub enum TraceStatus {
-    Status(u16),
-    Error,
-}
-
-#[derive(Debug, Copy, Clone)]
-pub struct GetTraceStatusFromHttpStatus(());
-
-impl<B, E> GetTraceStatus<Response<B>, E> for GetTraceStatusFromHttpStatus {
-    fn trace_status(&self, result: &Result<Response<B>, E>) -> TraceStatus {
-        match result {
-            Ok(res) => TraceStatus::Status(res.status().as_u16()),
-            Err(_) => TraceStatus::Error,
-        }
-    }
-}
-
-impl<T, E, F> GetTraceStatus<T, E> for F
-where
-    F: Fn(&Result<T, E>) -> TraceStatus,
-{
-    fn trace_status(&self, result: &Result<T, E>) -> TraceStatus {
-        self(result)
-    }
 }
