@@ -22,7 +22,7 @@ tower-layer = "0.3"
 tower-service = "0.3"
 
 # optional dependencies
-async-compression = { version = "0.3", optional = true, features = ["deflate", "gzip", "brotli", "zstd", "tokio"] }
+async-compression = { version = "0.3", optional = true, features = ["deflate", "gzip", "brotli", "tokio"] }
 bytes = { version = "1", optional = true }
 hyper = { version = "0.14", optional = true, default_features = false, features = ["stream"] }
 tokio-util = { version = "0.6", optional = true, default_features = false, features = ["io", "codec"] }
@@ -38,10 +38,18 @@ default = []
 full = [
     "add-extension",
     "compression",
+    "compression-full",
     "decompression-full",
 ]
+
 add-extension = []
-compression = ["async-compression", "tokio-util", "bytes"]
+
+compression = ["bytes", "tokio-util"]
+compression-br = ["async-compression/brotli", "compression"]
+compression-deflate = ["async-compression/zlib", "compression"]
+compression-full = ["compression-br", "compression-deflate", "compression-gzip"]
+compression-gzip = ["async-compression/gzip", "compression"]
+
 decompression = ["bytes", "tokio-util"]
 decompression-br = ["async-compression/brotli", "decompression"]
 decompression-deflate = ["async-compression/zlib", "decompression"]

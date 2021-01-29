@@ -38,7 +38,6 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(test, allow(clippy::float_cmp))]
 
-
 #[cfg(feature = "compression")]
 #[cfg_attr(docsrs, doc(cfg(feature = "compression")))]
 pub mod compression;
@@ -50,3 +49,5 @@ pub mod add_extension;
 #[cfg(feature = "decompression")]
 #[cfg_attr(docsrs, doc(cfg(feature = "decompression")))]
 pub mod decompression;
+
+mod accept_encoding;
