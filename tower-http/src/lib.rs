@@ -1,3 +1,5 @@
+//! TODO(david): root module docs
+
 #![doc(html_root_url = "https://docs.rs/tower-http/0.1.0")]
 #![allow(elided_lifetimes_in_paths, clippy::type_complexity)]
 #![warn(
@@ -31,7 +33,8 @@
     clippy::unnested_or_patterns,
     rust_2018_idioms,
     future_incompatible,
-    nonstandard_style
+    nonstandard_style,
+    missing_docs
 )]
 #![deny(unreachable_pub, broken_intra_doc_links, private_in_public)]
 #![forbid(unsafe_code)]

@@ -26,7 +26,8 @@ tower-service = "0.3"
 [dev-dependencies]
 futures = "0.3"
 hyper = "0.14"
-tower = "0.4"
+tower = { version = "0.4", features = ["util"] }
+tokio = { version = "1", features = ["full"] }
 
 [features]
 default = []
