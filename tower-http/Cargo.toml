@@ -35,16 +35,14 @@ tower = "0.4"
 default = []
 full = [
     "add-extension",
-    "br",
-    "decompression",
-    "deflate",
-    "gzip",
+    "decompression-full",
 ]
 add-extension = []
-br = ["async-compression/brotli"]
 decompression = ["bytes", "tokio-util"]
-deflate = ["async-compression/zlib"]
-gzip = ["async-compression/gzip"]
+decompression-full = ["decompression-br", "decompression-deflate", "decompression-gzip"]
+decompression-br = ["async-compression/brotli", "decompression"]
+decompression-deflate = ["async-compression/zlib", "decompression"]
+decompression-gzip = ["async-compression/gzip", "decompression"]
 
 [package.metadata.docs.rs]
 all-features = true

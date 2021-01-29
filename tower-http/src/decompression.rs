@@ -1,7 +1,11 @@
 //! Middleware that decompresses response bodies.
 
 #![cfg_attr(
-    not(any(feature = "br", feature = "gzip", feature = "deflate")),
+    not(any(
+        feature = "decompression-br",
+        feature = "decompression-gzip",
+        feature = "decompression-deflate"
+    )),
     allow(unused)
 )]
 
@@ -13,11 +17,11 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-#[cfg(feature = "br")]
+#[cfg(feature = "decompression-br")]
 use async_compression::tokio::bufread::BrotliDecoder;
-#[cfg(feature = "gzip")]
+#[cfg(feature = "decompression-gzip")]
 use async_compression::tokio::bufread::GzipDecoder;
-#[cfg(feature = "deflate")]
+#[cfg(feature = "decompression-deflate")]
 use async_compression::tokio::bufread::ZlibDecoder;
 use bytes::{Buf, Bytes, BytesMut};
 use futures_core::{ready, Stream, TryFuture};
@@ -84,17 +88,17 @@ enum BodyInner<B, E> {
         inner: B,
         marker: PhantomData<fn() -> E>,
     },
-    #[cfg(feature = "gzip")]
+    #[cfg(feature = "decompression-gzip")]
     Gzip {
         #[pin]
         inner: FramedRead<GzipDecoder<BodyReader<B, E>>, BytesCodec>,
     },
-    #[cfg(feature = "deflate")]
+    #[cfg(feature = "decompression-deflate")]
     Deflate {
         #[pin]
         inner: FramedRead<ZlibDecoder<BodyReader<B, E>>, BytesCodec>,
     },
-    #[cfg(feature = "br")]
+    #[cfg(feature = "decompression-br")]
     Brotli {
         #[pin]
         inner: FramedRead<BrotliDecoder<BodyReader<B, E>>, BytesCodec>,
@@ -115,11 +119,11 @@ struct Adapter<B, E> {
 
 #[derive(Debug, Clone, Copy)]
 struct AcceptEncoding {
-    #[cfg(feature = "gzip")]
+    #[cfg(feature = "decompression-gzip")]
     gzip: bool,
-    #[cfg(feature = "deflate")]
+    #[cfg(feature = "decompression-deflate")]
     deflate: bool,
-    #[cfg(feature = "br")]
+    #[cfg(feature = "decompression-br")]
     br: bool,
 }
 
@@ -148,24 +152,24 @@ impl<S> Decompress<S> {
     }
 
     /// Sets whether to request the gzip encoding.
-    #[cfg(feature = "gzip")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "gzip")))]
+    #[cfg(feature = "decompression-gzip")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "decompression-gzip")))]
     pub fn gzip(self, enable: bool) -> Self {
         self.accept.set_gzip(enable);
         self
     }
 
     /// Sets whether to request the Deflate encoding.
-    #[cfg(feature = "deflate")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "deflate")))]
+    #[cfg(feature = "decompression-deflate")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "decompression-deflate")))]
     pub fn deflate(self, enable: bool) -> Self {
         self.accept.set_deflate(enable);
         self
     }
 
     /// Sets whether to request the Brotli encoding.
-    #[cfg(feature = "br")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "br")))]
+    #[cfg(feature = "decompression-br")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "decompression-br")))]
     pub fn br(self, enable: bool) -> Self {
         self.accept.set_br(enable);
         self
@@ -231,24 +235,24 @@ impl DecompressLayer {
     }
 
     /// Sets whether to request the gzip encoding.
-    #[cfg(feature = "gzip")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "gzip")))]
+    #[cfg(feature = "decompression-gzip")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "decompression-gzip")))]
     pub fn gzip(self, enable: bool) -> Self {
         self.accept.set_gzip(enable);
         self
     }
 
     /// Sets whether to request the Deflate encoding.
-    #[cfg(feature = "deflate")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "deflate")))]
+    #[cfg(feature = "decompression-deflate")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "decompression-deflate")))]
     pub fn deflate(self, enable: bool) -> Self {
         self.accept.set_deflate(enable);
         self
     }
 
     /// Sets whether to request the Brotli encoding.
-    #[cfg(feature = "br")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "br")))]
+    #[cfg(feature = "decompression-br")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "decompression-br")))]
     pub fn br(self, enable: bool) -> Self {
         self.accept.set_br(enable);
         self
@@ -311,11 +315,11 @@ where
     pub fn get_ref(&self) -> &B {
         match &self.inner {
             BodyInner::Identity { inner, .. } => inner,
-            #[cfg(feature = "gzip")]
+            #[cfg(feature = "decompression-gzip")]
             BodyInner::Gzip { inner } => &inner.get_ref().get_ref().get_ref().body,
-            #[cfg(feature = "deflate")]
+            #[cfg(feature = "decompression-deflate")]
             BodyInner::Deflate { inner } => &inner.get_ref().get_ref().get_ref().body,
-            #[cfg(feature = "br")]
+            #[cfg(feature = "decompression-br")]
             BodyInner::Brotli { inner } => &inner.get_ref().get_ref().get_ref().body,
         }
     }
@@ -326,11 +330,11 @@ where
     pub fn get_mut(&mut self) -> &mut B {
         match &mut self.inner {
             BodyInner::Identity { inner, .. } => inner,
-            #[cfg(feature = "gzip")]
+            #[cfg(feature = "decompression-gzip")]
             BodyInner::Gzip { inner } => &mut inner.get_mut().get_mut().get_mut().body,
-            #[cfg(feature = "deflate")]
+            #[cfg(feature = "decompression-deflate")]
             BodyInner::Deflate { inner } => &mut inner.get_mut().get_mut().get_mut().body,
-            #[cfg(feature = "br")]
+            #[cfg(feature = "decompression-br")]
             BodyInner::Brotli { inner } => &mut inner.get_mut().get_mut().get_mut().body,
         }
     }
@@ -341,7 +345,7 @@ where
     pub fn get_pin_mut(self: Pin<&mut Self>) -> Pin<&mut B> {
         match self.project().inner.project() {
             BodyInnerProj::Identity { inner, .. } => inner,
-            #[cfg(feature = "gzip")]
+            #[cfg(feature = "decompression-gzip")]
             BodyInnerProj::Gzip { inner } => {
                 inner
                     .get_pin_mut()
@@ -350,7 +354,7 @@ where
                     .project()
                     .body
             }
-            #[cfg(feature = "deflate")]
+            #[cfg(feature = "decompression-deflate")]
             BodyInnerProj::Deflate { inner } => {
                 inner
                     .get_pin_mut()
@@ -359,7 +363,7 @@ where
                     .project()
                     .body
             }
-            #[cfg(feature = "br")]
+            #[cfg(feature = "decompression-br")]
             BodyInnerProj::Brotli { inner } => {
                 inner
                     .get_pin_mut()
@@ -377,28 +381,32 @@ where
     pub fn into_inner(self) -> B {
         match self.inner {
             BodyInner::Identity { inner, .. } => inner,
-            #[cfg(feature = "gzip")]
+            #[cfg(feature = "decompression-gzip")]
             BodyInner::Gzip { inner } => inner.into_inner().into_inner().into_inner().body,
-            #[cfg(feature = "deflate")]
+            #[cfg(feature = "decompression-deflate")]
             BodyInner::Deflate { inner } => inner.into_inner().into_inner().into_inner().body,
-            #[cfg(feature = "br")]
+            #[cfg(feature = "decompression-br")]
             BodyInner::Brotli { inner } => inner.into_inner().into_inner().into_inner().body,
         }
     }
 
     #[cfg_attr(
-        not(any(feature = "br", feature = "gzip", feature = "deflate")),
+        not(any(
+            feature = "decompression-br",
+            feature = "decompression-gzip",
+            feature = "decompression-deflate"
+        )),
         allow(unreachable_code)
     )]
     fn wrap_response(res: Response<B>, accept: &AcceptEncoding) -> Response<Self> {
         let (mut parts, body) = res.into_parts();
         if let header::Entry::Occupied(e) = parts.headers.entry(CONTENT_ENCODING) {
             let body = match e.get().as_bytes() {
-                #[cfg(feature = "gzip")]
+                #[cfg(feature = "decompression-gzip")]
                 b"gzip" if accept.gzip() => DecompressBody::gzip(body),
-                #[cfg(feature = "deflate")]
+                #[cfg(feature = "decompression-deflate")]
                 b"deflate" if accept.deflate() => DecompressBody::deflate(body),
-                #[cfg(feature = "br")]
+                #[cfg(feature = "decompression-br")]
                 b"br" if accept.br() => DecompressBody::br(body),
                 _ => return Response::from_parts(parts, DecompressBody::identity(body)),
             };
@@ -419,7 +427,7 @@ where
         }
     }
 
-    #[cfg(feature = "gzip")]
+    #[cfg(feature = "decompression-gzip")]
     fn gzip(body: B) -> Self {
         let read = StreamReader::new(Adapter { body, error: None });
         let inner = FramedRead::new(GzipDecoder::new(read), BytesCodec::new());
@@ -428,7 +436,7 @@ where
         }
     }
 
-    #[cfg(feature = "deflate")]
+    #[cfg(feature = "decompression-deflate")]
     fn deflate(body: B) -> Self {
         let read = StreamReader::new(Adapter { body, error: None });
         let inner = FramedRead::new(ZlibDecoder::new(read), BytesCodec::new());
@@ -437,7 +445,7 @@ where
         }
     }
 
-    #[cfg(feature = "br")]
+    #[cfg(feature = "decompression-br")]
     fn br(body: B) -> Self {
         let read = StreamReader::new(Adapter { body, error: None });
         let inner = FramedRead::new(BrotliDecoder::new(read), BytesCodec::new());
@@ -468,17 +476,17 @@ where
                     None => Poll::Ready(None),
                 };
             }
-            #[cfg(feature = "gzip")]
+            #[cfg(feature = "decompression-gzip")]
             BodyInnerProj::Gzip { mut inner } => (
                 inner.as_mut().poll_next(cx),
                 inner.get_pin_mut().get_pin_mut().get_pin_mut(),
             ),
-            #[cfg(feature = "deflate")]
+            #[cfg(feature = "decompression-deflate")]
             BodyInnerProj::Deflate { mut inner } => (
                 inner.as_mut().poll_next(cx),
                 inner.get_pin_mut().get_pin_mut().get_pin_mut(),
             ),
-            #[cfg(feature = "br")]
+            #[cfg(feature = "decompression-br")]
             BodyInnerProj::Brotli { mut inner } => (
                 inner.as_mut().poll_next(cx),
                 inner.get_pin_mut().get_pin_mut().get_pin_mut(),
@@ -502,7 +510,7 @@ where
     ) -> Poll<Result<Option<HeaderMap>, Self::Error>> {
         match self.project().inner.project() {
             BodyInnerProj::Identity { inner, .. } => inner.poll_trailers(cx),
-            #[cfg(feature = "gzip")]
+            #[cfg(feature = "decompression-gzip")]
             BodyInnerProj::Gzip { inner } => inner
                 .get_pin_mut()
                 .get_pin_mut()
@@ -510,7 +518,7 @@ where
                 .project()
                 .body
                 .poll_trailers(cx),
-            #[cfg(feature = "deflate")]
+            #[cfg(feature = "decompression-deflate")]
             BodyInnerProj::Deflate { inner } => inner
                 .get_pin_mut()
                 .get_pin_mut()
@@ -518,7 +526,7 @@ where
                 .project()
                 .body
                 .poll_trailers(cx),
-            #[cfg(feature = "br")]
+            #[cfg(feature = "decompression-br")]
             BodyInnerProj::Brotli { inner } => inner
                 .get_pin_mut()
                 .get_pin_mut()
@@ -598,72 +606,72 @@ impl AcceptEncoding {
     }
 
     fn gzip(&self) -> bool {
-        #[cfg(feature = "gzip")]
+        #[cfg(feature = "decompression-gzip")]
         {
             self.gzip
         }
-        #[cfg(not(feature = "gzip"))]
+        #[cfg(not(feature = "decompression-gzip"))]
         {
             false
         }
     }
 
     fn deflate(&self) -> bool {
-        #[cfg(feature = "deflate")]
+        #[cfg(feature = "decompression-deflate")]
         {
             self.deflate
         }
-        #[cfg(not(feature = "deflate"))]
+        #[cfg(not(feature = "decompression-deflate"))]
         {
             false
         }
     }
 
     fn br(&self) -> bool {
-        #[cfg(feature = "br")]
+        #[cfg(feature = "decompression-br")]
         {
             self.br
         }
-        #[cfg(not(feature = "br"))]
+        #[cfg(not(feature = "decompression-br"))]
         {
             false
         }
     }
 
-    #[cfg_attr(not(feature = "gzip"), allow(unused))]
+    #[cfg_attr(not(feature = "decompression-gzip"), allow(unused))]
     fn set_gzip(mut self, enable: bool) -> Self {
-        #[cfg(feature = "gzip")]
+        #[cfg(feature = "decompression-gzip")]
         {
             self.gzip = enable;
             self
         }
-        #[cfg(not(feature = "gzip"))]
+        #[cfg(not(feature = "decompression-gzip"))]
         {
             self
         }
     }
 
-    #[cfg_attr(not(feature = "deflate"), allow(unused))]
+    #[cfg_attr(not(feature = "decompression-deflate"), allow(unused))]
     fn set_deflate(mut self, enable: bool) -> Self {
-        #[cfg(feature = "deflate")]
+        #[cfg(feature = "decompression-deflate")]
         {
             self.deflate = enable;
             self
         }
-        #[cfg(not(feature = "deflate"))]
+        #[cfg(not(feature = "decompression-deflate"))]
         {
             self
         }
     }
 
-    #[cfg_attr(not(feature = "br"), allow(unused))]
+    #[cfg_attr(not(feature = "decompression-br"), allow(unused))]
     fn set_br(mut self, enable: bool) -> Self {
-        #[cfg(feature = "br")]
+        #[cfg(feature = "decompression-br")]
         {
             self.br = enable;
             self
         }
-        #[cfg(not(feature = "br"))]
+        #[cfg(not(feature = "decompression-br"))]
         {
             self
         }
@@ -673,11 +681,11 @@ impl AcceptEncoding {
 impl Default for AcceptEncoding {
     fn default() -> Self {
         AcceptEncoding {
-            #[cfg(feature = "gzip")]
+            #[cfg(feature = "decompression-gzip")]
             gzip: true,
-            #[cfg(feature = "deflate")]
+            #[cfg(feature = "decompression-deflate")]
             deflate: true,
-            #[cfg(feature = "br")]
+            #[cfg(feature = "decompression-br")]
             br: true,
         }
     }
