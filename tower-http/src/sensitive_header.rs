@@ -1,3 +1,7 @@
+//! Middlewares that mark headers as [sensitive].
+//!
+//! [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
+
 use futures_util::ready;
 use http::{header::HeaderName, Request, Response};
 use pin_project::pin_project;
@@ -9,12 +13,16 @@ use std::{
 use tower_layer::Layer;
 use tower_service::Service;
 
+/// Mark a header as [sensitive] on both requests and responses.
+///
+/// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
 #[derive(Clone, Debug)]
 pub struct SetSensitiveHeaderLayer {
     header: HeaderName,
 }
 
 impl SetSensitiveHeaderLayer {
+    /// Create a new [`SetSensitiveHeaderLayer`].
     pub fn new(header: HeaderName) -> Self {
         Self { header }
     }
@@ -31,12 +39,16 @@ impl<S> Layer<S> for SetSensitiveHeaderLayer {
     }
 }
 
+/// Mark a request header as [sensitive].
+///
+/// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
 #[derive(Clone, Debug)]
 pub struct SetSensitiveRequestHeaderLayer {
     header: HeaderName,
 }
 
 impl SetSensitiveRequestHeaderLayer {
+    /// Create a new [`SetSensitiveRequestHeaderLayer`].
     pub fn new(header: HeaderName) -> Self {
         Self { header }
     }
@@ -53,6 +65,9 @@ impl<S> Layer<S> for SetSensitiveRequestHeaderLayer {
     }
 }
 
+/// Mark a request header as [sensitive].
+///
+/// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
 #[derive(Clone, Debug)]
 pub struct SetSensitiveRequestHeader<S> {
     inner: S,
@@ -60,8 +75,24 @@ pub struct SetSensitiveRequestHeader<S> {
 }
 
 impl<S> SetSensitiveRequestHeader<S> {
+    /// Create a new [`SetSensitiveRequestHeader`].
     pub fn new(inner: S, header: HeaderName) -> Self {
         Self { inner, header }
+    }
+
+    /// Gets a reference to the underlying service.
+    pub fn get_ref(&self) -> &S {
+        &self.inner
+    }
+
+    /// Gets a mutable reference to the underlying service.
+    pub fn get_mut(&mut self) -> &mut S {
+        &mut self.inner
+    }
+
+    /// Consumes `self`, returning the underlying service.
+    pub fn into_inner(self) -> S {
+        self.inner
     }
 }
 
@@ -87,12 +118,16 @@ where
     }
 }
 
+/// Mark a response header as [sensitive].
+///
+/// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
 #[derive(Clone, Debug)]
 pub struct SetSensitiveResponseHeaderLayer {
     header: HeaderName,
 }
 
 impl SetSensitiveResponseHeaderLayer {
+    /// Create a new [`SetSensitiveResponseHeaderLayer`].
     pub fn new(header: HeaderName) -> Self {
         Self { header }
     }
@@ -109,6 +144,9 @@ impl<S> Layer<S> for SetSensitiveResponseHeaderLayer {
     }
 }
 
+/// Mark a response header as [sensitive].
+///
+/// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
 #[derive(Clone, Debug)]
 pub struct SetSensitiveResponseHeader<S> {
     inner: S,
@@ -116,8 +154,24 @@ pub struct SetSensitiveResponseHeader<S> {
 }
 
 impl<S> SetSensitiveResponseHeader<S> {
+    /// Create a new [`SetSensitiveResponseHeader`].
     pub fn new(inner: S, header: HeaderName) -> Self {
         Self { inner, header }
+    }
+
+    /// Gets a reference to the underlying service.
+    pub fn get_ref(&self) -> &S {
+        &self.inner
+    }
+
+    /// Gets a mutable reference to the underlying service.
+    pub fn get_mut(&mut self) -> &mut S {
+        &mut self.inner
+    }
+
+    /// Consumes `self`, returning the underlying service.
+    pub fn into_inner(self) -> S {
+        self.inner
     }
 }
 
@@ -127,7 +181,7 @@ where
 {
     type Response = S::Response;
     type Error = S::Error;
-    type Future = ResponseFuture<S::Future>;
+    type Future = SetSensitiveResponseHeaderResponseFuture<S::Future>;
 
     #[inline]
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -135,22 +189,23 @@ where
     }
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
-        ResponseFuture {
+        SetSensitiveResponseHeaderResponseFuture {
             future: self.inner.call(req),
             header: Some(self.header.clone()),
         }
     }
 }
 
+/// Response future for [`SetSensitiveResponseHeader`].
 #[pin_project]
 #[derive(Debug)]
-pub struct ResponseFuture<F> {
+pub struct SetSensitiveResponseHeaderResponseFuture<F> {
     #[pin]
     future: F,
     header: Option<HeaderName>,
 }
 
-impl<F, ResBody, E> Future for ResponseFuture<F>
+impl<F, ResBody, E> Future for SetSensitiveResponseHeaderResponseFuture<F>
 where
     F: Future<Output = Result<Response<ResBody>, E>>,
 {
