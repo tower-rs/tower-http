@@ -36,9 +36,17 @@ tokio = { version = "1", features = ["full"] }
 [features]
 default = []
 full = [
+    "add-extension",
     "compression",
+    "decompression-full",
 ]
-compression = ["async-compression", "tokio-util", "hyper", "bytes"]
+add-extension = []
+compression = ["async-compression", "tokio-util", "bytes"]
+decompression = ["bytes", "tokio-util"]
+decompression-br = ["async-compression/brotli", "decompression"]
+decompression-deflate = ["async-compression/zlib", "decompression"]
+decompression-full = ["decompression-br", "decompression-deflate", "decompression-gzip"]
+decompression-gzip = ["async-compression/gzip", "decompression"]
 
 [package.metadata.docs.rs]
 all-features = true
