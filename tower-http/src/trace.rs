@@ -17,7 +17,7 @@ use tracing::{
 };
 
 #[derive(Clone, Debug)]
-pub struct TraceLayer<T> {
+pub struct TraceLayer<T = GetTraceStatusFromHttpStatus> {
     record_headers: bool,
     span: Option<Span>,
     latency_unit: LatencyUnit,
@@ -53,7 +53,7 @@ impl<T> TraceLayer<T> {
     /// and `headers`. If any of the fields are missing from the span they'll also be missing from
     /// whatever output you may have configured.
     ///
-    /// The default span uses `DEBUG` level and is called `http-request`.
+    /// The default span uses `INFO` level and is called `http-request`.
     pub fn span(mut self, span: Span) -> Self {
         self.span = Some(span);
         self

@@ -45,6 +45,7 @@ use http::Response;
 pub mod trace;
 
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub enum LatencyUnit {
     Millis,
     Nanos,
