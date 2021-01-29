@@ -41,3 +41,6 @@
 #[cfg(feature = "add-extension")]
 #[cfg_attr(docsrs, doc(cfg(feature = "add-extension")))]
 pub mod add_extension;
+#[cfg(feature = "decompression")]
+#[cfg_attr(docsrs, doc(cfg(feature = "decompression")))]
+pub mod decompression;
