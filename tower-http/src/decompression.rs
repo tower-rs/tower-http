@@ -24,7 +24,7 @@ use async_compression::tokio::bufread::GzipDecoder;
 #[cfg(feature = "decompression-deflate")]
 use async_compression::tokio::bufread::ZlibDecoder;
 use bytes::{Buf, Bytes, BytesMut};
-use futures_core::{ready, Stream, TryFuture};
+use futures_core::{ready, Stream};
 use http::header::{self, HeaderValue, ACCEPT_ENCODING, CONTENT_ENCODING, CONTENT_LENGTH, RANGE};
 use http::{HeaderMap, Request, Response};
 use http_body::Body;
@@ -294,15 +294,15 @@ impl<S> Layer<S> for DecompressionLayer {
     }
 }
 
-impl<F, B> Future for ResponseFuture<F>
+impl<F, B, E> Future for ResponseFuture<F>
 where
-    F: TryFuture<Ok = Response<B>>,
+    F: Future<Output = Result<Response<B>, E>>,
     B: Body,
 {
-    type Output = Result<Response<DecompressionBody<B>>, F::Error>;
+    type Output = Result<Response<DecompressionBody<B>>, E>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let res = ready!(self.as_mut().project().inner.try_poll(cx)?);
+        let res = ready!(self.as_mut().project().inner.poll(cx)?);
         Poll::Ready(Ok(DecompressionBody::wrap_response(res, &self.accept)))
     }
 }
