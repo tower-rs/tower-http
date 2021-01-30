@@ -25,6 +25,9 @@ tower-service = "0.3"
 async-compression = { version = "0.3", optional = true, features = ["deflate", "gzip", "brotli", "tokio"] }
 bytes = { version = "1", optional = true }
 hyper = { version = "0.14", optional = true, default_features = false, features = ["stream"] }
+mime_guess = { version = "2", optional = true, default_features = false }
+mime = { version = "0.3", optional = true, default_features = false }
+tokio = { version = "1", optional = true, default_features = false }
 tokio-util = { version = "0.6", optional = true, default_features = false, features = ["io", "codec"] }
 
 [dev-dependencies]
@@ -40,9 +43,11 @@ full = [
     "compression",
     "compression-full",
     "decompression-full",
+    "serve-file",
 ]
 
 add-extension = []
+serve-file = ["tokio/fs", "tokio-util/io", "bytes", "mime_guess", "mime"]
 
 compression = ["bytes", "tokio-util"]
 compression-br = ["async-compression/brotli", "compression"]

@@ -50,4 +50,8 @@ pub mod add_extension;
 #[cfg_attr(docsrs, doc(cfg(feature = "decompression")))]
 pub mod decompression;
 
+#[cfg(feature = "serve-file")]
+#[cfg_attr(docsrs, doc(cfg(feature = "serve-file")))]
+pub mod serve_file;
+
 mod accept_encoding;
