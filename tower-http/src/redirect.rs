@@ -1,6 +1,6 @@
 //! Service that redirects all requests.
 
-use http::{header, HeaderValue, Request, Response, StatusCode, Uri};
+use http::{header, HeaderValue, Response, StatusCode, Uri};
 use std::{
     convert::Infallible,
     future::Future,
@@ -48,7 +48,7 @@ impl<ResBody> Redirect<ResBody> {
     }
 }
 
-impl<ReqBody, ResBody> Service<Request<ReqBody>> for Redirect<ResBody>
+impl<R, ResBody> Service<R> for Redirect<ResBody>
 where
     ResBody: Default,
 {
@@ -61,7 +61,7 @@ where
         Poll::Ready(Ok(()))
     }
 
-    fn call(&mut self, _req: Request<ReqBody>) -> Self::Future {
+    fn call(&mut self, _req: R) -> Self::Future {
         ResponseFuture {
             status_code: self.status_code,
             uri: Some(self.uri.clone()),
