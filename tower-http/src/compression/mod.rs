@@ -1,6 +1,6 @@
 //! Middleware that compresses response bodies.
 
-use crate::accept_encoding::AcceptEncoding;
+use crate::compression_utils::AcceptEncoding;
 use http::{header, HeaderMap};
 
 mod body;
@@ -9,10 +9,7 @@ mod layer;
 mod service;
 
 pub use self::{
-    body::{CompressionBody, Error},
-    future::ResponseFuture,
-    layer::CompressionLayer,
-    service::Compression,
+    body::CompressionBody, future::ResponseFuture, layer::CompressionLayer, service::Compression,
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

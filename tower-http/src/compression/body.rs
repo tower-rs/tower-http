@@ -1,169 +1,152 @@
 #![allow(unused_imports)]
 
-use super::Encoding;
+use crate::compression_utils::{BodyIntoStream, BodyMapErr, DecorateAsyncRead, WrapBody};
 #[cfg(feature = "compression-br")]
 use async_compression::tokio::bufread::BrotliEncoder;
 #[cfg(feature = "compression-gzip")]
 use async_compression::tokio::bufread::GzipEncoder;
 #[cfg(feature = "compression-deflate")]
 use async_compression::tokio::bufread::ZlibEncoder;
-use bytes::{Buf, Bytes, BytesMut};
-use futures_core::Stream;
+use bytes::{Buf, Bytes};
 use futures_util::ready;
-use http::{header, HeaderValue, Response};
+use http::HeaderMap;
 use http_body::Body;
 use pin_project::pin_project;
 use std::{
-    fmt, io,
-    marker::PhantomData,
+    io,
     pin::Pin,
     task::{Context, Poll},
 };
-use tokio_util::{
-    codec::{BytesCodec, FramedRead},
-    io::StreamReader,
-};
+use tokio_util::io::StreamReader;
 
 /// Response body of [`Compression`].
 ///
 /// [`Compression`]: super::Compression
 #[pin_project]
-pub struct CompressionBody<B: Body> {
-    #[pin]
-    inner: BodyInner<B, B::Error>,
-}
+pub struct CompressionBody<B>(#[pin] pub(crate) BodyInner<B>)
+where
+    B: Body;
 
 impl<B> CompressionBody<B>
 where
     B: Body,
 {
-    /// Gets a reference to the underlying body.
+    /// Get a reference to the inner body
     pub fn get_ref(&self) -> &B {
-        match &self.inner {
-            BodyInner::Identity(inner, _) => inner,
+        match &self.0 {
             #[cfg(feature = "compression-gzip")]
-            BodyInner::Gzip(inner) => &inner.get_ref().get_ref().get_ref().body,
+            BodyInner::Gzip(inner) => inner.read.get_ref().get_ref().get_ref().get_ref(),
             #[cfg(feature = "compression-deflate")]
-            BodyInner::Deflate(inner) => &inner.get_ref().get_ref().get_ref().body,
+            BodyInner::Deflate(inner) => inner.read.get_ref().get_ref().get_ref().get_ref(),
             #[cfg(feature = "compression-br")]
-            BodyInner::Brotli(inner) => &inner.get_ref().get_ref().get_ref().body,
+            BodyInner::Brotli(inner) => inner.read.get_ref().get_ref().get_ref().get_ref(),
+            BodyInner::Identity(inner) => inner.get_ref(),
         }
     }
 
-    /// Gets a mutable reference to the underlying body.
-    ///
-    /// It is inadvisable to directly read from the underlying body.
+    /// Get a mutable reference to the inner body
     pub fn get_mut(&mut self) -> &mut B {
-        match &mut self.inner {
-            BodyInner::Identity(inner, _) => inner,
+        match &mut self.0 {
             #[cfg(feature = "compression-gzip")]
-            BodyInner::Gzip(inner) => &mut inner.get_mut().get_mut().get_mut().body,
+            BodyInner::Gzip(inner) => inner.read.get_mut().get_mut().get_mut().get_mut(),
             #[cfg(feature = "compression-deflate")]
-            BodyInner::Deflate(inner) => &mut inner.get_mut().get_mut().get_mut().body,
+            BodyInner::Deflate(inner) => inner.read.get_mut().get_mut().get_mut().get_mut(),
             #[cfg(feature = "compression-br")]
-            BodyInner::Brotli(inner) => &mut inner.get_mut().get_mut().get_mut().body,
+            BodyInner::Brotli(inner) => inner.read.get_mut().get_mut().get_mut().get_mut(),
+            BodyInner::Identity(inner) => inner.get_mut(),
         }
     }
 
-    /// Gets a pinned mutable reference to the underlying body.
-    ///
-    /// It is inadvisable to directly read from the underlying body.
+    /// Get a pinned mutable reference to the inner body
     pub fn get_pin_mut(self: Pin<&mut Self>) -> Pin<&mut B> {
-        match self.project().inner.project() {
-            BodyInnerProj::Identity(inner, _) => inner,
+        match self.project().0.project() {
             #[cfg(feature = "compression-gzip")]
-            BodyInnerProj::Gzip(inner) => {
-                inner
-                    .get_pin_mut()
-                    .get_pin_mut()
-                    .get_pin_mut()
-                    .project()
-                    .body
-            }
+            BodyInnerProj::Gzip(inner) => inner
+                .project()
+                .read
+                .get_pin_mut()
+                .get_pin_mut()
+                .get_pin_mut()
+                .get_pin_mut(),
             #[cfg(feature = "compression-deflate")]
-            BodyInnerProj::Deflate(inner) => {
-                inner
-                    .get_pin_mut()
-                    .get_pin_mut()
-                    .get_pin_mut()
-                    .project()
-                    .body
-            }
+            BodyInnerProj::Deflate(inner) => inner
+                .project()
+                .read
+                .get_pin_mut()
+                .get_pin_mut()
+                .get_pin_mut()
+                .get_pin_mut(),
             #[cfg(feature = "compression-br")]
-            BodyInnerProj::Brotli(inner) => {
-                inner
-                    .get_pin_mut()
-                    .get_pin_mut()
-                    .get_pin_mut()
-                    .project()
-                    .body
-            }
+            BodyInnerProj::Brotli(inner) => inner
+                .project()
+                .read
+                .get_pin_mut()
+                .get_pin_mut()
+                .get_pin_mut()
+                .get_pin_mut(),
+            BodyInnerProj::Identity(inner) => inner.get_pin_mut(),
         }
     }
 
-    /// Comsumes `self`, returning the underlying body.
-    ///
-    /// Note that any leftover data in the internal buffer is lost.
+    /// Consume `self`, returning the inner body
     pub fn into_inner(self) -> B {
-        match self.inner {
+        match self.0 {
             #[cfg(feature = "compression-gzip")]
-            BodyInner::Gzip(inner) => inner.into_inner().into_inner().into_inner().body,
+            BodyInner::Gzip(inner) => inner
+                .read
+                .into_inner()
+                .into_inner()
+                .into_inner()
+                .into_inner(),
             #[cfg(feature = "compression-deflate")]
-            BodyInner::Deflate(inner) => inner.into_inner().into_inner().into_inner().body,
+            BodyInner::Deflate(inner) => inner
+                .read
+                .into_inner()
+                .into_inner()
+                .into_inner()
+                .into_inner(),
             #[cfg(feature = "compression-br")]
-            BodyInner::Brotli(inner) => inner.into_inner().into_inner().into_inner().body,
-            BodyInner::Identity(inner, _) => inner,
+            BodyInner::Brotli(inner) => inner
+                .read
+                .into_inner()
+                .into_inner()
+                .into_inner()
+                .into_inner(),
+            BodyInner::Identity(inner) => inner.into_inner(),
         }
     }
+}
 
-    #[allow(unused_variables, unused_mut, unreachable_code)]
-    pub(crate) fn wrap_response(res: Response<B>, encoding: Encoding) -> Response<Self> {
-        let (mut parts, body) = res.into_parts();
-
-        let body = match encoding {
-            #[cfg(feature = "compression-gzip")]
-            Encoding::Gzip => {
-                let read = StreamReader::new(Adapter { body, error: None });
-                let framed_read = FramedRead::new(GzipEncoder::new(read), BytesCodec::new());
-                CompressionBody {
-                    inner: BodyInner::Gzip(framed_read),
-                }
-            }
-            #[cfg(feature = "compression-deflate")]
-            Encoding::Deflate => {
-                let read = StreamReader::new(Adapter { body, error: None });
-                let framed_read = FramedRead::new(ZlibEncoder::new(read), BytesCodec::new());
-                CompressionBody {
-                    inner: BodyInner::Deflate(framed_read),
-                }
-            }
-            #[cfg(feature = "compression-br")]
-            Encoding::Brotli => {
-                let read = StreamReader::new(Adapter { body, error: None });
-                let framed_read = FramedRead::new(BrotliEncoder::new(read), BytesCodec::new());
-                CompressionBody {
-                    inner: BodyInner::Brotli(framed_read),
-                }
-            }
-            Encoding::Identity => {
-                return Response::from_parts(
-                    parts,
-                    CompressionBody {
-                        inner: BodyInner::Identity(body, PhantomData),
-                    },
-                )
-            }
-        };
-
-        parts.headers.remove(header::CONTENT_LENGTH);
-
-        parts.headers.insert(
-            header::CONTENT_ENCODING,
-            HeaderValue::from_str(encoding.to_str()).unwrap(),
-        );
-
-        http::Response::from_parts(parts, body)
-    }
+#[pin_project(project = BodyInnerProj)]
+pub(crate) enum BodyInner<B>
+where
+    B: Body,
+{
+    #[cfg(feature = "compression-gzip")]
+    Gzip(
+        #[pin]
+        WrapBody<
+            BodyMapErr<B, fn(<B as Body>::Error) -> io::Error>,
+            GzipEncoder<BodyMapErr<B, fn(<B as Body>::Error) -> io::Error>>,
+        >,
+    ),
+    #[cfg(feature = "compression-deflate")]
+    Deflate(
+        #[pin]
+        WrapBody<
+            BodyMapErr<B, fn(<B as Body>::Error) -> io::Error>,
+            ZlibEncoder<BodyMapErr<B, fn(<B as Body>::Error) -> io::Error>>,
+        >,
+    ),
+    #[cfg(feature = "compression-br")]
+    Brotli(
+        #[pin]
+        WrapBody<
+            BodyMapErr<B, fn(<B as Body>::Error) -> io::Error>,
+            BrotliEncoder<BodyMapErr<B, fn(<B as Body>::Error) -> io::Error>>,
+        >,
+    ),
+    Identity(#[pin] BodyMapErr<B, fn(<B as Body>::Error) -> io::Error>),
 }
 
 impl<B> Body for CompressionBody<B>
@@ -171,150 +154,96 @@ where
     B: Body,
 {
     type Data = Bytes;
-    type Error = Error<B::Error>;
+    type Error = io::Error;
 
-    #[allow(unused_variables, unreachable_code)]
     fn poll_data(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
-        let (bytes, inner): (_, Pin<&mut Adapter<B, <B as Body>::Error>>) =
-            match self.project().inner.project() {
-                #[cfg(feature = "compression-gzip")]
-                BodyInnerProj::Gzip(mut framed_read) => (
-                    ready!(framed_read.as_mut().poll_next(cx)),
-                    framed_read.get_pin_mut().get_pin_mut().get_pin_mut(),
-                ),
-                #[cfg(feature = "compression-deflate")]
-                BodyInnerProj::Deflate(mut framed_read) => (
-                    ready!(framed_read.as_mut().poll_next(cx)),
-                    framed_read.get_pin_mut().get_pin_mut().get_pin_mut(),
-                ),
-                #[cfg(feature = "compression-br")]
-                BodyInnerProj::Brotli(mut framed_read) => (
-                    ready!(framed_read.as_mut().poll_next(cx)),
-                    framed_read.get_pin_mut().get_pin_mut().get_pin_mut(),
-                ),
-                BodyInnerProj::Identity(inner, _) => {
-                    return match ready!(inner.poll_data(cx)) {
-                        Some(Ok(mut data)) => {
-                            Poll::Ready(Some(Ok(data.copy_to_bytes(data.remaining()))))
-                        }
-                        Some(Err(e)) => Poll::Ready(Some(Err(Error::Body(e)))),
-                        None => Poll::Ready(None),
-                    };
+        match self.project().0.project() {
+            #[cfg(feature = "compression-gzip")]
+            BodyInnerProj::Gzip(inner) => inner.poll_data(cx),
+            #[cfg(feature = "compression-deflate")]
+            BodyInnerProj::Deflate(inner) => inner.poll_data(cx),
+            #[cfg(feature = "compression-br")]
+            BodyInnerProj::Brotli(inner) => inner.poll_data(cx),
+            BodyInnerProj::Identity(body) => match ready!(body.poll_data(cx)) {
+                Some(Ok(mut buf)) => {
+                    let bytes = buf.copy_to_bytes(buf.remaining());
+                    Poll::Ready(Some(Ok(bytes)))
                 }
-            };
-
-        match bytes {
-            Some(Ok(data)) => Poll::Ready(Some(Ok(BytesMut::freeze(data)))),
-            Some(Err(err)) => {
-                let err = inner
-                    .project()
-                    .error
-                    .take()
-                    .map(Error::Body)
-                    .unwrap_or(Error::Compress(err));
-                Poll::Ready(Some(Err(err)))
-            }
-            None => Poll::Ready(None),
+                Some(Err(err)) => Poll::Ready(Some(Err(err))),
+                None => Poll::Ready(None),
+            },
         }
     }
 
     fn poll_trailers(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-    ) -> Poll<Result<Option<http::HeaderMap>, Self::Error>> {
-        match self.project().inner.project() {
+    ) -> Poll<Result<Option<HeaderMap>, Self::Error>> {
+        match self.project().0.project() {
             #[cfg(feature = "compression-gzip")]
-            BodyInnerProj::Gzip(framed_read) => framed_read
-                .get_pin_mut()
-                .get_pin_mut()
-                .get_pin_mut()
-                .project()
-                .body
-                .poll_trailers(cx),
+            BodyInnerProj::Gzip(inner) => inner.poll_trailers(cx),
             #[cfg(feature = "compression-deflate")]
-            BodyInnerProj::Deflate(framed_read) => framed_read
-                .get_pin_mut()
-                .get_pin_mut()
-                .get_pin_mut()
-                .project()
-                .body
-                .poll_trailers(cx),
+            BodyInnerProj::Deflate(inner) => inner.poll_trailers(cx),
             #[cfg(feature = "compression-br")]
-            BodyInnerProj::Brotli(framed_read) => framed_read
-                .get_pin_mut()
-                .get_pin_mut()
-                .get_pin_mut()
-                .project()
-                .body
-                .poll_trailers(cx),
-            BodyInnerProj::Identity(inner, _) => inner.poll_trailers(cx),
-        }
-        .map_err(Error::Body)
-    }
-}
-
-#[pin_project(project = BodyInnerProj)]
-#[derive(Debug)]
-enum BodyInner<B, E> {
-    #[cfg(feature = "compression-gzip")]
-    Gzip(#[pin] FramedRead<GzipEncoder<StreamReader<Adapter<B, E>, Bytes>>, BytesCodec>),
-    #[cfg(feature = "compression-deflate")]
-    Deflate(#[pin] FramedRead<ZlibEncoder<StreamReader<Adapter<B, E>, Bytes>>, BytesCodec>),
-    #[cfg(feature = "compression-br")]
-    Brotli(#[pin] FramedRead<BrotliEncoder<StreamReader<Adapter<B, E>, Bytes>>, BytesCodec>),
-    Identity(#[pin] B, PhantomData<fn() -> E>),
-}
-
-#[pin_project]
-#[derive(Debug)]
-struct Adapter<B, E> {
-    #[pin]
-    body: B,
-    error: Option<E>,
-}
-
-impl<B: Body> Stream for Adapter<B, B::Error> {
-    type Item = io::Result<Bytes>;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let this = self.project();
-
-        match ready!(this.body.poll_data(cx)) {
-            Some(Ok(mut data)) => Poll::Ready(Some(Ok(data.copy_to_bytes(data.remaining())))),
-            Some(Err(e)) => {
-                *this.error = Some(e);
-
-                // Return a placeholder, which should be discarded by the outer `CompressBody`.
-                Poll::Ready(Some(Err(io::Error::from_raw_os_error(0))))
-            }
-            None => Poll::Ready(None),
+            BodyInnerProj::Brotli(inner) => inner.poll_trailers(cx),
+            BodyInnerProj::Identity(body) => body.poll_trailers(cx),
         }
     }
 }
 
-/// Error type of [`CompressionBody`].
-#[derive(Debug)]
-pub enum Error<E> {
-    /// Error from the underlying body.
-    Body(E),
-    /// Compression error.
-    Compress(io::Error),
-}
-
-impl<E> fmt::Display for Error<E>
+#[cfg(feature = "compression-gzip")]
+impl<B> DecorateAsyncRead for GzipEncoder<B>
 where
-    E: fmt::Display,
+    B: Body,
+    B::Error: Into<io::Error>,
 {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Error::Body(err) => err.fmt(f),
-            Error::Compress(err) => err.fmt(f),
-        }
+    type Input = StreamReader<BodyIntoStream<B>, B::Data>;
+    type Output = GzipEncoder<Self::Input>;
+
+    fn apply(input: Self::Input) -> Self::Output {
+        GzipEncoder::new(input)
+    }
+
+    fn get_pin_mut(pinned: Pin<&mut Self::Output>) -> Pin<&mut Self::Input> {
+        pinned.get_pin_mut()
     }
 }
 
-// TODO(david): impl `fn source`
-impl<E> std::error::Error for Error<E> where E: std::error::Error {}
+#[cfg(feature = "compression-deflate")]
+impl<B> DecorateAsyncRead for ZlibEncoder<B>
+where
+    B: Body,
+    B::Error: Into<io::Error>,
+{
+    type Input = StreamReader<BodyIntoStream<B>, B::Data>;
+    type Output = ZlibEncoder<Self::Input>;
+
+    fn apply(input: Self::Input) -> Self::Output {
+        ZlibEncoder::new(input)
+    }
+
+    fn get_pin_mut(pinned: Pin<&mut Self::Output>) -> Pin<&mut Self::Input> {
+        pinned.get_pin_mut()
+    }
+}
+
+#[cfg(feature = "compression-br")]
+impl<B> DecorateAsyncRead for BrotliEncoder<B>
+where
+    B: Body,
+    B::Error: Into<io::Error>,
+{
+    type Input = StreamReader<BodyIntoStream<B>, B::Data>;
+    type Output = BrotliEncoder<Self::Input>;
+
+    fn apply(input: Self::Input) -> Self::Output {
+        BrotliEncoder::new(input)
+    }
+
+    fn get_pin_mut(pinned: Pin<&mut Self::Output>) -> Pin<&mut Self::Input> {
+        pinned.get_pin_mut()
+    }
+}

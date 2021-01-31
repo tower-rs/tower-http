@@ -6,8 +6,6 @@ mod layer;
 mod service;
 
 pub use self::{
-    body::{DecompressionBody, Error},
-    future::ResponseFuture,
-    layer::DecompressionLayer,
+    body::DecompressionBody, future::ResponseFuture, layer::DecompressionLayer,
     service::Decompression,
 };

@@ -1,7 +1,9 @@
-use super::DecompressionBody;
-use crate::accept_encoding::AcceptEncoding;
+#![allow(unused_imports)]
+
+use super::{body::BodyInner, DecompressionBody};
+use crate::compression_utils::{into_io_error, AcceptEncoding, BodyMapErr, WrapBody};
 use futures_util::ready;
-use http::Response;
+use http::{header, Response};
 use http_body::Body;
 use pin_project::pin_project;
 use std::{
@@ -25,11 +27,50 @@ impl<F, B, E> Future for ResponseFuture<F>
 where
     F: Future<Output = Result<Response<B>, E>>,
     B: Body,
+    B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
 {
     type Output = Result<Response<DecompressionBody<B>>, E>;
 
+    #[allow(unreachable_code, unused_mut, unused_variables)]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let res = ready!(self.as_mut().project().inner.poll(cx)?);
-        Poll::Ready(Ok(DecompressionBody::wrap_response(res, &self.accept)))
+        let (mut parts, body) = res.into_parts();
+
+        let body = BodyMapErr::new(body, into_io_error as _);
+        let res =
+            if let header::Entry::Occupied(entry) = parts.headers.entry(header::CONTENT_ENCODING) {
+                let body = match entry.get().as_bytes() {
+                    #[cfg(feature = "decompression-gzip")]
+                    b"gzip" if self.accept.gzip() => {
+                        DecompressionBody(BodyInner::Gzip(WrapBody::new(body)))
+                    }
+
+                    #[cfg(feature = "decompression-deflate")]
+                    b"deflate" if self.accept.deflate() => {
+                        DecompressionBody(BodyInner::Deflate(WrapBody::new(body)))
+                    }
+
+                    #[cfg(feature = "decompression-br")]
+                    b"br" if self.accept.br() => {
+                        DecompressionBody(BodyInner::Brotli(WrapBody::new(body)))
+                    }
+
+                    _ => {
+                        return Poll::Ready(Ok(Response::from_parts(
+                            parts,
+                            DecompressionBody(BodyInner::Identity(body)),
+                        )))
+                    }
+                };
+
+                entry.remove();
+                parts.headers.remove(header::CONTENT_LENGTH);
+
+                Response::from_parts(parts, body)
+            } else {
+                Response::from_parts(parts, DecompressionBody(BodyInner::Identity(body)))
+            };
+
+        Poll::Ready(Ok(res))
     }
 }
