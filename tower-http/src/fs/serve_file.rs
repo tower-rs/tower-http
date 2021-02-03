@@ -1,9 +1,8 @@
 //! Service that serves a file.
 
-use bytes::{Bytes, BytesMut};
+use super::AsyncReadBody;
 use futures_util::ready;
-use http::{header, HeaderMap, HeaderValue, Response};
-use http_body::Body;
+use http::{header, HeaderValue, Response};
 use mime::Mime;
 use std::{
     future::Future,
@@ -12,8 +11,7 @@ use std::{
     pin::Pin,
     task::{Context, Poll},
 };
-use tokio::{fs::File, io::AsyncRead};
-use tokio_util::io::poll_read_buf;
+use tokio::fs::File;
 use tower_service::Service;
 
 /// Service that serves a file.
@@ -95,47 +93,6 @@ impl Future for ResponseFuture {
             .insert(header::CONTENT_TYPE, self.mime.take().unwrap());
 
         Poll::Ready(Ok(res))
-    }
-}
-
-// NOTE: This could potentially be upstreamed to `http-body`.
-/// Adapter that turns an `impl AsyncRead` to an `impl Body`.
-pub struct AsyncReadBody<T> {
-    inner: T,
-}
-
-impl<T> AsyncReadBody<T> {
-    fn new(inner: T) -> Self {
-        Self { inner }
-    }
-}
-
-impl<T> Body for AsyncReadBody<T>
-where
-    T: AsyncRead + Unpin,
-{
-    type Data = Bytes;
-    type Error = io::Error;
-
-    fn poll_data(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
-        let mut buf = BytesMut::new();
-        let read = ready!(poll_read_buf(Pin::new(&mut self.inner), cx, &mut buf)?);
-
-        if read == 0 {
-            Poll::Ready(None)
-        } else {
-            Poll::Ready(Some(Ok(buf.freeze())))
-        }
-    }
-
-    fn poll_trailers(
-        self: Pin<&mut Self>,
-        _cx: &mut Context<'_>,
-    ) -> Poll<Result<Option<HeaderMap>, Self::Error>> {
-        Poll::Ready(Ok(None))
     }
 }
 
