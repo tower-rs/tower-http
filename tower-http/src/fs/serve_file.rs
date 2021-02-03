@@ -5,7 +5,6 @@ use futures_util::ready;
 use http::{header, HeaderMap, HeaderValue, Response};
 use http_body::Body;
 use mime::Mime;
-use pin_project::pin_project;
 use std::{
     future::Future,
     io,
@@ -79,9 +78,7 @@ impl<R> Service<R> for ServeFile {
 }
 
 /// Response future of [`ServeFile`].
-#[pin_project]
 pub struct ResponseFuture {
-    #[pin]
     open_file_future: Pin<Box<dyn Future<Output = io::Result<File>> + Send + Sync + 'static>>,
     mime: Option<HeaderValue>,
 }
@@ -89,23 +86,21 @@ pub struct ResponseFuture {
 impl Future for ResponseFuture {
     type Output = io::Result<Response<AsyncReadBody<File>>>;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let this = self.project();
-        let file = ready!(this.open_file_future.poll(cx)?);
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let file = ready!(Pin::new(&mut self.open_file_future).poll(cx)?);
         let body = AsyncReadBody::new(file);
 
         let mut res = Response::new(body);
         res.headers_mut()
-            .insert(header::CONTENT_TYPE, this.mime.take().unwrap());
+            .insert(header::CONTENT_TYPE, self.mime.take().unwrap());
 
         Poll::Ready(Ok(res))
     }
 }
 
+// NOTE: This could potentially be upstreamed to `http-body`.
 /// Adapter that turns an `impl AsyncRead` to an `impl Body`.
-#[pin_project]
 pub struct AsyncReadBody<T> {
-    #[pin]
     inner: T,
 }
 
@@ -117,17 +112,17 @@ impl<T> AsyncReadBody<T> {
 
 impl<T> Body for AsyncReadBody<T>
 where
-    T: AsyncRead,
+    T: AsyncRead + Unpin,
 {
     type Data = Bytes;
     type Error = io::Error;
 
     fn poll_data(
-        self: Pin<&mut Self>,
+        mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
         let mut buf = BytesMut::new();
-        let read = ready!(poll_read_buf(self.project().inner, cx, &mut buf)?);
+        let read = ready!(poll_read_buf(Pin::new(&mut self.inner), cx, &mut buf)?);
 
         if read == 0 {
             Poll::Ready(None)
@@ -141,5 +136,29 @@ where
         _cx: &mut Context<'_>,
     ) -> Poll<Result<Option<HeaderMap>, Self::Error>> {
         Poll::Ready(Ok(None))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[allow(unused_imports)]
+    use super::*;
+    use http::Request;
+    use http_body::Body as _;
+    use hyper::Body;
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn basic() {
+        let svc = ServeFile::new("../README.md");
+
+        let res = svc.oneshot(Request::new(Body::empty())).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/markdown");
+
+        let body = res.into_body().data().await.unwrap().unwrap();
+        let body = String::from_utf8(body.to_vec()).unwrap();
+
+        assert!(body.starts_with("# Tower HTTP"));
     }
 }

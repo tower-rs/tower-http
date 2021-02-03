@@ -43,11 +43,11 @@ full = [
     "compression",
     "compression-full",
     "decompression-full",
-    "serve-file",
+    "fs",
 ]
 
 add-extension = []
-serve-file = ["tokio/fs", "tokio-util/io", "bytes", "mime_guess", "mime"]
+fs = ["tokio/fs", "tokio-util/io", "bytes", "mime_guess", "mime"]
 
 compression = ["bytes", "tokio-util"]
 compression-br = ["async-compression/brotli", "compression"]
