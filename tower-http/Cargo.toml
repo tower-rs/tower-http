@@ -13,6 +13,7 @@ categories = ["asynchronous", "network-programming", "web-programming"]
 keywords = ["io", "async", "non-blocking", "futures", "service", "http"]
 
 [dependencies]
+bytes = "1"
 futures-core = "0.3"
 futures-util = { version = "0.3", default_features = false, features = [] }
 http = "0.2"
@@ -23,7 +24,6 @@ tower-service = "0.3"
 
 # optional dependencies
 async-compression = { version = "0.3", optional = true, features = ["deflate", "gzip", "brotli", "tokio"] }
-bytes = { version = "1", optional = true }
 hyper = { version = "0.14", optional = true, default_features = false, features = ["stream"] }
 mime_guess = { version = "2", optional = true, default_features = false }
 mime = { version = "0.3", optional = true, default_features = false }
@@ -47,15 +47,15 @@ full = [
 ]
 
 add-extension = []
-fs = ["tokio/fs", "tokio-util/io", "bytes", "mime_guess", "mime"]
+fs = ["tokio/fs", "tokio-util/io", "mime_guess", "mime"]
 
-compression = ["bytes", "tokio-util"]
+compression = ["tokio-util"]
 compression-br = ["async-compression/brotli", "compression"]
 compression-deflate = ["async-compression/zlib", "compression"]
 compression-full = ["compression-br", "compression-deflate", "compression-gzip"]
 compression-gzip = ["async-compression/gzip", "compression"]
 
-decompression = ["bytes", "tokio-util"]
+decompression = ["tokio-util"]
 decompression-br = ["async-compression/brotli", "decompression"]
 decompression-deflate = ["async-compression/zlib", "decompression"]
 decompression-full = ["decompression-br", "decompression-deflate", "decompression-gzip"]

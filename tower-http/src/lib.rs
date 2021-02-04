@@ -55,3 +55,5 @@ pub mod decompression;
 pub mod fs;
 
 mod accept_encoding;
+
+pub mod util;
