@@ -50,4 +50,10 @@ pub mod add_extension;
 #[cfg_attr(docsrs, doc(cfg(feature = "decompression")))]
 pub mod decompression;
 
+#[cfg(feature = "trace")]
+#[cfg_attr(docsrs, doc(cfg(feature = "trace")))]
+pub mod trace;
+
 mod accept_encoding;
+
+pub mod classify;
