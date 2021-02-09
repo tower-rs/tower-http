@@ -6,8 +6,8 @@
 //! the [`tower`] and [`http`] crates.
 //!
 //! All middlewares uses the [`http`] and [`http-body`] crates as the HTTP abstractions. That means
-//! they're compatible with any library or framework that also uses those crates, such as [`hyper`].
-//! Some middlewares might bring in other dependencies for doing various things.
+//! they're compatible with any library or framework that also uses those crates, such as
+//! [`hyper`].
 //!
 //! # Example
 //!
