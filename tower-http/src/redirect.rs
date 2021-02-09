@@ -3,6 +3,7 @@
 use http::{header, HeaderValue, Response, StatusCode, Uri};
 use std::{
     convert::Infallible,
+    fmt,
     future::Future,
     marker::PhantomData,
     pin::Pin,
@@ -41,7 +42,6 @@ use tower_service::Service;
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Clone, Debug)]
 pub struct Redirect<ResBody> {
     status_code: StatusCode,
     location: HeaderValue,
@@ -103,6 +103,25 @@ where
         ResponseFuture {
             status_code: self.status_code,
             location: Some(self.location.clone()),
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<ResBody> fmt::Debug for Redirect<ResBody> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Redirect")
+            .field("status_code", &self.status_code)
+            .field("location", &self.location)
+            .finish()
+    }
+}
+
+impl<ResBody> Clone for Redirect<ResBody> {
+    fn clone(&self) -> Self {
+        Self {
+            status_code: self.status_code,
+            location: self.location.clone(),
             _marker: PhantomData,
         }
     }
