@@ -1,4 +1,4 @@
-//! Middleware for adding some shareable value to [request extensions].
+//! Middleware that clones a value into each request's [extensions].
 //!
 //! [request extensions]: https://docs.rs/http/latest/http/struct.Extensions.html
 
