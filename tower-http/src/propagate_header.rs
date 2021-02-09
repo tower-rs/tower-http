@@ -1,3 +1,5 @@
+//! Propagate a header from the request to the response.
+
 use futures_util::ready;
 use http::{header::HeaderName, HeaderValue, Request, Response};
 use pin_project::pin_project;
@@ -9,12 +11,16 @@ use std::{
 use tower_layer::Layer;
 use tower_service::Service;
 
+/// Layer that applies [`PropagateHeader`] which propagates headers from requests to responses.
+///
+/// See [`PropagateHeader`] for more details.
 #[derive(Clone, Debug)]
 pub struct PropagateHeaderLayer {
     header: HeaderName,
 }
 
 impl PropagateHeaderLayer {
+    /// Create a new [`PropagateHeaderLayer`].
     pub fn new(header: HeaderName) -> Self {
         Self { header }
     }
@@ -31,10 +37,21 @@ impl<S> Layer<S> for PropagateHeaderLayer {
     }
 }
 
+/// Middleware that propagates headers from requests to responses.
+///
+/// So if the header is present on the request it'll be applied to the response as well. This could
+/// for example be used to propagate headers such as `X-Request-Id`.
 #[derive(Clone, Debug)]
 pub struct PropagateHeader<S> {
     inner: S,
     header: HeaderName,
+}
+
+impl<S> PropagateHeader<S> {
+    /// Create a new [`PropagateHeader`] that propagates the given header.
+    pub fn new(inner: S, header: HeaderName) -> Self {
+        Self { inner, header }
+    }
 }
 
 impl<ReqBody, ResBody, S> Service<Request<ReqBody>> for PropagateHeader<S>
@@ -60,6 +77,7 @@ where
     }
 }
 
+/// Response future for [`PropagateHeader`].
 #[pin_project]
 #[derive(Debug)]
 pub struct ResponseFuture<F> {
