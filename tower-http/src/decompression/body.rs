@@ -1,29 +1,20 @@
 #![allow(unused_imports)]
 
-use crate::compression_utils::{
-    AcceptEncoding, BodyIntoStream, BodyMapErr, DecorateAsyncRead, WrapBody,
-};
+use crate::compression_utils::{BodyIntoStream, DecorateAsyncRead, IoBody, WrapBody};
 #[cfg(feature = "decompression-br")]
 use async_compression::tokio::bufread::BrotliDecoder;
 #[cfg(feature = "decompression-gzip")]
 use async_compression::tokio::bufread::GzipDecoder;
 #[cfg(feature = "decompression-deflate")]
 use async_compression::tokio::bufread::ZlibDecoder;
-use bytes::{Buf, Bytes, BytesMut};
-use futures_core::Stream;
+use bytes::{Buf, Bytes};
 use futures_util::ready;
-use http::{
-    header::{self, CONTENT_ENCODING, CONTENT_LENGTH},
-    HeaderMap, Response,
-};
+use http::HeaderMap;
 use http_body::Body;
 use pin_project::pin_project;
-use std::{fmt, marker::PhantomData, task::Context};
+use std::task::Context;
 use std::{io, pin::Pin, task::Poll};
-use tokio_util::{
-    codec::{BytesCodec, FramedRead},
-    io::StreamReader,
-};
+use tokio_util::io::StreamReader;
 
 /// Response body of [`Decompression`].
 ///
@@ -129,30 +120,12 @@ where
     B: Body,
 {
     #[cfg(feature = "decompression-gzip")]
-    Gzip(
-        #[pin]
-        WrapBody<
-            BodyMapErr<B, fn(<B as Body>::Error) -> io::Error>,
-            GzipDecoder<BodyMapErr<B, fn(<B as Body>::Error) -> io::Error>>,
-        >,
-    ),
+    Gzip(#[pin] WrapBody<GzipDecoder<IoBody<B>>>),
     #[cfg(feature = "decompression-deflate")]
-    Deflate(
-        #[pin]
-        WrapBody<
-            BodyMapErr<B, fn(<B as Body>::Error) -> io::Error>,
-            ZlibDecoder<BodyMapErr<B, fn(<B as Body>::Error) -> io::Error>>,
-        >,
-    ),
+    Deflate(#[pin] WrapBody<ZlibDecoder<IoBody<B>>>),
     #[cfg(feature = "decompression-br")]
-    Brotli(
-        #[pin]
-        WrapBody<
-            BodyMapErr<B, fn(<B as Body>::Error) -> io::Error>,
-            BrotliDecoder<BodyMapErr<B, fn(<B as Body>::Error) -> io::Error>>,
-        >,
-    ),
-    Identity(#[pin] BodyMapErr<B, fn(<B as Body>::Error) -> io::Error>),
+    Brotli(#[pin] WrapBody<BrotliDecoder<IoBody<B>>>),
+    Identity(#[pin] IoBody<B>),
 }
 
 impl<B> Body for DecompressionBody<B>

@@ -1,6 +1,6 @@
 #![allow(unused_imports)]
 
-use crate::compression_utils::{BodyIntoStream, BodyMapErr, DecorateAsyncRead, WrapBody};
+use crate::compression_utils::{BodyIntoStream, DecorateAsyncRead, IoBody, WrapBody};
 #[cfg(feature = "compression-br")]
 use async_compression::tokio::bufread::BrotliEncoder;
 #[cfg(feature = "compression-gzip")]
@@ -123,30 +123,12 @@ where
     B: Body,
 {
     #[cfg(feature = "compression-gzip")]
-    Gzip(
-        #[pin]
-        WrapBody<
-            BodyMapErr<B, fn(<B as Body>::Error) -> io::Error>,
-            GzipEncoder<BodyMapErr<B, fn(<B as Body>::Error) -> io::Error>>,
-        >,
-    ),
+    Gzip(#[pin] WrapBody<GzipEncoder<IoBody<B>>>),
     #[cfg(feature = "compression-deflate")]
-    Deflate(
-        #[pin]
-        WrapBody<
-            BodyMapErr<B, fn(<B as Body>::Error) -> io::Error>,
-            ZlibEncoder<BodyMapErr<B, fn(<B as Body>::Error) -> io::Error>>,
-        >,
-    ),
+    Deflate(#[pin] WrapBody<ZlibEncoder<IoBody<B>>>),
     #[cfg(feature = "compression-br")]
-    Brotli(
-        #[pin]
-        WrapBody<
-            BodyMapErr<B, fn(<B as Body>::Error) -> io::Error>,
-            BrotliEncoder<BodyMapErr<B, fn(<B as Body>::Error) -> io::Error>>,
-        >,
-    ),
-    Identity(#[pin] BodyMapErr<B, fn(<B as Body>::Error) -> io::Error>),
+    Brotli(#[pin] WrapBody<BrotliEncoder<IoBody<B>>>),
+    Identity(#[pin] IoBody<B>),
 }
 
 impl<B> Body for CompressionBody<B>

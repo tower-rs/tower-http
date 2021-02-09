@@ -8,7 +8,6 @@ use http_body::Body;
 use pin_project::pin_project;
 use std::{
     io,
-    marker::PhantomData,
     pin::Pin,
     task::{Context, Poll},
 };
@@ -103,6 +102,9 @@ impl Default for AcceptEncoding {
     }
 }
 
+/// Body where the error is mapped into `std::io::Error`.
+pub(crate) type IoBody<B> = BodyMapErr<B, fn(<B as Body>::Error) -> io::Error>;
+
 /// Trait for applying some decorator to an `AsyncRead`
 pub(crate) trait DecorateAsyncRead {
     type Input: AsyncRead;
@@ -119,20 +121,19 @@ pub(crate) trait DecorateAsyncRead {
 
 /// `Body` that has been decorated by an `AsyncRead`
 #[pin_project]
-pub(crate) struct WrapBody<B, M: DecorateAsyncRead> {
+pub(crate) struct WrapBody<M: DecorateAsyncRead> {
     #[pin]
     pub(crate) read: M::Output,
-    _marker: PhantomData<B>,
 }
 
-impl<B, R, M> WrapBody<B, M>
-where
-    B: Body,
-    B::Error: Into<io::Error>,
-    M: DecorateAsyncRead<Input = StreamReader<BodyIntoStream<B>, B::Data>, Output = R>,
-{
+impl<M: DecorateAsyncRead> WrapBody<M> {
     #[allow(dead_code)]
-    pub(crate) fn new(body: B) -> Self {
+    pub(crate) fn new<B>(body: B) -> Self
+    where
+        B: Body,
+        B::Error: Into<io::Error>,
+        M: DecorateAsyncRead<Input = StreamReader<BodyIntoStream<B>, B::Data>>,
+    {
         // convert `Body` into a `Stream`
         let stream = BodyIntoStream::new(body);
         // convert `Stream` into an `AsyncRead`
@@ -140,14 +141,11 @@ where
         // apply decorator to `AsyncRead` yieling another `AsyncRead`
         let read = M::apply(read);
 
-        Self {
-            read,
-            _marker: PhantomData,
-        }
+        Self { read }
     }
 }
 
-impl<B, M> Body for WrapBody<B, M>
+impl<B, M> Body for WrapBody<M>
 where
     B: Body,
     B::Error: Into<io::Error>,
@@ -285,12 +283,7 @@ where
         cx: &mut Context<'_>,
     ) -> Poll<Result<Option<http::HeaderMap>, Self::Error>> {
         let this = self.project();
-        match this.inner.poll_trailers(cx) {
-            Poll::Pending => Poll::Pending,
-            Poll::Ready(Ok(None)) => Poll::Ready(Ok(None)),
-            Poll::Ready(Ok(Some(headers))) => Poll::Ready(Ok(Some(headers))),
-            Poll::Ready(Err(err)) => Poll::Ready(Err((this.f)(err))),
-        }
+        this.inner.poll_trailers(cx).map_err(this.f)
     }
 
     fn is_end_stream(&self) -> bool {
