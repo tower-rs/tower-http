@@ -1,3 +1,5 @@
+//! Set a header on the response.
+
 use futures_util::ready;
 use http::{header::HeaderName, HeaderValue, Request, Response};
 use pin_project::pin_project;
@@ -10,6 +12,7 @@ use std::{future::Future, marker::PhantomData};
 use tower_layer::Layer;
 use tower_service::Service;
 
+/// Layer that applies [`SetResponseHeader`] which adds a response header.
 pub struct SetResponseHeaderLayer<M, Res> {
     header_name: HeaderName,
     make: M,
@@ -28,6 +31,7 @@ impl<M, Res> fmt::Debug for SetResponseHeaderLayer<M, Res> {
 }
 
 impl<M, Res> SetResponseHeaderLayer<M, Res> {
+    /// Create a new [`SetResponseHeaderLayer`].
     pub fn new(header_name: HeaderName, make: M) -> Self
     where
         M: MakeHeaderValue<Res>,
@@ -40,6 +44,9 @@ impl<M, Res> SetResponseHeaderLayer<M, Res> {
         }
     }
 
+    /// Should the header be overriden if the response already contains it?
+    ///
+    /// Defaults to `true`.
     pub fn override_existing(mut self, override_existing: bool) -> Self {
         self.override_existing = override_existing;
         self
@@ -76,6 +83,7 @@ where
     }
 }
 
+/// Middleware that sets a header on the response.
 #[derive(Clone)]
 pub struct SetResponseHeader<S, M> {
     inner: S,
@@ -91,6 +99,7 @@ where
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SetResponseHeaderLayer")
             .field("inner", &self.inner)
+            .field("header_name", &self.header_name)
             .field("override_existing", &self.override_existing)
             .field("make", &format_args!("{}", std::any::type_name::<M>()))
             .finish()
@@ -121,6 +130,7 @@ where
     }
 }
 
+/// Response future for [`SetResponseHeader`].
 #[pin_project]
 #[derive(Debug)]
 pub struct ResponseFuture<F, M> {
@@ -156,6 +166,15 @@ where
     }
 }
 
+/// Trait for producing header values from responses.
+///
+/// Used by [`SetResponseHeader`].
+///
+/// You shouldn't normally have to implement this trait since its implemented for closures with the
+/// correct type.
+///
+/// It is also implemented directly for `HeaderValue` so if you just want to add a fixed value you
+/// can suply one directly to [`SetResponseHeaderLayer`].
 pub trait MakeHeaderValue<Res> {
     fn make_header_value(&mut self, response: &Res) -> HeaderValue;
 }
