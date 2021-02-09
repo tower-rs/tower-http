@@ -18,9 +18,11 @@
 //! use tower_http::{
 //!     add_extension::AddExtensionLayer,
 //!     compression::CompressionLayer,
+//!     propagate_header::PropagateHeaderLayer,
+//!     sensitive_header::SetSensitiveHeaderLayer,
 //! };
 //! use tower::{ServiceBuilder, service_fn};
-//! use http::{Request, Response};
+//! use http::{Request, Response, header::HeaderName};
 //! use hyper::{Body, Error, server::Server, service::make_service_fn};
 //! use std::{sync::Arc, net::SocketAddr, convert::Infallible};
 //! # struct DatabaseConnectionPool;
@@ -54,6 +56,10 @@
 //!         .layer(AddExtensionLayer::new(Arc::new(state)))
 //!         // Compress responses
 //!         .layer(CompressionLayer::new())
+//!         // Propagate `X-Request-Header`s from requests to responses
+//!         .layer(PropagateHeaderLayer::new(HeaderName::from_static("x-request-id")))
+//!         // Mark the `Authorization` header as sensitive so it doesn't show in logs
+//!         .layer(SetSensitiveHeaderLayer::new(HeaderName::from_static("authorization")))
 //!         // Wrap a `Service` in our middleware stack
 //!         .service(service_fn(handler));
 //!
