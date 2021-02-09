@@ -80,10 +80,10 @@
 //! tower-http = { version = "0.1.0", features = ["full"] }
 //! ```
 //!
-//! [tower]: https://crates.io/crates/tower
-//! [http]: https://crates.io/crates/http
-//! [http-body]: https://crates.io/crates/http-body
-//! [hyper]: https://crates.io/crates/hyper
+//! [`tower`]: https://crates.io/crates/tower
+//! [`http`]: https://crates.io/crates/http
+//! [`http-body`]: https://crates.io/crates/http-body
+//! [`hyper`]: https://crates.io/crates/hyper
 //! [cargo features]: https://doc.rust-lang.org/cargo/reference/features.html
 //! [`AddExtension`]: crate::add_extension::AddExtension
 
