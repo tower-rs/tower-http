@@ -41,6 +41,35 @@ impl<S> Layer<S> for PropagateHeaderLayer {
 ///
 /// So if the header is present on the request it'll be applied to the response as well. This could
 /// for example be used to propagate headers such as `X-Request-Id`.
+///
+/// # Example
+///
+/// ```rust
+/// use http::{Request, Response, header::HeaderName};
+/// use std::convert::Infallible;
+/// use tower::{Service, ServiceExt};
+/// use tower_http::propagate_header::PropagateHeader;
+///
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let echo_service = tower::service_fn(|request: Request<String>| async move {
+///     Ok::<_, Infallible>(Response::new(request.into_body()))
+/// });
+///
+/// // This will copy `x-request-id` headers on requests onto responses.
+/// let mut svc = PropagateHeader::new(echo_service, HeaderName::from_static("x-request-id"));
+///
+/// let request = Request::builder()
+///     .header("x-request-id", "1337")
+///     .body(String::new())?;
+///
+/// let response = svc.ready_and().await?.call(request).await?;
+///
+/// assert_eq!(response.headers()["x-request-id"], "1337");
+/// #
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Clone, Debug)]
 pub struct PropagateHeader<S> {
     inner: S,
