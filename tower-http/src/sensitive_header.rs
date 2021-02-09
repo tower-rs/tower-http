@@ -15,6 +15,8 @@ use tower_service::Service;
 
 /// Mark a header as [sensitive] on both requests and responses.
 ///
+/// Produces [`SetSensitiveHeader`] services.
+///
 /// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
 #[derive(Clone, Debug)]
 pub struct SetSensitiveHeaderLayer {
@@ -29,7 +31,7 @@ impl SetSensitiveHeaderLayer {
 }
 
 impl<S> Layer<S> for SetSensitiveHeaderLayer {
-    type Service = SetSensitiveRequestHeader<SetSensitiveResponseHeader<S>>;
+    type Service = SetSensitiveHeader<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
         SetSensitiveRequestHeader::new(
@@ -39,7 +41,14 @@ impl<S> Layer<S> for SetSensitiveHeaderLayer {
     }
 }
 
+/// Mark a header as [sensitive] on both requests and responses.
+///
+/// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
+pub type SetSensitiveHeader<S> = SetSensitiveRequestHeader<SetSensitiveResponseHeader<S>>;
+
 /// Mark a request header as [sensitive].
+///
+/// Produces [`SetSensitiveRequestHeader`] services.
 ///
 /// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
 #[derive(Clone, Debug)]
@@ -119,6 +128,8 @@ where
 }
 
 /// Mark a response header as [sensitive].
+///
+/// Produces [`SetSensitiveResponseHeader`] services.
 ///
 /// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
 #[derive(Clone, Debug)]
