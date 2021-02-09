@@ -67,7 +67,8 @@
 //!
 //! All middlewares are disabled by default and can be enabled using [cargo features].
 //!
-//! For example to enable [`AddExtension`] you would add this to your `Cargo.toml`:
+//! For example, to enable the [`AddExtension`] middleware, add the "add-extension" feature flag
+//! in your`Cargo.toml`:
 //!
 //! ```toml
 //! tower-http = { version = "0.1.0", features = ["add-extension"] }
