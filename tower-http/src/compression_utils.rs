@@ -102,8 +102,11 @@ impl Default for AcceptEncoding {
     }
 }
 
-/// Body where the error is mapped into `std::io::Error`.
+/// `Body` where the error is mapped into `std::io::Error`.
 pub(crate) type IoBody<B> = BodyMapErr<B, fn(<B as Body>::Error) -> io::Error>;
+
+/// A `Body` that has been converted into an `AsyncRead`.
+pub(crate) type AsyncReadBody<B> = StreamReader<BodyIntoStream<B>, <B as Body>::Data>;
 
 /// Trait for applying some decorator to an `AsyncRead`
 pub(crate) trait DecorateAsyncRead {
@@ -132,7 +135,7 @@ impl<M: DecorateAsyncRead> WrapBody<M> {
     where
         B: Body,
         B::Error: Into<io::Error>,
-        M: DecorateAsyncRead<Input = StreamReader<BodyIntoStream<B>, B::Data>>,
+        M: DecorateAsyncRead<Input = AsyncReadBody<B>>,
     {
         // convert `Body` into a `Stream`
         let stream = BodyIntoStream::new(body);
@@ -149,7 +152,7 @@ impl<B, M> Body for WrapBody<M>
 where
     B: Body,
     B::Error: Into<io::Error>,
-    M: DecorateAsyncRead<Input = StreamReader<BodyIntoStream<B>, B::Data>>,
+    M: DecorateAsyncRead<Input = AsyncReadBody<B>>,
 {
     type Data = Bytes;
     type Error = io::Error;

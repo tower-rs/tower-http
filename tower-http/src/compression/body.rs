@@ -1,6 +1,8 @@
 #![allow(unused_imports)]
 
-use crate::compression_utils::{BodyIntoStream, DecorateAsyncRead, IoBody, WrapBody};
+use crate::compression_utils::{
+    AsyncReadBody, BodyIntoStream, DecorateAsyncRead, IoBody, WrapBody,
+};
 #[cfg(feature = "compression-br")]
 use async_compression::tokio::bufread::BrotliEncoder;
 #[cfg(feature = "compression-gzip")]
@@ -182,7 +184,7 @@ where
     B: Body,
     B::Error: Into<io::Error>,
 {
-    type Input = StreamReader<BodyIntoStream<B>, B::Data>;
+    type Input = AsyncReadBody<B>;
     type Output = GzipEncoder<Self::Input>;
 
     fn apply(input: Self::Input) -> Self::Output {
@@ -200,7 +202,7 @@ where
     B: Body,
     B::Error: Into<io::Error>,
 {
-    type Input = StreamReader<BodyIntoStream<B>, B::Data>;
+    type Input = AsyncReadBody<B>;
     type Output = ZlibEncoder<Self::Input>;
 
     fn apply(input: Self::Input) -> Self::Output {
@@ -218,7 +220,7 @@ where
     B: Body,
     B::Error: Into<io::Error>,
 {
-    type Input = StreamReader<BodyIntoStream<B>, B::Data>;
+    type Input = AsyncReadBody<B>;
     type Output = BrotliEncoder<Self::Input>;
 
     fn apply(input: Self::Input) -> Self::Output {
