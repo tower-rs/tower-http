@@ -27,21 +27,27 @@
 //! # }
 //! # async fn run_http_service<T>(_: T) {}
 //!
+//! // Our request handler. This is where we would implement the application logic
+//! // for responding to HTTP requests...
 //! async fn handler(request: Request<Body>) -> Result<Response<Body>, Error> {
 //!     // ...
 //!     # todo!()
 //! }
 //!
+//! /// Shared state across all request handlers --- in this case, a pool of database connections.
 //! struct State {
 //!     pool: DatabaseConnectionPool,
 //! }
 //!
 //! #[tokio::main]
 //! async fn main() {
+//!     // Construct the shared state.
 //!     let state = State {
 //!         pool: DatabaseConnectionPool::new(),
 //!     };
 //!
+//!     // Use `tower`'s `ServiceBuilder` API to build a stack of `tower` middleware
+//!     // wrapping our request handler.
 //!     let service = ServiceBuilder::new()
 //!         // Share an `Arc<State>` with all requests
 //!         .layer(AddExtensionLayer::new(Arc::new(state)))
@@ -50,7 +56,9 @@
 //!         // Wrap a `Service` in our middleware stack
 //!         .service(service_fn(handler));
 //!
-//!     // Run our service using some HTTP server
+//!     // Run our service using some HTTP server.
+//!     // The HTTP server implementation is provided by a compatible external library,
+//!     // such as `hyper`.
 //!     run_http_service(service).await;
 //! }
 //! ```
