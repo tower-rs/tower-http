@@ -34,6 +34,10 @@ pub struct AddExtension<S, T> {
     value: T,
 }
 
+impl<S, T> AddExtension<S, T> {
+    define_inner_service_accessors!();
+}
+
 impl<ResBody, S, T> Service<Request<ResBody>> for AddExtension<S, T>
 where
     S: Service<Request<ResBody>>,
