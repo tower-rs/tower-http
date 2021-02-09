@@ -63,7 +63,7 @@
 //! }
 //! ```
 //!
-//! # Feature toggles
+//! # Feature Flags
 //!
 //! All middleware are disabled by default and can be enabled using [cargo features].
 //!
