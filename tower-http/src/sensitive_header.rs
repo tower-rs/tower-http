@@ -165,7 +165,7 @@ pub struct SetSensitiveResponseHeader<S> {
 }
 
 impl<S> SetSensitiveResponseHeader<S> {
-    /// Create a new [`SetSensitiveResponseHeader`].
+    /// Create a new [`SetSensitiveResponseHeader`] service.
     pub fn new(inner: S, header: HeaderName) -> Self {
         Self { inner, header }
     }
