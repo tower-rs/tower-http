@@ -1,6 +1,6 @@
 //! Middleware that clones a value into each request's [extensions].
 //!
-//! [request extensions]: https://docs.rs/http/latest/http/struct.Extensions.html
+//! [extensions]: https://docs.rs/http/latest/http/struct.Extensions.html
 
 use http::Request;
 use std::task::{Context, Poll};
