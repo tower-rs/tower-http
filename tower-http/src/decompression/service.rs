@@ -1,0 +1,121 @@
+use super::{DecompressionBody, ResponseFuture};
+use crate::accept_encoding::AcceptEncoding;
+use http::{
+    header::{self, ACCEPT_ENCODING, RANGE},
+    Request, Response,
+};
+use http_body::Body;
+use std::task::{Context, Poll};
+use tower_service::Service;
+
+/// Decompresses response bodies of the underlying service.
+///
+/// This adds the `Accept-Encoding` header to requests and transparently decompresses response
+/// bodies based on the `Content-Encoding` header.
+#[derive(Debug, Clone)]
+pub struct Decompression<S> {
+    pub(crate) inner: S,
+    pub(crate) accept: AcceptEncoding,
+}
+
+impl<S> Decompression<S> {
+    /// Creates a new `Decompression` wrapping the `service`.
+    pub fn new(service: S) -> Self {
+        Self {
+            inner: service,
+            accept: AcceptEncoding::default(),
+        }
+    }
+
+    /// Gets a reference to the underlying service.
+    pub fn get_ref(&self) -> &S {
+        &self.inner
+    }
+
+    /// Gets a mutable reference to the underlying service.
+    pub fn get_mut(&mut self) -> &mut S {
+        &mut self.inner
+    }
+
+    /// Consumes `self`, returning the underlying service.
+    pub fn into_inner(self) -> S {
+        self.inner
+    }
+
+    /// Sets whether to request the gzip encoding.
+    #[cfg(feature = "decompression-gzip")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "decompression-gzip")))]
+    pub fn gzip(self, enable: bool) -> Self {
+        self.accept.set_gzip(enable);
+        self
+    }
+
+    /// Sets whether to request the Deflate encoding.
+    #[cfg(feature = "decompression-deflate")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "decompression-deflate")))]
+    pub fn deflate(self, enable: bool) -> Self {
+        self.accept.set_deflate(enable);
+        self
+    }
+
+    /// Sets whether to request the Brotli encoding.
+    #[cfg(feature = "decompression-br")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "decompression-br")))]
+    pub fn br(self, enable: bool) -> Self {
+        self.accept.set_br(enable);
+        self
+    }
+
+    /// Disables the gzip encoding.
+    ///
+    /// This method is available even if the `gzip` crate feature is disabled.
+    pub fn no_gzip(self) -> Self {
+        self.accept.set_gzip(false);
+        self
+    }
+
+    /// Disables the Deflate encoding.
+    ///
+    /// This method is available even if the `deflate` crate feature is disabled.
+    pub fn no_deflate(self) -> Self {
+        self.accept.set_deflate(false);
+        self
+    }
+
+    /// Disables the Brotli encoding.
+    ///
+    /// This method is available even if the `br` crate feature is disabled.
+    pub fn no_br(self) -> Self {
+        self.accept.set_br(false);
+        self
+    }
+}
+
+impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for Decompression<S>
+where
+    S: Service<Request<ReqBody>, Response = Response<ResBody>>,
+    ResBody: Body,
+{
+    type Response = Response<DecompressionBody<ResBody>>;
+    type Error = S::Error;
+    type Future = ResponseFuture<S::Future>;
+
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx)
+    }
+
+    fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
+        if !req.headers().contains_key(RANGE) {
+            if let header::Entry::Vacant(entry) = req.headers_mut().entry(ACCEPT_ENCODING) {
+                if let Some(accept) = self.accept.to_header_value() {
+                    entry.insert(accept);
+                }
+            }
+        }
+
+        ResponseFuture {
+            inner: self.inner.call(req),
+            accept: self.accept,
+        }
+    }
+}

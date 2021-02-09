@@ -1,5 +1,4 @@
 #![doc(html_root_url = "https://docs.rs/tower-http/0.1.0")]
-#![allow(elided_lifetimes_in_paths, clippy::type_complexity)]
 #![warn(
     clippy::all,
     clippy::dbg_macro,
@@ -34,6 +33,7 @@
     nonstandard_style
 )]
 #![deny(unreachable_pub, broken_intra_doc_links, private_in_public)]
+#![allow(elided_lifetimes_in_paths, clippy::type_complexity)]
 #![forbid(unsafe_code)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(test, allow(clippy::float_cmp))]
@@ -41,3 +41,17 @@
 #[cfg(feature = "propagate-header")]
 #[cfg_attr(docsrs, doc(cfg(feature = "propagate-header")))]
 pub mod propagate_header;
+
+#[cfg(feature = "compression")]
+#[cfg_attr(docsrs, doc(cfg(feature = "compression")))]
+pub mod compression;
+
+#[cfg(feature = "add-extension")]
+#[cfg_attr(docsrs, doc(cfg(feature = "add-extension")))]
+pub mod add_extension;
+
+#[cfg(feature = "decompression")]
+#[cfg_attr(docsrs, doc(cfg(feature = "decompression")))]
+pub mod decompression;
+
+mod accept_encoding;

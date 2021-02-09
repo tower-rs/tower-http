@@ -13,6 +13,7 @@ categories = ["asynchronous", "network-programming", "web-programming"]
 keywords = ["io", "async", "non-blocking", "futures", "service", "http"]
 
 [dependencies]
+futures-core = "0.3"
 futures-util = { version = "0.3", default_features = false, features = [] }
 http = "0.2"
 http-body = "0.4"
@@ -21,19 +22,41 @@ tower-layer = "0.3"
 tower-service = "0.3"
 
 # optional dependencies
-# will be filled out in other PRs
+async-compression = { version = "0.3", optional = true, features = ["deflate", "gzip", "brotli", "tokio"] }
+bytes = { version = "1", optional = true }
+hyper = { version = "0.14", optional = true, default_features = false, features = ["stream"] }
+tokio-util = { version = "0.6", optional = true, default_features = false, features = ["io", "codec"] }
 
 [dev-dependencies]
 futures = "0.3"
 hyper = "0.14"
-tower = "0.4"
+tower = { version = "0.4", features = ["util"] }
+tokio = { version = "1", features = ["full"] }
 
 [features]
 default = []
 full = [
+    "add-extension",
+    "compression",
+    "compression-full",
+    "decompression-full",
     "propagate-header",
 ]
 propagate-header = []
+
+add-extension = []
+
+compression = ["bytes", "tokio-util"]
+compression-br = ["async-compression/brotli", "compression"]
+compression-deflate = ["async-compression/zlib", "compression"]
+compression-full = ["compression-br", "compression-deflate", "compression-gzip"]
+compression-gzip = ["async-compression/gzip", "compression"]
+
+decompression = ["bytes", "tokio-util"]
+decompression-br = ["async-compression/brotli", "decompression"]
+decompression-deflate = ["async-compression/zlib", "decompression"]
+decompression-full = ["decompression-br", "decompression-deflate", "decompression-gzip"]
+decompression-gzip = ["async-compression/gzip", "decompression"]
 
 [package.metadata.docs.rs]
 all-features = true
