@@ -202,7 +202,7 @@ where
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
         SetSensitiveResponseHeaderResponseFuture {
             future: self.inner.call(req),
-            header: Some(self.header.clone()),
+            header: self.header.clone(),
         }
     }
 }
@@ -213,7 +213,7 @@ where
 pub struct SetSensitiveResponseHeaderResponseFuture<F> {
     #[pin]
     future: F,
-    header: Option<HeaderName>,
+    header: HeaderName,
 }
 
 impl<F, ResBody, E> Future for SetSensitiveResponseHeaderResponseFuture<F>
@@ -226,7 +226,7 @@ where
         let this = self.project();
         let mut res = ready!(this.future.poll(cx)?);
 
-        if let Some(value) = res.headers_mut().get_mut(this.header.take().unwrap()) {
+        if let Some(value) = res.headers_mut().get_mut(&*this.header) {
             value.set_sensitive(true);
         }
 
