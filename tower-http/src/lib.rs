@@ -65,7 +65,7 @@
 //!
 //! # Feature toggles
 //!
-//! All middlewares are disabled by default and can be enabled using [cargo features].
+//! All middleware are disabled by default and can be enabled using [cargo features].
 //!
 //! For example, to enable the [`AddExtension`] middleware, add the "add-extension" feature flag
 //! in your`Cargo.toml`:
