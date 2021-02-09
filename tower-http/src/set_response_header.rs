@@ -11,6 +11,7 @@ use tower_layer::Layer;
 use tower_service::Service;
 
 pub struct SetResponseHeaderLayer<M, Res> {
+    header_name: HeaderName,
     make: M,
     override_existing: bool,
     _marker: PhantomData<fn() -> Res>,
@@ -19,6 +20,7 @@ pub struct SetResponseHeaderLayer<M, Res> {
 impl<M, Res> fmt::Debug for SetResponseHeaderLayer<M, Res> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SetResponseHeaderLayer")
+            .field("header_name", &self.header_name)
             .field("override_existing", &self.override_existing)
             .field("make", &format_args!("{}", std::any::type_name::<M>()))
             .finish()
@@ -26,12 +28,13 @@ impl<M, Res> fmt::Debug for SetResponseHeaderLayer<M, Res> {
 }
 
 impl<M, Res> SetResponseHeaderLayer<M, Res> {
-    pub fn new(make: M) -> Self
+    pub fn new(header_name: HeaderName, make: M) -> Self
     where
-        M: MakeHeaderPair<Res>,
+        M: MakeHeaderValue<Res>,
     {
         Self {
             make,
+            header_name,
             override_existing: true,
             _marker: PhantomData,
         }
@@ -45,13 +48,14 @@ impl<M, Res> SetResponseHeaderLayer<M, Res> {
 
 impl<Res, S, M> Layer<S> for SetResponseHeaderLayer<M, Res>
 where
-    M: MakeHeaderPair<Res> + Clone,
+    M: MakeHeaderValue<Res> + Clone,
 {
     type Service = SetResponseHeader<S, M>;
 
     fn layer(&self, inner: S) -> Self::Service {
         SetResponseHeader {
             inner,
+            header_name: self.header_name.clone(),
             make: self.make.clone(),
             override_existing: self.override_existing,
         }
@@ -65,6 +69,7 @@ where
     fn clone(&self) -> Self {
         Self {
             make: self.make.clone(),
+            header_name: self.header_name.clone(),
             override_existing: self.override_existing,
             _marker: PhantomData,
         }
@@ -74,6 +79,7 @@ where
 #[derive(Clone)]
 pub struct SetResponseHeader<S, M> {
     inner: S,
+    header_name: HeaderName,
     make: M,
     override_existing: bool,
 }
@@ -94,7 +100,7 @@ where
 impl<ReqBody, ResBody, S, M> Service<Request<ReqBody>> for SetResponseHeader<S, M>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
-    M: MakeHeaderPair<S::Response> + Clone,
+    M: MakeHeaderValue<S::Response> + Clone,
 {
     type Response = S::Response;
     type Error = S::Error;
@@ -108,6 +114,7 @@ where
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
         ResponseFuture {
             future: self.inner.call(req),
+            header_name: self.header_name.clone(),
             make: self.make.clone(),
             override_existing: self.override_existing,
         }
@@ -119,6 +126,7 @@ where
 pub struct ResponseFuture<F, M> {
     #[pin]
     future: F,
+    header_name: HeaderName,
     make: M,
     override_existing: bool,
 }
@@ -126,7 +134,7 @@ pub struct ResponseFuture<F, M> {
 impl<F, ResBody, E, M> Future for ResponseFuture<F, M>
 where
     F: Future<Output = Result<Response<ResBody>, E>>,
-    M: MakeHeaderPair<Response<ResBody>>,
+    M: MakeHeaderValue<Response<ResBody>>,
 {
     type Output = F::Output;
 
@@ -134,29 +142,29 @@ where
         let this = self.project();
         let mut res = ready!(this.future.poll(cx)?);
 
-        let (header, value) = this.make.make_header_pair(&res);
+        let value = this.make.make_header_value(&res);
 
-        if res.headers().contains_key(&header) {
+        if res.headers().contains_key(&*this.header_name) {
             if *this.override_existing {
-                res.headers_mut().insert(header, value);
+                res.headers_mut().insert(this.header_name.clone(), value);
             }
         } else {
-            res.headers_mut().insert(header, value);
+            res.headers_mut().insert(this.header_name.clone(), value);
         }
 
         Poll::Ready(Ok(res))
     }
 }
 
-pub trait MakeHeaderPair<Res> {
-    fn make_header_pair(&mut self, response: &Res) -> (HeaderName, HeaderValue);
+pub trait MakeHeaderValue<Res> {
+    fn make_header_value(&mut self, response: &Res) -> HeaderValue;
 }
 
-impl<F, Res> MakeHeaderPair<Res> for F
+impl<F, Res> MakeHeaderValue<Res> for F
 where
-    F: FnMut(&Res) -> (HeaderName, HeaderValue),
+    F: FnMut(&Res) -> HeaderValue,
 {
-    fn make_header_pair(&mut self, response: &Res) -> (HeaderName, HeaderValue) {
+    fn make_header_value(&mut self, response: &Res) -> HeaderValue {
         self(response)
     }
 }
