@@ -84,7 +84,7 @@ pub struct SetSensitiveRequestHeader<S> {
 }
 
 impl<S> SetSensitiveRequestHeader<S> {
-    /// Create a new [`SetSensitiveRequestHeader`].
+    /// Create a new [`SetSensitiveRequestHeader`] service.
     pub fn new(inner: S, header: HeaderName) -> Self {
         Self { inner, header }
     }
