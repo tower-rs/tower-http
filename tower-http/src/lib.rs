@@ -9,23 +9,24 @@
 //! they're compatible with any library or framework that also uses those crates, such as
 //! [`hyper`].
 //!
-//! # Example
+//! # Example server
 //!
-//! ```rust
+//! This example shows how to apply middlewares from `tower-http` to a [`Service`] and then run
+//! that service using [`hyper`].
+//!
+//! ```rust,no_run
 //! use tower_http::{
 //!     add_extension::AddExtensionLayer,
 //!     compression::CompressionLayer,
 //! };
 //! use tower::{ServiceBuilder, service_fn};
 //! use http::{Request, Response};
-//! use hyper::Body;
-//! use std::sync::Arc;
-//! # struct Error;
+//! use hyper::{Body, Error, server::Server, service::make_service_fn};
+//! use std::{sync::Arc, net::SocketAddr, convert::Infallible};
 //! # struct DatabaseConnectionPool;
 //! # impl DatabaseConnectionPool {
 //! #     fn new() -> DatabaseConnectionPool { DatabaseConnectionPool }
 //! # }
-//! # async fn run_http_service<T>(_: T) {}
 //!
 //! // Our request handler. This is where we would implement the application logic
 //! // for responding to HTTP requests...
@@ -56,12 +57,26 @@
 //!         // Wrap a `Service` in our middleware stack
 //!         .service(service_fn(handler));
 //!
-//!     // Run our service using some HTTP server.
-//!     // The HTTP server implementation is provided by a compatible external library,
-//!     // such as `hyper`.
-//!     run_http_service(service).await;
+//!     // And run our service using `hyper`
+//!     let make_service = make_service_fn(move |_conn| {
+//!         let service = service.clone();
+//!         async move {
+//!             Ok::<_, Infallible>(service)
+//!         }
+//!     });
+//!
+//!     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+//!
+//!     let server = Server::bind(&addr).serve(make_service);
+//!
+//!     if let Err(e) = server.await {
+//!         eprintln!("server error: {}", e);
+//!     }
 //! }
 //! ```
+//!
+//! Keep in mind that while this example uses [`hyper`], `tower-http` supports any HTTP
+//! client/server implementation that uses the [`http`] and [`http-body`] crates.
 //!
 //! # Feature Flags
 //!
@@ -86,6 +101,7 @@
 //! [`hyper`]: https://crates.io/crates/hyper
 //! [cargo features]: https://doc.rust-lang.org/cargo/reference/features.html
 //! [`AddExtension`]: crate::add_extension::AddExtension
+//! [`Service`]: https://docs.rs/tower/latest/tower/trait.Service.html
 
 #![doc(html_root_url = "https://docs.rs/tower-http/0.1.0")]
 #![warn(
