@@ -38,6 +38,10 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(test, allow(clippy::float_cmp))]
 
+#[cfg(feature = "propagate-header")]
+#[cfg_attr(docsrs, doc(cfg(feature = "propagate-header")))]
+pub mod propagate_header;
+
 #[cfg(feature = "compression")]
 #[cfg_attr(docsrs, doc(cfg(feature = "compression")))]
 pub mod compression;
@@ -45,6 +49,10 @@ pub mod compression;
 #[cfg(feature = "add-extension")]
 #[cfg_attr(docsrs, doc(cfg(feature = "add-extension")))]
 pub mod add_extension;
+
+#[cfg(feature = "sensitive-header")]
+#[cfg_attr(docsrs, doc(cfg(feature = "sensitive-header")))]
+pub mod sensitive_header;
 
 #[cfg(feature = "decompression")]
 #[cfg_attr(docsrs, doc(cfg(feature = "decompression")))]

@@ -40,11 +40,15 @@ full = [
     "compression",
     "compression-full",
     "decompression-full",
+    "propagate-header",
     "redirect",
+    "sensitive-header",
 ]
 
 add-extension = []
+propagate-header = []
 redirect = []
+sensitive-header = []
 
 compression = ["bytes", "tokio-util"]
 compression-br = ["async-compression/brotli", "compression"]
