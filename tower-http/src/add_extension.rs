@@ -1,14 +1,22 @@
+//! Middleware that clones a value into each request's [extensions].
+//!
+//! [request extensions]: https://docs.rs/http/latest/http/struct.Extensions.html
+
 use http::Request;
 use std::task::{Context, Poll};
 use tower_layer::Layer;
 use tower_service::Service;
 
+/// [`Layer`] for adding some shareable value to [request extensions].
+///
+/// [request extensions]: https://docs.rs/http/latest/http/struct.Extensions.html
 #[derive(Clone, Copy, Debug)]
 pub struct AddExtensionLayer<T> {
     value: T,
 }
 
 impl<T> AddExtensionLayer<T> {
+    /// Create a new [`AddExtensionLayer`].
     pub fn new(value: T) -> Self {
         AddExtensionLayer { value }
     }
@@ -28,6 +36,9 @@ where
     }
 }
 
+/// Middleware for adding some shareable value to [request extensions].
+///
+/// [request extensions]: https://docs.rs/http/latest/http/struct.Extensions.html
 #[derive(Clone, Copy, Debug)]
 pub struct AddExtension<S, T> {
     inner: S,
@@ -35,6 +46,11 @@ pub struct AddExtension<S, T> {
 }
 
 impl<S, T> AddExtension<S, T> {
+    /// Create a new [`AddExtension`].
+    pub fn new(inner: S, value: T) -> Self {
+        Self { inner, value }
+    }
+
     define_inner_service_accessors!();
 }
 
@@ -55,5 +71,37 @@ where
     fn call(&mut self, mut req: Request<ResBody>) -> Self::Future {
         req.extensions_mut().insert(self.value.clone());
         self.inner.call(req)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[allow(unused_imports)]
+    use super::*;
+    use http::Response;
+    use hyper::Body;
+    use std::{convert::Infallible, sync::Arc};
+    use tower::{service_fn, ServiceBuilder, ServiceExt};
+
+    struct State(i32);
+
+    #[tokio::test]
+    async fn basic() {
+        let state = Arc::new(State(1));
+
+        let svc = ServiceBuilder::new()
+            .layer(AddExtensionLayer::new(state))
+            .service(service_fn(|req: Request<Body>| async move {
+                let state = req.extensions().get::<Arc<State>>().unwrap();
+                Ok::<_, Infallible>(Response::new(state.0))
+            }));
+
+        let res = svc
+            .oneshot(Request::new(Body::empty()))
+            .await
+            .unwrap()
+            .into_body();
+
+        assert_eq!(1, res);
     }
 }
