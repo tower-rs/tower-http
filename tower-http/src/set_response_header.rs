@@ -25,7 +25,7 @@ impl<M, Res> fmt::Debug for SetResponseHeaderLayer<M, Res> {
         f.debug_struct("SetResponseHeaderLayer")
             .field("header_name", &self.header_name)
             .field("override_existing", &self.override_existing)
-            .field("make", &format_args!("{}", std::any::type_name::<M>()))
+            .field("make", &std::any::type_name::<M>())
             .finish()
     }
 }
@@ -101,7 +101,7 @@ where
             .field("inner", &self.inner)
             .field("header_name", &self.header_name)
             .field("override_existing", &self.override_existing)
-            .field("make", &format_args!("{}", std::any::type_name::<M>()))
+            .field("make", &std::any::type_name::<M>())
             .finish()
     }
 }
