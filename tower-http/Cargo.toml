@@ -41,11 +41,13 @@ full = [
     "compression-full",
     "decompression-full",
     "propagate-header",
+    "redirect",
     "sensitive-header",
 ]
-propagate-header = []
 
 add-extension = []
+propagate-header = []
+redirect = []
 sensitive-header = []
 
 compression = ["bytes", "tokio-util"]
