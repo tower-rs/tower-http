@@ -2,7 +2,7 @@
 //!
 //! # Overview
 //!
-//! tower-http is a library that provides HTTP specific middlewares and utilities built on top of
+//! `tower-http` is a library that provides HTTP-specific middlewares and utilities built on top of
 //! [tower].
 //!
 //! All middlewares uses the [http] and [http-body] crates as the HTTP abstractions. That means
