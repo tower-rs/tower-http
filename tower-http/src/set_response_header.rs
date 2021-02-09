@@ -187,3 +187,9 @@ where
         self(response)
     }
 }
+
+impl<Res> MakeHeaderValue<Res> for HeaderValue {
+    fn make_header_value(&mut self, _response: &Res) -> HeaderValue {
+        self.clone()
+    }
+}
