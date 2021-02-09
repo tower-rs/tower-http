@@ -40,8 +40,10 @@ full = [
     "compression",
     "compression-full",
     "decompression-full",
+    "propagate-header",
     "sensitive-header",
 ]
+propagate-header = []
 
 add-extension = []
 sensitive-header = []
