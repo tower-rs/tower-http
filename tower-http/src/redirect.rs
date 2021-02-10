@@ -2,7 +2,7 @@
 
 use http::{header, HeaderValue, Response, StatusCode, Uri};
 use std::{
-    convert::Infallible,
+    convert::{Infallible, TryFrom},
     fmt,
     future::Future,
     marker::PhantomData,
@@ -79,7 +79,7 @@ impl<ResBody> Redirect<ResBody> {
 
         Self {
             status_code,
-            location: HeaderValue::from_str(&uri.to_string())
+            location: HeaderValue::try_from(uri.to_string())
                 .expect("URI isn't a valid header value"),
             _marker: PhantomData,
         }
