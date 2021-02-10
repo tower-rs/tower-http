@@ -81,6 +81,8 @@ impl<S> PropagateHeader<S> {
     pub fn new(inner: S, header: HeaderName) -> Self {
         Self { inner, header }
     }
+
+    define_inner_service_accessors!();
 }
 
 impl<ReqBody, ResBody, S> Service<Request<ReqBody>> for PropagateHeader<S>

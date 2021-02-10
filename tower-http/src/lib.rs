@@ -150,6 +150,9 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(test, allow(clippy::float_cmp))]
 
+#[macro_use]
+pub(crate) mod macros;
+
 #[cfg(feature = "propagate-header")]
 #[cfg_attr(docsrs, doc(cfg(feature = "propagate-header")))]
 pub mod propagate_header;
