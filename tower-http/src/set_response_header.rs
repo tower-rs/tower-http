@@ -55,7 +55,6 @@
 
 use futures_util::ready;
 use http::{header::HeaderName, HeaderValue, Request, Response};
-use http_body::Body;
 use pin_project::pin_project;
 use std::{
     fmt,
@@ -186,7 +185,6 @@ impl<ReqBody, ResBody, S, M> Service<Request<ReqBody>> for SetResponseHeader<S, 
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
     M: MakeHeaderValue<ResBody> + Clone,
-    ResBody: Body,
 {
     type Response = S::Response;
     type Error = S::Error;
@@ -222,7 +220,6 @@ impl<F, ResBody, E, M> Future for ResponseFuture<F, M>
 where
     F: Future<Output = Result<Response<ResBody>, E>>,
     M: MakeHeaderValue<ResBody>,
-    ResBody: Body,
 {
     type Output = F::Output;
 
@@ -255,9 +252,7 @@ where
 /// can suply one directly to [`SetResponseHeaderLayer`].
 pub trait MakeHeaderValue<B> {
     /// Try to create a header value from the response.
-    fn make_header_value(&mut self, response: &Response<B>) -> Option<HeaderValue>
-    where
-        B: Body;
+    fn make_header_value(&mut self, response: &Response<B>) -> Option<HeaderValue>;
 }
 
 impl<F, B> MakeHeaderValue<B> for F
