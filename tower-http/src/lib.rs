@@ -173,8 +173,6 @@ pub mod sensitive_header;
 #[cfg_attr(docsrs, doc(cfg(feature = "decompression")))]
 pub mod decompression;
 
-#[cfg(feature = "redirect")]
-#[cfg_attr(docsrs, doc(cfg(feature = "redirect")))]
-pub mod redirect;
+pub mod services;
 
 mod accept_encoding;

@@ -22,7 +22,7 @@ use tower_service::Service;
 /// use http::{Request, Uri, StatusCode};
 /// use hyper::Body;
 /// use tower::{Service, ServiceExt};
-/// use tower_http::redirect::Redirect;
+/// use tower_http::services::Redirect;
 ///
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
