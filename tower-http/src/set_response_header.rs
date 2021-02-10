@@ -1,7 +1,61 @@
 //! Set a header on the response.
+//!
+//! # Example
+//!
+//! ```
+//! use http::{Request, Response, header::{HeaderName, HeaderValue}};
+//! use std::convert::Infallible;
+//! use tower::{Service, ServiceExt, ServiceBuilder};
+//! use tower_http::set_response_header::SetResponseHeaderLayer;
+//! use http_body::Body as _; // for `Body::size_hint`
+//! use hyper::Body;
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let echo_service = tower::service_fn(|request: Request<Body>| async move {
+//!     Ok::<_, Infallible>(Response::new(request.into_body()))
+//! });
+//!
+//! let mut svc = ServiceBuilder::new()
+//!     .layer(
+//!         // Layer that sets `Content-Type: text/html` on responses.
+//!         //
+//!         // We have to add `::<_, Body>` since Rust cannot infer the body type when
+//!         // we don't use a closure to produce the header value.
+//!         SetResponseHeaderLayer::<_, Body>::new(
+//!             HeaderName::from_static("content-type"),
+//!             HeaderValue::from_static("text/html"),
+//!         )
+//!     )
+//!     .layer(
+//!         // Layer that sets `Content-Length` if the body has a known size.
+//!         // Bodies with streaming responses wont have a known size.
+//!         SetResponseHeaderLayer::new(
+//!             HeaderName::from_static("content-length"),
+//!             |response: &Response<Body>| {
+//!                 if let Some(size) = response.body().size_hint().exact() {
+//!                     Some(HeaderValue::from_str(&size.to_string()).unwrap())
+//!                 } else {
+//!                     None
+//!                 }
+//!             }
+//!         )
+//!     )
+//!     .service(echo_service);
+//!
+//! let request = Request::new(Body::from("<strong>Hello, World</strong>"));
+//!
+//! let response = svc.ready_and().await?.call(request).await?;
+//!
+//! assert_eq!(response.headers()["content-type"], "text/html");
+//! assert_eq!(response.headers()["content-length"], "29");
+//! #
+//! # Ok(())
+//! # }
 
 use futures_util::ready;
 use http::{header::HeaderName, HeaderValue, Request, Response};
+use http_body::Body;
 use pin_project::pin_project;
 use std::{
     fmt,
@@ -13,14 +67,16 @@ use tower_layer::Layer;
 use tower_service::Service;
 
 /// Layer that applies [`SetResponseHeader`] which adds a response header.
-pub struct SetResponseHeaderLayer<M, Res> {
+///
+/// See [`SetResponseHeader`] for more details.
+pub struct SetResponseHeaderLayer<M, B> {
     header_name: HeaderName,
     make: M,
     override_existing: bool,
-    _marker: PhantomData<fn() -> Res>,
+    _marker: PhantomData<fn() -> B>,
 }
 
-impl<M, Res> fmt::Debug for SetResponseHeaderLayer<M, Res> {
+impl<M, B> fmt::Debug for SetResponseHeaderLayer<M, B> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SetResponseHeaderLayer")
             .field("header_name", &self.header_name)
@@ -30,11 +86,11 @@ impl<M, Res> fmt::Debug for SetResponseHeaderLayer<M, Res> {
     }
 }
 
-impl<M, Res> SetResponseHeaderLayer<M, Res> {
+impl<M, B> SetResponseHeaderLayer<M, B> {
     /// Create a new [`SetResponseHeaderLayer`].
     pub fn new(header_name: HeaderName, make: M) -> Self
     where
-        M: MakeHeaderValue<Res>,
+        M: MakeHeaderValue<B>,
     {
         Self {
             make,
@@ -53,9 +109,9 @@ impl<M, Res> SetResponseHeaderLayer<M, Res> {
     }
 }
 
-impl<Res, S, M> Layer<S> for SetResponseHeaderLayer<M, Res>
+impl<B, S, M> Layer<S> for SetResponseHeaderLayer<M, B>
 where
-    M: MakeHeaderValue<Res> + Clone,
+    M: MakeHeaderValue<B> + Clone,
 {
     type Service = SetResponseHeader<S, M>;
 
@@ -69,7 +125,7 @@ where
     }
 }
 
-impl<M, Res> Clone for SetResponseHeaderLayer<M, Res>
+impl<M, B> Clone for SetResponseHeaderLayer<M, B>
 where
     M: Clone,
 {
@@ -92,6 +148,26 @@ pub struct SetResponseHeader<S, M> {
     override_existing: bool,
 }
 
+impl<S, M> SetResponseHeader<S, M> {
+    /// Create a new [`SetResponseHeader`].
+    pub fn new(inner: S, header_name: HeaderName, make: M) -> Self {
+        Self {
+            inner,
+            header_name,
+            make,
+            override_existing: true,
+        }
+    }
+
+    /// Should the header be overriden if the response already contains it?
+    ///
+    /// Defaults to `true`.
+    pub fn override_existing(mut self, override_existing: bool) -> Self {
+        self.override_existing = override_existing;
+        self
+    }
+}
+
 impl<S, M> fmt::Debug for SetResponseHeader<S, M>
 where
     S: fmt::Debug,
@@ -109,7 +185,8 @@ where
 impl<ReqBody, ResBody, S, M> Service<Request<ReqBody>> for SetResponseHeader<S, M>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
-    M: MakeHeaderValue<S::Response> + Clone,
+    M: MakeHeaderValue<ResBody> + Clone,
+    ResBody: Body,
 {
     type Response = S::Response;
     type Error = S::Error;
@@ -144,7 +221,8 @@ pub struct ResponseFuture<F, M> {
 impl<F, ResBody, E, M> Future for ResponseFuture<F, M>
 where
     F: Future<Output = Result<Response<ResBody>, E>>,
-    M: MakeHeaderValue<Response<ResBody>>,
+    M: MakeHeaderValue<ResBody>,
+    ResBody: Body,
 {
     type Output = F::Output;
 
@@ -152,14 +230,14 @@ where
         let this = self.project();
         let mut res = ready!(this.future.poll(cx)?);
 
-        let value = this.make.make_header_value(&res);
-
-        if res.headers().contains_key(&*this.header_name) {
-            if *this.override_existing {
+        if let Some(value) = this.make.make_header_value(&res) {
+            if res.headers().contains_key(&*this.header_name) {
+                if *this.override_existing {
+                    res.headers_mut().insert(this.header_name.clone(), value);
+                }
+            } else {
                 res.headers_mut().insert(this.header_name.clone(), value);
             }
-        } else {
-            res.headers_mut().insert(this.header_name.clone(), value);
         }
 
         Poll::Ready(Ok(res))
@@ -175,21 +253,24 @@ where
 ///
 /// It is also implemented directly for `HeaderValue` so if you just want to add a fixed value you
 /// can suply one directly to [`SetResponseHeaderLayer`].
-pub trait MakeHeaderValue<Res> {
-    fn make_header_value(&mut self, response: &Res) -> HeaderValue;
+pub trait MakeHeaderValue<B> {
+    /// Try to create a header value from the response.
+    fn make_header_value(&mut self, response: &Response<B>) -> Option<HeaderValue>
+    where
+        B: Body;
 }
 
-impl<F, Res> MakeHeaderValue<Res> for F
+impl<F, B> MakeHeaderValue<B> for F
 where
-    F: FnMut(&Res) -> HeaderValue,
+    F: FnMut(&Response<B>) -> Option<HeaderValue>,
 {
-    fn make_header_value(&mut self, response: &Res) -> HeaderValue {
+    fn make_header_value(&mut self, response: &Response<B>) -> Option<HeaderValue> {
         self(response)
     }
 }
 
-impl<Res> MakeHeaderValue<Res> for HeaderValue {
-    fn make_header_value(&mut self, _response: &Res) -> HeaderValue {
-        self.clone()
+impl<B> MakeHeaderValue<B> for HeaderValue {
+    fn make_header_value(&mut self, _response: &Response<B>) -> Option<HeaderValue> {
+        Some(self.clone())
     }
 }

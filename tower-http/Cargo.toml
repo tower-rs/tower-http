@@ -47,7 +47,6 @@ full = [
 ]
 
 add-extension = []
-add-extension = []
 propagate-header = []
 redirect = []
 sensitive-header = []
