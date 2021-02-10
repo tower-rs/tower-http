@@ -11,7 +11,7 @@ pub trait ClassifyResponse {
     /// This could be an HTTP status code or some other kind of status.
     type Output;
 
-    /// The type used to classify the end of streaming responses.
+    /// The type used to classify the end of streaming (Eos) responses.
     type ClassifyEos: ClassifyEos<Output = Self::Output>;
 
     /// Perform the classification.
@@ -23,7 +23,7 @@ pub trait ClassifyResponse {
         B: Body;
 }
 
-/// Trait for classifying end of streams as either success or failure.
+/// Trait for classifying end of streams ("Eos") as either success or failure.
 pub trait ClassifyEos {
     /// The output of doing the classification.
     ///
