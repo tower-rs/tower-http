@@ -16,4 +16,3 @@ macro_rules! define_inner_service_accessors {
         }
     };
 }
-
