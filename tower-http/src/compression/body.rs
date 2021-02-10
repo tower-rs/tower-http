@@ -159,7 +159,7 @@ where
 
         parts.headers.insert(
             header::CONTENT_ENCODING,
-            HeaderValue::from_str(encoding.to_str()).unwrap(),
+            HeaderValue::from_static(encoding.to_str()),
         );
 
         http::Response::from_parts(parts, body)
