@@ -29,7 +29,7 @@ tokio-util = { version = "0.6", optional = true, default_features = false, featu
 
 [dev-dependencies]
 futures = "0.3"
-hyper = "0.14"
+hyper = { version = "0.14", features = ["full"] }
 tower = { version = "0.4", features = ["util"] }
 tokio = { version = "1", features = ["full"] }
 
@@ -40,10 +40,17 @@ full = [
     "compression",
     "compression-full",
     "decompression-full",
+    "propagate-header",
+    "redirect",
+    "sensitive-header",
     "set-response-header",
 ]
 
 add-extension = []
+add-extension = []
+propagate-header = []
+redirect = []
+sensitive-header = []
 set-response-header = []
 
 compression = ["bytes", "tokio-util"]
