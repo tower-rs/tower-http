@@ -222,7 +222,7 @@ where
 impl<ReqBody, ResBody, S, M> Service<Request<ReqBody>> for SetResponseHeader<S, M>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
-    M: MakeHeaderValue<ResBody> + Clone,
+    M: MakeHeaderValue<Response<ResBody>> + Clone,
 {
     type Response = S::Response;
     type Error = S::Error;
@@ -257,7 +257,7 @@ pub struct ResponseFuture<F, M> {
 impl<F, ResBody, E, M> Future for ResponseFuture<F, M>
 where
     F: Future<Output = Result<Response<ResBody>, E>>,
-    M: MakeHeaderValue<ResBody>,
+    M: MakeHeaderValue<Response<ResBody>>,
 {
     type Output = F::Output;
 
@@ -279,7 +279,7 @@ where
     }
 }
 
-/// Trait for producing header values from responses.
+/// Trait for producing header values.
 ///
 /// Used by [`SetResponseHeader`].
 ///
@@ -291,28 +291,28 @@ where
 /// [`SetResponseHeaderLayer`].
 ///
 /// [`HeaderValue`]: https://docs.rs/http/0.2.3/http/header/struct.HeaderValue.html
-pub trait MakeHeaderValue<B> {
-    /// Try to create a header value from the response.
-    fn make_header_value(&mut self, response: &Response<B>) -> Option<HeaderValue>;
+pub trait MakeHeaderValue<T> {
+    /// Try to create a header value from the request or response.
+    fn make_header_value(&mut self, message: &T) -> Option<HeaderValue>;
 }
 
-impl<F, B> MakeHeaderValue<B> for F
+impl<F, T> MakeHeaderValue<T> for F
 where
-    F: FnMut(&Response<B>) -> Option<HeaderValue>,
+    F: FnMut(&T) -> Option<HeaderValue>,
 {
-    fn make_header_value(&mut self, response: &Response<B>) -> Option<HeaderValue> {
-        self(response)
+    fn make_header_value(&mut self, message: &T) -> Option<HeaderValue> {
+        self(message)
     }
 }
 
-impl<B> MakeHeaderValue<B> for HeaderValue {
-    fn make_header_value(&mut self, _response: &Response<B>) -> Option<HeaderValue> {
+impl<T> MakeHeaderValue<T> for HeaderValue {
+    fn make_header_value(&mut self, _message: &T) -> Option<HeaderValue> {
         Some(self.clone())
     }
 }
 
-impl<B> MakeHeaderValue<B> for Option<HeaderValue> {
-    fn make_header_value(&mut self, _response: &Response<B>) -> Option<HeaderValue> {
+impl<T> MakeHeaderValue<T> for Option<HeaderValue> {
+    fn make_header_value(&mut self, _message: &T) -> Option<HeaderValue> {
         self.clone()
     }
 }
