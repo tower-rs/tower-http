@@ -1,5 +1,9 @@
 //! Set a header on the response.
 //!
+//! The header value to be set may be provided as a fixed value when the
+//! middleware is constructed, or determined dynamically based on the response
+//! by a closure. See the [`MakeHeaderValue`] trait for details.
+//!
 //! # Example
 //!
 //! ```
@@ -23,7 +27,7 @@
 //!         // We have to add `::<_, Body>` since Rust cannot infer the body type when
 //!         // we don't use a closure to produce the header value.
 //!         SetResponseHeaderLayer::<_, Body>::new(
-//!             HeaderName::from_static("content-type"),
+//!             http::header::CONTENT_TYPE,
 //!             HeaderValue::from_static("text/html"),
 //!         )
 //!     )
@@ -31,11 +35,15 @@
 //!         // Layer that sets `Content-Length` if the body has a known size.
 //!         // Bodies with streaming responses wont have a known size.
 //!         SetResponseHeaderLayer::new(
-//!             HeaderName::from_static("content-length"),
+//!             http::header::CONTENT_LENGTH,
 //!             |response: &Response<Body>| {
 //!                 if let Some(size) = response.body().size_hint().exact() {
+//!                     // If the response body has a known size, returning `Some` will
+//!                     // set the `Content-Length` header to that value.
 //!                     Some(HeaderValue::from_str(&size.to_string()).unwrap())
 //!                 } else {
+//!                     // If the response body doesn't have a known size, return `None`
+//!                     // to skip setting the header on this response.
 //!                     None
 //!                 }
 //!             }
@@ -99,7 +107,9 @@ impl<M, B> SetResponseHeaderLayer<M, B> {
         }
     }
 
-    /// Should the header be overriden if the response already contains it?
+    /// Sets whether the header value is overriden if the response already contains it.
+    /// 
+    /// If this is `false`, the header will only be added if it is not already present.
     ///
     /// Defaults to `true`.
     pub fn override_existing(mut self, override_existing: bool) -> Self {
@@ -245,11 +255,14 @@ where
 ///
 /// Used by [`SetResponseHeader`].
 ///
-/// You shouldn't normally have to implement this trait since its implemented for closures with the
-/// correct type.
+/// This trait is implemented for closures with the correct type signature. Typically
+/// users will not have to implement this trait for their own types.
 ///
-/// It is also implemented directly for `HeaderValue` so if you just want to add a fixed value you
-/// can suply one directly to [`SetResponseHeaderLayer`].
+/// It is also implemented directly for [`HeaderValue`]. When a fixed header value
+/// should be added to all responses, it can be  supplied directly to 
+/// [`SetResponseHeaderLayer`].
+///
+/// [`HeaderValue`]: https://docs.rs/http/0.2.3/http/header/struct.HeaderValue.html
 pub trait MakeHeaderValue<B> {
     /// Try to create a header value from the response.
     fn make_header_value(&mut self, response: &Response<B>) -> Option<HeaderValue>;
@@ -267,5 +280,11 @@ where
 impl<B> MakeHeaderValue<B> for HeaderValue {
     fn make_header_value(&mut self, _response: &Response<B>) -> Option<HeaderValue> {
         Some(self.clone())
+    }
+}
+
+impl<B> MakeHeaderValue<B> for Option<HeaderValue> {
+    fn make_header_value(&mut self, _response: &Response<B>) -> Option<HeaderValue> {
+        self.clone()
     }
 }
