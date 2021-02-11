@@ -6,20 +6,20 @@
 //!
 //! # Example
 //!
+//! Setting a header from a fixed value provided when the middleware is constructed:
+//!
 //! ```
-//! use http::{Request, Response, header::{HeaderName, HeaderValue}};
-//! use std::convert::Infallible;
+//! use http::{Request, Response, header::{self, HeaderValue}};
 //! use tower::{Service, ServiceExt, ServiceBuilder};
 //! use tower_http::set_response_header::SetResponseHeaderLayer;
-//! use http_body::Body as _; // for `Body::size_hint`
 //! use hyper::Body;
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let echo_service = tower::service_fn(|request: Request<Body>| async move {
-//!     Ok::<_, Infallible>(Response::new(request.into_body()))
-//! });
-//!
+//! # let render_html = tower::service_fn(|request: Request<Body>| async move {
+//! #     Ok::<_, std::convert::Infallible>(Response::new(request.into_body()))
+//! # });
+//! #
 //! let mut svc = ServiceBuilder::new()
 //!     .layer(
 //!         // Layer that sets `Content-Type: text/html` on responses.
@@ -27,10 +27,38 @@
 //!         // We have to add `::<_, Body>` since Rust cannot infer the body type when
 //!         // we don't use a closure to produce the header value.
 //!         SetResponseHeaderLayer::<_, Body>::new(
-//!             http::header::CONTENT_TYPE,
+//!             header::CONTENT_TYPE,
 //!             HeaderValue::from_static("text/html"),
 //!         )
 //!     )
+//!     .service(render_html);
+//!
+//! let request = Request::new(Body::empty());
+//!
+//! let response = svc.ready_and().await?.call(request).await?;
+//!
+//! assert_eq!(response.headers()["content-type"], "text/html");
+//! #
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! Setting a header based on a value determined dynamically from the response:
+//!
+//! ```
+//! use http::{Request, Response, header::{self, HeaderValue}};
+//! use tower::{Service, ServiceExt, ServiceBuilder};
+//! use tower_http::set_response_header::SetResponseHeaderLayer;
+//! use hyper::Body;
+//! use http_body::Body as _; // for `Body::size_hint`
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # let render_html = tower::service_fn(|request: Request<Body>| async move {
+//! #     Ok::<_, std::convert::Infallible>(Response::new(Body::from("1234567890")))
+//! # });
+//! #
+//! let mut svc = ServiceBuilder::new()
 //!     .layer(
 //!         // Layer that sets `Content-Length` if the body has a known size.
 //!         // Bodies with streaming responses wont have a known size.
@@ -49,17 +77,17 @@
 //!             }
 //!         )
 //!     )
-//!     .service(echo_service);
+//!     .service(render_html);
 //!
-//! let request = Request::new(Body::from("<strong>Hello, World</strong>"));
+//! let request = Request::new(Body::empty());
 //!
 //! let response = svc.ready_and().await?.call(request).await?;
 //!
-//! assert_eq!(response.headers()["content-type"], "text/html");
-//! assert_eq!(response.headers()["content-length"], "29");
+//! assert_eq!(response.headers()["content-length"], "10");
 //! #
 //! # Ok(())
 //! # }
+//! ```
 
 use futures_util::ready;
 use http::{header::HeaderName, HeaderValue, Request, Response};
@@ -108,7 +136,7 @@ impl<M, B> SetResponseHeaderLayer<M, B> {
     }
 
     /// Sets whether the header value is overriden if the response already contains it.
-    /// 
+    ///
     /// If this is `false`, the header will only be added if it is not already present.
     ///
     /// Defaults to `true`.
@@ -259,7 +287,7 @@ where
 /// users will not have to implement this trait for their own types.
 ///
 /// It is also implemented directly for [`HeaderValue`]. When a fixed header value
-/// should be added to all responses, it can be  supplied directly to 
+/// should be added to all responses, it can be  supplied directly to
 /// [`SetResponseHeaderLayer`].
 ///
 /// [`HeaderValue`]: https://docs.rs/http/0.2.3/http/header/struct.HeaderValue.html

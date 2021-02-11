@@ -25,7 +25,6 @@ These are the middlewares included in this crate:
 - `SetResponseHeader`: Set a header on the response.
 - `SetSensitiveRequestHeader`: Marks a given request header as [sensitive].
 - `SetSensitiveResponseHeader`: Marks a given response header as [sensitive].
-- `SetSensitiveeHeader`: Mark a header as [sensitive] on both requests and responses.
 
 Middlewares uses the [`http`] crate as the HTTP interface so they're compatible with any library or framework that also uses [`http`]. For example hyper and actix.
 
@@ -36,3 +35,4 @@ All middlewares are disabled by default and can be enabled using a cargo feature
 [`http`]: https://crates.io/crates/http
 [@EmbarkStudios]: https://github.com/EmbarkStudios
 [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
+[request extensions]: https://docs.rs/http/latest/http/struct.Extensions.html
