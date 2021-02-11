@@ -311,8 +311,6 @@ where
 /// It is also implemented directly for [`HeaderValue`]. When a fixed header value
 /// should be added to all responses, it can be  supplied directly to
 /// [`SetResponseHeaderLayer`].
-///
-/// [`HeaderValue`]: https://docs.rs/http/0.2.3/http/header/struct.HeaderValue.html
 pub trait MakeHeaderValue<T> {
     /// Try to create a header value from the request or response.
     fn make_header_value(&mut self, message: &T) -> Option<HeaderValue>;
