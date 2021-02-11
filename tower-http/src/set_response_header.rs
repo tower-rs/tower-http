@@ -222,7 +222,7 @@ where
     S: fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SetResponseHeaderLayer")
+        f.debug_struct("SetResponseHeader")
             .field("inner", &self.inner)
             .field("header_name", &self.header_name)
             .field("mode", &self.mode)
