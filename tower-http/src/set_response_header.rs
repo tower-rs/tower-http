@@ -11,7 +11,7 @@
 //! ```
 //! use http::{Request, Response, header::{self, HeaderValue}};
 //! use tower::{Service, ServiceExt, ServiceBuilder};
-//! use tower_http::set_response_header::SetResponseHeaderLayer;
+//! use tower_http::set_response_header::{SetResponseHeaderLayer, InsertHeaderMode};
 //! use hyper::Body;
 //!
 //! # #[tokio::main]
@@ -30,6 +30,8 @@
 //!             header::CONTENT_TYPE,
 //!             HeaderValue::from_static("text/html"),
 //!         )
+//!         // Don't insert the header if it is already present.
+//!         .mode(InsertHeaderMode::SkipIfPresent)
 //!     )
 //!     .service(render_html);
 //!
@@ -107,7 +109,7 @@ use tower_service::Service;
 pub struct SetResponseHeaderLayer<M, B> {
     header_name: HeaderName,
     make: M,
-    override_existing: bool,
+    mode: InsertHeaderMode,
     _marker: PhantomData<fn() -> B>,
 }
 
@@ -115,7 +117,7 @@ impl<M, B> fmt::Debug for SetResponseHeaderLayer<M, B> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SetResponseHeaderLayer")
             .field("header_name", &self.header_name)
-            .field("override_existing", &self.override_existing)
+            .field("mode", &self.mode)
             .field("make", &std::any::type_name::<M>())
             .finish()
     }
@@ -130,20 +132,30 @@ impl<M, B> SetResponseHeaderLayer<M, B> {
         Self {
             make,
             header_name,
-            override_existing: true,
+            mode: InsertHeaderMode::OverrideExisting,
             _marker: PhantomData,
         }
     }
 
-    /// Sets whether the header value is overriden if the response already contains it.
+    /// Set which mode to use when inserting the header.
     ///
-    /// If this is `false`, the header will only be added if it is not already present.
-    ///
-    /// Defaults to `true`.
-    pub fn override_existing(mut self, override_existing: bool) -> Self {
-        self.override_existing = override_existing;
+    /// Defaults to [`InsertHeaderMode::OverrideExisting`].
+    pub fn mode(mut self, mode: InsertHeaderMode) -> Self {
+        self.mode = mode;
         self
     }
+}
+
+/// The mode to use when inserting a header into a request or response.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub enum InsertHeaderMode {
+    /// Insert the header, overriding any previous values the header might have.
+    OverrideExisting,
+    /// Append the header and keep any previous values.
+    Append,
+    /// Insert the header only if it is not already present.
+    SkipIfPresent,
 }
 
 impl<B, S, M> Layer<S> for SetResponseHeaderLayer<M, B>
@@ -157,7 +169,7 @@ where
             inner,
             header_name: self.header_name.clone(),
             make: self.make.clone(),
-            override_existing: self.override_existing,
+            mode: self.mode.clone(),
         }
     }
 }
@@ -170,7 +182,7 @@ where
         Self {
             make: self.make.clone(),
             header_name: self.header_name.clone(),
-            override_existing: self.override_existing,
+            mode: self.mode.clone(),
             _marker: PhantomData,
         }
     }
@@ -182,7 +194,7 @@ pub struct SetResponseHeader<S, M> {
     inner: S,
     header_name: HeaderName,
     make: M,
-    override_existing: bool,
+    mode: InsertHeaderMode,
 }
 
 impl<S, M> SetResponseHeader<S, M> {
@@ -192,15 +204,15 @@ impl<S, M> SetResponseHeader<S, M> {
             inner,
             header_name,
             make,
-            override_existing: true,
+            mode: InsertHeaderMode::OverrideExisting,
         }
     }
 
-    /// Should the header be overriden if the response already contains it?
+    /// Set which mode to use when inserting the header.
     ///
-    /// Defaults to `true`.
-    pub fn override_existing(mut self, override_existing: bool) -> Self {
-        self.override_existing = override_existing;
+    /// Defaults to [`InsertHeaderMode::OverrideExisting`].
+    pub fn mode(mut self, mode: InsertHeaderMode) -> Self {
+        self.mode = mode;
         self
     }
 }
@@ -213,7 +225,7 @@ where
         f.debug_struct("SetResponseHeaderLayer")
             .field("inner", &self.inner)
             .field("header_name", &self.header_name)
-            .field("override_existing", &self.override_existing)
+            .field("mode", &self.mode)
             .field("make", &std::any::type_name::<M>())
             .finish()
     }
@@ -238,7 +250,7 @@ where
             future: self.inner.call(req),
             header_name: self.header_name.clone(),
             make: self.make.clone(),
-            override_existing: self.override_existing,
+            mode: self.mode.clone(),
         }
     }
 }
@@ -251,7 +263,7 @@ pub struct ResponseFuture<F, M> {
     future: F,
     header_name: HeaderName,
     make: M,
-    override_existing: bool,
+    mode: InsertHeaderMode,
 }
 
 impl<F, ResBody, E, M> Future for ResponseFuture<F, M>
@@ -265,13 +277,23 @@ where
         let this = self.project();
         let mut res = ready!(this.future.poll(cx)?);
 
-        if let Some(value) = this.make.make_header_value(&res) {
-            if res.headers().contains_key(&*this.header_name) {
-                if *this.override_existing {
+        match *this.mode {
+            InsertHeaderMode::OverrideExisting => {
+                if let Some(value) = this.make.make_header_value(&res) {
                     res.headers_mut().insert(this.header_name.clone(), value);
                 }
-            } else {
-                res.headers_mut().insert(this.header_name.clone(), value);
+            }
+            InsertHeaderMode::SkipIfPresent => {
+                if !res.headers().contains_key(&*this.header_name) {
+                    if let Some(value) = this.make.make_header_value(&res) {
+                        res.headers_mut().insert(this.header_name.clone(), value);
+                    }
+                }
+            }
+            InsertHeaderMode::Append => {
+                if let Some(value) = this.make.make_header_value(&res) {
+                    res.headers_mut().insert(this.header_name.clone(), value);
+                }
             }
         }
 
