@@ -84,6 +84,8 @@ use tower_layer::Layer;
 use tower_service::Service;
 
 /// Apply a transformation to the response body.
+///
+/// See the [module docs](crate::map_response_body) for an example.
 #[derive(Clone)]
 pub struct MapResponseBodyLayer<F> {
     f: F,
@@ -93,8 +95,6 @@ impl<F> MapResponseBodyLayer<F> {
     /// Create a new [`MapResponseBodyLayer`].
     ///
     /// `F` is expected to be a function that takes a body and returns another body.
-    ///
-    /// See the [module docs](crate::map_response_body) for an example.
     pub fn new(f: F) -> Self {
         Self { f }
     }
@@ -120,6 +120,8 @@ impl<F> fmt::Debug for MapResponseBodyLayer<F> {
 }
 
 /// Apply a transformation to the response body.
+///
+/// See the [module docs](crate::map_response_body) for an example.
 #[derive(Clone)]
 pub struct MapResponseBody<S, F> {
     inner: S,
@@ -130,8 +132,6 @@ impl<S, F> MapResponseBody<S, F> {
     /// Create a new [`MapResponseBody`].
     ///
     /// `F` is expected to be a function that takes a body and returns another body.
-    ///
-    /// See the [module docs](crate::map_response_body) for an example.
     pub fn new(service: S, f: F) -> Self {
         Self { inner: service, f }
     }
