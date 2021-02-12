@@ -40,6 +40,7 @@ full = [
     "compression",
     "compression-full",
     "decompression-full",
+    "map-response-body",
     "propagate-header",
     "redirect",
     "sensitive-header",
@@ -49,6 +50,7 @@ add-extension = []
 propagate-header = []
 redirect = []
 sensitive-header = []
+map-response-body = []
 
 compression = ["bytes", "tokio-util"]
 compression-br = ["async-compression/brotli", "compression"]
