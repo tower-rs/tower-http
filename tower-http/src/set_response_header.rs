@@ -231,9 +231,9 @@ where
     }
 }
 
-impl<ReqBody, ResBody, S, M> Service<Request<ReqBody>> for SetResponseHeader<S, M>
+impl<Req, ResBody, S, M> Service<Req> for SetResponseHeader<S, M>
 where
-    S: Service<Request<ReqBody>, Response = Response<ResBody>>,
+    S: Service<Req, Response = Response<ResBody>>,
     M: MakeHeaderValue<Response<ResBody>> + Clone,
 {
     type Response = S::Response;
@@ -245,7 +245,7 @@ where
         self.inner.poll_ready(cx)
     }
 
-    fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
+    fn call(&mut self, req: Req) -> Self::Future {
         ResponseFuture {
             future: self.inner.call(req),
             header_name: self.header_name.clone(),
