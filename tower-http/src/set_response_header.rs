@@ -106,14 +106,14 @@ use tower_service::Service;
 /// Layer that applies [`SetResponseHeader`] which adds a response header.
 ///
 /// See [`SetResponseHeader`] for more details.
-pub struct SetResponseHeaderLayer<M, B> {
+pub struct SetResponseHeaderLayer<M, T> {
     header_name: HeaderName,
     make: M,
     mode: InsertHeaderMode,
-    _marker: PhantomData<fn() -> B>,
+    _marker: PhantomData<fn() -> T>,
 }
 
-impl<M, B> fmt::Debug for SetResponseHeaderLayer<M, B> {
+impl<M, T> fmt::Debug for SetResponseHeaderLayer<M, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SetResponseHeaderLayer")
             .field("header_name", &self.header_name)
@@ -123,11 +123,11 @@ impl<M, B> fmt::Debug for SetResponseHeaderLayer<M, B> {
     }
 }
 
-impl<M, B> SetResponseHeaderLayer<M, B> {
+impl<M, T> SetResponseHeaderLayer<M, T> {
     /// Create a new [`SetResponseHeaderLayer`].
     pub fn new(header_name: HeaderName, make: M) -> Self
     where
-        M: MakeHeaderValue<B>,
+        M: MakeHeaderValue<T>,
     {
         Self {
             make,
@@ -158,9 +158,9 @@ pub enum InsertHeaderMode {
     SkipIfPresent,
 }
 
-impl<B, S, M> Layer<S> for SetResponseHeaderLayer<M, B>
+impl<T, S, M> Layer<S> for SetResponseHeaderLayer<M, T>
 where
-    M: MakeHeaderValue<B> + Clone,
+    M: MakeHeaderValue<T> + Clone,
 {
     type Service = SetResponseHeader<S, M>;
 
@@ -174,7 +174,7 @@ where
     }
 }
 
-impl<M, B> Clone for SetResponseHeaderLayer<M, B>
+impl<M, T> Clone for SetResponseHeaderLayer<M, T>
 where
     M: Clone,
 {
