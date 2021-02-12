@@ -84,7 +84,7 @@ impl<S> PropagateHeader<S> {
 
     define_inner_service_accessors!();
 
-    /// Returns a new [`Layer`] that wraps services with a `PropagateHeaderLayer` middleware.
+    /// Returns a new [`Layer`] that wraps services with a `PropagateHeader` middleware.
     ///
     /// [`Layer`]: tower_layer::Layer
     pub fn layer(header: HeaderName) -> PropagateHeaderLayer {

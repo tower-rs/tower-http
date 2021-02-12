@@ -166,7 +166,7 @@ impl<S> SetSensitiveResponseHeader<S> {
 
     define_inner_service_accessors!();
 
-    /// Returns a new [`Layer`] that wraps services with a `SetSensitiveResponseHeaderLayer` middleware.
+    /// Returns a new [`Layer`] that wraps services with a `SetSensitiveResponseHeader` middleware.
     ///
     /// [`Layer`]: tower_layer::Layer
     pub fn layer(header: HeaderName) -> SetSensitiveResponseHeaderLayer {
