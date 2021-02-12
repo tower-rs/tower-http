@@ -40,12 +40,16 @@ full = [
     "compression",
     "compression-full",
     "decompression-full",
+    "map-request-body",
+    "map-response-body",
     "propagate-header",
     "redirect",
     "sensitive-header",
 ]
 
 add-extension = []
+map-request-body = []
+map-response-body = []
 propagate-header = []
 redirect = []
 sensitive-header = []

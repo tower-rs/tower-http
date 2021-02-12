@@ -173,6 +173,14 @@ pub mod sensitive_header;
 #[cfg_attr(docsrs, doc(cfg(feature = "decompression")))]
 pub mod decompression;
 
+#[cfg(feature = "map-response-body")]
+#[cfg_attr(docsrs, doc(cfg(feature = "map-response-body")))]
+pub mod map_response_body;
+
+#[cfg(feature = "map-request-body")]
+#[cfg_attr(docsrs, doc(cfg(feature = "map-request-body")))]
+pub mod map_request_body;
+
 pub mod services;
 
 mod accept_encoding;

@@ -20,6 +20,8 @@ These are the middlewares included in this crate:
 - `AddExtension`: Stick some shareable value in [request extensions].
 - `Compression`: Compression response bodies.
 - `Decompression`: Decompress response bodies.
+- `MapRequestBody`: Apply a transformation to the request body.
+- `MapResponseBody`: Apply a transformation to the response body.
 - `PropagateHeader`: Propagate a header from the request to the response.
 - `SensitiveHeader`: Marks a given header as [sensitive] so it wont show up in logs.
 - `SetSensitiveRequestHeader`: Marks a given request header as [sensitive].
