@@ -215,6 +215,18 @@ impl<S, M> SetResponseHeader<S, M> {
         self.mode = mode;
         self
     }
+
+    define_inner_service_accessors!();
+
+    /// Returns a new [`Layer`] that wraps services with a `SetResponseHeaderLayer` middleware.
+    ///
+    /// [`Layer`]: tower_layer::Layer
+    pub fn layer<T>(header_name: HeaderName, make: M) -> SetResponseHeaderLayer<M, T>
+    where
+        M: MakeHeaderValue<T>,
+    {
+        SetResponseHeaderLayer::new(header_name, make)
+    }
 }
 
 impl<S, M> fmt::Debug for SetResponseHeader<S, M>
