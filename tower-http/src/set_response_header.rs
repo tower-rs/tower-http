@@ -125,11 +125,13 @@ impl<M, T> fmt::Debug for SetResponseHeaderLayer<M, T> {
 
 impl<M, T> SetResponseHeaderLayer<M, T> {
     /// Create a new [`SetResponseHeaderLayer`].
-    /// 
+    ///
     /// By default, the layer will construct services configured with
-    /// [`InsertHeaderMode::OverrideExisting`]. This will replace any
+    /// [`InsertHeaderMode::Override`]. This will replace any
     /// previously set values for that header. This behavior can be
     /// changed using the [`mode`] method.
+    ///
+    /// [`mode`]: SetResponseHeaderLayer::mode
     pub fn new(header_name: HeaderName, make: M) -> Self
     where
         M: MakeHeaderValue<T>,
@@ -137,7 +139,7 @@ impl<M, T> SetResponseHeaderLayer<M, T> {
         Self {
             make,
             header_name,
-            mode: InsertHeaderMode::OverrideExisting,
+            mode: InsertHeaderMode::default(),
             _marker: PhantomData,
         }
     }
@@ -148,7 +150,7 @@ impl<M, T> SetResponseHeaderLayer<M, T> {
     /// behavior when other values have previously been set for the same
     /// header. The available options are:
     ///
-    /// - `InsertHeaderMode::OverrideExisting` (the default): if a previous
+    /// - `InsertHeaderMode::Override` (the default): if a previous
     ///   value exists for the same header, it is removed and replaced with
     ///   the new header value.
     /// - `InsertHeaderMode::SkipIfPresent`: if a previous value exists for
@@ -157,7 +159,7 @@ impl<M, T> SetResponseHeaderLayer<M, T> {
     ///   preserving any existing values. If previous values exist, the header
     ///   will have multiple values.
     ///
-    /// Defaults to [`InsertHeaderMode::OverrideExisting`].
+    /// Defaults to [`InsertHeaderMode::Override`].
     pub fn mode(mut self, mode: InsertHeaderMode) -> Self {
         self.mode = mode;
         self
@@ -165,15 +167,21 @@ impl<M, T> SetResponseHeaderLayer<M, T> {
 }
 
 /// The mode to use when inserting a header into a request or response.
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum InsertHeaderMode {
     /// Insert the header, overriding any previous values the header might have.
-    OverrideExisting,
+    Override,
     /// Append the header and keep any previous values.
     Append,
     /// Insert the header only if it is not already present.
     SkipIfPresent,
+}
+
+impl Default for InsertHeaderMode {
+    fn default() -> Self {
+        Self::Override
+    }
 }
 
 impl<T, S, M> Layer<S> for SetResponseHeaderLayer<M, T>
@@ -187,7 +195,7 @@ where
             inner,
             header_name: self.header_name.clone(),
             make: self.make.clone(),
-            mode: self.mode.clone(),
+            mode: self.mode,
         }
     }
 }
@@ -200,7 +208,7 @@ where
         Self {
             make: self.make.clone(),
             header_name: self.header_name.clone(),
-            mode: self.mode.clone(),
+            mode: self.mode,
             _marker: PhantomData,
         }
     }
@@ -219,15 +227,17 @@ impl<S, M> SetResponseHeader<S, M> {
     /// Create a new [`SetResponseHeader`].
     ///
     /// By default, the layer will construct services configured with
-    /// [`InsertHeaderMode::OverrideExisting`]. This will replace any
+    /// [`InsertHeaderMode::Override`]. This will replace any
     /// previously set values for that header. This behavior can be
     /// changed using the [`mode`] method.
+    ///
+    /// [`mode`]: SetResponseHeader::mode
     pub fn new(inner: S, header_name: HeaderName, make: M) -> Self {
         Self {
             inner,
             header_name,
             make,
-            mode: InsertHeaderMode::OverrideExisting,
+            mode: InsertHeaderMode::default(),
         }
     }
 
@@ -237,7 +247,7 @@ impl<S, M> SetResponseHeader<S, M> {
     /// behavior when other values have previously been set for the same
     /// header. The available options are:
     ///
-    /// - `InsertHeaderMode::OverrideExisting` (the default): if a previous
+    /// - `InsertHeaderMode::Override` (the default): if a previous
     ///   value exists for the same header, it is removed and replaced with
     ///   the new header value.
     /// - `InsertHeaderMode::SkipIfPresent`: if a previous value exists for
@@ -245,7 +255,7 @@ impl<S, M> SetResponseHeader<S, M> {
     /// - `InsertHeaderMode::Append`: the new header is always added,
     ///   preserving any existing values. If previous values exist, the header
     ///   will have multiple values.
-    /// Defaults to [`InsertHeaderMode::OverrideExisting`].
+    /// Defaults to [`InsertHeaderMode::Override`].
     pub fn mode(mut self, mode: InsertHeaderMode) -> Self {
         self.mode = mode;
         self
@@ -297,7 +307,7 @@ where
             future: self.inner.call(req),
             header_name: self.header_name.clone(),
             make: self.make.clone(),
-            mode: self.mode.clone(),
+            mode: self.mode,
         }
     }
 }
@@ -325,7 +335,7 @@ where
         let mut res = ready!(this.future.poll(cx)?);
 
         match *this.mode {
-            InsertHeaderMode::OverrideExisting => {
+            InsertHeaderMode::Override => {
                 if let Some(value) = this.make.make_header_value(&res) {
                     res.headers_mut().insert(this.header_name.clone(), value);
                 }
@@ -401,7 +411,7 @@ mod tests {
             HeaderValue::from_static("text/html"),
         );
 
-        assert!(matches!(svc.mode, InsertHeaderMode::OverrideExisting));
+        assert!(matches!(svc.mode, InsertHeaderMode::Override));
     }
 
     #[tokio::test]
@@ -417,7 +427,7 @@ mod tests {
             header::CONTENT_TYPE,
             HeaderValue::from_static("text/html"),
         )
-        .mode(InsertHeaderMode::OverrideExisting);
+        .mode(InsertHeaderMode::Override);
 
         let res = svc.oneshot(()).await.unwrap();
 
