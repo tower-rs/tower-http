@@ -125,6 +125,11 @@ impl<M, T> fmt::Debug for SetResponseHeaderLayer<M, T> {
 
 impl<M, T> SetResponseHeaderLayer<M, T> {
     /// Create a new [`SetResponseHeaderLayer`].
+    /// 
+    /// By default, the layer will construct services configured with
+    /// [`InsertHeaderMode::OverrideExisting`]. This will replace any
+    /// previously set values for that header. This behavior can be
+    /// changed using the [`mode`] method.
     pub fn new(header_name: HeaderName, make: M) -> Self
     where
         M: MakeHeaderValue<T>,
@@ -137,7 +142,20 @@ impl<M, T> SetResponseHeaderLayer<M, T> {
         }
     }
 
-    /// Set which mode to use when inserting the header.
+    /// Configures how existing header values are handled.
+    ///
+    /// This takes an [`InsertHeaderMode`] which configures the service's
+    /// behavior when other values have previously been set for the same
+    /// header. The available options are:
+    ///
+    /// - `InsertHeaderMode::OverrideExisting` (the default): if a previous
+    ///   value exists for the same header, it is removed and replaced with
+    ///   the new header value.
+    /// - `InsertHeaderMode::SkipIfPresent`: if a previous value exists for
+    ///   the header, the new value is not inserted.
+    /// - `InsertHeaderMode::Append`: the new header is always added,
+    ///   preserving any existing values. If previous values exist, the header
+    ///   will have multiple values.
     ///
     /// Defaults to [`InsertHeaderMode::OverrideExisting`].
     pub fn mode(mut self, mode: InsertHeaderMode) -> Self {
@@ -147,7 +165,7 @@ impl<M, T> SetResponseHeaderLayer<M, T> {
 }
 
 /// The mode to use when inserting a header into a request or response.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum InsertHeaderMode {
     /// Insert the header, overriding any previous values the header might have.
@@ -199,6 +217,11 @@ pub struct SetResponseHeader<S, M> {
 
 impl<S, M> SetResponseHeader<S, M> {
     /// Create a new [`SetResponseHeader`].
+    ///
+    /// By default, the layer will construct services configured with
+    /// [`InsertHeaderMode::OverrideExisting`]. This will replace any
+    /// previously set values for that header. This behavior can be
+    /// changed using the [`mode`] method.
     pub fn new(inner: S, header_name: HeaderName, make: M) -> Self {
         Self {
             inner,
@@ -208,8 +231,20 @@ impl<S, M> SetResponseHeader<S, M> {
         }
     }
 
-    /// Set which mode to use when inserting the header.
+    /// Configures how existing header values are handled.
     ///
+    /// This takes an [`InsertHeaderMode`] which configures the service's
+    /// behavior when other values have previously been set for the same
+    /// header. The available options are:
+    ///
+    /// - `InsertHeaderMode::OverrideExisting` (the default): if a previous
+    ///   value exists for the same header, it is removed and replaced with
+    ///   the new header value.
+    /// - `InsertHeaderMode::SkipIfPresent`: if a previous value exists for
+    ///   the header, the new value is not inserted.
+    /// - `InsertHeaderMode::Append`: the new header is always added,
+    ///   preserving any existing values. If previous values exist, the header
+    ///   will have multiple values.
     /// Defaults to [`InsertHeaderMode::OverrideExisting`].
     pub fn mode(mut self, mode: InsertHeaderMode) -> Self {
         self.mode = mode;
@@ -218,7 +253,7 @@ impl<S, M> SetResponseHeader<S, M> {
 
     define_inner_service_accessors!();
 
-    /// Returns a new [`Layer`] that wraps services with a `SetResponseHeaderLayer` middleware.
+    /// Returns a new [`Layer`] that wraps services with a `SetResponseHeader` middleware.
     ///
     /// [`Layer`]: tower_layer::Layer
     pub fn layer<T>(header_name: HeaderName, make: M) -> SetResponseHeaderLayer<M, T>
