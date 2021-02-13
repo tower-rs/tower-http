@@ -188,19 +188,30 @@ mod tests {
     use hyper::{Body, Error, Request, Response};
     use tower::{
         retry::{Policy, Retry},
-        service_fn, ServiceBuilder,
+        service_fn, ServiceBuilder, ServiceExt,
     };
 
-    fn http() {
-        let _svc = ServiceBuilder::new()
+    // just checking this actually compiles
+    async fn http() {
+        let svc = ServiceBuilder::new()
             .layer(TraceLayer::new())
             .service(service_fn(handle));
+
+        svc.oneshot(Request::new(Body::empty())).await.unwrap();
     }
 
-    fn grpc() {
-        let _svc = ServiceBuilder::new()
+    // just checking this actually compiles
+    async fn grpc() {
+        let svc = ServiceBuilder::new()
             .layer(TraceLayer::new_for_grpc())
             .service(service_fn(handle));
+
+        svc.oneshot(Request::new(Body::empty())).await.unwrap();
+    }
+
+    #[allow(warnings)]
+    async fn handle(_req: Request<Body>) -> Result<Response<Body>, Error> {
+        todo!()
     }
 
     trait IsRetryable {
@@ -252,10 +263,5 @@ mod tests {
         fn clone_request(&self, req: &Request<ReqB>) -> Option<Request<ReqB>> {
             Some(req.clone())
         }
-    }
-
-    #[allow(warnings)]
-    async fn handle(_req: Request<Body>) -> Result<Response<Body>, Error> {
-        todo!()
     }
 }
