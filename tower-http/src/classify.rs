@@ -42,6 +42,22 @@ impl<C> SharedClassifier<C> {
     }
 }
 
+impl<C> MakeClassifier for SharedClassifier<C>
+where
+    C: ClassifyResponse + Clone,
+{
+    type FailureClass = C::FailureClass;
+    type ClassifyEos = C::ClassifyEos;
+    type Classifier = C;
+
+    fn make_classify<B>(&self, _req: &Request<B>) -> Self::Classifier
+    where
+        B: Body,
+    {
+        self.classifier.clone()
+    }
+}
+
 /// Trait for classifying responses as either success or failure.
 pub trait ClassifyResponse {
     /// The type of failure classifications.
@@ -98,22 +114,6 @@ impl<T> ClassifyEos for NeverClassifyEos<T> {
     fn classify_eos(self, _trailers: Option<&HeaderMap>) -> Result<(), Self::FailureClass> {
         // `NeverClassifyEos` contains an `Infallible` so it can never be constructed
         unreachable!()
-    }
-}
-
-impl<C> MakeClassifier for SharedClassifier<C>
-where
-    C: ClassifyResponse + Clone,
-{
-    type FailureClass = C::FailureClass;
-    type ClassifyEos = C::ClassifyEos;
-    type Classifier = C;
-
-    fn make_classify<B>(&self, _req: &Request<B>) -> Self::Classifier
-    where
-        B: Body,
-    {
-        self.classifier.clone()
     }
 }
 
