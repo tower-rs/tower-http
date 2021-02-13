@@ -152,7 +152,7 @@ impl ClassifyResponse for ServerErrorsAsFailures {
 
     fn classify_error<E>(self, _error: &E) -> Self::FailureClass
     where
-        E: std::error::Error,
+        E: std::error::Error + 'static,
     {
         StatusCode::INTERNAL_SERVER_ERROR
     }
