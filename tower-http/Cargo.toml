@@ -23,7 +23,7 @@ tower-layer = "0.3"
 tower-service = "0.3"
 
 # optional dependencies
-async-compression = { version = "0.3", optional = true, features = ["deflate", "gzip", "brotli", "tokio"] }
+async-compression = { version = "0.3", optional = true, features = ["tokio"] }
 hyper = { version = "0.14", optional = true, default_features = false, features = ["stream"] }
 mime_guess = { version = "2", optional = true, default_features = false }
 mime = { version = "0.3", optional = true, default_features = false }
@@ -32,7 +32,7 @@ tokio-util = { version = "0.6", optional = true, default_features = false, featu
 
 [dev-dependencies]
 futures = "0.3"
-hyper = "0.14"
+hyper = { version = "0.14", features = ["full"] }
 tower = { version = "0.4", features = ["util"] }
 tokio = { version = "1", features = ["full"] }
 
@@ -44,10 +44,16 @@ full = [
     "compression-full",
     "decompression-full",
     "fs",
+    "propagate-header",
+    "redirect",
+    "sensitive-header",
 ]
 
 add-extension = []
 fs = ["tokio/fs", "tokio-util/io", "mime_guess", "mime"]
+propagate-header = []
+redirect = []
+sensitive-header = []
 
 compression = ["tokio-util"]
 compression-br = ["async-compression/brotli", "compression"]

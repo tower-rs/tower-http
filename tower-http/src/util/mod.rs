@@ -11,13 +11,12 @@ use std::{
     task::{Context, Poll},
 };
 
-// // TODO(david): upstream this to http-body?
-/// Combines two different [`Body`]s into the same type.
-///
-/// [`Body`]: http_body::Body
+/// Combine two types into one.
 #[derive(Debug)]
 pub enum Either<A, B> {
+    #[allow(missing_docs)]
     Left(A),
+    #[allow(missing_docs)]
     Right(B),
 }
 
@@ -100,6 +99,7 @@ pub struct EmptyBody<D = Bytes> {
 }
 
 impl<D> EmptyBody<D> {
+    /// Create a new [`EmptyBody`].
     pub fn new() -> Self {
         Self {
             _marker: PhantomData,

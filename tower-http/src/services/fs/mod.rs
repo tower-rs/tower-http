@@ -24,8 +24,9 @@ pub struct AsyncReadBody<T> {
 }
 
 impl<T> AsyncReadBody<T> {
-    fn new(inner: T) -> Self {
-        Self { inner }
+    /// Create a new [`AsyncReadBody`] wrapping the given reader.
+    fn new(read: T) -> Self {
+        Self { inner: read }
     }
 }
 
