@@ -180,18 +180,78 @@ where
     }
 }
 
+#[allow(warnings)]
 #[cfg(test)]
 mod tests {
     #[allow(unused_imports)]
     use super::*;
     use hyper::{Body, Error, Request, Response};
-    use tower::{service_fn, ServiceBuilder};
+    use tower::{
+        retry::{Policy, Retry},
+        service_fn, ServiceBuilder,
+    };
 
-    #[allow(warnings)]
-    fn what_does_the_api_feel_like() {
+    fn http() {
         let _svc = ServiceBuilder::new()
             .layer(TraceLayer::new())
             .service(service_fn(handle));
+    }
+
+    fn grpc() {
+        let _svc = ServiceBuilder::new()
+            .layer(TraceLayer::new_for_grpc())
+            .service(service_fn(handle));
+    }
+
+    trait IsRetryable {
+        fn is_retryable(&self) -> bool;
+    }
+
+    #[derive(Clone)]
+    struct RetryBasedOnClassification<C> {
+        classifier: C,
+        // ...
+    }
+
+    impl<ReqB, ResB, E, C> Policy<Request<ReqB>, Response<ResB>, E> for RetryBasedOnClassification<C>
+    where
+        C: ClassifyResponse + Clone,
+        C::FailureClass: IsRetryable,
+        ResB: http_body::Body,
+        Request<ReqB>: Clone,
+        E: std::error::Error + 'static,
+    {
+        type Future = futures::future::Ready<RetryBasedOnClassification<C>>;
+
+        fn retry(
+            &self,
+            req: &Request<ReqB>,
+            res: Result<&Response<ResB>, &E>,
+        ) -> Option<Self::Future> {
+            match res {
+                Ok(res) => {
+                    if let ClassifiedNowOrLater::Ready(class) =
+                        self.classifier.clone().classify_response(res)
+                    {
+                        if class.err()?.is_retryable() {
+                            return Some(futures::future::ready(self.clone()));
+                        }
+                    }
+
+                    None
+                }
+                Err(err) => self
+                    .classifier
+                    .clone()
+                    .classify_error(err)
+                    .is_retryable()
+                    .then(|| futures::future::ready(self.clone())),
+            }
+        }
+
+        fn clone_request(&self, req: &Request<ReqB>) -> Option<Request<ReqB>> {
+            Some(req.clone())
+        }
     }
 
     #[allow(warnings)]
