@@ -113,6 +113,12 @@ impl<D> Default for EmptyBody<D> {
     }
 }
 
+impl<D> fmt::Debug for EmptyBody<D> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("EmptyBody")
+    }
+}
+
 impl<D> Body for EmptyBody<D>
 where
     D: Buf,
