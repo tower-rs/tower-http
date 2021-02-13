@@ -142,7 +142,7 @@
     rust_2018_idioms,
     future_incompatible,
     nonstandard_style,
-    missing_docs,
+    missing_docs
 )]
 #![deny(unreachable_pub, broken_intra_doc_links, private_in_public)]
 #![allow(elided_lifetimes_in_paths, clippy::type_complexity)]

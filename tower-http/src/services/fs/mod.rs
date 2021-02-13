@@ -15,7 +15,10 @@ use tokio_util::io::poll_read_buf;
 mod serve_dir;
 mod serve_file;
 
-pub use self::{serve_dir::ServeDir, serve_file::ServeFile};
+pub use self::{
+    serve_dir::{ResponseFuture as ServeDirResponseFuture, ServeDir},
+    serve_file::{ResponseFuture as ServeFileResponseFuture, ServeFile},
+};
 
 // NOTE: This could potentially be upstreamed to `http-body`.
 /// Adapter that turns an `impl AsyncRead` to an `impl Body`.
