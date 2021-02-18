@@ -11,7 +11,7 @@
 //! ```
 //! use http::{Request, Response, header::{self, HeaderValue}};
 //! use tower::{Service, ServiceExt, ServiceBuilder};
-//! use tower_http::set_response_header::{SetResponseHeaderLayer, InsertHeaderMode};
+//! use tower_http::set_response_header::SetResponseHeaderLayer;
 //! use hyper::Body;
 //!
 //! # #[tokio::main]
@@ -26,12 +26,12 @@
 //!         //
 //!         // We have to add `::<_, Body>` since Rust cannot infer the body type when
 //!         // we don't use a closure to produce the header value.
-//!         SetResponseHeaderLayer::<_, Body>::new(
+//!         //
+//!         // `if_not_present` will only insert the header if it is not present already.
+//!         SetResponseHeaderLayer::<_, Body>::if_not_present(
 //!             header::CONTENT_TYPE,
 //!             HeaderValue::from_static("text/html"),
 //!         )
-//!         // Don't insert the header if it is already present.
-//!         .mode(InsertHeaderMode::SkipIfPresent)
 //!     )
 //!     .service(render_html);
 //!
@@ -64,7 +64,7 @@
 //!     .layer(
 //!         // Layer that sets `Content-Length` if the body has a known size.
 //!         // Bodies with streaming responses wont have a known size.
-//!         SetResponseHeaderLayer::new(
+//!         SetResponseHeaderLayer::overriding(
 //!             http::header::CONTENT_LENGTH,
 //!             |response: &Response<Body>| {
 //!                 if let Some(size) = response.body().size_hint().exact() {
@@ -123,59 +123,47 @@ impl<M, T> fmt::Debug for SetResponseHeaderLayer<M, T> {
     }
 }
 
-impl<M, T> SetResponseHeaderLayer<M, T> {
-    /// Create a new [`SetResponseHeaderLayer`].
-    ///
-    /// By default, the layer will construct services configured with
-    /// [`InsertHeaderMode::Override`]. This will replace any
-    /// previously set values for that header. This behavior can be
-    /// changed using the [`mode`] method.
-    ///
-    /// [`mode`]: SetResponseHeaderLayer::mode
-    pub fn new(header_name: HeaderName, make: M) -> Self
+impl<M, T> SetResponseHeaderLayer<M, T>
+where
+    M: MakeHeaderValue<T>,
+{
+    /// Create a new [`SetResponseHeaderLayer`]. If a previous value exists for the same header, it
+    /// is removed and replaced with the new header value.
+    pub fn overriding(header_name: HeaderName, make: M) -> Self {
+        Self::new(header_name, make, InsertHeaderMode::Override)
+    }
+
+    /// Create a new [`SetResponseHeaderLayer`]. The new header is always added, preserving any
+    /// existing values. If previous values exist, the header will have multiple values.
+    pub fn appending(header_name: HeaderName, make: M) -> Self {
+        Self::new(header_name, make, InsertHeaderMode::Append)
+    }
+
+    /// Create a new [`SetResponseHeaderLayer`]. If a previous value exists for the header, the new
+    /// value is not inserted.
+    pub fn if_not_present(header_name: HeaderName, make: M) -> Self {
+        Self::new(header_name, make, InsertHeaderMode::IfNotPresent)
+    }
+
+    fn new(header_name: HeaderName, make: M, mode: InsertHeaderMode) -> Self
     where
         M: MakeHeaderValue<T>,
     {
         Self {
             make,
             header_name,
-            mode: InsertHeaderMode::default(),
+            mode,
             _marker: PhantomData,
         }
     }
-
-    /// Configures how existing header values are handled.
-    ///
-    /// This takes an [`InsertHeaderMode`] which configures the service's
-    /// behavior when other values have previously been set for the same
-    /// header. The available options are:
-    ///
-    /// - `InsertHeaderMode::Override` (the default): if a previous
-    ///   value exists for the same header, it is removed and replaced with
-    ///   the new header value.
-    /// - `InsertHeaderMode::SkipIfPresent`: if a previous value exists for
-    ///   the header, the new value is not inserted.
-    /// - `InsertHeaderMode::Append`: the new header is always added,
-    ///   preserving any existing values. If previous values exist, the header
-    ///   will have multiple values.
-    ///
-    /// Defaults to [`InsertHeaderMode::Override`].
-    pub fn mode(mut self, mode: InsertHeaderMode) -> Self {
-        self.mode = mode;
-        self
-    }
 }
 
-/// The mode to use when inserting a header into a request or response.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum InsertHeaderMode {
-    /// Insert the header, overriding any previous values the header might have.
+enum InsertHeaderMode {
     Override,
-    /// Append the header and keep any previous values.
     Append,
-    /// Insert the header only if it is not already present.
-    SkipIfPresent,
+    IfNotPresent,
 }
 
 impl Default for InsertHeaderMode {
@@ -224,54 +212,34 @@ pub struct SetResponseHeader<S, M> {
 }
 
 impl<S, M> SetResponseHeader<S, M> {
-    /// Create a new [`SetResponseHeader`].
-    ///
-    /// By default, the layer will construct services configured with
-    /// [`InsertHeaderMode::Override`]. This will replace any
-    /// previously set values for that header. This behavior can be
-    /// changed using the [`mode`] method.
-    ///
-    /// [`mode`]: SetResponseHeader::mode
-    pub fn new(inner: S, header_name: HeaderName, make: M) -> Self {
+    /// Create a new [`SetResponseHeader`]. If a previous value exists for the same header, it is
+    /// removed and replaced with the new header value.
+    pub fn overriding(inner: S, header_name: HeaderName, make: M) -> Self {
+        Self::new(inner, header_name, make, InsertHeaderMode::Override)
+    }
+
+    /// Create a new [`SetResponseHeader`]. The new header is always added, preserving any existing
+    /// values. If previous values exist, the header will have multiple values.
+    pub fn appending(inner: S, header_name: HeaderName, make: M) -> Self {
+        Self::new(inner, header_name, make, InsertHeaderMode::Append)
+    }
+
+    /// Create a new [`SetResponseHeader`]. If a previous value exists for the header, the new
+    /// value is not inserted.
+    pub fn if_not_present(inner: S, header_name: HeaderName, make: M) -> Self {
+        Self::new(inner, header_name, make, InsertHeaderMode::IfNotPresent)
+    }
+
+    fn new(inner: S, header_name: HeaderName, make: M, mode: InsertHeaderMode) -> Self {
         Self {
             inner,
             header_name,
             make,
-            mode: InsertHeaderMode::default(),
+            mode,
         }
     }
 
-    /// Configures how existing header values are handled.
-    ///
-    /// This takes an [`InsertHeaderMode`] which configures the service's
-    /// behavior when other values have previously been set for the same
-    /// header. The available options are:
-    ///
-    /// - `InsertHeaderMode::Override` (the default): if a previous
-    ///   value exists for the same header, it is removed and replaced with
-    ///   the new header value.
-    /// - `InsertHeaderMode::SkipIfPresent`: if a previous value exists for
-    ///   the header, the new value is not inserted.
-    /// - `InsertHeaderMode::Append`: the new header is always added,
-    ///   preserving any existing values. If previous values exist, the header
-    ///   will have multiple values.
-    /// Defaults to [`InsertHeaderMode::Override`].
-    pub fn mode(mut self, mode: InsertHeaderMode) -> Self {
-        self.mode = mode;
-        self
-    }
-
     define_inner_service_accessors!();
-
-    /// Returns a new [`Layer`] that wraps services with a `SetResponseHeader` middleware.
-    ///
-    /// [`Layer`]: tower_layer::Layer
-    pub fn layer<T>(header_name: HeaderName, make: M) -> SetResponseHeaderLayer<M, T>
-    where
-        M: MakeHeaderValue<T>,
-    {
-        SetResponseHeaderLayer::new(header_name, make)
-    }
 }
 
 impl<S, M> fmt::Debug for SetResponseHeader<S, M>
@@ -340,7 +308,7 @@ where
                     res.headers_mut().insert(this.header_name.clone(), value);
                 }
             }
-            InsertHeaderMode::SkipIfPresent => {
+            InsertHeaderMode::IfNotPresent => {
                 if !res.headers().contains_key(&*this.header_name) {
                     if let Some(value) = this.make.make_header_value(&res) {
                         res.headers_mut().insert(this.header_name.clone(), value);
@@ -403,20 +371,8 @@ mod tests {
     use tower::{service_fn, ServiceExt};
 
     #[tokio::test]
-    #[allow(clippy::todo)]
-    async fn override_mode_is_default() {
-        let svc = SetResponseHeader::new(
-            service_fn(|_req: ()| todo!()),
-            header::CONTENT_TYPE,
-            HeaderValue::from_static("text/html"),
-        );
-
-        assert!(matches!(svc.mode, InsertHeaderMode::Override));
-    }
-
-    #[tokio::test]
     async fn test_override_mode() {
-        let svc = SetResponseHeader::new(
+        let svc = SetResponseHeader::overriding(
             service_fn(|_req: ()| async {
                 let res = Response::builder()
                     .header(header::CONTENT_TYPE, "good-content")
@@ -426,8 +382,7 @@ mod tests {
             }),
             header::CONTENT_TYPE,
             HeaderValue::from_static("text/html"),
-        )
-        .mode(InsertHeaderMode::Override);
+        );
 
         let res = svc.oneshot(()).await.unwrap();
 
@@ -438,7 +393,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_append_mode() {
-        let svc = SetResponseHeader::new(
+        let svc = SetResponseHeader::appending(
             service_fn(|_req: ()| async {
                 let res = Response::builder()
                     .header(header::CONTENT_TYPE, "good-content")
@@ -448,8 +403,7 @@ mod tests {
             }),
             header::CONTENT_TYPE,
             HeaderValue::from_static("text/html"),
-        )
-        .mode(InsertHeaderMode::Append);
+        );
 
         let res = svc.oneshot(()).await.unwrap();
 
@@ -461,7 +415,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_skip_if_present_mode() {
-        let svc = SetResponseHeader::new(
+        let svc = SetResponseHeader::if_not_present(
             service_fn(|_req: ()| async {
                 let res = Response::builder()
                     .header(header::CONTENT_TYPE, "good-content")
@@ -471,8 +425,7 @@ mod tests {
             }),
             header::CONTENT_TYPE,
             HeaderValue::from_static("text/html"),
-        )
-        .mode(InsertHeaderMode::SkipIfPresent);
+        );
 
         let res = svc.oneshot(()).await.unwrap();
 
@@ -483,15 +436,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_skip_if_present_mode_when_not_present() {
-        let svc = SetResponseHeader::new(
+        let svc = SetResponseHeader::if_not_present(
             service_fn(|_req: ()| async {
                 let res = Response::builder().body(Body::empty()).unwrap();
                 Ok::<_, Infallible>(res)
             }),
             header::CONTENT_TYPE,
             HeaderValue::from_static("text/html"),
-        )
-        .mode(InsertHeaderMode::SkipIfPresent);
+        );
 
         let res = svc.oneshot(()).await.unwrap();
 
