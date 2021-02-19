@@ -27,7 +27,8 @@
 //!         // We have to add `::<_, Body>` since Rust cannot infer the body type when
 //!         // we don't use a closure to produce the header value.
 //!         //
-//!         // `if_not_present` will only insert the header if does not already have a value.
+//!         // `if_not_present` will only insert the header if it does not already
+//!         // have a value.
 //!         SetResponseHeaderLayer::<_, Body>::if_not_present(
 //!             header::CONTENT_TYPE,
 //!             HeaderValue::from_static("text/html"),
@@ -64,6 +65,9 @@
 //!     .layer(
 //!         // Layer that sets `Content-Length` if the body has a known size.
 //!         // Bodies with streaming responses wont have a known size.
+//!         //
+//!         // `overriding` will insert the header and override any previous values it
+//!         // may have.
 //!         SetResponseHeaderLayer::overriding(
 //!             http::header::CONTENT_LENGTH,
 //!             |response: &Response<Body>| {
