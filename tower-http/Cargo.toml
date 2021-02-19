@@ -30,7 +30,7 @@ tokio-util = { version = "0.6", optional = true, default_features = false, featu
 [dev-dependencies]
 futures = "0.3"
 hyper = { version = "0.14", features = ["full"] }
-tower = { version = "0.4", features = ["util"] }
+tower = { version = "0.4", features = ["full"] }
 tokio = { version = "1", features = ["full"] }
 
 [features]
