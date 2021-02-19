@@ -27,7 +27,7 @@
 //!         // We have to add `::<_, Body>` since Rust cannot infer the body type when
 //!         // we don't use a closure to produce the header value.
 //!         //
-//!         // `if_not_present` will only insert the header if it is not present already.
+//!         // `if_not_present` will only insert the header if does not already have a value.
 //!         SetResponseHeaderLayer::<_, Body>::if_not_present(
 //!             header::CONTENT_TYPE,
 //!             HeaderValue::from_static("text/html"),
@@ -159,7 +159,6 @@ where
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-#[non_exhaustive]
 enum InsertHeaderMode {
     Override,
     Append,
