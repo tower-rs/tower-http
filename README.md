@@ -24,6 +24,7 @@ These are the middlewares included in this crate:
 - `MapResponseBody`: Apply a transformation to the response body.
 - `PropagateHeader`: Propagate a header from the request to the response.
 - `SensitiveHeader`: Marks a given header as [sensitive] so it wont show up in logs.
+- `SetRequestHeader`: Set a header on the request.
 - `SetResponseHeader`: Set a header on the response.
 - `SetSensitiveRequestHeader`: Marks a given request header as [sensitive].
 - `SetSensitiveResponseHeader`: Marks a given response header as [sensitive].
