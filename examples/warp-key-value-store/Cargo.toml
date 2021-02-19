@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Tower Maintainers <team@tower-rs.com>"]
 edition = "2018"
 publish = false
+license = "MIT"
 
 [dependencies]
 bytes = "1"
