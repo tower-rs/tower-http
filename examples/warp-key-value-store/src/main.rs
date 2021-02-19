@@ -26,7 +26,10 @@ struct Config {
     port: u16,
 }
 
-type Database = Arc<RwLock<HashMap<String, Bytes>>>;
+#[derive(Clone, Debug)]
+struct State {
+    db: Arc<RwLock<HashMap<String, Bytes>>>,
+}
 
 #[tokio::main]
 async fn main() {
@@ -49,7 +52,9 @@ async fn main() {
 // We make this a separate function so we're able to call it from tests.
 async fn serve_forever(listener: TcpListener) -> Result<(), hyper::Error> {
     // Build our database for holding the key/value pairs
-    let db: Database = Arc::new(RwLock::new(HashMap::new()));
+    let state = State {
+        db: Arc::new(RwLock::new(HashMap::new())),
+    };
 
     // Build or warp `Filter` by combining each individual filter
     let filter = get().or(set());
@@ -61,8 +66,8 @@ async fn serve_forever(listener: TcpListener) -> Result<(), hyper::Error> {
     let service = ServiceBuilder::new()
         // Set a timeout
         .timeout(Duration::from_secs(10))
-        // Share the database with each handler via a request extension
-        .layer(AddExtensionLayer::new(db))
+        // Share the state with each handler via a request extension
+        .layer(AddExtensionLayer::new(state))
         // Compress responses
         .layer(CompressionLayer::new())
         // If the response has a known size set the `Content-Length` header
@@ -97,9 +102,9 @@ async fn serve_forever(listener: TcpListener) -> Result<(), hyper::Error> {
 pub fn get() -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     warp::get()
         .and(path!(String))
-        .and(filters::ext::get::<Database>())
-        .map(|path: String, db: Database| {
-            let state = db.read().unwrap();
+        .and(filters::ext::get::<State>())
+        .map(|path: String, state: State| {
+            let state = state.db.read().unwrap();
 
             if let Some(value) = state.get(&path).cloned() {
                 Response::new(Body::from(value))
@@ -116,10 +121,10 @@ pub fn get() -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
 pub fn set() -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     warp::post()
         .and(path!(String))
-        .and(filters::ext::get::<Database>())
+        .and(filters::ext::get::<State>())
         .and(filters::body::bytes())
-        .map(|path: String, db: Database, value: Bytes| {
-            let mut state = db.write().unwrap();
+        .map(|path: String, state: State, value: Bytes| {
+            let mut state = state.db.write().unwrap();
 
             state.insert(path, value);
 
