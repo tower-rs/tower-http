@@ -62,7 +62,7 @@
 //!         .layer(PropagateHeaderLayer::new(HeaderName::from_static("x-request-id")))
 //!         // Mark the `Authorization` header as sensitive so it doesn't show in logs
 //!         .layer(SetSensitiveHeaderLayer::new(AUTHORIZATION))
-//!         // If the response has a known size set the `Content-Type` header
+//!         // If the response has a known size set the `Content-Length` header
 //!         .layer(SetResponseHeaderLayer::overriding(CONTENT_TYPE, content_length_from_response))
 //!         // Wrap a `Service` in our middleware stack
 //!         .service(service_fn(handler));
