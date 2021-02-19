@@ -20,15 +20,17 @@
 //!     compression::CompressionLayer,
 //!     propagate_header::PropagateHeaderLayer,
 //!     sensitive_header::SetSensitiveHeaderLayer,
+//!     set_response_header::SetResponseHeaderLayer,
 //! };
 //! use tower::{ServiceBuilder, service_fn};
-//! use http::{Request, Response, header::HeaderName};
+//! use http::{Request, Response, header::{HeaderName, CONTENT_TYPE, AUTHORIZATION}};
 //! use hyper::{Body, Error, server::Server, service::make_service_fn};
 //! use std::{sync::Arc, net::SocketAddr, convert::Infallible};
 //! # struct DatabaseConnectionPool;
 //! # impl DatabaseConnectionPool {
 //! #     fn new() -> DatabaseConnectionPool { DatabaseConnectionPool }
 //! # }
+//! # fn content_length_from_response<B>(_: &http::Response<B>) -> Option<http::HeaderValue> { None }
 //!
 //! // Our request handler. This is where we would implement the application logic
 //! // for responding to HTTP requests...
@@ -59,7 +61,9 @@
 //!         // Propagate `X-Request-Header`s from requests to responses
 //!         .layer(PropagateHeaderLayer::new(HeaderName::from_static("x-request-id")))
 //!         // Mark the `Authorization` header as sensitive so it doesn't show in logs
-//!         .layer(SetSensitiveHeaderLayer::new(HeaderName::from_static("authorization")))
+//!         .layer(SetSensitiveHeaderLayer::new(AUTHORIZATION))
+//!         // If the response has a known size set the `Content-Type` header
+//!         .layer(SetResponseHeaderLayer::overriding(CONTENT_TYPE, content_length_from_response))
 //!         // Wrap a `Service` in our middleware stack
 //!         .service(service_fn(handler));
 //!
@@ -153,6 +157,10 @@
 #[macro_use]
 pub(crate) mod macros;
 
+#[cfg(feature = "set-response-header")]
+#[cfg_attr(docsrs, doc(cfg(feature = "set-response-header")))]
+pub mod set_response_header;
+
 #[cfg(feature = "propagate-header")]
 #[cfg_attr(docsrs, doc(cfg(feature = "propagate-header")))]
 pub mod propagate_header;
@@ -172,6 +180,14 @@ pub mod sensitive_header;
 #[cfg(feature = "decompression")]
 #[cfg_attr(docsrs, doc(cfg(feature = "decompression")))]
 pub mod decompression;
+
+#[cfg(feature = "map-response-body")]
+#[cfg_attr(docsrs, doc(cfg(feature = "map-response-body")))]
+pub mod map_response_body;
+
+#[cfg(feature = "map-request-body")]
+#[cfg_attr(docsrs, doc(cfg(feature = "map-request-body")))]
+pub mod map_request_body;
 
 pub mod services;
 
