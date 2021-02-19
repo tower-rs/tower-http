@@ -1,4 +1,4 @@
-//! Middlewares for setting headers on requests or responses.
+//! Middlewares for setting headers on requests and responses.
 //!
 //! See [request] and [response] for more details.
 
@@ -15,14 +15,13 @@ pub use self::{
 
 /// Trait for producing header values.
 ///
-/// Used by [`SetResponseHeader`].
+/// Used by [`SetRequestHeader`] and [`SetResponseHeader`].
 ///
-/// This trait is implemented for closures with the correct type signature. Typically
-/// users will not have to implement this trait for their own types.
+/// This trait is implemented for closures with the correct type signature. Typically users will
+/// not have to implement this trait for their own types.
 ///
-/// It is also implemented directly for [`HeaderValue`]. When a fixed header value
-/// should be added to all responses, it can be  supplied directly to
-/// [`SetResponseHeaderLayer`].
+/// It is also implemented directly for [`HeaderValue`]. When a fixed header value should be added
+/// to all responses, it can be supplied directly to the middleware.
 pub trait MakeHeaderValue<T> {
     /// Try to create a header value from the request or response.
     fn make_header_value(&mut self, message: &T) -> Option<HeaderValue>;
