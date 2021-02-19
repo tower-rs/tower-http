@@ -6,6 +6,8 @@ use tower_layer::Layer;
 ///
 /// This adds the `Accept-Encoding` header to requests and transparently decompresses response
 /// bodies based on the `Content-Encoding` header.
+///
+/// See the [module docs](crate::decompression) for more details.
 #[derive(Debug, Default, Clone)]
 pub struct DecompressionLayer {
     accept: AcceptEncoding,

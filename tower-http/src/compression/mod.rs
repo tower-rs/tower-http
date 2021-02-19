@@ -6,15 +6,14 @@
 //!
 //! ```rust
 //! use bytes::{Bytes, BytesMut};
-//! use futures::TryStreamExt;
 //! use http::{Request, Response, header::ACCEPT_ENCODING};
 //! use http_body::Body as _; // for Body::data
 //! use hyper::Body;
 //! use std::convert::Infallible;
-//! use tower::{Service, ServiceExt, ServiceBuilder, service_fn};
-//! use tower_http::compression::CompressionLayer;
 //! use tokio::fs::{self, File};
 //! use tokio_util::io::ReaderStream;
+//! use tower::{Service, ServiceExt, ServiceBuilder, service_fn};
+//! use tower_http::compression::CompressionLayer;
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -29,7 +28,7 @@
 //!     Ok(Response::new(body))
 //! }
 //!
-//! let mut svc = ServiceBuilder::new()
+//! let mut service = ServiceBuilder::new()
 //!     // Compress responses based on the `Accept-Encoding` header.
 //!     .layer(CompressionLayer::new())
 //!     .service(service_fn(handle));
@@ -39,7 +38,7 @@
 //!     .header(ACCEPT_ENCODING, "gzip")
 //!     .body(Body::empty())?;
 //!
-//! let response = svc
+//! let response = service
 //!     .ready_and()
 //!     .await?
 //!     .call(request)
