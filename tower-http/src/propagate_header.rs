@@ -21,11 +21,16 @@
 //!     .layer(PropagateHeaderLayer::new(HeaderName::from_static("x-request-id")))
 //!     .service(service_fn(handle));
 //!
+//! // Call the service.
 //! let request = Request::builder()
 //!     .header("x-request-id", "1337")
 //!     .body(Body::empty())?;
 //!
-//! let response = svc.ready_and().await?.call(request).await?;
+//! let response = svc
+//!     .ready_and()
+//!     .await?
+//!     .call(request)
+//!     .await?;
 //!
 //! assert_eq!(response.headers()["x-request-id"], "1337");
 //! #
