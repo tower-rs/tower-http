@@ -5,17 +5,15 @@ use hyper::{
     Body, Request, Response, Server, StatusCode,
 };
 use std::collections::HashMap;
-use std::future::Future;
 use std::net::SocketAddr;
+use std::net::TcpListener;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use structopt::StructOpt;
-use tower::{make::Shared, BoxError, Service, ServiceBuilder};
+use tower::{make::Shared, ServiceBuilder};
 use tower_http::{
-    add_extension::AddExtensionLayer,
-    compression::{CompressionBody, CompressionLayer},
-    sensitive_header::SetSensitiveHeaderLayer,
-    set_response_header::SetResponseHeaderLayer,
+    add_extension::AddExtensionLayer, compression::CompressionLayer,
+    sensitive_header::SetSensitiveHeaderLayer, set_response_header::SetResponseHeaderLayer,
 };
 use warp::{filters, path};
 use warp::{Filter, Rejection, Reply};
@@ -38,27 +36,18 @@ async fn main() {
     // Parse command line arguments
     let config = Config::from_args();
 
-    // Build our service.
-    let service = make_service();
-
-    // Run the service using hyper
+    // Create a `TcpListener`
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
+    let listener = TcpListener::bind(addr).unwrap();
 
-    tracing::info!("Listening on {}", addr);
-
-    Server::bind(&addr)
-        .serve(Shared::new(service))
-        .await
-        .unwrap();
+    // Run our service
+    serve_forever(listener).await.expect("server error");
 }
 
-// Function to construct our service.
-fn make_service() -> impl Service<
-    Request<Body>,
-    Response = Response<CompressionBody<Body>>,
-    Error = BoxError,
-    Future = impl Future<Output = Result<Response<CompressionBody<Body>>, BoxError>> + Send,
-> + Clone {
+// Run our service with the given `TcpListener`.
+//
+// We make this a separate function so we're able to call it from tests.
+async fn serve_forever(listener: TcpListener) -> Result<(), hyper::Error> {
     // Build our database for holding the key/value pairs
     let db: Database = Arc::new(RwLock::new(HashMap::new()));
 
@@ -68,7 +57,8 @@ fn make_service() -> impl Service<
     // Convert our `Filter` into a `Service`
     let warp_service = warp::service(filter);
 
-    ServiceBuilder::new()
+    // Apply middlewares to our service.
+    let service = ServiceBuilder::new()
         // Set a timeout
         .timeout(Duration::from_secs(10))
         // Share the database with each handler via a request extension
@@ -88,10 +78,22 @@ fn make_service() -> impl Service<
         // Mark the `Authorization` header as sensitive so it doesn't show in logs
         .layer(SetSensitiveHeaderLayer::new(header::AUTHORIZATION))
         // Build our final `Service`
-        .service(warp_service)
+        .service(warp_service);
+
+    // Run the service using hyper
+    let addr = listener.local_addr().unwrap();
+
+    tracing::info!("Listening on {}", addr);
+
+    Server::from_tcp(listener)
+        .unwrap()
+        .serve(Shared::new(service))
+        .await?;
+
+    Ok(())
 }
 
-/// Filter for looking up a key
+// Filter for looking up a key
 pub fn get() -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     warp::get()
         .and(path!(String))
@@ -110,7 +112,7 @@ pub fn get() -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
         })
 }
 
-/// Filter for setting a key/value pair
+// Filter for setting a key/value pair
 pub fn set() -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     warp::post()
         .and(path!(String))
@@ -140,11 +142,10 @@ where
 mod tests {
     use super::*;
     use std::net::TcpListener;
-    use tower::{BoxError, Service};
 
     #[tokio::test]
     async fn get_and_set_value() {
-        let addr = run_in_background(make_service());
+        let addr = run_in_background();
 
         let client = reqwest::Client::builder().gzip(true).build().unwrap();
 
@@ -173,16 +174,8 @@ mod tests {
         assert_eq!(body, "Hello, World!");
     }
 
-    /// Run a `tower::Service` in the background.
-    fn run_in_background<S, ResBody>(svc: S) -> SocketAddr
-    where
-        S: Service<Request<Body>, Response = Response<ResBody>> + Clone + Send + 'static,
-        ResBody: HttpBody + Send + 'static,
-        ResBody::Data: Send,
-        ResBody::Error: Into<BoxError>,
-        S::Error: Into<BoxError>,
-        S::Future: Send,
-    {
+    // Run our service in a background task.
+    fn run_in_background() -> SocketAddr {
         let listener = TcpListener::bind("127.0.0.1:0").expect("Could not bind ephemeral socket");
         let addr = listener.local_addr().unwrap();
 
@@ -190,9 +183,7 @@ mod tests {
         eprintln!("Listening on {}", addr);
 
         tokio::spawn(async move {
-            let server = Server::from_tcp(listener).unwrap().serve(Shared::new(svc));
-
-            server.await.expect("server error");
+            serve_forever(listener).await.unwrap();
         });
 
         addr
