@@ -4,7 +4,7 @@ This examples contains a simple key/value store with an HTTP API built using war
 
 ## Endpoints
 
-- `GET /:key` - Look up a key. If the key doesn't exist it returns `400 Not Found`
+- `GET /:key` - Look up a key. If the key doesn't exist it returns `404 Not Found`
 - `POST /:key` - Insert a key. The value is the request body.
 
 ## Running the example
