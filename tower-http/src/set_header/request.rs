@@ -16,7 +16,7 @@
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! # let render_html = tower::service_fn(|_: Request<Body>| async move {
+//! # let http_client = tower::service_fn(|_: Request<Body>| async move {
 //! #     Ok::<_, std::convert::Infallible>(Response::new(Body::empty()))
 //! # });
 //! #
@@ -34,7 +34,7 @@
 //!             HeaderValue::from_static("my very cool app"),
 //!         )
 //!     )
-//!     .service(render_html);
+//!     .service(http_client);
 //!
 //! let request = Request::new(Body::empty());
 //!
@@ -54,7 +54,7 @@
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! # let render_html = tower::service_fn(|_: Request<Body>| async move {
+//! # let http_client = tower::service_fn(|_: Request<Body>| async move {
 //! #     Ok::<_, std::convert::Infallible>(Response::new(Body::empty()))
 //! # });
 //! fn date_header_value() -> HeaderValue {
@@ -75,7 +75,7 @@
 //!             }
 //!         )
 //!     )
-//!     .service(render_html);
+//!     .service(http_client);
 //!
 //! let request = Request::new(Body::empty());
 //!
