@@ -16,8 +16,8 @@
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! # let render_html = tower::service_fn(|request: Request<Body>| async move {
-//! #     Ok::<_, std::convert::Infallible>(Response::new(request.into_body()))
+//! # let render_html = tower::service_fn(|_: Request<Body>| async move {
+//! #     Ok::<_, std::convert::Infallible>(Response::new(Body::empty()))
 //! # });
 //! #
 //! let mut svc = ServiceBuilder::new()
@@ -54,8 +54,8 @@
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! # let render_html = tower::service_fn(|request: Request<Body>| async move {
-//! #     Ok::<_, std::convert::Infallible>(Response::new(Body::from("1234567890")))
+//! # let render_html = tower::service_fn(|_: Request<Body>| async move {
+//! #     Ok::<_, std::convert::Infallible>(Response::new(Body::empty()))
 //! # });
 //! fn date_header_value() -> HeaderValue {
 //!     // ...
