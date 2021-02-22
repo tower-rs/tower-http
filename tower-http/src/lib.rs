@@ -21,6 +21,7 @@
 //!     propagate_header::PropagateHeaderLayer,
 //!     sensitive_header::SetSensitiveHeaderLayer,
 //!     set_response_header::SetResponseHeaderLayer,
+//!     require_authorization::RequireAuthorizationLayer,
 //! };
 //! use tower::{ServiceBuilder, service_fn};
 //! use http::{Request, Response, header::{HeaderName, CONTENT_TYPE, AUTHORIZATION}};
@@ -64,6 +65,8 @@
 //!         .layer(SetSensitiveHeaderLayer::new(AUTHORIZATION))
 //!         // If the response has a known size set the `Content-Type` header
 //!         .layer(SetResponseHeaderLayer::overriding(CONTENT_TYPE, content_length_from_response))
+//!         // Authorize requests using a token
+//!         .layer(RequireAuthorizationLayer::bearer("passwordlol"))
 //!         // Wrap a `Service` in our middleware stack
 //!         .service(service_fn(handler));
 //!
@@ -156,6 +159,10 @@
 
 #[macro_use]
 pub(crate) mod macros;
+
+#[cfg(feature = "require-authorization")]
+#[cfg_attr(docsrs, doc(cfg(feature = "require-authorization")))]
+pub mod require_authorization;
 
 #[cfg(feature = "set-response-header")]
 #[cfg_attr(docsrs, doc(cfg(feature = "set-response-header")))]
