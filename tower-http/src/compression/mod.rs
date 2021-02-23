@@ -101,3 +101,27 @@ fn encodings(headers: &HeaderMap, accept: AcceptEncoding) -> Vec<(Encoding, f32)
         })
         .collect::<Vec<(Encoding, f32)>>()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hyper::{Body, Error, Request, Response, Server};
+    use std::net::SocketAddr;
+    use tower::{make::Shared, service_fn};
+
+    #[allow(dead_code)]
+    async fn is_compatible_with_hyper() {
+        let svc = service_fn(handle);
+        let svc = Compression::new(svc);
+
+        let make_service = Shared::new(svc);
+
+        let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+        let server = Server::bind(&addr).serve(make_service);
+        server.await.unwrap();
+    }
+
+    async fn handle(_req: Request<Body>) -> Result<Response<Body>, Error> {
+        Ok(Response::new(Body::empty()))
+    }
+}
