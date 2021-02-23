@@ -1,5 +1,5 @@
 use super::{DecompressionBody, DecompressionLayer, ResponseFuture};
-use crate::compression_utils::AcceptEncoding;
+use crate::compression_utils::{AcceptEncoding, BoxError};
 use http::{
     header::{self, ACCEPT_ENCODING, RANGE},
     Request, Response,
@@ -89,7 +89,7 @@ impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for Decompression<S>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
     ResBody: Body,
-    ResBody::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+    ResBody::Error: Into<BoxError>,
 {
     type Response = Response<DecompressionBody<ResBody>>;
     type Error = S::Error;

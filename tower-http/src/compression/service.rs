@@ -1,5 +1,5 @@
 use super::{CompressionBody, CompressionLayer, Encoding, ResponseFuture};
-use crate::compression_utils::AcceptEncoding;
+use crate::compression_utils::{AcceptEncoding, BoxError};
 use http::{Request, Response};
 use http_body::Body;
 use std::task::{Context, Poll};
@@ -86,7 +86,7 @@ impl<ReqBody, ResBody, S> Service<Request<ReqBody>> for Compression<S>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
     ResBody: Body,
-    ResBody::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+    ResBody::Error: Into<BoxError>,
 {
     type Response = Response<CompressionBody<ResBody>>;
     type Error = S::Error;

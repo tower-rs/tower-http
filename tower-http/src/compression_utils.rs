@@ -14,6 +14,8 @@ use std::{
 use tokio::io::AsyncRead;
 use tokio_util::io::{poll_read_buf, StreamReader};
 
+pub(crate) type BoxError = Box<dyn std::error::Error + Send + Sync>;
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct AcceptEncoding {
     pub(crate) gzip: bool,
@@ -300,7 +302,7 @@ where
 
 pub(crate) fn into_io_error<E>(err: E) -> io::Error
 where
-    E: Into<Box<dyn std::error::Error + Send + Sync>>,
+    E: Into<BoxError>,
 {
     io::Error::new(io::ErrorKind::Other, err)
 }
