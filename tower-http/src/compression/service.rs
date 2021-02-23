@@ -1,10 +1,9 @@
+use super::{CompressionBody, CompressionLayer, Encoding, ResponseFuture};
 use crate::compression_utils::AcceptEncoding;
 use http::{Request, Response};
 use http_body::Body;
 use std::task::{Context, Poll};
 use tower_service::Service;
-
-use super::{CompressionBody, Encoding, ResponseFuture};
 
 /// Compress response bodies of the underlying service.
 ///
@@ -25,19 +24,13 @@ impl<S> Compression<S> {
         }
     }
 
-    /// Gets a reference to the underlying service.
-    pub fn get_ref(&self) -> &S {
-        &self.inner
-    }
+    define_inner_service_accessors!();
 
-    /// Gets a mutable reference to the underlying service.
-    pub fn get_mut(&mut self) -> &mut S {
-        &mut self.inner
-    }
-
-    /// Consumes `self`, returning the underlying service.
-    pub fn into_inner(self) -> S {
-        self.inner
+    /// Returns a new [`Layer`] that wraps services with a `Compression` middleware.
+    ///
+    /// [`Layer`]: tower_layer::Layer
+    pub fn layer() -> CompressionLayer {
+        CompressionLayer::new()
     }
 
     /// Sets whether to enable the gzip encoding.

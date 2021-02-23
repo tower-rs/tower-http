@@ -1,4 +1,4 @@
-use super::{DecompressionBody, ResponseFuture};
+use super::{DecompressionBody, ResponseFuture, DecompressionLayer};
 use crate::compression_utils::AcceptEncoding;
 use http::{
     header::{self, ACCEPT_ENCODING, RANGE},
@@ -27,19 +27,13 @@ impl<S> Decompression<S> {
         }
     }
 
-    /// Gets a reference to the underlying service.
-    pub fn get_ref(&self) -> &S {
-        &self.inner
-    }
+    define_inner_service_accessors!();
 
-    /// Gets a mutable reference to the underlying service.
-    pub fn get_mut(&mut self) -> &mut S {
-        &mut self.inner
-    }
-
-    /// Consumes `self`, returning the underlying service.
-    pub fn into_inner(self) -> S {
-        self.inner
+    /// Returns a new [`Layer`] that wraps services with a `Decompression` middleware.
+    ///
+    /// [`Layer`]: tower_layer::Layer
+    pub fn layer() -> DecompressionLayer {
+        DecompressionLayer::new()
     }
 
     /// Sets whether to request the gzip encoding.
