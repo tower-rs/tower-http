@@ -1,4 +1,4 @@
-use super::{DecompressionBody, ResponseFuture, DecompressionLayer};
+use super::{DecompressionBody, DecompressionLayer, ResponseFuture};
 use crate::compression_utils::AcceptEncoding;
 use http::{
     header::{self, ACCEPT_ENCODING, RANGE},
