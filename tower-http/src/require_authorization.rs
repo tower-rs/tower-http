@@ -139,6 +139,8 @@ impl<S, T> RequireAuthorization<S, T> {
     fn new(inner: S, auth: T) -> Self {
         Self { inner, auth }
     }
+
+    define_inner_service_accessors!();
 }
 
 impl<S> RequireAuthorization<S, Bearer> {
