@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 
 use super::{body::BodyInner, DecompressionBody};
-use crate::compression_utils::{into_io_error, AcceptEncoding, BodyMapErr, BoxError, WrapBody};
+use crate::compression_utils::{AcceptEncoding, BoxError, WrapBody};
 use futures_util::ready;
 use http::{header, Response};
 use http_body::Body;
@@ -36,7 +36,6 @@ where
         let res = ready!(self.as_mut().project().inner.poll(cx)?);
         let (mut parts, body) = res.into_parts();
 
-        let body = BodyMapErr::new(body, into_io_error as _);
         let res =
             if let header::Entry::Occupied(entry) = parts.headers.entry(header::CONTENT_ENCODING) {
                 let body = match entry.get().as_bytes() {

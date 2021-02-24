@@ -14,6 +14,8 @@ use std::{
 use tokio::io::AsyncRead;
 use tokio_util::io::{poll_read_buf, StreamReader};
 
+use crate::BodyOrIoError;
+
 pub(crate) type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
 #[derive(Debug, Clone, Copy)]
@@ -104,11 +106,9 @@ impl Default for AcceptEncoding {
     }
 }
 
-/// `Body` where the error is mapped into `std::io::Error`.
-pub(crate) type IoBody<B> = BodyMapErr<B, fn(<B as Body>::Error) -> io::Error>;
-
 /// A `Body` that has been converted into an `AsyncRead`.
-pub(crate) type AsyncReadBody<B> = StreamReader<BodyIntoStream<B>, <B as Body>::Data>;
+pub(crate) type AsyncReadBody<B> =
+    StreamReader<StreamErrorIntoIoError<BodyIntoStream<B>, <B as Body>::Error>, <B as Body>::Data>;
 
 /// Trait for applying some decorator to an `AsyncRead`
 pub(crate) trait DecorateAsyncRead {
@@ -136,13 +136,18 @@ impl<M: DecorateAsyncRead> WrapBody<M> {
     pub(crate) fn new<B>(body: B) -> Self
     where
         B: Body,
-        B::Error: Into<io::Error>,
         M: DecorateAsyncRead<Input = AsyncReadBody<B>>,
     {
         // convert `Body` into a `Stream`
         let stream = BodyIntoStream::new(body);
+
+        // an adapter that converts the error type into `io::Error` while storing the actual error
+        // `StreamReader` requires the error type is `io::Error`
+        let stream = StreamErrorIntoIoError::<_, B::Error>::new(stream);
+
         // convert `Stream` into an `AsyncRead`
         let read = StreamReader::new(stream);
+
         // apply decorator to `AsyncRead` yieling another `AsyncRead`
         let read = M::apply(read);
 
@@ -153,18 +158,38 @@ impl<M: DecorateAsyncRead> WrapBody<M> {
 impl<B, M> Body for WrapBody<M>
 where
     B: Body,
-    B::Error: Into<io::Error>,
     M: DecorateAsyncRead<Input = AsyncReadBody<B>>,
 {
     type Data = Bytes;
-    type Error = io::Error;
+    type Error = BodyOrIoError<B::Error>;
 
     fn poll_data(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
+        let mut this = self.project();
         let mut buf = BytesMut::new();
-        let read = ready!(poll_read_buf(self.project().read, cx, &mut buf)?);
+
+        let read = match ready!(poll_read_buf(this.read.as_mut(), cx, &mut buf)) {
+            Ok(read) => read,
+            Err(err) => {
+                let body_error: Option<B::Error> = M::get_pin_mut(this.read)
+                    .get_pin_mut()
+                    .project()
+                    .error
+                    .take();
+
+                if let Some(body_error) = body_error {
+                    return Poll::Ready(Some(Err(BodyOrIoError::Body(body_error))));
+                } else if err.raw_os_error() == Some(SENTINEL_ERROR_CODE) {
+                    // SENTINEL_ERROR_CODE only gets used when storing an underlying body error
+                    unreachable!()
+                } else {
+                    return Poll::Ready(Some(Err(BodyOrIoError::Io(err))));
+                }
+            }
+        };
+
         if read == 0 {
             Poll::Ready(None)
         } else {
@@ -177,8 +202,11 @@ where
         cx: &mut Context<'_>,
     ) -> Poll<Result<Option<http::HeaderMap>, Self::Error>> {
         let this = self.project();
-        let body = M::get_pin_mut(this.read).get_pin_mut().get_pin_mut();
-        body.poll_trailers(cx).map_err(Into::into)
+        let body = M::get_pin_mut(this.read)
+            .get_pin_mut()
+            .get_pin_mut()
+            .get_pin_mut();
+        body.poll_trailers(cx).map_err(BodyOrIoError::Body)
     }
 }
 
@@ -227,82 +255,56 @@ where
     }
 }
 
-// When https://github.com/hyperium/http-body/pull/36 is merged we can remove this
 #[pin_project]
-pub(crate) struct BodyMapErr<B, F> {
+pub(crate) struct StreamErrorIntoIoError<S, E> {
     #[pin]
-    inner: B,
-    f: F,
+    inner: S,
+    error: Option<E>,
 }
 
-impl<B, F> BodyMapErr<B, F> {
-    #[inline]
-    pub(crate) fn new(body: B, f: F) -> Self {
-        Self { inner: body, f }
+impl<S, E> StreamErrorIntoIoError<S, E> {
+    pub(crate) fn new(inner: S) -> Self {
+        Self { inner, error: None }
     }
 
     /// Get a reference to the inner body
-    pub(crate) fn get_ref(&self) -> &B {
+    pub(crate) fn get_ref(&self) -> &S {
         &self.inner
     }
 
-    /// Get a mutable reference to the inner body
-    pub(crate) fn get_mut(&mut self) -> &mut B {
+    /// Get a mutable reference to the inner inner
+    pub(crate) fn get_mut(&mut self) -> &mut S {
         &mut self.inner
     }
 
-    /// Get a pinned mutable reference to the inner body
-    pub(crate) fn get_pin_mut(self: Pin<&mut Self>) -> Pin<&mut B> {
+    /// Get a pinned mutable reference to the inner inner
+    pub(crate) fn get_pin_mut(self: Pin<&mut Self>) -> Pin<&mut S> {
         self.project().inner
     }
 
-    /// Consume `self`, returning the inner body
-    pub(crate) fn into_inner(self) -> B {
+    /// Consume `self`, returning the inner inner
+    pub(crate) fn into_inner(self) -> S {
         self.inner
     }
 }
 
-impl<B, F, E> Body for BodyMapErr<B, F>
+impl<S, T, E> Stream for StreamErrorIntoIoError<S, E>
 where
-    B: Body,
-    F: FnMut(B::Error) -> E,
+    S: Stream<Item = Result<T, E>>,
 {
-    type Data = B::Data;
-    type Error = E;
+    type Item = Result<T, io::Error>;
 
-    fn poll_data(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.project();
-        match this.inner.poll_data(cx) {
-            Poll::Pending => Poll::Pending,
-            Poll::Ready(None) => Poll::Ready(None),
-            Poll::Ready(Some(Ok(data))) => Poll::Ready(Some(Ok(data))),
-            Poll::Ready(Some(Err(err))) => Poll::Ready(Some(Err((this.f)(err)))),
+        match ready!(this.inner.poll_next(cx)) {
+            None => Poll::Ready(None),
+            Some(Ok(value)) => Poll::Ready(Some(Ok(value))),
+            Some(Err(err)) => {
+                *this.error = Some(err);
+                Poll::Ready(Some(Err(io::Error::from_raw_os_error(SENTINEL_ERROR_CODE))))
+            }
         }
     }
-
-    fn poll_trailers(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<Option<http::HeaderMap>, Self::Error>> {
-        let this = self.project();
-        this.inner.poll_trailers(cx).map_err(this.f)
-    }
-
-    fn is_end_stream(&self) -> bool {
-        self.inner.is_end_stream()
-    }
-
-    fn size_hint(&self) -> http_body::SizeHint {
-        self.inner.size_hint()
-    }
 }
 
-pub(crate) fn into_io_error<E>(err: E) -> io::Error
-where
-    E: Into<BoxError>,
-{
-    io::Error::new(io::ErrorKind::Other, err)
-}
+pub(crate) const SENTINEL_ERROR_CODE: i32 = -837459418;

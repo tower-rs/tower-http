@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 
 use super::{body::BodyInner, CompressionBody, Encoding};
-use crate::compression_utils::{into_io_error, BodyMapErr, BoxError, WrapBody};
+use crate::compression_utils::{BoxError, WrapBody};
 use futures_util::ready;
 use http::{header, HeaderValue, Response};
 use http_body::Body;
@@ -27,7 +27,6 @@ impl<F, B, E> Future for ResponseFuture<F>
 where
     F: Future<Output = Result<Response<B>, E>>,
     B: Body,
-    B::Error: Into<BoxError>,
 {
     type Output = Result<Response<CompressionBody<B>>, E>;
 
@@ -36,8 +35,6 @@ where
         let res = ready!(self.as_mut().project().inner.poll(cx)?);
 
         let (mut parts, body) = res.into_parts();
-
-        let body = BodyMapErr::new(body, into_io_error as _);
 
         let body = match self.encoding {
             #[cfg(feature = "compression-gzip")]

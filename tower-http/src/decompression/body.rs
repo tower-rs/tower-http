@@ -1,8 +1,7 @@
 #![allow(unused_imports)]
 
-use crate::compression_utils::{
-    AsyncReadBody, BodyIntoStream, DecorateAsyncRead, IoBody, WrapBody,
-};
+use crate::compression_utils::{AsyncReadBody, BodyIntoStream, DecorateAsyncRead, WrapBody};
+use crate::BodyOrIoError;
 #[cfg(feature = "decompression-br")]
 use async_compression::tokio::bufread::BrotliDecoder;
 #[cfg(feature = "decompression-gzip")]
@@ -39,7 +38,7 @@ where
             BodyInner::Deflate(inner) => inner.read.get_ref().get_ref().get_ref().get_ref(),
             #[cfg(feature = "decompression-br")]
             BodyInner::Brotli(inner) => inner.read.get_ref().get_ref().get_ref().get_ref(),
-            BodyInner::Identity(inner) => inner.get_ref(),
+            BodyInner::Identity(inner) => inner,
         }
     }
 
@@ -52,7 +51,7 @@ where
             BodyInner::Deflate(inner) => inner.read.get_mut().get_mut().get_mut().get_mut(),
             #[cfg(feature = "decompression-br")]
             BodyInner::Brotli(inner) => inner.read.get_mut().get_mut().get_mut().get_mut(),
-            BodyInner::Identity(inner) => inner.get_mut(),
+            BodyInner::Identity(inner) => inner,
         }
     }
 
@@ -83,7 +82,7 @@ where
                 .get_pin_mut()
                 .get_pin_mut()
                 .get_pin_mut(),
-            BodyInnerProj::Identity(inner) => inner.get_pin_mut(),
+            BodyInnerProj::Identity(inner) => inner,
         }
     }
 
@@ -111,7 +110,7 @@ where
                 .into_inner()
                 .into_inner()
                 .into_inner(),
-            BodyInner::Identity(inner) => inner.into_inner(),
+            BodyInner::Identity(inner) => inner,
         }
     }
 }
@@ -122,12 +121,12 @@ where
     B: Body,
 {
     #[cfg(feature = "decompression-gzip")]
-    Gzip(#[pin] WrapBody<GzipDecoder<IoBody<B>>>),
+    Gzip(#[pin] WrapBody<GzipDecoder<B>>),
     #[cfg(feature = "decompression-deflate")]
-    Deflate(#[pin] WrapBody<ZlibDecoder<IoBody<B>>>),
+    Deflate(#[pin] WrapBody<ZlibDecoder<B>>),
     #[cfg(feature = "decompression-br")]
-    Brotli(#[pin] WrapBody<BrotliDecoder<IoBody<B>>>),
-    Identity(#[pin] IoBody<B>),
+    Brotli(#[pin] WrapBody<BrotliDecoder<B>>),
+    Identity(#[pin] B),
 }
 
 impl<B> Body for DecompressionBody<B>
@@ -135,7 +134,7 @@ where
     B: Body,
 {
     type Data = Bytes;
-    type Error = io::Error;
+    type Error = BodyOrIoError<B::Error>;
 
     fn poll_data(
         self: Pin<&mut Self>,
@@ -153,7 +152,7 @@ where
                     let bytes = buf.copy_to_bytes(buf.remaining());
                     Poll::Ready(Some(Ok(bytes)))
                 }
-                Some(Err(err)) => Poll::Ready(Some(Err(err))),
+                Some(Err(err)) => Poll::Ready(Some(Err(BodyOrIoError::Body(err)))),
                 None => Poll::Ready(None),
             },
         }
@@ -170,7 +169,7 @@ where
             BodyInnerProj::Deflate(inner) => inner.poll_trailers(cx),
             #[cfg(feature = "decompression-br")]
             BodyInnerProj::Brotli(inner) => inner.poll_trailers(cx),
-            BodyInnerProj::Identity(body) => body.poll_trailers(cx),
+            BodyInnerProj::Identity(body) => body.poll_trailers(cx).map_err(BodyOrIoError::Body),
         }
     }
 }
@@ -179,7 +178,6 @@ where
 impl<B> DecorateAsyncRead for GzipDecoder<B>
 where
     B: Body,
-    B::Error: Into<io::Error>,
 {
     type Input = AsyncReadBody<B>;
     type Output = GzipDecoder<Self::Input>;
@@ -197,7 +195,6 @@ where
 impl<B> DecorateAsyncRead for ZlibDecoder<B>
 where
     B: Body,
-    B::Error: Into<io::Error>,
 {
     type Input = AsyncReadBody<B>;
     type Output = ZlibDecoder<Self::Input>;
@@ -215,7 +212,6 @@ where
 impl<B> DecorateAsyncRead for BrotliDecoder<B>
 where
     B: Body,
-    B::Error: Into<io::Error>,
 {
     type Input = AsyncReadBody<B>;
     type Output = BrotliDecoder<Self::Input>;

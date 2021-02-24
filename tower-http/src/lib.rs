@@ -154,6 +154,8 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(test, allow(clippy::float_cmp))]
 
+use std::fmt;
+
 #[macro_use]
 pub(crate) mod macros;
 
@@ -193,3 +195,43 @@ pub mod map_response_body;
 pub mod map_request_body;
 
 pub mod services;
+
+/// Error type containing either a body error or an IO error.
+///
+/// This type is used to combine errors produced by response bodies with compression or
+/// decompression applied. The body itself can produce errors of type `E` whereas compression or
+/// decompression can produce [`io::Error`]s.
+///
+/// [`io::Error`]: std::io::Error
+#[cfg(any(feature = "compression", feature = "decompression"))]
+#[derive(Debug)]
+pub enum BodyOrIoError<E> {
+    /// Errors produced by the body.
+    Body(E),
+    /// IO errors produced by compression or decompression.
+    Io(std::io::Error),
+}
+
+impl<E> fmt::Display for BodyOrIoError<E>
+where
+    E: fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BodyOrIoError::Io(inner) => inner.fmt(f),
+            BodyOrIoError::Body(inner) => inner.fmt(f),
+        }
+    }
+}
+
+impl<E> std::error::Error for BodyOrIoError<E>
+where
+    E: std::error::Error,
+{
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            BodyOrIoError::Io(inner) => inner.source(),
+            BodyOrIoError::Body(inner) => inner.source(),
+        }
+    }
+}
