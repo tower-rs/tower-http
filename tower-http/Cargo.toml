@@ -45,7 +45,7 @@ full = [
     "propagate-header",
     "redirect",
     "sensitive-header",
-    "set-response-header",
+    "set-header",
 ]
 
 add-extension = []
@@ -54,7 +54,7 @@ map-response-body = []
 propagate-header = []
 redirect = []
 sensitive-header = []
-set-response-header = []
+set-header = []
 
 compression = ["bytes", "tokio-util"]
 compression-br = ["async-compression/brotli", "compression"]

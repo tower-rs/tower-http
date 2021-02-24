@@ -20,7 +20,7 @@
 //!     compression::CompressionLayer,
 //!     propagate_header::PropagateHeaderLayer,
 //!     sensitive_header::SetSensitiveHeaderLayer,
-//!     set_response_header::SetResponseHeaderLayer,
+//!     set_header::SetResponseHeaderLayer,
 //! };
 //! use tower::{ServiceBuilder, service_fn};
 //! use http::{Request, Response, header::{HeaderName, CONTENT_TYPE, AUTHORIZATION}};
@@ -157,9 +157,9 @@
 #[macro_use]
 pub(crate) mod macros;
 
-#[cfg(feature = "set-response-header")]
-#[cfg_attr(docsrs, doc(cfg(feature = "set-response-header")))]
-pub mod set_response_header;
+#[cfg(feature = "set-header")]
+#[cfg_attr(docsrs, doc(cfg(feature = "set-header")))]
+pub mod set_header;
 
 #[cfg(feature = "propagate-header")]
 #[cfg_attr(docsrs, doc(cfg(feature = "propagate-header")))]
