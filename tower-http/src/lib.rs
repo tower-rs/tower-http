@@ -154,8 +154,6 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(test, allow(clippy::float_cmp))]
 
-use std::fmt;
-
 #[macro_use]
 pub(crate) mod macros;
 
@@ -204,6 +202,7 @@ pub mod services;
 ///
 /// [`io::Error`]: std::io::Error
 #[cfg(any(feature = "compression", feature = "decompression"))]
+#[cfg_attr(docsrs, doc(cfg(feature = "compression", feature = "decompression")))]
 #[derive(Debug)]
 pub enum BodyOrIoError<E> {
     /// Errors produced by the body.
@@ -212,11 +211,12 @@ pub enum BodyOrIoError<E> {
     Io(std::io::Error),
 }
 
-impl<E> fmt::Display for BodyOrIoError<E>
+#[cfg(any(feature = "compression", feature = "decompression"))]
+impl<E> std::fmt::Display for BodyOrIoError<E>
 where
-    E: fmt::Display,
+    E: std::fmt::Display,
 {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             BodyOrIoError::Io(inner) => inner.fmt(f),
             BodyOrIoError::Body(inner) => inner.fmt(f),
@@ -224,6 +224,7 @@ where
     }
 }
 
+#[cfg(any(feature = "compression", feature = "decompression"))]
 impl<E> std::error::Error for BodyOrIoError<E>
 where
     E: std::error::Error,
