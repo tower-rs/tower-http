@@ -13,7 +13,7 @@ use structopt::StructOpt;
 use tower::{make::Shared, ServiceBuilder};
 use tower_http::{
     add_extension::AddExtensionLayer, compression::CompressionLayer,
-    sensitive_header::SetSensitiveHeaderLayer, set_response_header::SetResponseHeaderLayer,
+    sensitive_header::SetSensitiveHeaderLayer, set_header::SetResponseHeaderLayer,
 };
 use warp::{filters, path};
 use warp::{Filter, Rejection, Reply};
