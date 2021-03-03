@@ -58,7 +58,7 @@ where
     type ClassifyEos = C::ClassifyEos;
     type Classifier = C;
 
-    fn make_classify<B>(&self, _req: &Request<B>) -> Self::Classifier
+    fn make_classifier<B>(&self, _req: &Request<B>) -> Self::Classifier
     where
         B: Body,
     {
@@ -150,7 +150,7 @@ impl ServerErrorsAsFailures {
     /// Returns a [`MakeClassifier`] that produces `ServerErrorsAsFailures`.
     ///
     /// This is a convenience function that simply calls `SharedClassifier::new`.
-    pub fn make_classify<E>() -> SharedClassifier<Self> {
+    pub fn make_classifier<E>() -> SharedClassifier<Self> {
         SharedClassifier::new::<E>(Self::new())
     }
 }
@@ -198,7 +198,7 @@ impl GrpcErrorsAsFailures {
     /// Returns a [`MakeClassifier`] that produces `GrpcErrorsAsFailures`.
     ///
     /// This is a convenience function that simply calls `SharedClassifier::new`.
-    pub fn make_classify<E>() -> SharedClassifier<Self> {
+    pub fn make_classifier<E>() -> SharedClassifier<Self> {
         SharedClassifier::new::<E>(Self::new())
     }
 }
