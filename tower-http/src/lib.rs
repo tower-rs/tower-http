@@ -192,6 +192,10 @@ pub mod map_response_body;
 #[cfg_attr(docsrs, doc(cfg(feature = "map-request-body")))]
 pub mod map_request_body;
 
+#[cfg(feature = "trace")]
+#[cfg_attr(docsrs, doc(cfg(feature = "trace")))]
+pub mod trace;
+
 pub mod classify;
 pub mod services;
 
@@ -239,4 +243,14 @@ where
             BodyOrIoError::Body(inner) => inner.source(),
         }
     }
+}
+
+/// TODO(david): docs
+#[non_exhaustive]
+#[derive(Copy, Clone, Debug)]
+pub enum LatencyUnit {
+    /// TODO(david): docs
+    Millis,
+    /// TODO(david): docs
+    Nanos,
 }
