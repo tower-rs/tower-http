@@ -1,7 +1,6 @@
 //! Tools for classifying responses as either success or failure.
 
 use http::{HeaderMap, Request, Response, StatusCode};
-use http_body::Body;
 use std::{convert::Infallible, marker::PhantomData};
 
 /// Trait for producing response classifiers from a request.
@@ -26,9 +25,7 @@ pub trait MakeClassifier<E> {
     type ClassifyEos: ClassifyEos<E, FailureClass = Self::FailureClass>;
 
     /// Make a response classifier for this request
-    fn make_classifier<B>(&self, req: &Request<B>) -> Self::Classifier
-    where
-        B: Body;
+    fn make_classifier<B>(&self, req: &Request<B>) -> Self::Classifier;
 }
 
 /// A [`MakeClassifier`] that works by cloning a classifier.
@@ -58,10 +55,7 @@ where
     type ClassifyEos = C::ClassifyEos;
     type Classifier = C;
 
-    fn make_classifier<B>(&self, _req: &Request<B>) -> Self::Classifier
-    where
-        B: Body,
-    {
+    fn make_classifier<B>(&self, _req: &Request<B>) -> Self::Classifier {
         self.classifier.clone()
     }
 }
@@ -86,9 +80,7 @@ pub trait ClassifyResponse<E> {
     fn classify_response<B>(
         self,
         res: &Response<B>,
-    ) -> ClassifiedResponse<Self::FailureClass, Self::ClassifyEos>
-    where
-        B: Body;
+    ) -> ClassifiedResponse<Self::FailureClass, Self::ClassifyEos>;
 
     /// Classify an error.
     ///
@@ -138,7 +130,7 @@ impl<T, E> ClassifyEos<E> for NeverClassifyEos<T> {
         unreachable!()
     }
 
-    fn classify_error(self, error: &E) -> Self::FailureClass {
+    fn classify_error(self, _error: &E) -> Self::FailureClass {
         // `NeverClassifyEos` contains an `Infallible` so it can never be constructed
         unreachable!()
     }
@@ -173,10 +165,7 @@ impl<E> ClassifyResponse<E> for ServerErrorsAsFailures {
     fn classify_response<B>(
         self,
         res: &Response<B>,
-    ) -> ClassifiedResponse<Self::FailureClass, Self::ClassifyEos>
-    where
-        B: Body,
-    {
+    ) -> ClassifiedResponse<Self::FailureClass, Self::ClassifyEos> {
         if res.status().is_server_error() {
             ClassifiedResponse::Ready(Err(res.status()))
         } else {
@@ -221,10 +210,7 @@ impl<E> ClassifyResponse<E> for GrpcErrorsAsFailures {
     fn classify_response<B>(
         self,
         res: &Response<B>,
-    ) -> ClassifiedResponse<Self::FailureClass, Self::ClassifyEos>
-    where
-        B: Body,
-    {
+    ) -> ClassifiedResponse<Self::FailureClass, Self::ClassifyEos> {
         if let Some(classification) = classify_grpc_metadata(res.headers()) {
             ClassifiedResponse::Ready(classification)
         } else {
