@@ -8,6 +8,9 @@ use std::{convert::Infallible, marker::PhantomData};
 ///
 /// This is useful if your classifier depends on data from the request. Could for example be the
 /// URI or HTTP method.
+///
+/// This trait is generic over the error type your services produce. This is necessary for
+/// [`ClassifyResponse::classify_error`].
 pub trait MakeClassifier<E> {
     /// The response classifier produced.
     type Classifier: ClassifyResponse<
@@ -28,13 +31,17 @@ pub trait MakeClassifier<E> {
         B: Body;
 }
 
-/// A `MakeClassifier` that works by cloning a classifier.
+/// A [`MakeClassifier`] that works by cloning a classifier.
+///
+/// If you have a [`ClassifyResponse`] that doesn't depend on the request you can use
+/// [`SharedClassifier`] to get a [`MakeClassifier`] for your classifier.
 #[derive(Debug, Clone)]
 pub struct SharedClassifier<C> {
     classifier: C,
 }
 
 impl<C> SharedClassifier<C> {
+    /// Create a new `SharedClassifier` from the given classifier.
     pub fn new<E>(classifier: C) -> Self
     where
         C: ClassifyResponse<E> + Clone,
@@ -59,7 +66,12 @@ where
     }
 }
 
-/// Trait for classifying responses as either success or failure.
+/// Trait for classifying responses as either success or failure. Designed to support both unary
+/// requests (single request for a single response) as well as streaming responses.
+///
+/// Can for example be used in logging or metrics middlewares, or to build [retry policies].
+///
+/// [retry policies]: https://docs.rs/tower/latest/tower/retry/trait.Policy.html
 pub trait ClassifyResponse<E> {
     /// The type of failure classifications.
     type FailureClass;
@@ -68,6 +80,9 @@ pub trait ClassifyResponse<E> {
     type ClassifyEos: ClassifyEos<FailureClass = Self::FailureClass>;
 
     /// Classify a response.
+    ///
+    /// Returns a [`ClassifiedResponse`] which specifies whether the response was able to
+    /// classified immediately or if we have to wait until the end of a streaming response.
     fn classify_response<B>(
         self,
         res: &Response<B>,
@@ -75,7 +90,10 @@ pub trait ClassifyResponse<E> {
     where
         B: Body;
 
-    /// Classify an error
+    /// Classify an error.
+    ///
+    /// Errors are always errors (doh) but sometimes it might be useful to have multiple classes of
+    /// errors. A retry policy might allows retrying some errors and not others.
     fn classify_error(self, error: &E) -> Self::FailureClass;
 }
 
@@ -84,7 +102,7 @@ pub trait ClassifyEos {
     /// The type of failure classifications.
     type FailureClass;
 
-    /// Perform the classification.
+    /// Perform the classification from response trailers.
     fn classify_eos(self, trailers: Option<&HeaderMap>) -> Result<(), Self::FailureClass>;
 }
 
@@ -128,6 +146,13 @@ impl ServerErrorsAsFailures {
     pub fn new() -> Self {
         Self::default()
     }
+
+    /// Returns a [`MakeClassifier`] that produces `ServerErrorsAsFailures`.
+    ///
+    /// This is a convenience function that simply calls `SharedClassifier::new`.
+    pub fn make_classify<E>() -> SharedClassifier<Self> {
+        SharedClassifier::new::<E>(Self::new())
+    }
 }
 
 impl<E> ClassifyResponse<E> for ServerErrorsAsFailures {
@@ -168,6 +193,13 @@ impl GrpcErrorsAsFailures {
     /// Create a new [`GrpcErrorsAsFailures`].
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Returns a [`MakeClassifier`] that produces `GrpcErrorsAsFailures`.
+    ///
+    /// This is a convenience function that simply calls `SharedClassifier::new`.
+    pub fn make_classify<E>() -> SharedClassifier<Self> {
+        SharedClassifier::new::<E>(Self::new())
     }
 }
 
