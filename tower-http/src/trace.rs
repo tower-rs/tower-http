@@ -31,9 +31,9 @@ pub struct TraceLayer<C> {
 impl TraceLayer<SharedClassifier<ServerErrorsAsFailures>> {
     /// Create a new [`TraceLayer`] using [`ServerErrorsAsFailures`] which supports classifying
     /// regular HTTP responses based on the status code.
-    pub fn new() -> Self {
+    pub fn new<E>() -> Self {
         Self {
-            make_classifier: SharedClassifier::new(ServerErrorsAsFailures::default()),
+            make_classifier: SharedClassifier::new::<E>(ServerErrorsAsFailures::default()),
         }
     }
 }
@@ -41,9 +41,9 @@ impl TraceLayer<SharedClassifier<ServerErrorsAsFailures>> {
 impl TraceLayer<SharedClassifier<GrpcErrorsAsFailures>> {
     /// Create a new [`TraceLayer`] using [`GrpcErrorsAsFailures`] which supports classifying
     /// gRPC responses and streams based on the `grpc-status` header.
-    pub fn new_for_grpc() -> Self {
+    pub fn new_for_grpc<E>() -> Self {
         Self {
-            make_classifier: SharedClassifier::new(GrpcErrorsAsFailures::default()),
+            make_classifier: SharedClassifier::new::<E>(GrpcErrorsAsFailures::default()),
         }
     }
 }
@@ -66,6 +66,7 @@ where
 ///
 /// [tracing]: https://crates.io/crates/tracing
 /// [`Service`]: tower_service::Service
+#[derive(Clone, Default)]
 pub struct Trace<S, C> {
     inner: S,
     make_classifier: C,
@@ -76,7 +77,7 @@ where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
     ReqBody: Body,
     ResBody: Body,
-    C: MakeClassifier,
+    C: MakeClassifier<S::Error>,
     C::Classifier: Clone,
 {
     type Response = Response<TraceBody<ResBody, C::ClassifyEos>>;
@@ -109,7 +110,7 @@ impl<F, ResBody, E, C> Future for ResponseFuture<F, C>
 where
     F: Future<Output = Result<Response<ResBody>, E>>,
     ResBody: Body,
-    C: ClassifyResponse + Clone,
+    C: ClassifyResponse<E> + Clone,
 {
     type Output = Result<Response<TraceBody<ResBody, C::ClassifyEos>>, E>;
 
@@ -194,7 +195,7 @@ mod tests {
     // just checking this actually compiles
     async fn http() {
         let svc = ServiceBuilder::new()
-            .layer(TraceLayer::new())
+            .layer(TraceLayer::new::<Error>())
             .service(service_fn(handle));
 
         svc.oneshot(Request::new(Body::empty())).await.unwrap();
@@ -203,7 +204,7 @@ mod tests {
     // just checking this actually compiles
     async fn grpc() {
         let svc = ServiceBuilder::new()
-            .layer(TraceLayer::new_for_grpc())
+            .layer(TraceLayer::new_for_grpc::<Error>())
             .service(service_fn(handle));
 
         svc.oneshot(Request::new(Body::empty())).await.unwrap();
@@ -226,7 +227,7 @@ mod tests {
 
     impl<ReqB, ResB, E, C> Policy<Request<ReqB>, Response<ResB>, E> for RetryBasedOnClassification<C>
     where
-        C: ClassifyResponse + Clone,
+        C: ClassifyResponse<E> + Clone,
         C::FailureClass: IsRetryable,
         ResB: http_body::Body,
         Request<ReqB>: Clone,

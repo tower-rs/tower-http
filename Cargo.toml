@@ -1,4 +1,5 @@
 [workspace]
 members = [
   "tower-http",
+  "examples/warp-key-value-store",
 ]

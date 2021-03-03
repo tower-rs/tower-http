@@ -8,9 +8,10 @@ use std::{convert::Infallible, marker::PhantomData};
 ///
 /// This is useful if your classifier depends on data from the request. Could for example be the
 /// URI or HTTP method.
-pub trait MakeClassifier {
+pub trait MakeClassifier<E> {
     /// The response classifier produced.
     type Classifier: ClassifyResponse<
+        E,
         FailureClass = Self::FailureClass,
         ClassifyEos = Self::ClassifyEos,
     >;
@@ -34,17 +35,17 @@ pub struct SharedClassifier<C> {
 }
 
 impl<C> SharedClassifier<C> {
-    pub fn new(classifier: C) -> Self
+    pub fn new<E>(classifier: C) -> Self
     where
-        C: ClassifyResponse + Clone,
+        C: ClassifyResponse<E> + Clone,
     {
         Self { classifier }
     }
 }
 
-impl<C> MakeClassifier for SharedClassifier<C>
+impl<C, E> MakeClassifier<E> for SharedClassifier<C>
 where
-    C: ClassifyResponse + Clone,
+    C: ClassifyResponse<E> + Clone,
 {
     type FailureClass = C::FailureClass;
     type ClassifyEos = C::ClassifyEos;
@@ -59,7 +60,7 @@ where
 }
 
 /// Trait for classifying responses as either success or failure.
-pub trait ClassifyResponse {
+pub trait ClassifyResponse<E> {
     /// The type of failure classifications.
     type FailureClass;
 
@@ -75,9 +76,7 @@ pub trait ClassifyResponse {
         B: Body;
 
     /// Classify an error
-    fn classify_error<E>(self, error: &E) -> Self::FailureClass
-    where
-        E: std::error::Error + 'static;
+    fn classify_error(self, error: &E) -> Self::FailureClass;
 }
 
 /// Trait for classifying end of streams (EOS) as either success or failure.
@@ -132,7 +131,7 @@ impl ServerErrorsAsFailures {
     }
 }
 
-impl ClassifyResponse for ServerErrorsAsFailures {
+impl<E> ClassifyResponse<E> for ServerErrorsAsFailures {
     type FailureClass = StatusCode;
     type ClassifyEos = NeverClassifyEos<StatusCode>;
 
@@ -150,10 +149,7 @@ impl ClassifyResponse for ServerErrorsAsFailures {
         }
     }
 
-    fn classify_error<E>(self, _error: &E) -> Self::FailureClass
-    where
-        E: std::error::Error + 'static,
-    {
+    fn classify_error(self, _error: &E) -> Self::FailureClass {
         StatusCode::INTERNAL_SERVER_ERROR
     }
 }
@@ -176,7 +172,7 @@ impl GrpcErrorsAsFailures {
     }
 }
 
-impl ClassifyResponse for GrpcErrorsAsFailures {
+impl<E> ClassifyResponse<E> for GrpcErrorsAsFailures {
     type FailureClass = i32;
     type ClassifyEos = GrpcEosErrorsAsFailures;
 
@@ -194,10 +190,7 @@ impl ClassifyResponse for GrpcErrorsAsFailures {
         }
     }
 
-    fn classify_error<E>(self, _error: &E) -> Self::FailureClass
-    where
-        E: std::error::Error + 'static,
-    {
+    fn classify_error(self, _error: &E) -> Self::FailureClass {
         13
     }
 }

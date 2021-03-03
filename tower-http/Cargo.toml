@@ -22,7 +22,7 @@ tower-layer = "0.3"
 tower-service = "0.3"
 
 # optional dependencies
-async-compression = { version = "0.3", optional = true, features = ["deflate", "gzip", "brotli", "tokio"] }
+async-compression = { version = "0.3", optional = true, features = ["tokio"] }
 bytes = { version = "1", optional = true }
 hyper = { version = "0.14", optional = true, default_features = false, features = ["stream"] }
 tokio-util = { version = "0.6", optional = true, default_features = false, features = ["io", "codec"] }
@@ -30,9 +30,9 @@ tracing = { version = "0.1", default_features = false, optional = true }
 
 [dev-dependencies]
 futures = "0.3"
-hyper = "0.14"
-tower = { version = "0.4", features = ["util", "retry"] }
+hyper = { version = "0.14", features = ["full"] }
 tokio = { version = "1", features = ["full"] }
+tower = { version = "0.4", features = ["util", "retry"] }
 
 [features]
 default = []
@@ -41,10 +41,22 @@ full = [
     "compression",
     "compression-full",
     "decompression-full",
+    "map-request-body",
+    "map-response-body",
+    "propagate-header",
+    "redirect",
+    "sensitive-header",
+    "set-header",
     "trace",
 ]
 
 add-extension = []
+map-request-body = []
+map-response-body = []
+propagate-header = []
+redirect = []
+sensitive-header = []
+set-header = []
 trace = ["tracing"]
 
 compression = ["bytes", "tokio-util"]
