@@ -222,6 +222,7 @@ impl<E> ClassifyResponse<E> for GrpcErrorsAsFailures {
     }
 
     fn classify_error(self, _error: &E) -> Self::FailureClass {
+        // https://grpc.github.io/grpc/core/md_doc_statuscodes.html
         13
     }
 }
