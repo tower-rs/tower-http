@@ -181,10 +181,6 @@ pub mod sensitive_header;
 #[cfg_attr(docsrs, doc(cfg(feature = "decompression")))]
 pub mod decompression;
 
-#[cfg(feature = "trace")]
-#[cfg_attr(docsrs, doc(cfg(feature = "trace")))]
-pub mod trace;
-
 #[cfg(feature = "map-response-body")]
 #[cfg_attr(docsrs, doc(cfg(feature = "map-response-body")))]
 pub mod map_response_body;

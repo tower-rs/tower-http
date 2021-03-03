@@ -14,7 +14,6 @@ use tower::{make::Shared, ServiceBuilder};
 use tower_http::{
     add_extension::AddExtensionLayer, compression::CompressionLayer,
     sensitive_header::SetSensitiveHeaderLayer, set_header::SetResponseHeaderLayer,
-    trace::TraceLayer
 };
 use warp::{filters, path};
 use warp::{Filter, Rejection, Reply};
@@ -65,7 +64,6 @@ async fn serve_forever(listener: TcpListener) -> Result<(), hyper::Error> {
 
     // Apply middlewares to our service.
     let service = ServiceBuilder::new()
-        .layer(TraceLayer::new::<hyper::Error>())
         // Set a timeout
         .timeout(Duration::from_secs(10))
         // Share the state with each handler via a request extension
