@@ -26,7 +26,7 @@ pub trait MakeClassifier<E> {
     type ClassifyEos: ClassifyEos<FailureClass = Self::FailureClass>;
 
     /// Make a response classifier for this request
-    fn make_classify<B>(&self, req: &Request<B>) -> Self::Classifier
+    fn make_classifier<B>(&self, req: &Request<B>) -> Self::Classifier
     where
         B: Body;
 }
