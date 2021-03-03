@@ -23,7 +23,7 @@ pub trait MakeClassifier<E> {
     type FailureClass;
 
     /// The type used to classify the response end of stream (EOS).
-    type ClassifyEos: ClassifyEos<FailureClass = Self::FailureClass>;
+    type ClassifyEos: ClassifyEos<E, FailureClass = Self::FailureClass>;
 
     /// Make a response classifier for this request
     fn make_classifier<B>(&self, req: &Request<B>) -> Self::Classifier
@@ -77,7 +77,7 @@ pub trait ClassifyResponse<E> {
     type FailureClass;
 
     /// The type used to classify the response end of stream (EOS).
-    type ClassifyEos: ClassifyEos<FailureClass = Self::FailureClass>;
+    type ClassifyEos: ClassifyEos<E, FailureClass = Self::FailureClass>;
 
     /// Classify a response.
     ///
@@ -98,12 +98,18 @@ pub trait ClassifyResponse<E> {
 }
 
 /// Trait for classifying end of streams (EOS) as either success or failure.
-pub trait ClassifyEos {
+pub trait ClassifyEos<E> {
     /// The type of failure classifications.
     type FailureClass;
 
     /// Perform the classification from response trailers.
     fn classify_eos(self, trailers: Option<&HeaderMap>) -> Result<(), Self::FailureClass>;
+
+    /// Classify an error.
+    ///
+    /// Errors are always errors (doh) but sometimes it might be useful to have multiple classes of
+    /// errors. A retry policy might allows retrying some errors and not others.
+    fn classify_error(self, error: &E) -> Self::FailureClass;
 }
 
 /// Result of doing a classification.
@@ -124,10 +130,15 @@ pub struct NeverClassifyEos<T> {
     _never: Infallible,
 }
 
-impl<T> ClassifyEos for NeverClassifyEos<T> {
+impl<T, E> ClassifyEos<E> for NeverClassifyEos<T> {
     type FailureClass = T;
 
     fn classify_eos(self, _trailers: Option<&HeaderMap>) -> Result<(), Self::FailureClass> {
+        // `NeverClassifyEos` contains an `Infallible` so it can never be constructed
+        unreachable!()
+    }
+
+    fn classify_error(self, error: &E) -> Self::FailureClass {
         // `NeverClassifyEos` contains an `Infallible` so it can never be constructed
         unreachable!()
     }
@@ -233,11 +244,16 @@ pub struct GrpcEosErrorsAsFailures {
     _priv: (),
 }
 
-impl ClassifyEos for GrpcEosErrorsAsFailures {
+impl<E> ClassifyEos<E> for GrpcEosErrorsAsFailures {
     type FailureClass = i32;
 
     fn classify_eos(self, trailers: Option<&HeaderMap>) -> Result<(), i32> {
         trailers.and_then(classify_grpc_metadata).unwrap_or(Ok(()))
+    }
+
+    fn classify_error(self, _error: &E) -> Self::FailureClass {
+        // https://grpc.github.io/grpc/core/md_doc_statuscodes.html
+        13
     }
 }
 
