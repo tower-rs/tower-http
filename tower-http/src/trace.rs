@@ -4,7 +4,7 @@
 //! [`Service`]: tower_service::Service
 
 use crate::classify::{
-    ClassifiedNowOrLater, ClassifyEos, ClassifyResponse, GrpcErrorsAsFailures, MakeClassifier,
+    ClassifiedResponse, ClassifyEos, ClassifyResponse, GrpcErrorsAsFailures, MakeClassifier,
     ServerErrorsAsFailures, SharedClassifier,
 };
 use http::{HeaderMap, Request, Response};
@@ -120,14 +120,14 @@ where
 
         match result {
             Ok(res) => match this.classifier.take().unwrap().classify_response(&res) {
-                ClassifiedNowOrLater::Ready(classification) => {
+                ClassifiedResponse::Ready(classification) => {
                     let res = res.map(|body| TraceBody {
                         inner: body,
                         classify_eos: None,
                     });
                     Poll::Ready(Ok(res))
                 }
-                ClassifiedNowOrLater::RequiresEos(classify_eos) => {
+                ClassifiedResponse::RequiresEos(classify_eos) => {
                     let res = res.map(|body| TraceBody {
                         inner: body,
                         classify_eos: Some(classify_eos),
@@ -242,7 +242,7 @@ mod tests {
         ) -> Option<Self::Future> {
             match res {
                 Ok(res) => {
-                    if let ClassifiedNowOrLater::Ready(class) =
+                    if let ClassifiedResponse::Ready(class) =
                         self.classifier.clone().classify_response(res)
                     {
                         if class.err()?.is_retryable() {

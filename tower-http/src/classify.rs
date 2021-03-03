@@ -71,7 +71,7 @@ pub trait ClassifyResponse<E> {
     fn classify_response<B>(
         self,
         res: &Response<B>,
-    ) -> ClassifiedNowOrLater<Self::FailureClass, Self::ClassifyEos>
+    ) -> ClassifiedResponse<Self::FailureClass, Self::ClassifyEos>
     where
         B: Body;
 
@@ -90,8 +90,7 @@ pub trait ClassifyEos {
 
 /// Result of doing a classification.
 #[derive(Debug)]
-// really don't like this name... :(
-pub enum ClassifiedNowOrLater<FailureClass, ClassifyEos> {
+pub enum ClassifiedResponse<FailureClass, ClassifyEos> {
     /// The response was able to be classified immediately.
     Ready(Result<(), FailureClass>),
     /// We have to wait until the end of a streaming response to classify it.
@@ -138,14 +137,14 @@ impl<E> ClassifyResponse<E> for ServerErrorsAsFailures {
     fn classify_response<B>(
         self,
         res: &Response<B>,
-    ) -> ClassifiedNowOrLater<Self::FailureClass, Self::ClassifyEos>
+    ) -> ClassifiedResponse<Self::FailureClass, Self::ClassifyEos>
     where
         B: Body,
     {
         if res.status().is_server_error() {
-            ClassifiedNowOrLater::Ready(Err(res.status()))
+            ClassifiedResponse::Ready(Err(res.status()))
         } else {
-            ClassifiedNowOrLater::Ready(Ok(()))
+            ClassifiedResponse::Ready(Ok(()))
         }
     }
 
@@ -179,14 +178,14 @@ impl<E> ClassifyResponse<E> for GrpcErrorsAsFailures {
     fn classify_response<B>(
         self,
         res: &Response<B>,
-    ) -> ClassifiedNowOrLater<Self::FailureClass, Self::ClassifyEos>
+    ) -> ClassifiedResponse<Self::FailureClass, Self::ClassifyEos>
     where
         B: Body,
     {
         if let Some(classification) = classify_grpc_metadata(res.headers()) {
-            ClassifiedNowOrLater::Ready(classification)
+            ClassifiedResponse::Ready(classification)
         } else {
-            ClassifiedNowOrLater::RequiresEos(GrpcEosErrorsAsFailures { _priv: () })
+            ClassifiedResponse::RequiresEos(GrpcEosErrorsAsFailures { _priv: () })
         }
     }
 
