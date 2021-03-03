@@ -27,6 +27,7 @@ bytes = { version = "1", optional = true }
 hyper = { version = "0.14", optional = true, default_features = false, features = ["stream"] }
 tokio = { version = "1", optional = true, default_features = false }
 tokio-util = { version = "0.6", optional = true, default_features = false, features = ["io"] }
+tracing = { version = "0.1", default_features = false, optional = true }
 
 [dev-dependencies]
 flate2 = "1.0"
@@ -34,6 +35,7 @@ futures = "0.3"
 hyper = { version = "0.14", features = ["full"] }
 tokio = { version = "1", features = ["full"] }
 tower = { version = "0.4", features = ["util", "retry", "make"] }
+tracing-subscriber = "0.2"
 
 [features]
 default = []
@@ -48,6 +50,7 @@ full = [
     "redirect",
     "sensitive-header",
     "set-header",
+    "trace",
 ]
 
 add-extension = []
@@ -57,6 +60,7 @@ propagate-header = []
 redirect = []
 sensitive-header = []
 set-header = []
+trace = ["tracing"]
 
 compression = ["bytes", "tokio-util", "tokio"]
 compression-br = ["async-compression/brotli", "compression"]

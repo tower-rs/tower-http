@@ -284,7 +284,7 @@ impl<E> ClassifyEos<E> for GrpcEosErrorsAsFailures {
     }
 }
 
-fn classify_grpc_metadata(headers: &HeaderMap) -> Option<Result<(), i32>> {
+pub(crate) fn classify_grpc_metadata(headers: &HeaderMap) -> Option<Result<(), i32>> {
     let status = headers.get("grpc-status")?;
     let status = status.to_str().ok()?;
     let status = status.parse::<i32>().ok()?;
