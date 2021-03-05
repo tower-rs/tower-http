@@ -202,7 +202,10 @@ pub mod services;
 ///
 /// [`io::Error`]: std::io::Error
 #[cfg(any(feature = "compression", feature = "decompression"))]
-#[cfg_attr(docsrs, doc(cfg(any(feature = "compression", feature = "decompression"))))]
+#[cfg_attr(
+    docsrs,
+    doc(cfg(any(feature = "compression", feature = "decompression")))
+)]
 #[derive(Debug)]
 pub enum BodyOrIoError<E> {
     /// Errors produced by the body.
