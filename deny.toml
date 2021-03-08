@@ -15,12 +15,19 @@ confidence-threshold = 0.8
 [bans]
 multiple-versions = "deny"
 highlight = "all"
-skip-tree = [{ name = "tower", version = ">=0.3, <=0.4" }]
+skip-tree = [
+    { name = "tower", version = ">=0.3, <=0.4" },
+    # we're using warp in the examples so just ignore errors from it
+    { name = "warp" },
+]
 skip = [
     # `quickcheck` and `tracing-subscriber` depend on incompatible versions of
     # `wasi` via their dependencies on `rand` and `chrono`, respectively; we
     # can't really fix this.
     { name = "wasi" },
+
+    # clap uses old version
+    { name = "ansi_term", version = "=0.11.0" },
 ]
 
 [sources]
