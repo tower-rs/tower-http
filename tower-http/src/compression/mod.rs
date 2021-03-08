@@ -126,7 +126,7 @@ mod tests {
             .header("accept-encoding", "gzip")
             .body(Body::empty())
             .unwrap();
-        let res = svc.ready_and().await.unwrap().call(req).await.unwrap();
+        let res = svc.ready().await.unwrap().call(req).await.unwrap();
 
         // read the compressed body
         let mut body = res.into_body();

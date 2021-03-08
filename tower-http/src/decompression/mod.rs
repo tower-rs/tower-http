@@ -28,7 +28,7 @@ mod tests {
             .header("accept-encoding", "gzip")
             .body(Body::empty())
             .unwrap();
-        let res = client.ready_and().await.unwrap().call(req).await.unwrap();
+        let res = client.ready().await.unwrap().call(req).await.unwrap();
 
         // read the body, it will be decompressed automatically
         let mut body = res.into_body();
@@ -53,6 +53,6 @@ mod tests {
         let req = Request::new(Body::empty());
 
         let _: Response<DecompressionBody<Body>> =
-            client.ready_and().await.unwrap().call(req).await.unwrap();
+            client.ready().await.unwrap().call(req).await.unwrap();
     }
 }

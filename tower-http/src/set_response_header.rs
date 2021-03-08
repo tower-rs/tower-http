@@ -38,7 +38,7 @@
 //!
 //! let request = Request::new(Body::empty());
 //!
-//! let response = svc.ready_and().await?.call(request).await?;
+//! let response = svc.ready().await?.call(request).await?;
 //!
 //! assert_eq!(response.headers()["content-type"], "text/html");
 //! #
@@ -87,7 +87,7 @@
 //!
 //! let request = Request::new(Body::empty());
 //!
-//! let response = svc.ready_and().await?.call(request).await?;
+//! let response = svc.ready().await?.call(request).await?;
 //!
 //! assert_eq!(response.headers()["content-length"], "10");
 //! #
