@@ -8,7 +8,7 @@ use std::{convert::Infallible, marker::PhantomData};
 /// This is useful when a classifier depends on data from the request. For example, this could
 /// include the URI or HTTP method.
 ///
-/// This trait is generic over the [`Error` type] of the `Service`s used with the classifier. 
+/// This trait is generic over the [`Error` type] of the `Service`s used with the classifier.
 /// This is necessary for [`ClassifyResponse::classify_error`].
 ///
 /// [`Error` type]: https://docs.rs/tower/latest/tower/trait.Service.html#associatedtype.Error
@@ -36,7 +36,7 @@ pub trait MakeClassifier<E> {
 
 /// A [`MakeClassifier`] that produces new classifiers by cloning an inner classifier.
 ///
-/// When a type implementing [`ClassifyResponse`] doesn't depend on information 
+/// When a type implementing [`ClassifyResponse`] doesn't depend on information
 /// from the request, [`SharedClassifier`] can be used to turn an instance of that type
 /// into a [`MakeClassifier`].
 #[derive(Debug, Clone)]
@@ -72,13 +72,13 @@ where
 ///
 /// Response classifiers are used in cases where middleware needs to determine
 /// whether a response completed successfully or failed. For example, they may
-/// be used by logging or metrics middleware to record failures differently 
-/// from successes. 
-/// 
+/// be used by logging or metrics middleware to record failures differently
+/// from successes.
+///
 /// Furthermore, when a response fails, a response classifier may provide
 /// additional information about the failure. This can, for example, be used to
 /// build [retry policies] by indicating whether or not a particular failure is
-/// retryable. 
+/// retryable.
 ///
 /// [retry policies]: https://docs.rs/tower/latest/tower/retry/trait.Policy.html
 pub trait ClassifyResponse<E> {
@@ -104,7 +104,7 @@ pub trait ClassifyResponse<E> {
     /// When the response can be classified immediately, `classify_response`
     /// returns a [`ClassifiedResponse::Ready`] which indicates whether the
     /// response succeeded or failed.
-    /// 
+    ///
     /// In other cases, however, the classifier may need to wait until the
     /// response body stream completes before it can classify the response.
     /// For example, gRPC indicates RPC failures using the `grpc-status`
