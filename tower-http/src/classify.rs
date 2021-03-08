@@ -11,7 +11,7 @@ use std::{convert::Infallible, marker::PhantomData};
 /// This trait is generic over the [`Error` type] of the `Service`s used with the classifier. 
 /// This is necessary for [`ClassifyResponse::classify_error`].
 ///
-/// [`Error` type]: tower::Service::Error
+/// [`Error` type]: https://docs.rs/tower/latest/tower/trait.Service.html#associatedtype.Error
 pub trait MakeClassifier<E> {
     /// The response classifier produced.
     type Classifier: ClassifyResponse<
