@@ -217,7 +217,14 @@ impl<E> ClassifyResponse<E> for ServerErrorsAsFailures {
 /// gRPC doesn't use normal HTTP statuses for indicating success or failure but instead a special
 /// header that might appear in a trailer.
 ///
-/// Responses where `grpc-status` is 0 are successes, all others are failures.
+/// Responses are considered successful if
+///
+/// - `grpc-status` header value is 0.
+/// - `grpc-status` header is missing.
+/// - `grpc-status` header value isn't a valid `String`.
+/// - `grpc-status` header value can't parsed into an `i32`.
+///
+/// All others are considered failures.
 #[derive(Debug, Clone, Default)]
 pub struct GrpcErrorsAsFailures {
     _priv: (),
