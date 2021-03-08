@@ -192,6 +192,7 @@ pub mod map_response_body;
 #[cfg_attr(docsrs, doc(cfg(feature = "map-request-body")))]
 pub mod map_request_body;
 
+pub mod classify;
 pub mod services;
 
 /// Error type containing either a body error or an IO error.

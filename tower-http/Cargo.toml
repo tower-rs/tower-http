@@ -25,15 +25,15 @@ tower-service = "0.3"
 async-compression = { version = "0.3", optional = true, features = ["tokio"] }
 bytes = { version = "1", optional = true }
 hyper = { version = "0.14", optional = true, default_features = false, features = ["stream"] }
-tokio-util = { version = "0.6", optional = true, default_features = false, features = ["io"] }
 tokio = { version = "1", optional = true, default_features = false }
+tokio-util = { version = "0.6", optional = true, default_features = false, features = ["io"] }
 
 [dev-dependencies]
+flate2 = "1.0"
 futures = "0.3"
 hyper = { version = "0.14", features = ["full"] }
-tower = { version = "0.4", features = ["util", "make"] }
 tokio = { version = "1", features = ["full"] }
-flate2 = "1.0"
+tower = { version = "0.4", features = ["util", "retry", "make"] }
 
 [features]
 default = []
