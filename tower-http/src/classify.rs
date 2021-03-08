@@ -5,11 +5,13 @@ use std::{convert::Infallible, marker::PhantomData};
 
 /// Trait for producing response classifiers from a request.
 ///
-/// This is useful if your classifier depends on data from the request. Could for example be the
-/// URI or HTTP method.
+/// This is useful when a classifier depends on data from the request. For example, this could
+/// include the URI or HTTP method.
 ///
-/// This trait is generic over the error type your services produce. This is necessary for
-/// [`ClassifyResponse::classify_error`].
+/// This trait is generic over the [`Error` type] of the `Service`s used with the classifier. 
+/// This is necessary for [`ClassifyResponse::classify_error`].
+///
+/// [`Error` type]: tower::Service::Error
 pub trait MakeClassifier<E> {
     /// The response classifier produced.
     type Classifier: ClassifyResponse<
@@ -18,20 +20,25 @@ pub trait MakeClassifier<E> {
         ClassifyEos = Self::ClassifyEos,
     >;
 
-    /// The type of failure classifications.
+    /// The type of failure classifications..
+    ///
+    /// This might include additional information about the error, such as
+    /// whether it was a client or server error, or whether or not it should
+    /// be considered retryable.
     type FailureClass;
 
     /// The type used to classify the response end of stream (EOS).
     type ClassifyEos: ClassifyEos<E, FailureClass = Self::FailureClass>;
 
-    /// Make a response classifier for this request
+    /// Returns a response classifier for this request
     fn make_classifier<B>(&self, req: &Request<B>) -> Self::Classifier;
 }
 
-/// A [`MakeClassifier`] that works by cloning a classifier.
+/// A [`MakeClassifier`] that produces new classifiers by cloning an inner classifier.
 ///
-/// If you have a [`ClassifyResponse`] that doesn't depend on the request you can use
-/// [`SharedClassifier`] to get a [`MakeClassifier`] for your classifier.
+/// When a type implementing [`ClassifyResponse`] doesn't depend on information 
+/// from the request, [`SharedClassifier`] can be used to turn an instance of that type
+/// into a [`MakeClassifier`].
 #[derive(Debug, Clone)]
 pub struct SharedClassifier<C> {
     classifier: C,
@@ -63,20 +70,47 @@ where
 /// Trait for classifying responses as either success or failure. Designed to support both unary
 /// requests (single request for a single response) as well as streaming responses.
 ///
-/// Can for example be used in logging or metrics middlewares, or to build [retry policies].
+/// Response classifiers are used in cases where middleware needs to determine
+/// whether a response completed successfully or failed. For example, they may
+/// be used by logging or metrics middleware to record failures differently 
+/// from successes. 
+/// 
+/// Furthermore, when a response fails, a response classifier may provide
+/// additional information about the failure. This can, for example, be used to
+/// build [retry policies] by indicating whether or not a particular failure is
+/// retryable. 
 ///
 /// [retry policies]: https://docs.rs/tower/latest/tower/retry/trait.Policy.html
 pub trait ClassifyResponse<E> {
-    /// The type of failure classifications.
+    /// The type returned when a response is classified as a failure.
+    ///
+    /// Depending on the classifier, this may simply indicate that the
+    /// request failed, or it may contain additional  information about
+    /// the failure, such as whether or not it is retryable.
     type FailureClass;
 
     /// The type used to classify the response end of stream (EOS).
     type ClassifyEos: ClassifyEos<E, FailureClass = Self::FailureClass>;
 
-    /// Classify a response.
+    /// Attempt to classify the beginning of a response.
     ///
-    /// Returns a [`ClassifiedResponse`] which specifies whether the response was able to
-    /// classified immediately or if we have to wait until the end of a streaming response.
+    /// In some cases, the response can be classified immediately, without
+    /// waiting for a body to complete. This may include:
+    ///
+    /// - when the response has an error status code
+    /// - when a successful response does not have a streaming body
+    /// - when the classifier does not care about streaming bodies
+    ///
+    /// When the response can be classified immediately, `classify_response`
+    /// returns a [`ClassifiedResponse::Ready`] which indicates whether the
+    /// response succeeded or failed.
+    /// 
+    /// In other cases, however, the classifier may need to wait until the
+    /// response body stream completes before it can classify the response.
+    /// For example, gRPC indicates RPC failures using the `grpc-status`
+    /// trailer. In this case, `classify_response` returns a
+    /// [`ClassifiedResponse::RequiresEos`] containing a type which will
+    /// be used to classify the response when the body stream ends.
     fn classify_response<B>(
         self,
         res: &Response<B>,
@@ -116,7 +150,7 @@ pub enum ClassifiedResponse<FailureClass, ClassifyEos> {
 /// A [`ClassifyEos`] type that can be used in [`ClassifyResponse`] implementations that never have
 /// to classify streaming responses.
 ///
-/// `NeverClassifyEos` exists only as type. You cannot construct `NeverClassifyEos` values.
+/// `NeverClassifyEos` exists only as type.  `NeverClassifyEos` values cannot be constructed.
 pub struct NeverClassifyEos<T> {
     _output_ty: PhantomData<fn() -> T>,
     _never: Infallible,
