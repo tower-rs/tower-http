@@ -53,10 +53,9 @@ where
 
         parts.headers.remove(header::CONTENT_LENGTH);
 
-        parts.headers.insert(
-            header::CONTENT_ENCODING,
-            HeaderValue::from_str(self.encoding.to_str()).unwrap(),
-        );
+        parts
+            .headers
+            .insert(header::CONTENT_ENCODING, self.encoding.into_header_value());
 
         let res = Response::from_parts(parts, body);
         Poll::Ready(Ok(res))

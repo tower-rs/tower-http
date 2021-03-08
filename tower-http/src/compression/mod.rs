@@ -1,7 +1,7 @@
 //! Middleware that compresses response bodies.
 
 use crate::compression_utils::AcceptEncoding;
-use http::{header, HeaderMap};
+use http::{header, HeaderMap, HeaderValue};
 
 mod body;
 mod future;
@@ -34,6 +34,10 @@ impl Encoding {
             Encoding::Brotli => "br",
             Encoding::Identity => "identity",
         }
+    }
+
+    fn into_header_value(self) -> HeaderValue {
+        HeaderValue::from_static(self.to_str())
     }
 
     #[allow(unused_variables)]
