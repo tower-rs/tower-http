@@ -3,6 +3,15 @@
 use http::{HeaderMap, Request, Response, StatusCode};
 use std::{convert::Infallible, marker::PhantomData};
 
+mod either;
+mod map_failure_class;
+mod pick_make_classifier;
+
+pub use self::{
+    map_failure_class::{MapEosFailureClass, MapFailureClass},
+    pick_make_classifier::{make_classifier_fn, MakeClassifierFn},
+};
+
 /// Trait for producing response classifiers from a request.
 ///
 /// This is useful when a classifier depends on data from the request. For example, this could
@@ -121,6 +130,15 @@ pub trait ClassifyResponse<E> {
     /// Errors are always errors (doh) but sometimes it might be useful to have multiple classes of
     /// errors. A retry policy might allows retrying some errors and not others.
     fn classify_error(self, error: &E) -> Self::FailureClass;
+
+    /// TODO(david): docs
+    fn map_failure_class<F, NewFailureClass>(self, f: F) -> MapFailureClass<Self, F>
+    where
+        F: FnOnce(Self::FailureClass) -> NewFailureClass,
+        Self: Sized,
+    {
+        MapFailureClass::new(self, f)
+    }
 }
 
 /// Trait for classifying end of streams (EOS) as either success or failure.
@@ -134,7 +152,7 @@ pub trait ClassifyEos<E> {
     /// Classify an error.
     ///
     /// Errors are always errors (doh) but sometimes it might be useful to have multiple classes of
-    /// errors. A retry policy might allows retrying some errors and not others.
+    /// errors. A retry policy might allow retrying some errors and not others.
     fn classify_error(self, error: &E) -> Self::FailureClass;
 }
 
@@ -145,6 +163,41 @@ pub enum ClassifiedResponse<FailureClass, ClassifyEos> {
     Ready(Result<(), FailureClass>),
     /// We have to wait until the end of a streaming response to classify it.
     RequiresEos(ClassifyEos),
+}
+
+impl<FailureClass, ClassifyEos> ClassifiedResponse<FailureClass, ClassifyEos> {
+    /// TODO(david): docs
+    pub fn map_failure_class<F, NewFailureClass>(
+        self,
+        f: F,
+    ) -> ClassifiedResponse<NewFailureClass, ClassifyEos>
+    where
+        F: FnOnce(FailureClass) -> NewFailureClass,
+    {
+        match self {
+            ClassifiedResponse::Ready(Ok(())) => ClassifiedResponse::Ready(Ok(())),
+            ClassifiedResponse::Ready(Err(class)) => ClassifiedResponse::Ready(Err(f(class))),
+            ClassifiedResponse::RequiresEos(classify_eos) => {
+                ClassifiedResponse::RequiresEos(classify_eos)
+            }
+        }
+    }
+
+    /// TODO(david): docs
+    pub fn map_classify_eos<F, NewClassifyEos>(
+        self,
+        f: F,
+    ) -> ClassifiedResponse<FailureClass, NewClassifyEos>
+    where
+        F: FnOnce(ClassifyEos) -> NewClassifyEos,
+    {
+        match self {
+            ClassifiedResponse::Ready(result) => ClassifiedResponse::Ready(result),
+            ClassifiedResponse::RequiresEos(classify_eos) => {
+                ClassifiedResponse::RequiresEos(f(classify_eos))
+            }
+        }
+    }
 }
 
 /// A [`ClassifyEos`] type that can be used in [`ClassifyResponse`] implementations that never have
