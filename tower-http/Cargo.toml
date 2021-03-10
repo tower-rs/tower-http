@@ -18,6 +18,7 @@ futures-util = { version = "0.3", default_features = false, features = [] }
 http = "0.2"
 http-body = "0.4"
 pin-project = "1"
+tower = { version = "0.4", default_features = false, features = ["util"] }
 tower-layer = "0.3"
 tower-service = "0.3"
 
