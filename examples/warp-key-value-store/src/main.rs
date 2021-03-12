@@ -12,12 +12,9 @@ use std::time::Duration;
 use structopt::StructOpt;
 use tower::{make::Shared, ServiceBuilder};
 use tower_http::{
-    add_extension::AddExtensionLayer,
-    compression::CompressionLayer,
-    sensitive_header::SetSensitiveHeaderLayer,
-    set_header::SetResponseHeaderLayer,
-    trace::{DefaultOnEos, DefaultOnFailure, DefaultOnRequest, DefaultOnResponse, TraceLayer},
-    LatencyUnit,
+    add_extension::AddExtensionLayer, compression::CompressionLayer,
+    sensitive_header::SetSensitiveHeaderLayer, set_header::SetResponseHeaderLayer,
+    trace::TraceLayer,
 };
 use warp::{filters, path};
 use warp::{Filter, Rejection, Reply};

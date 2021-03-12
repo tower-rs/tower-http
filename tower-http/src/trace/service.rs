@@ -218,7 +218,7 @@ where
     ResBody: Body,
     M: MakeClassifier<S::Error>,
     M::Classifier: Clone,
-    MakeSpanT: MakeSpan,
+    MakeSpanT: MakeSpan<ReqBody>,
     OnRequestT: OnRequest<ReqBody>,
     OnResponseT: OnResponse<ResBody> + Clone,
     OnEosT: OnEos + Clone,
