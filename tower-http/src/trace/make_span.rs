@@ -1,13 +1,22 @@
 use http::Request;
 use tracing::{field::Empty, Span};
 
-pub trait MakeSpan {
-    fn make_span<B>(&mut self, request: &Request<B>) -> Span;
+pub trait MakeSpan<B> {
+    fn make_span(&mut self, request: &Request<B>) -> Span;
 }
 
-impl MakeSpan for Span {
-    fn make_span<B>(&mut self, _request: &Request<B>) -> Span {
+impl<B> MakeSpan<B> for Span {
+    fn make_span(&mut self, _request: &Request<B>) -> Span {
         self.clone()
+    }
+}
+
+impl<F, B> MakeSpan<B> for F
+where
+    F: FnMut(&Request<B>) -> Span,
+{
+    fn make_span(&mut self, request: &Request<B>) -> Span {
+        self(request)
     }
 }
 
@@ -22,8 +31,8 @@ impl DefaultMakeSpan {
     }
 }
 
-impl MakeSpan for DefaultMakeSpan {
-    fn make_span<B>(&mut self, request: &Request<B>) -> Span {
+impl<B> MakeSpan<B> for DefaultMakeSpan {
+    fn make_span(&mut self, request: &Request<B>) -> Span {
         tracing::debug_span!(
             "request",
             method = %request.method(),
