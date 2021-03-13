@@ -1,10 +1,12 @@
 use bytes::Bytes;
+use hyper::body::HttpBody;
 use hyper::{
     header::{self, HeaderValue},
     Server,
 };
 use proto::{
-    key_value_store_client, key_value_store_server, GetReply, GetRequest, SetReply, SetRequest,
+    key_value_store_client::KeyValueStoreClient, key_value_store_server, GetReply, GetRequest,
+    SetReply, SetRequest,
 };
 use std::{
     collections::HashMap,
@@ -17,11 +19,10 @@ use structopt::StructOpt;
 use tokio::io::AsyncReadExt;
 use tonic::{async_trait, body::BoxBody, transport::Channel, Code, Request, Response, Status};
 use tower::{make::Shared, ServiceBuilder};
+use tower::{BoxError, Service};
 use tower_http::{
-    compression::CompressionLayer,
-    decompression::{Decompression, DecompressionLayer},
-    sensitive_header::SetSensitiveHeaderLayer,
-    set_header::{SetRequestHeader, SetRequestHeaderLayer},
+    compression::CompressionLayer, decompression::DecompressionLayer,
+    sensitive_header::SetSensitiveHeaderLayer, set_header::SetRequestHeaderLayer,
 };
 
 mod proto {
@@ -186,13 +187,24 @@ impl key_value_store_server::KeyValueStore for ServerImpl {
     }
 }
 
-// Our final client type with middlewares applied
-type Client = key_value_store_client::KeyValueStoreClient<
-    Decompression<SetRequestHeader<Channel, HeaderValue>>,
->;
-
 // Build a client with a few middlewares applied and connect to the server
-async fn make_client(addr: SocketAddr) -> Result<Client, tonic::transport::Error> {
+async fn make_client(
+    addr: SocketAddr,
+) -> Result<
+    KeyValueStoreClient<
+        impl Service<
+                hyper::Request<BoxBody>,
+                Response = hyper::Response<
+                    impl HttpBody<Data = Bytes, Error = impl Into<BoxError>>,
+                >,
+                Error = impl Into<BoxError>,
+            > + Clone
+            + Send
+            + Sync
+            + 'static,
+    >,
+    tonic::transport::Error,
+> {
     let uri = format!("http://{}", addr)
         .parse::<tonic::transport::Uri>()
         .unwrap();
@@ -214,7 +226,7 @@ async fn make_client(addr: SocketAddr) -> Result<Client, tonic::transport::Error
         .service(channel);
 
     // Construct our tonic client
-    Ok(key_value_store_client::KeyValueStoreClient::new(channel))
+    Ok(KeyValueStoreClient::new(channel))
 }
 
 #[cfg(test)]
