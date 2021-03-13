@@ -3,6 +3,9 @@ use hyper::{
     header::{self, HeaderValue},
     Server,
 };
+use proto::{
+    key_value_store_client, key_value_store_server, GetReply, GetRequest, SetReply, SetRequest,
+};
 use std::{
     collections::HashMap,
     net::SocketAddr,
@@ -21,7 +24,9 @@ use tower_http::{
     set_header::{SetRequestHeader, SetRequestHeaderLayer},
 };
 
-tonic::include_proto!("key_value_store");
+mod proto {
+    tonic::include_proto!("key_value_store");
+}
 
 /// Simple key/value store with an HTTP API
 #[derive(Debug, StructOpt)]
@@ -115,7 +120,7 @@ async fn main() {
 }
 
 // We make this a separate function so we're able to call it from tests.
-async fn serve_forever(listener: TcpListener) -> Result<(), hyper::Error> {
+async fn serve_forever(listener: TcpListener) -> Result<(), Box<dyn std::error::Error>> {
     // Build our database for holding the key/value pairs
     let db = Arc::new(RwLock::new(HashMap::new()));
 
@@ -134,14 +139,14 @@ async fn serve_forever(listener: TcpListener) -> Result<(), hyper::Error> {
         .service(service);
 
     // Run the service using hyper
-    let addr = listener.local_addr().unwrap();
+    let addr = listener.local_addr()?;
 
     tracing::info!("Listening on {}", addr);
 
     // We cannot use `tonic::transport::Server` directly as it requires services to implement
     // `tonic::transport::NamedService` which tower-http middlewares don't
-    Server::from_tcp(listener)
-        .unwrap()
+    Server::from_tcp(listener)?
+        // Required for gRPC
         .http2_only(true)
         .serve(Shared::new(service))
         .await?;
