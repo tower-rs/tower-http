@@ -63,7 +63,7 @@ impl<S> Layer<S> for PropagateHeaderLayer {
 ///     .header("x-request-id", "1337")
 ///     .body(String::new())?;
 ///
-/// let response = svc.ready_and().await?.call(request).await?;
+/// let response = svc.ready().await?.call(request).await?;
 ///
 /// assert_eq!(response.headers()["x-request-id"], "1337");
 /// #

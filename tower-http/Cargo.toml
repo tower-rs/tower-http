@@ -25,13 +25,15 @@ tower-service = "0.3"
 async-compression = { version = "0.3", optional = true, features = ["tokio"] }
 bytes = { version = "1", optional = true }
 hyper = { version = "0.14", optional = true, default_features = false, features = ["stream"] }
-tokio-util = { version = "0.6", optional = true, default_features = false, features = ["io", "codec"] }
+tokio = { version = "1", optional = true, default_features = false }
+tokio-util = { version = "0.6", optional = true, default_features = false, features = ["io"] }
 
 [dev-dependencies]
+flate2 = "1.0"
 futures = "0.3"
 hyper = { version = "0.14", features = ["full"] }
-tower = { version = "0.4", features = ["util"] }
 tokio = { version = "1", features = ["full"] }
+tower = { version = "0.4", features = ["util", "retry", "make"] }
 
 [features]
 default = []
@@ -56,13 +58,13 @@ redirect = []
 sensitive-header = []
 set-header = []
 
-compression = ["bytes", "tokio-util"]
+compression = ["bytes", "tokio-util", "tokio"]
 compression-br = ["async-compression/brotli", "compression"]
 compression-deflate = ["async-compression/zlib", "compression"]
 compression-full = ["compression-br", "compression-deflate", "compression-gzip"]
 compression-gzip = ["async-compression/gzip", "compression"]
 
-decompression = ["bytes", "tokio-util"]
+decompression = ["bytes", "tokio-util", "tokio"]
 decompression-br = ["async-compression/brotli", "decompression"]
 decompression-deflate = ["async-compression/zlib", "decompression"]
 decompression-full = ["decompression-br", "decompression-deflate", "decompression-gzip"]

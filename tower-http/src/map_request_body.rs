@@ -20,7 +20,7 @@
 //!
 //!     let request = Request::new(Body::from("foobar"));
 //!
-//!     svc.ready_and().await?.call(request).await?;
+//!     svc.ready().await?.call(request).await?;
 //!
 //!     Ok(())
 //! }
