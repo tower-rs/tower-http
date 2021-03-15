@@ -4,12 +4,12 @@ use http::{HeaderMap, Request, Response, StatusCode};
 use std::{convert::Infallible, marker::PhantomData};
 
 mod either;
-mod map_failure_class;
 mod make_classifier_fn;
+mod map_failure_class;
 
 pub use self::{
-    map_failure_class::MapFailureClass,
     make_classifier_fn::{make_classifier_fn, MakeClassifierFn},
+    map_failure_class::MapFailureClass,
 };
 
 /// Trait for producing response classifiers from a request.

@@ -5,10 +5,7 @@ use tower::util::Either;
 impl<E, A, B> MakeClassifier<E> for Either<A, B>
 where
     A: MakeClassifier<E>,
-    B: MakeClassifier<
-        E,
-        FailureClass = A::FailureClass,
-    >,
+    B: MakeClassifier<E, FailureClass = A::FailureClass>,
 {
     type Classifier = Either<A::Classifier, B::Classifier>;
     type FailureClass = A::FailureClass;
