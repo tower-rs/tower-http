@@ -1,8 +1,16 @@
 //! Tools for customizing the behavior of a [`FollowRedirect`][super::FollowRedirect] middleware.
 
+mod and;
+mod clone_body_fn;
 mod limited;
+mod redirect_fn;
 
-pub use self::limited::Limited;
+pub use self::{
+    and::And,
+    clone_body_fn::{clone_body_fn, CloneBodyFn},
+    limited::Limited,
+    redirect_fn::{redirect_fn, RedirectFn},
+};
 
 use http::{StatusCode, Uri};
 use std::fmt;
@@ -51,6 +59,40 @@ pub trait Policy<B> {
     /// The default implementation returns `None`.
     fn clone_body(&self, _body: &B) -> Option<B> {
         None
+    }
+
+    /// Create a new `Policy` that returns [`Action::follow()`] only if `self` and `other` returns
+    /// `Action::follow()`.
+    ///
+    /// [`clone_body`][Policy::clone_body] method of the returned `Policy` tries to clone the body
+    /// with both policies.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use bytes::Bytes;
+    /// use hyper::Body;
+    /// use tower_http::follow_redirect::policy::{clone_body_fn, Limited, Policy};
+    ///
+    /// enum MyBody {
+    ///     Bytes(Bytes),
+    ///     Hyper(Body),
+    /// }
+    ///
+    /// let policy = Limited::default().and(clone_body_fn(|body| {
+    ///     if let MyBody::Bytes(buf) = body {
+    ///         Some(MyBody::Bytes(buf.clone()))
+    ///     } else {
+    ///         None
+    ///     }
+    /// }));
+    /// ```
+    fn and<P>(self, other: P) -> And<Self, P>
+    where
+        Self: Sized,
+        P: Policy<B>,
+    {
+        And::new(self, other)
     }
 }
 
