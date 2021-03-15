@@ -192,6 +192,10 @@ pub mod map_response_body;
 #[cfg_attr(docsrs, doc(cfg(feature = "map-request-body")))]
 pub mod map_request_body;
 
+#[cfg(feature = "follow-redirect")]
+#[cfg_attr(docsrs, doc(cfg(feature = "follow-redirect")))]
+pub mod follow_redirect;
+
 pub mod classify;
 pub mod services;
 
