@@ -16,6 +16,7 @@ use pin_project::pin_project;
 use std::{
     convert::TryFrom,
     future::Future,
+    mem,
     pin::Pin,
     str,
     task::{Context, Poll},
@@ -92,7 +93,8 @@ where
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
         let mut service = self.inner.clone();
         let policy = self.policy.clone();
-        let body = clone_body(&policy, req.body());
+        let mut body = BodyRepr::None;
+        body.try_clone_from(req.body(), &policy);
         ResponseFuture {
             method: req.method().clone(),
             uri: req.uri().clone(),
@@ -118,7 +120,7 @@ pub struct ResponseFuture<F, S, B, P> {
     uri: Uri,
     version: Version,
     headers: HeaderMap<HeaderValue>,
-    body: Option<B>,
+    body: BodyRepr<B>,
 }
 
 impl<F, S, ReqBody, ResBody, P> Future for ResponseFuture<F, S, ReqBody, P>
@@ -140,7 +142,7 @@ where
                 // (RFC 7231 section 6.4.2. and 6.4.3.).
                 if *this.method == Method::POST {
                     *this.method = Method::GET;
-                    *this.body = Some(ReqBody::default());
+                    *this.body = BodyRepr::Empty;
                 }
             }
             StatusCode::SEE_OTHER => {
@@ -148,7 +150,7 @@ where
                 if *this.method != Method::HEAD {
                     *this.method = Method::GET;
                 }
-                *this.body = Some(ReqBody::default());
+                *this.body = BodyRepr::Empty;
             }
             StatusCode::TEMPORARY_REDIRECT | StatusCode::PERMANENT_REDIRECT => {}
             _ => return Poll::Ready(Ok(res)),
@@ -182,7 +184,7 @@ where
         };
         match this.policy.redirect(&attempt).kind {
             ActionKind::Follow => {
-                *this.body = clone_body(this.policy, &body);
+                this.body.try_clone_from(&body, &this.policy);
 
                 let mut req = Request::new(body);
                 *req.uri_mut() = location;
@@ -195,6 +197,43 @@ where
                 Poll::Pending
             }
             ActionKind::Stop => Poll::Ready(Ok(res)),
+        }
+    }
+}
+
+#[derive(Debug)]
+enum BodyRepr<B> {
+    Some(B),
+    Empty,
+    None,
+}
+
+impl<B> BodyRepr<B>
+where
+    B: Body + Default,
+{
+    fn take(&mut self) -> Option<B> {
+        match mem::replace(self, BodyRepr::None) {
+            BodyRepr::Some(body) => Some(body),
+            BodyRepr::Empty => {
+                *self = BodyRepr::Empty;
+                Some(B::default())
+            }
+            BodyRepr::None => None,
+        }
+    }
+
+    fn try_clone_from<P>(&mut self, body: &B, policy: &P)
+    where
+        P: Policy<B>,
+    {
+        match self {
+            BodyRepr::Some(_) | BodyRepr::Empty => {}
+            BodyRepr::None => {
+                if let Some(body) = clone_body(policy, body) {
+                    *self = BodyRepr::Some(body);
+                }
+            }
         }
     }
 }
