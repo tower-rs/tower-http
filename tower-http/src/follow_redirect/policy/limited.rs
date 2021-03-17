@@ -36,7 +36,7 @@ impl<B> Policy<B> for Limited {
 
 #[cfg(test)]
 mod tests {
-    use http::Uri;
+    use http::{Request, Uri};
 
     use super::*;
 
@@ -46,6 +46,9 @@ mod tests {
         let mut policy = Limited::new(2);
 
         for _ in 0..2 {
+            let mut request = Request::builder().uri(uri.clone()).body(()).unwrap();
+            policy.on_request(&mut request);
+
             let attempt = Attempt {
                 status: Default::default(),
                 location: &uri,
@@ -53,6 +56,9 @@ mod tests {
             };
             assert!(Policy::<()>::redirect(&mut policy, &attempt).follows());
         }
+
+        let mut request = Request::builder().uri(uri.clone()).body(()).unwrap();
+        policy.on_request(&mut request);
 
         let attempt = Attempt {
             status: Default::default(),

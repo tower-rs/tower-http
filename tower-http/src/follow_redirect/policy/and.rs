@@ -1,4 +1,5 @@
 use super::{Action, ActionKind, Attempt, Policy};
+use http::Request;
 
 /// A redirection [`Policy`] that combines the results of two `Policy`s.
 ///
@@ -25,6 +26,11 @@ where
             ActionKind::Follow => self.b.redirect(attempt),
             ActionKind::Stop => Action::stop(),
         }
+    }
+
+    fn on_request(&mut self, request: &mut Request<Bd>) {
+        self.a.on_request(request);
+        self.b.on_request(request);
     }
 
     fn clone_body(&self, body: &Bd) -> Option<Bd> {

@@ -90,11 +90,12 @@ where
         self.inner.poll_ready(cx)
     }
 
-    fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
+    fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
         let mut service = self.inner.clone();
-        let policy = self.policy.clone();
+        let mut policy = self.policy.clone();
         let mut body = BodyRepr::None;
         body.try_clone_from(req.body(), &policy);
+        policy.on_request(&mut req);
         ResponseFuture {
             method: req.method().clone(),
             uri: req.uri().clone(),
@@ -191,6 +192,7 @@ where
                 *req.method_mut() = this.method.clone();
                 *req.version_mut() = *this.version;
                 *req.headers_mut() = this.headers.clone();
+                this.policy.on_request(&mut req);
                 this.future.set(this.service.call(req));
 
                 cx.waker().wake_by_ref();

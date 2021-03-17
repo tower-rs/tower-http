@@ -2,17 +2,21 @@
 
 mod and;
 mod clone_body_fn;
+mod filter_credentials;
 mod limited;
 mod redirect_fn;
+mod same_origin;
 
 pub use self::{
     and::And,
     clone_body_fn::{clone_body_fn, CloneBodyFn},
+    filter_credentials::FilterCredentials,
     limited::Limited,
     redirect_fn::{redirect_fn, RedirectFn},
+    same_origin::SameOrigin,
 };
 
-use http::{StatusCode, Uri};
+use http::{uri::Scheme, Request, StatusCode, Uri};
 use std::fmt;
 
 /// Trait for the policy on handling redirection responses.
@@ -48,6 +52,10 @@ pub trait Policy<B> {
     /// This method returns an [`Action`] which indicates whether the service should follow
     /// the redirection.
     fn redirect(&mut self, attempt: &Attempt<'_>) -> Action;
+
+    /// Invoked right before the service makes a request, regardless of whether it is redirected
+    /// or not.
+    fn on_request(&mut self, _request: &mut Request<B>) {}
 
     /// Try to clone a request body before the service makes a redirected request.
     ///
@@ -104,6 +112,10 @@ where
         (**self).redirect(attempt)
     }
 
+    fn on_request(&mut self, request: &mut Request<B>) {
+        (**self).on_request(request)
+    }
+
     fn clone_body(&self, body: &B) -> Option<B> {
         (**self).clone_body(body)
     }
@@ -115,6 +127,10 @@ where
 {
     fn redirect(&mut self, attempt: &Attempt<'_>) -> Action {
         (**self).redirect(attempt)
+    }
+
+    fn on_request(&mut self, request: &mut Request<B>) {
+        (**self).on_request(request)
     }
 
     fn clone_body(&self, body: &B) -> Option<B> {
@@ -207,5 +223,56 @@ impl fmt::Debug for Action {
 impl<B> Policy<B> for Action {
     fn redirect(&mut self, _: &Attempt<'_>) -> Action {
         self.clone()
+    }
+}
+
+/// Compares the origins of two URIs as per RFC 6454 sections 4. through 5.
+fn eq_origin(lhs: &Uri, rhs: &Uri) -> bool {
+    let default_port = match (lhs.scheme(), rhs.scheme()) {
+        (Some(l), Some(r)) if l == r => {
+            if l == &Scheme::HTTP {
+                80
+            } else if l == &Scheme::HTTPS {
+                443
+            } else {
+                return false;
+            }
+        }
+        _ => return false,
+    };
+    match (lhs.host(), rhs.host()) {
+        (Some(l), Some(r)) if l == r => {}
+        _ => return false,
+    }
+    lhs.port_u16().unwrap_or(default_port) == rhs.port_u16().unwrap_or(default_port)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn eq_origin_works() {
+        assert!(eq_origin(
+            &Uri::from_static("https://example.com/1"),
+            &Uri::from_static("https://example.com/2")
+        ));
+        assert!(eq_origin(
+            &Uri::from_static("https://example.com:443/"),
+            &Uri::from_static("https://example.com/")
+        ));
+        assert!(eq_origin(
+            &Uri::from_static("https://example.com/"),
+            &Uri::from_static("https://user@example.com/")
+        ));
+
+        assert!(!eq_origin(
+            &Uri::from_static("https://example.com/"),
+            &Uri::from_static("https://www.example.com/")
+        ));
+        assert!(!eq_origin(
+            &Uri::from_static("https://example.com/"),
+            &Uri::from_static("http://example.com/")
+        ));
     }
 }
