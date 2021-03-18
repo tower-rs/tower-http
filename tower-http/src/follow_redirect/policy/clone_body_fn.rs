@@ -17,11 +17,11 @@ impl<F> fmt::Debug for CloneBodyFn<F> {
     }
 }
 
-impl<F, B> Policy<B> for CloneBodyFn<F>
+impl<F, B, E> Policy<B, E> for CloneBodyFn<F>
 where
     F: Fn(&B) -> Option<B>,
 {
-    fn redirect(&mut self, _: &Attempt<'_>) -> Action {
+    fn redirect(&mut self, _: &Attempt<'_>) -> Action<E> {
         Action::follow()
     }
 

@@ -91,7 +91,7 @@ impl<ReqBody, ResBody, S, P> Service<Request<ReqBody>> for FollowRedirect<S, P>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>> + Clone,
     ReqBody: Body + Default,
-    P: Policy<ReqBody> + Clone,
+    P: Policy<ReqBody, S::Error> + Clone,
 {
     type Response = Response<ResBody>;
     type Error = S::Error;
@@ -140,7 +140,7 @@ where
     F: Future<Output = Result<Response<ResBody>, S::Error>>,
     S: Service<Request<ReqBody>, Future = F> + Clone,
     ReqBody: Body + Default,
-    P: Policy<ReqBody>,
+    P: Policy<ReqBody, S::Error>,
 {
     type Output = Result<Response<ResBody>, S::Error>;
 
@@ -210,6 +210,7 @@ where
                 Poll::Pending
             }
             ActionKind::Stop => Poll::Ready(Ok(res)),
+            ActionKind::Error(e) => Poll::Ready(Err(e)),
         }
     }
 }
@@ -236,9 +237,9 @@ where
         }
     }
 
-    fn try_clone_from<P>(&mut self, body: &B, policy: &P)
+    fn try_clone_from<P, E>(&mut self, body: &B, policy: &P)
     where
-        P: Policy<B>,
+        P: Policy<B, E>,
     {
         match self {
             BodyRepr::Some(_) | BodyRepr::Empty => {}
@@ -251,9 +252,9 @@ where
     }
 }
 
-fn clone_body<P, B>(policy: &P, body: &B) -> Option<B>
+fn clone_body<P, B, E>(policy: &P, body: &B) -> Option<B>
 where
-    P: Policy<B>,
+    P: Policy<B, E>,
     B: Body + Default,
 {
     if body.size_hint().exact() == Some(0) {

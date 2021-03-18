@@ -20,8 +20,8 @@ impl fmt::Debug for SameOrigin {
     }
 }
 
-impl<B> Policy<B> for SameOrigin {
-    fn redirect(&mut self, attempt: &Attempt<'_>) -> Action {
+impl<B, E> Policy<B, E> for SameOrigin {
+    fn redirect(&mut self, attempt: &Attempt<'_>) -> Action<E> {
         if eq_origin(attempt.previous(), attempt.location()) {
             Action::follow()
         } else {
@@ -44,23 +44,23 @@ mod tests {
         let cross_origin = Uri::from_static("https://example.com/new");
 
         let mut request = Request::builder().uri(initial).body(()).unwrap();
-        policy.on_request(&mut request);
+        Policy::<(), ()>::on_request(&mut policy, &mut request);
 
         let attempt = Attempt {
             status: Default::default(),
             location: &same_origin,
             previous: request.uri(),
         };
-        assert!(Policy::<()>::redirect(&mut policy, &attempt).follows());
+        assert!(Policy::<(), ()>::redirect(&mut policy, &attempt).follows());
 
         let mut request = Request::builder().uri(same_origin).body(()).unwrap();
-        policy.on_request(&mut request);
+        Policy::<(), ()>::on_request(&mut policy, &mut request);
 
         let attempt = Attempt {
             status: Default::default(),
             location: &cross_origin,
             previous: request.uri(),
         };
-        assert!(Policy::<()>::redirect(&mut policy, &attempt).stops());
+        assert!(Policy::<(), ()>::redirect(&mut policy, &attempt).stops());
     }
 }

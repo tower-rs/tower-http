@@ -35,8 +35,8 @@ use std::fmt;
 ///     uris: HashSet<Uri>,
 /// }
 ///
-/// impl<B> Policy<B> for DetectCycle {
-///     fn redirect(&mut self, attempt: &Attempt<'_>) -> Action {
+/// impl<B, E> Policy<B, E> for DetectCycle {
+///     fn redirect(&mut self, attempt: &Attempt<'_>) -> Action<E> {
 ///         if self.uris.contains(attempt.location()) {
 ///             Action::stop()
 ///         } else {
@@ -46,12 +46,12 @@ use std::fmt;
 ///     }
 /// }
 /// ```
-pub trait Policy<B> {
+pub trait Policy<B, E> {
     /// Invoked when the service received a response with a redirection status code (`3xx`).
     ///
     /// This method returns an [`Action`] which indicates whether the service should follow
     /// the redirection.
-    fn redirect(&mut self, attempt: &Attempt<'_>) -> Action;
+    fn redirect(&mut self, attempt: &Attempt<'_>) -> Action<E>;
 
     /// Invoked right before the service makes a request, regardless of whether it is redirected
     /// or not.
@@ -98,17 +98,17 @@ pub trait Policy<B> {
     fn and<P>(self, other: P) -> And<Self, P>
     where
         Self: Sized,
-        P: Policy<B>,
+        P: Policy<B, E>,
     {
         And::new(self, other)
     }
 }
 
-impl<B, P> Policy<B> for &mut P
+impl<B, E, P> Policy<B, E> for &mut P
 where
-    P: Policy<B> + ?Sized,
+    P: Policy<B, E> + ?Sized,
 {
-    fn redirect(&mut self, attempt: &Attempt<'_>) -> Action {
+    fn redirect(&mut self, attempt: &Attempt<'_>) -> Action<E> {
         (**self).redirect(attempt)
     }
 
@@ -121,11 +121,11 @@ where
     }
 }
 
-impl<B, P> Policy<B> for Box<P>
+impl<B, E, P> Policy<B, E> for Box<P>
 where
-    P: Policy<B> + ?Sized,
+    P: Policy<B, E> + ?Sized,
 {
-    fn redirect(&mut self, attempt: &Attempt<'_>) -> Action {
+    fn redirect(&mut self, attempt: &Attempt<'_>) -> Action<E> {
         (**self).redirect(attempt)
     }
 
@@ -171,17 +171,18 @@ impl<'a> Attempt<'a> {
 /// A value returned by [`Policy::redirect`] which indicates the action
 /// [`FollowRedirect`][super::FollowRedirect] should take for a redirection response.
 #[derive(Clone)]
-pub struct Action {
-    pub(crate) kind: ActionKind,
+pub struct Action<E> {
+    pub(crate) kind: ActionKind<E>,
 }
 
 #[derive(Clone)]
-pub(crate) enum ActionKind {
+pub(crate) enum ActionKind<E> {
     Follow,
     Stop,
+    Error(E),
 }
 
-impl Action {
+impl<E> Action<E> {
     /// Create a new [`Action`] which indicates that a redirection should be followed.
     pub fn follow() -> Self {
         Action {
@@ -196,11 +197,20 @@ impl Action {
         }
     }
 
+    /// Create a new [`Action`] which tells [`FollowRedirect`][super::FollowRedirect] to abort
+    /// the redirection with an error
+    pub fn error(e: E) -> Self {
+        Action {
+            kind: ActionKind::Error(e),
+        }
+    }
+
     /// Returns whether the `Action` instructs to follow a redirection.
     pub fn follows(&self) -> bool {
         match self.kind {
             ActionKind::Follow => true,
             ActionKind::Stop => false,
+            ActionKind::Error(_) => false,
         }
     }
 
@@ -208,26 +218,43 @@ impl Action {
     pub fn stops(&self) -> bool {
         !self.follows()
     }
+
+    /// Returns the error if the `Action` instructs to return an error.
+    pub fn get_error(&self) -> Option<&E> {
+        match self.kind {
+            ActionKind::Error(ref e) => Some(e),
+            _ => None,
+        }
+    }
 }
 
-impl fmt::Debug for Action {
+impl<E> fmt::Debug for Action<E>
+where
+    E: fmt::Debug,
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         #[derive(Debug)]
         struct Follow;
         #[derive(Debug)]
         struct Stop;
+        #[derive(Debug)]
+        struct Error<'a, E>(&'a E);
 
         let mut debug = f.debug_tuple("Action");
         match self.kind {
             ActionKind::Follow => debug.field(&Follow),
             ActionKind::Stop => debug.field(&Stop),
+            ActionKind::Error(ref e) => debug.field(&Error(e)),
         };
         debug.finish()
     }
 }
 
-impl<B> Policy<B> for Action {
-    fn redirect(&mut self, _: &Attempt<'_>) -> Action {
+impl<B, E> Policy<B, E> for Action<E>
+where
+    E: Clone,
+{
+    fn redirect(&mut self, _: &Attempt<'_>) -> Action<E> {
         self.clone()
     }
 }

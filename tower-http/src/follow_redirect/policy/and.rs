@@ -1,4 +1,4 @@
-use super::{Action, ActionKind, Attempt, Policy};
+use super::{Action, Attempt, Policy};
 use http::Request;
 
 /// A redirection [`Policy`] that combines the results of two `Policy`s.
@@ -16,15 +16,17 @@ impl<A, B> And<A, B> {
     }
 }
 
-impl<Bd, A, B> Policy<Bd> for And<A, B>
+impl<Bd, E, A, B> Policy<Bd, E> for And<A, B>
 where
-    A: Policy<Bd>,
-    B: Policy<Bd>,
+    A: Policy<Bd, E>,
+    B: Policy<Bd, E>,
 {
-    fn redirect(&mut self, attempt: &Attempt<'_>) -> Action {
-        match self.a.redirect(attempt).kind {
-            ActionKind::Follow => self.b.redirect(attempt),
-            ActionKind::Stop => Action::stop(),
+    fn redirect(&mut self, attempt: &Attempt<'_>) -> Action<E> {
+        let a = self.a.redirect(attempt);
+        if a.follows() {
+            self.b.redirect(attempt)
+        } else {
+            a
         }
     }
 
@@ -57,11 +59,11 @@ mod tests {
         }
     }
 
-    impl<B, P> Policy<B> for Taint<P>
+    impl<B, E, P> Policy<B, E> for Taint<P>
     where
-        P: Policy<B>,
+        P: Policy<B, E>,
     {
-        fn redirect(&mut self, attempt: &Attempt<'_>) -> Action {
+        fn redirect(&mut self, attempt: &Attempt<'_>) -> Action<E> {
             self.used = true;
             self.policy.redirect(attempt)
         }
@@ -78,28 +80,28 @@ mod tests {
         let mut a = Taint::new(Action::follow());
         let mut b = Taint::new(Action::follow());
         let mut policy = And::new(&mut a, &mut b);
-        assert!(Policy::<()>::redirect(&mut policy, &attempt).follows());
+        assert!(Policy::<(), ()>::redirect(&mut policy, &attempt).follows());
         assert!(a.used);
         assert!(b.used);
 
         let mut a = Taint::new(Action::stop());
         let mut b = Taint::new(Action::follow());
         let mut policy = And::new(&mut a, &mut b);
-        assert!(Policy::<()>::redirect(&mut policy, &attempt).stops());
+        assert!(Policy::<(), ()>::redirect(&mut policy, &attempt).stops());
         assert!(a.used);
         assert!(!b.used); // short-circuiting
 
         let mut a = Taint::new(Action::follow());
         let mut b = Taint::new(Action::stop());
         let mut policy = And::new(&mut a, &mut b);
-        assert!(Policy::<()>::redirect(&mut policy, &attempt).stops());
+        assert!(Policy::<(), ()>::redirect(&mut policy, &attempt).stops());
         assert!(a.used);
         assert!(b.used);
 
         let mut a = Taint::new(Action::stop());
         let mut b = Taint::new(Action::stop());
         let mut policy = And::new(&mut a, &mut b);
-        assert!(Policy::<()>::redirect(&mut policy, &attempt).stops());
+        assert!(Policy::<(), ()>::redirect(&mut policy, &attempt).stops());
         assert!(a.used);
         assert!(!b.used);
     }

@@ -23,8 +23,8 @@ impl Default for Limited {
     }
 }
 
-impl<B> Policy<B> for Limited {
-    fn redirect(&mut self, _: &Attempt<'_>) -> Action {
+impl<B, E> Policy<B, E> for Limited {
+    fn redirect(&mut self, _: &Attempt<'_>) -> Action<E> {
         if self.remaining > 0 {
             self.remaining -= 1;
             Action::follow()
@@ -47,24 +47,24 @@ mod tests {
 
         for _ in 0..2 {
             let mut request = Request::builder().uri(uri.clone()).body(()).unwrap();
-            policy.on_request(&mut request);
+            Policy::<(), ()>::on_request(&mut policy, &mut request);
 
             let attempt = Attempt {
                 status: Default::default(),
                 location: &uri,
                 previous: &uri,
             };
-            assert!(Policy::<()>::redirect(&mut policy, &attempt).follows());
+            assert!(Policy::<(), ()>::redirect(&mut policy, &attempt).follows());
         }
 
         let mut request = Request::builder().uri(uri.clone()).body(()).unwrap();
-        policy.on_request(&mut request);
+        Policy::<(), ()>::on_request(&mut policy, &mut request);
 
         let attempt = Attempt {
             status: Default::default(),
             location: &uri,
             previous: &uri,
         };
-        assert!(Policy::<()>::redirect(&mut policy, &attempt).stops());
+        assert!(Policy::<(), ()>::redirect(&mut policy, &attempt).stops());
     }
 }

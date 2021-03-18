@@ -81,8 +81,8 @@ impl Default for FilterCredentials {
     }
 }
 
-impl<B> Policy<B> for FilterCredentials {
-    fn redirect(&mut self, attempt: &Attempt<'_>) -> Action {
+impl<B, E> Policy<B, E> for FilterCredentials {
+    fn redirect(&mut self, attempt: &Attempt<'_>) -> Action<E> {
         self.blocked = self.block_any
             || (self.block_cross_origin && !eq_origin(attempt.previous(), attempt.location()));
         Action::follow()
@@ -120,7 +120,7 @@ mod tests {
             .header(header::COOKIE, "42")
             .body(())
             .unwrap();
-        policy.on_request(&mut request);
+        Policy::<(), ()>::on_request(&mut policy, &mut request);
         assert!(request.headers().contains_key(header::COOKIE));
 
         let attempt = Attempt {
@@ -128,14 +128,14 @@ mod tests {
             location: &same_origin,
             previous: request.uri(),
         };
-        assert!(Policy::<()>::redirect(&mut policy, &attempt).follows());
+        assert!(Policy::<(), ()>::redirect(&mut policy, &attempt).follows());
 
         let mut request = Request::builder()
             .uri(same_origin)
             .header(header::COOKIE, "42")
             .body(())
             .unwrap();
-        policy.on_request(&mut request);
+        Policy::<(), ()>::on_request(&mut policy, &mut request);
         assert!(request.headers().contains_key(header::COOKIE));
 
         let attempt = Attempt {
@@ -143,14 +143,14 @@ mod tests {
             location: &cross_origin,
             previous: request.uri(),
         };
-        assert!(Policy::<()>::redirect(&mut policy, &attempt).follows());
+        assert!(Policy::<(), ()>::redirect(&mut policy, &attempt).follows());
 
         let mut request = Request::builder()
             .uri(cross_origin)
             .header(header::COOKIE, "42")
             .body(())
             .unwrap();
-        policy.on_request(&mut request);
+        Policy::<(), ()>::on_request(&mut policy, &mut request);
         assert!(!request.headers().contains_key(header::COOKIE));
     }
 }
