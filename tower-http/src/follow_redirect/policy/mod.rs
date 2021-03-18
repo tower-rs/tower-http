@@ -138,6 +138,12 @@ where
     }
 }
 
+/// A redirection [`Policy`] with a reasonable set of standard behavior.
+///
+/// This policy limits the number of successive redirections ([`Limited`])
+/// and removes credentials from requests in cross-origin redirections ([`FilterCredentials`]).
+pub type Standard = And<Limited, FilterCredentials>;
+
 /// A type that holds information on a redirection attempt.
 pub struct Attempt<'a> {
     pub(crate) status: StatusCode,

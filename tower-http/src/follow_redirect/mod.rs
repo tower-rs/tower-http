@@ -2,7 +2,7 @@
 
 pub mod policy;
 
-use self::policy::{ActionKind, Attempt, Policy};
+use self::policy::{ActionKind, Attempt, Policy, Standard};
 use futures_core::ready;
 use http::{
     header::LOCATION, HeaderMap, HeaderValue, Method, Request, Response, StatusCode, Uri, Version,
@@ -26,14 +26,18 @@ use tower_service::Service;
 
 /// [`Layer`] for retrying requests with a [`Service`] to follow redirection responses.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct FollowRedirectLayer<P> {
+pub struct FollowRedirectLayer<P = Standard> {
     policy: P,
 }
 
-impl<P> FollowRedirectLayer<P>
-where
-    P: Clone,
-{
+impl FollowRedirectLayer {
+    /// Create a new [`FollowRedirectLayer`] with a [`Standard`] redirection policy.
+    pub fn standard() -> Self {
+        Self::default()
+    }
+}
+
+impl<P> FollowRedirectLayer<P> {
     /// Create a new [`FollowRedirectLayer`] with the given redirection [`Policy`].
     pub fn new(policy: P) -> Self {
         FollowRedirectLayer { policy }
@@ -54,9 +58,16 @@ where
 
 /// Middleware that retries requests with a [`Service`] to follow redirection responses.
 #[derive(Clone, Copy, Debug)]
-pub struct FollowRedirect<S, P> {
+pub struct FollowRedirect<S, P = Standard> {
     inner: S,
     policy: P,
+}
+
+impl<S> FollowRedirect<S> {
+    /// Create a new [`FollowRedirect`] with a [`Standard`] redirection policy.
+    pub fn standard(inner: S) -> Self {
+        Self::new(inner, Standard::default())
+    }
 }
 
 impl<S, P> FollowRedirect<S, P>
