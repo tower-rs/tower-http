@@ -1,19 +1,21 @@
 //! Tools for customizing the behavior of a [`FollowRedirect`][super::FollowRedirect] middleware.
 
-mod and;
 mod clone_body_fn;
 mod filter_credentials;
+mod join;
 mod limited;
 mod redirect_fn;
 mod same_origin;
+mod select;
 
 pub use self::{
-    and::And,
     clone_body_fn::{clone_body_fn, CloneBodyFn},
     filter_credentials::FilterCredentials,
+    join::{join, Join},
     limited::Limited,
     redirect_fn::{redirect_fn, RedirectFn},
     same_origin::SameOrigin,
+    select::{select, Select},
 };
 
 use http::{uri::Scheme, Request, StatusCode, Uri};
@@ -68,40 +70,6 @@ pub trait Policy<B, E> {
     fn clone_body(&self, _body: &B) -> Option<B> {
         None
     }
-
-    /// Create a new `Policy` that returns [`Action::follow()`] only if `self` and `other` returns
-    /// `Action::follow()`.
-    ///
-    /// [`clone_body`][Policy::clone_body] method of the returned `Policy` tries to clone the body
-    /// with both policies.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use bytes::Bytes;
-    /// use hyper::Body;
-    /// use tower_http::follow_redirect::policy::{clone_body_fn, Limited, Policy};
-    ///
-    /// enum MyBody {
-    ///     Bytes(Bytes),
-    ///     Hyper(Body),
-    /// }
-    ///
-    /// let policy = Limited::default().and(clone_body_fn(|body| {
-    ///     if let MyBody::Bytes(buf) = body {
-    ///         Some(MyBody::Bytes(buf.clone()))
-    ///     } else {
-    ///         None
-    ///     }
-    /// }));
-    /// ```
-    fn and<P>(self, other: P) -> And<Self, P>
-    where
-        Self: Sized,
-        P: Policy<B, E>,
-    {
-        And::new(self, other)
-    }
 }
 
 impl<B, E, P> Policy<B, E> for &mut P
@@ -142,7 +110,7 @@ where
 ///
 /// This policy limits the number of successive redirections ([`Limited`])
 /// and removes credentials from requests in cross-origin redirections ([`FilterCredentials`]).
-pub type Standard = And<Limited, FilterCredentials>;
+pub type Standard = Join<Limited, FilterCredentials>;
 
 /// A type that holds information on a redirection attempt.
 pub struct Attempt<'a> {

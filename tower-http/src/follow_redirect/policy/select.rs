@@ -3,27 +3,21 @@ use http::Request;
 
 /// A redirection [`Policy`] that combines the results of two `Policy`s.
 ///
-/// See [`Policy::and`] for more details.
+/// See [`select`] for more details.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct And<A, B> {
+pub struct Select<A, B> {
     a: A,
     b: B,
 }
 
-impl<A, B> And<A, B> {
-    pub(crate) fn new(a: A, b: B) -> Self {
-        And { a, b }
-    }
-}
-
-impl<Bd, E, A, B> Policy<Bd, E> for And<A, B>
+impl<Bd, E, A, B> Policy<Bd, E> for Select<A, B>
 where
     A: Policy<Bd, E>,
     B: Policy<Bd, E>,
 {
     fn redirect(&mut self, attempt: &Attempt<'_>) -> Action<E> {
         let a = self.a.redirect(attempt);
-        if a.follows() {
+        if a.stops() {
             self.b.redirect(attempt)
         } else {
             a
@@ -38,6 +32,34 @@ where
     fn clone_body(&self, body: &Bd) -> Option<Bd> {
         self.a.clone_body(body).or_else(|| self.b.clone_body(body))
     }
+}
+
+/// Create a new `Policy` that returns [`Action::follow()`] if either `self` or `other` returns
+/// `Action::follow()`.
+///
+/// [`clone_body`][Policy::clone_body] method of the returned `Policy` tries to clone the body
+/// with both policies.
+///
+/// # Example
+///
+/// ```
+/// use tower_http::follow_redirect::policy::{self, Action, Limited};
+///
+/// #[derive(Clone)]
+/// enum MyError {
+///     TooManyRedirects,
+///     // ...
+/// }
+///
+/// let policy =
+///     policy::select::<_, _, (), _>(Limited::default(), Action::error(MyError::TooManyRedirects));
+/// ```
+pub fn select<A, B, Bd, E>(a: A, b: B) -> Select<A, B>
+where
+    A: Policy<Bd, E>,
+    B: Policy<Bd, E>,
+{
+    Select { a, b }
 }
 
 #[cfg(test)]
@@ -79,30 +101,30 @@ mod tests {
 
         let mut a = Taint::new(Action::follow());
         let mut b = Taint::new(Action::follow());
-        let mut policy = And::new(&mut a, &mut b);
+        let mut policy = select::<_, _, (), _>(&mut a, &mut b);
+        assert!(Policy::<(), ()>::redirect(&mut policy, &attempt).follows());
+        assert!(a.used);
+        assert!(!b.used); // short-circuiting
+
+        let mut a = Taint::new(Action::stop());
+        let mut b = Taint::new(Action::follow());
+        let mut policy = select::<_, _, (), _>(&mut a, &mut b);
         assert!(Policy::<(), ()>::redirect(&mut policy, &attempt).follows());
         assert!(a.used);
         assert!(b.used);
 
-        let mut a = Taint::new(Action::stop());
-        let mut b = Taint::new(Action::follow());
-        let mut policy = And::new(&mut a, &mut b);
-        assert!(Policy::<(), ()>::redirect(&mut policy, &attempt).stops());
-        assert!(a.used);
-        assert!(!b.used); // short-circuiting
-
         let mut a = Taint::new(Action::follow());
         let mut b = Taint::new(Action::stop());
-        let mut policy = And::new(&mut a, &mut b);
+        let mut policy = select::<_, _, (), _>(&mut a, &mut b);
+        assert!(Policy::<(), ()>::redirect(&mut policy, &attempt).follows());
+        assert!(a.used);
+        assert!(!b.used);
+
+        let mut a = Taint::new(Action::stop());
+        let mut b = Taint::new(Action::stop());
+        let mut policy = select::<_, _, (), _>(&mut a, &mut b);
         assert!(Policy::<(), ()>::redirect(&mut policy, &attempt).stops());
         assert!(a.used);
         assert!(b.used);
-
-        let mut a = Taint::new(Action::stop());
-        let mut b = Taint::new(Action::stop());
-        let mut policy = And::new(&mut a, &mut b);
-        assert!(Policy::<(), ()>::redirect(&mut policy, &attempt).stops());
-        assert!(a.used);
-        assert!(!b.used);
     }
 }
