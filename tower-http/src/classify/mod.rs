@@ -4,12 +4,12 @@ use http::{HeaderMap, Request, Response, StatusCode};
 use std::{convert::Infallible, marker::PhantomData};
 
 mod either;
+mod make_classifier_fn;
 mod map_failure_class;
-mod pick_make_classifier;
 
 pub use self::{
-    map_failure_class::{MapEosFailureClass, MapFailureClass},
-    pick_make_classifier::{make_classifier_fn, MakeClassifierFn},
+    make_classifier_fn::{make_classifier_fn, MakeClassifierFn},
+    map_failure_class::MapFailureClass,
 };
 
 /// Trait for producing response classifiers from a request.
@@ -131,8 +131,34 @@ pub trait ClassifyResponse<E> {
     /// errors. A retry policy might allows retrying some errors and not others.
     fn classify_error(self, error: &E) -> Self::FailureClass;
 
-    /// TODO(david): docs
-    fn map_failure_class<F, NewFailureClass>(self, f: F) -> MapFailureClass<Self, F>
+    /// Composes a function used to transform failure classifications produced by this classifier.
+    ///
+    /// # Example
+    ///
+    /// Map the output of [`ServerErrorsAsFailures`] from [`http::StatusCode`] to `u16`:
+    ///
+    /// ```rust
+    /// use http::StatusCode;
+    /// use http::Response;
+    /// use hyper::Body;
+    /// use tower_http::classify::{ClassifyResponse, ServerErrorsAsFailures, ClassifiedResponse};
+    ///
+    /// let classifier = ServerErrorsAsFailures::new().map_failure_class(|status: StatusCode| {
+    ///     status.as_u16()
+    /// });
+    /// # // help rust infer the error type
+    /// # classifier.clone().classify_error(&tower::BoxError::from("foo"));
+    ///
+    /// let response = Response::builder()
+    ///     .status(StatusCode::INTERNAL_SERVER_ERROR)
+    ///     .body(Body::empty())
+    ///     .unwrap();
+    ///
+    /// let classification = classifier.classify_response(&response);
+    ///
+    /// assert!(matches!(classification, ClassifiedResponse::Ready(Err(500))));
+    /// ```
+    fn map_failure_class<F, NewFailureClass>(self, f: F) -> MapFailureClass<Self, F, E>
     where
         F: FnOnce(Self::FailureClass) -> NewFailureClass,
         Self: Sized,
@@ -154,6 +180,15 @@ pub trait ClassifyEos<E> {
     /// Errors are always errors (doh) but sometimes it might be useful to have multiple classes of
     /// errors. A retry policy might allow retrying some errors and not others.
     fn classify_error(self, error: &E) -> Self::FailureClass;
+
+    /// Composes a function used to transform failure classifications produced by this classifier.
+    fn map_failure_class<F, NewFailureClass>(self, f: F) -> MapFailureClass<Self, F, E>
+    where
+        F: FnOnce(Self::FailureClass) -> NewFailureClass,
+        Self: Sized,
+    {
+        MapFailureClass::new(self, f)
+    }
 }
 
 /// Result of doing a classification.
@@ -166,7 +201,7 @@ pub enum ClassifiedResponse<FailureClass, ClassifyEos> {
 }
 
 impl<FailureClass, ClassifyEos> ClassifiedResponse<FailureClass, ClassifyEos> {
-    /// TODO(david): docs
+    /// Transform the classification using the given closure.
     pub fn map_failure_class<F, NewFailureClass>(
         self,
         f: F,
@@ -175,15 +210,14 @@ impl<FailureClass, ClassifyEos> ClassifiedResponse<FailureClass, ClassifyEos> {
         F: FnOnce(FailureClass) -> NewFailureClass,
     {
         match self {
-            ClassifiedResponse::Ready(Ok(())) => ClassifiedResponse::Ready(Ok(())),
-            ClassifiedResponse::Ready(Err(class)) => ClassifiedResponse::Ready(Err(f(class))),
+            ClassifiedResponse::Ready(result) => ClassifiedResponse::Ready(result.map_err(f)),
             ClassifiedResponse::RequiresEos(classify_eos) => {
                 ClassifiedResponse::RequiresEos(classify_eos)
             }
         }
     }
 
-    /// TODO(david): docs
+    /// Transform the end of stream classifier using the given closure.
     pub fn map_classify_eos<F, NewClassifyEos>(
         self,
         f: F,

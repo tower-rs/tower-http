@@ -1,27 +1,35 @@
 use super::{ClassifiedResponse, ClassifyEos, ClassifyResponse};
 use http::{HeaderMap, Response};
+use std::fmt;
+use std::marker::PhantomData;
 
-/// TODO(david): docs
-// TODO(david): impl Debug
-#[derive(Clone, Copy)]
-pub struct MapFailureClass<C, F> {
+/// [`ClassifyResponse`] and [`ClassifyEos`] combinator that transforms failure classifications.
+///
+/// See [`ClassifyResponse::map_failure_class`] or [`ClassifyEos::map_failure_class`] for more
+/// details.
+pub struct MapFailureClass<C, F, E> {
     inner: C,
     f: F,
+    _marker: PhantomData<E>,
 }
 
-impl<C, F> MapFailureClass<C, F> {
+impl<C, F, E> MapFailureClass<C, F, E> {
     pub(crate) fn new(inner: C, f: F) -> Self {
-        Self { inner, f }
+        Self {
+            inner,
+            f,
+            _marker: PhantomData,
+        }
     }
 }
 
-impl<E, C, F, NewFailureClass> ClassifyResponse<E> for MapFailureClass<C, F>
+impl<E, C, F, NewFailureClass> ClassifyResponse<E> for MapFailureClass<C, F, E>
 where
     C: ClassifyResponse<E>,
     F: FnOnce(C::FailureClass) -> NewFailureClass,
 {
     type FailureClass = NewFailureClass;
-    type ClassifyEos = MapEosFailureClass<C::ClassifyEos, F>;
+    type ClassifyEos = MapFailureClass<C::ClassifyEos, F, E>;
 
     fn classify_response<B>(
         self,
@@ -33,10 +41,7 @@ where
                 ClassifiedResponse::Ready(Err((self.f)(class)))
             }
             ClassifiedResponse::RequiresEos(classify_eos) => {
-                ClassifiedResponse::RequiresEos(MapEosFailureClass {
-                    inner: classify_eos,
-                    f: self.f,
-                })
+                ClassifiedResponse::RequiresEos(classify_eos.map_failure_class(self.f))
             }
         }
     }
@@ -46,15 +51,29 @@ where
     }
 }
 
-/// TODO(david): docs
-// TODO(david): impl Debug
-#[derive(Clone, Copy)]
-pub struct MapEosFailureClass<C, F> {
-    inner: C,
-    f: F,
+impl<C, F, E> Clone for MapFailureClass<C, F, E>
+where
+    C: Clone,
+    F: Clone,
+{
+    fn clone(&self) -> Self {
+        Self::new(self.inner.clone(), self.f.clone())
+    }
 }
 
-impl<E, C, F, NewFailureClass> ClassifyEos<E> for MapEosFailureClass<C, F>
+impl<C, F, E> fmt::Debug for MapFailureClass<C, F, E>
+where
+    C: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MapFailureClass")
+            .field("inner", &self.inner)
+            .field("f", &format_args!("{}", std::any::type_name::<F>()))
+            .finish()
+    }
+}
+
+impl<E, C, F, NewFailureClass> ClassifyEos<E> for MapFailureClass<C, F, E>
 where
     C: ClassifyEos<E>,
     F: FnOnce(C::FailureClass) -> NewFailureClass,

@@ -1,8 +1,23 @@
-// TODO(david): document somewhere that things are implemented for `tower::util::Either`
-
-use super::{ClassifiedResponse, ClassifyEos, ClassifyResponse};
-use http::{HeaderMap, Response};
+use super::{ClassifiedResponse, ClassifyEos, ClassifyResponse, MakeClassifier};
+use http::{HeaderMap, Request, Response};
 use tower::util::Either;
+
+impl<E, A, B> MakeClassifier<E> for Either<A, B>
+where
+    A: MakeClassifier<E>,
+    B: MakeClassifier<E, FailureClass = A::FailureClass>,
+{
+    type Classifier = Either<A::Classifier, B::Classifier>;
+    type FailureClass = A::FailureClass;
+    type ClassifyEos = Either<A::ClassifyEos, B::ClassifyEos>;
+
+    fn make_classifier<Body>(&self, req: &Request<Body>) -> Self::Classifier {
+        match self {
+            Either::A(inner) => Either::A(inner.make_classifier(req)),
+            Either::B(inner) => Either::B(inner.make_classifier(req)),
+        }
+    }
+}
 
 impl<A, B, E> ClassifyResponse<E> for Either<A, B>
 where
