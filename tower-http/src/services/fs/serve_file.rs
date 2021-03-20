@@ -1,8 +1,10 @@
 //! Service that serves a file.
 
 use super::AsyncReadBody;
+use bytes::Bytes;
 use futures_util::ready;
 use http::{header, HeaderValue, Response};
+use http_body::{Body, combinators::BoxBody};
 use mime::Mime;
 use std::{
     future::Future,
@@ -56,7 +58,7 @@ impl ServeFile {
 }
 
 impl<R> Service<R> for ServeFile {
-    type Response = Response<AsyncReadBody<File>>;
+    type Response = Response<BoxBody<Bytes, io::Error>>;
     type Error = io::Error;
     type Future = ResponseFuture;
 
@@ -82,17 +84,23 @@ pub struct ResponseFuture {
 }
 
 impl Future for ResponseFuture {
-    type Output = io::Result<Response<AsyncReadBody<File>>>;
+    type Output = io::Result<Response<BoxBody<Bytes, io::Error>>>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let file = ready!(Pin::new(&mut self.open_file_future).poll(cx)?);
+        let result = ready!(Pin::new(&mut self.open_file_future).poll(cx));
+
+        let file = match result {
+            Ok(file) => file,
+            Err(err) => return Poll::Ready(super::response_from_io_error(err)),
+        };
+
         let body = AsyncReadBody::new(file);
 
         let mut res = Response::new(body);
         res.headers_mut()
             .insert(header::CONTENT_TYPE, self.mime.take().unwrap());
 
-        Poll::Ready(Ok(res))
+        Poll::Ready(Ok(res.map(Body::boxed)))
     }
 }
 
@@ -100,7 +108,7 @@ impl Future for ResponseFuture {
 mod tests {
     #[allow(unused_imports)]
     use super::*;
-    use http::Request;
+    use http::{Request, StatusCode};
     use http_body::Body as _;
     use hyper::Body;
     use tower::ServiceExt;
@@ -117,5 +125,14 @@ mod tests {
         let body = String::from_utf8(body.to_vec()).unwrap();
 
         assert!(body.starts_with("# Tower HTTP"));
+    }
+
+    #[tokio::test]
+    async fn returns_404_if_file_doesnt_exist() {
+        let svc = ServeFile::new("../this-doesnt-exist.md");
+
+        let res = svc.oneshot(Request::new(Body::empty())).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
     }
 }

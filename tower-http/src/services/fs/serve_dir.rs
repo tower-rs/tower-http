@@ -131,21 +131,7 @@ impl Future for ResponseFuture {
             Inner::Valid(open_file_future) => {
                 let (file, mime) = match ready!(Pin::new(open_file_future).poll(cx)) {
                     Ok(inner) => inner,
-                    Err(err) => match err.kind() {
-                        io::ErrorKind::NotFound | io::ErrorKind::PermissionDenied => {
-                            let res = Response::builder()
-                                .status(StatusCode::NOT_FOUND)
-                                .body(
-                                    Empty::new()
-                                        .map_err(|_err: Infallible| unreachable!())
-                                        .boxed(),
-                                )
-                                .unwrap();
-
-                            return Poll::Ready(Ok(res));
-                        }
-                        _ => return Poll::Ready(Err(err)),
-                    },
+                    Err(err) => return Poll::Ready(super::response_from_io_error(err)),
                 };
                 let body = AsyncReadBody::new(file).boxed();
 

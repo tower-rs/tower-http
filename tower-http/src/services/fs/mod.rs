@@ -2,9 +2,10 @@
 
 use bytes::{Bytes, BytesMut};
 use futures_core::ready;
-use http::HeaderMap;
-use http_body::Body;
+use http::{HeaderMap, Response, StatusCode};
+use http_body::{combinators::BoxBody, Body, Empty};
 use std::{
+    convert::Infallible,
     io,
     pin::Pin,
     task::{Context, Poll},
@@ -59,5 +60,25 @@ where
         _cx: &mut Context<'_>,
     ) -> Poll<Result<Option<HeaderMap>, Self::Error>> {
         Poll::Ready(Ok(None))
+    }
+}
+
+fn response_from_io_error(
+    err: io::Error,
+) -> Result<Response<BoxBody<Bytes, io::Error>>, io::Error> {
+    match err.kind() {
+        io::ErrorKind::NotFound | io::ErrorKind::PermissionDenied => {
+            let res = Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(
+                    Empty::new()
+                        .map_err(|_err: Infallible| unreachable!())
+                        .boxed(),
+                )
+                .unwrap();
+
+            Ok(res)
+        }
+        _ => Err(err),
     }
 }
