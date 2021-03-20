@@ -63,7 +63,7 @@ impl<S> Layer<S> for PropagateHeaderLayer {
 ///     .header("x-request-id", "1337")
 ///     .body(String::new())?;
 ///
-/// let response = svc.ready_and().await?.call(request).await?;
+/// let response = svc.ready().await?.call(request).await?;
 ///
 /// assert_eq!(response.headers()["x-request-id"], "1337");
 /// #
@@ -83,6 +83,13 @@ impl<S> PropagateHeader<S> {
     }
 
     define_inner_service_accessors!();
+
+    /// Returns a new [`Layer`] that wraps services with a `PropagateHeader` middleware.
+    ///
+    /// [`Layer`]: tower_layer::Layer
+    pub fn layer(header: HeaderName) -> PropagateHeaderLayer {
+        PropagateHeaderLayer::new(header)
+    }
 }
 
 impl<ReqBody, ResBody, S> Service<Request<ReqBody>> for PropagateHeader<S>

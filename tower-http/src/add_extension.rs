@@ -52,6 +52,13 @@ impl<S, T> AddExtension<S, T> {
     }
 
     define_inner_service_accessors!();
+
+    /// Returns a new [`Layer`] that wraps services with a `AddExtension` middleware.
+    ///
+    /// [`Layer`]: tower_layer::Layer
+    pub fn layer(value: T) -> AddExtensionLayer<T> {
+        AddExtensionLayer::new(value)
+    }
 }
 
 impl<ResBody, S, T> Service<Request<ResBody>> for AddExtension<S, T>

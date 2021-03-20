@@ -1,8 +1,10 @@
 use super::AsyncReadBody;
-use crate::util::{Either, EmptyBody};
+use bytes::Bytes;
 use futures_util::ready;
 use http::{header, HeaderValue, Request, Response, StatusCode};
+use http_body::{combinators::BoxBody, Body, Empty};
 use std::{
+    convert::Infallible,
     future::Future,
     io,
     path::{Path, PathBuf},
@@ -52,7 +54,7 @@ impl ServeDir {
 }
 
 impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
-    type Response = Response<Either<AsyncReadBody<File>, EmptyBody>>;
+    type Response = Response<BoxBody<Bytes, io::Error>>;
     type Error = io::Error;
     type Future = ResponseFuture;
 
@@ -122,7 +124,7 @@ pub struct ResponseFuture {
 }
 
 impl Future for ResponseFuture {
-    type Output = io::Result<Response<Either<AsyncReadBody<File>, EmptyBody>>>;
+    type Output = io::Result<Response<BoxBody<Bytes, io::Error>>>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match &mut self.inner {
@@ -133,7 +135,11 @@ impl Future for ResponseFuture {
                         io::ErrorKind::NotFound | io::ErrorKind::PermissionDenied => {
                             let res = Response::builder()
                                 .status(StatusCode::NOT_FOUND)
-                                .body(Either::Right(EmptyBody::new()))
+                                .body(
+                                    Empty::new()
+                                        .map_err(|_err: Infallible| unreachable!())
+                                        .boxed(),
+                                )
                                 .unwrap();
 
                             return Poll::Ready(Ok(res));
@@ -141,7 +147,7 @@ impl Future for ResponseFuture {
                         _ => return Poll::Ready(Err(err)),
                     },
                 };
-                let body = Either::Left(AsyncReadBody::new(file));
+                let body = AsyncReadBody::new(file).boxed();
 
                 let mut res = Response::new(body);
                 res.headers_mut().insert(header::CONTENT_TYPE, mime);
@@ -151,7 +157,11 @@ impl Future for ResponseFuture {
             Inner::Invalid => {
                 let res = Response::builder()
                     .status(StatusCode::NOT_FOUND)
-                    .body(Either::Right(EmptyBody::new()))
+                    .body(
+                        Empty::new()
+                            .map_err(|_err: Infallible| unreachable!())
+                            .boxed(),
+                    )
                     .unwrap();
 
                 Poll::Ready(Ok(res))

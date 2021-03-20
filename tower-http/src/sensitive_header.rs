@@ -90,6 +90,13 @@ impl<S> SetSensitiveRequestHeader<S> {
     }
 
     define_inner_service_accessors!();
+
+    /// Returns a new [`Layer`] that wraps services with a `SetSensitiveRequestHeader` middleware.
+    ///
+    /// [`Layer`]: tower_layer::Layer
+    pub fn layer(header: HeaderName) -> SetSensitiveRequestHeaderLayer {
+        SetSensitiveRequestHeaderLayer::new(header)
+    }
 }
 
 impl<ReqBody, ResBody, S> Service<Request<ReqBody>> for SetSensitiveRequestHeader<S>
@@ -158,6 +165,13 @@ impl<S> SetSensitiveResponseHeader<S> {
     }
 
     define_inner_service_accessors!();
+
+    /// Returns a new [`Layer`] that wraps services with a `SetSensitiveResponseHeader` middleware.
+    ///
+    /// [`Layer`]: tower_layer::Layer
+    pub fn layer(header: HeaderName) -> SetSensitiveResponseHeaderLayer {
+        SetSensitiveResponseHeaderLayer::new(header)
+    }
 }
 
 impl<ReqBody, ResBody, S> Service<Request<ReqBody>> for SetSensitiveResponseHeader<S>

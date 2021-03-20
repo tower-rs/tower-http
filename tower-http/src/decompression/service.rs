@@ -1,5 +1,5 @@
-use super::{DecompressionBody, ResponseFuture};
-use crate::accept_encoding::AcceptEncoding;
+use super::{DecompressionBody, DecompressionLayer, ResponseFuture};
+use crate::compression_utils::{AcceptEncoding, BoxError};
 use http::{
     header::{self, ACCEPT_ENCODING, RANGE},
     Request, Response,
@@ -28,6 +28,13 @@ impl<S> Decompression<S> {
     }
 
     define_inner_service_accessors!();
+
+    /// Returns a new [`Layer`] that wraps services with a `Decompression` middleware.
+    ///
+    /// [`Layer`]: tower_layer::Layer
+    pub fn layer() -> DecompressionLayer {
+        DecompressionLayer::new()
+    }
 
     /// Sets whether to request the gzip encoding.
     #[cfg(feature = "decompression-gzip")]
@@ -82,6 +89,7 @@ impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for Decompression<S>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
     ResBody: Body,
+    ResBody::Error: Into<BoxError>,
 {
     type Response = Response<DecompressionBody<ResBody>>;
     type Error = S::Error;

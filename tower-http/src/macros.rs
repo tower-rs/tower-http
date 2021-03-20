@@ -1,3 +1,4 @@
+#[allow(unused_macros)]
 macro_rules! define_inner_service_accessors {
     () => {
         /// Gets a reference to the underlying service.

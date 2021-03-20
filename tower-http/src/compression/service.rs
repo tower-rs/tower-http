@@ -1,10 +1,9 @@
-use crate::accept_encoding::AcceptEncoding;
+use super::{CompressionBody, CompressionLayer, Encoding, ResponseFuture};
+use crate::compression_utils::{AcceptEncoding, BoxError};
 use http::{Request, Response};
 use http_body::Body;
 use std::task::{Context, Poll};
 use tower_service::Service;
-
-use super::{CompressionBody, Encoding, ResponseFuture};
 
 /// Compress response bodies of the underlying service.
 ///
@@ -26,6 +25,13 @@ impl<S> Compression<S> {
     }
 
     define_inner_service_accessors!();
+
+    /// Returns a new [`Layer`] that wraps services with a `Compression` middleware.
+    ///
+    /// [`Layer`]: tower_layer::Layer
+    pub fn layer() -> CompressionLayer {
+        CompressionLayer::new()
+    }
 
     /// Sets whether to enable the gzip encoding.
     #[cfg(feature = "compression-gzip")]
@@ -80,6 +86,7 @@ impl<ReqBody, ResBody, S> Service<Request<ReqBody>> for Compression<S>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
     ResBody: Body,
+    ResBody::Error: Into<BoxError>,
 {
     type Response = Response<CompressionBody<ResBody>>;
     type Error = S::Error;
