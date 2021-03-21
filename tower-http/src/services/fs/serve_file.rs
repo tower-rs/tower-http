@@ -4,7 +4,7 @@ use super::AsyncReadBody;
 use bytes::Bytes;
 use futures_util::ready;
 use http::{header, HeaderValue, Response};
-use http_body::{Body, combinators::BoxBody};
+use http_body::{combinators::BoxBody, Body};
 use mime::Mime;
 use std::{
     future::Future,
