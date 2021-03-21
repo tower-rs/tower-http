@@ -5,19 +5,19 @@ use tracing::Level;
 use super::DEFAULT_ERROR_LEVEL;
 
 pub trait OnFailure<FailureClass> {
-    fn on_failure(self, failure_classification: FailureClass, latency: Duration);
+    fn on_failure(&mut self, failure_classification: FailureClass, latency: Duration);
 }
 
 impl<FailureClass> OnFailure<FailureClass> for () {
     #[inline]
-    fn on_failure(self, _: FailureClass, _: Duration) {}
+    fn on_failure(&mut self, _: FailureClass, _: Duration) {}
 }
 
 impl<F, FailureClass> OnFailure<FailureClass> for F
 where
-    F: FnOnce(FailureClass, Duration),
+    F: FnMut(FailureClass, Duration),
 {
-    fn on_failure(self, failure_classification: FailureClass, latency: Duration) {
+    fn on_failure(&mut self, failure_classification: FailureClass, latency: Duration) {
         self(failure_classification, latency)
     }
 }
@@ -90,7 +90,7 @@ impl<FailureClass> OnFailure<FailureClass> for DefaultOnFailure
 where
     FailureClass: fmt::Display,
 {
-    fn on_failure(self, failure_classification: FailureClass, latency: Duration) {
+    fn on_failure(&mut self, failure_classification: FailureClass, latency: Duration) {
         log_pattern_match!(
             self,
             &failure_classification,

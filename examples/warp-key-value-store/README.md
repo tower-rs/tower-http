@@ -10,5 +10,6 @@ This examples contains a simple key/value store with an HTTP API built using war
 ## Running the example
 
 ```
-cargo run --bin warp-key-value-store
+RUST_LOG=warp_key_value_store=trace,tower_http=trace \
+    cargo run --bin warp-key-value-store
 ```
