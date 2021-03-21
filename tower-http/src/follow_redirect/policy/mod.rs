@@ -1,21 +1,21 @@
 //! Tools for customizing the behavior of a [`FollowRedirect`][super::FollowRedirect] middleware.
 
+mod and;
 mod clone_body_fn;
 mod filter_credentials;
-mod join;
 mod limited;
+mod or;
 mod redirect_fn;
 mod same_origin;
-mod select;
 
 pub use self::{
+    and::And,
     clone_body_fn::{clone_body_fn, CloneBodyFn},
     filter_credentials::FilterCredentials,
-    join::{join, Join},
     limited::Limited,
+    or::Or,
     redirect_fn::{redirect_fn, RedirectFn},
     same_origin::SameOrigin,
-    select::{select, Select},
 };
 
 use http::{uri::Scheme, Request, StatusCode, Uri};
@@ -110,11 +110,90 @@ where
     }
 }
 
+/// An extension trait for `Policy` that provides additional adapters.
+pub trait PolicyExt {
+    /// Create a new `Policy` that returns [`Action::Follow`] only if `self` and `other` return
+    /// `Action::Follow`.
+    ///
+    /// [`clone_body`][Policy::clone_body] method of the returned `Policy` tries to clone the body
+    /// with both policies.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use bytes::Bytes;
+    /// use hyper::Body;
+    /// use tower_http::follow_redirect::policy::{self, clone_body_fn, Limited, PolicyExt};
+    ///
+    /// enum MyBody {
+    ///     Bytes(Bytes),
+    ///     Hyper(Body),
+    /// }
+    ///
+    /// let policy = Limited::default().and::<_, _, ()>(clone_body_fn(|body| {
+    ///     if let MyBody::Bytes(buf) = body {
+    ///         Some(MyBody::Bytes(buf.clone()))
+    ///     } else {
+    ///         None
+    ///     }
+    /// }));
+    /// ```
+    fn and<P, B, E>(self, other: P) -> And<Self, P>
+    where
+        Self: Policy<B, E> + Sized,
+        P: Policy<B, E>;
+
+    /// Create a new `Policy` that returns [`Action::Follow`] if either `self` or `other` returns
+    /// `Action::Follow`.
+    ///
+    /// [`clone_body`][Policy::clone_body] method of the returned `Policy` tries to clone the body
+    /// with both policies.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use tower_http::follow_redirect::policy::{self, Action, Limited, PolicyExt};
+    ///
+    /// #[derive(Clone)]
+    /// enum MyError {
+    ///     TooManyRedirects,
+    ///     // ...
+    /// }
+    ///
+    /// let policy = Limited::default().or::<_, (), _>(Err(MyError::TooManyRedirects));
+    /// ```
+    fn or<P, B, E>(self, other: P) -> Or<Self, P>
+    where
+        Self: Policy<B, E> + Sized,
+        P: Policy<B, E>;
+}
+
+impl<T> PolicyExt for T
+where
+    T: ?Sized,
+{
+    fn and<P, B, E>(self, other: P) -> And<Self, P>
+    where
+        Self: Policy<B, E> + Sized,
+        P: Policy<B, E>,
+    {
+        And::new(self, other)
+    }
+
+    fn or<P, B, E>(self, other: P) -> Or<Self, P>
+    where
+        Self: Policy<B, E> + Sized,
+        P: Policy<B, E>,
+    {
+        Or::new(self, other)
+    }
+}
+
 /// A redirection [`Policy`] with a reasonable set of standard behavior.
 ///
 /// This policy limits the number of successive redirections ([`Limited`])
 /// and removes credentials from requests in cross-origin redirections ([`FilterCredentials`]).
-pub type Standard = Join<Limited, FilterCredentials>;
+pub type Standard = And<Limited, FilterCredentials>;
 
 /// A type that holds information on a redirection attempt.
 pub struct Attempt<'a> {

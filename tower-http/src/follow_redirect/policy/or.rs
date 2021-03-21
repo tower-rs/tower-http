@@ -3,21 +3,31 @@ use http::Request;
 
 /// A redirection [`Policy`] that combines the results of two `Policy`s.
 ///
-/// See [`join`] for more details.
+/// See [`PolicyExt::or`][super::PolicyExt::or] for more details.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct Join<A, B> {
+pub struct Or<A, B> {
     a: A,
     b: B,
 }
 
-impl<Bd, E, A, B> Policy<Bd, E> for Join<A, B>
+impl<A, B> Or<A, B> {
+    pub(crate) fn new<Bd, E>(a: A, b: B) -> Self
+    where
+        A: Policy<Bd, E>,
+        B: Policy<Bd, E>,
+    {
+        Or { a, b }
+    }
+}
+
+impl<Bd, E, A, B> Policy<Bd, E> for Or<A, B>
 where
     A: Policy<Bd, E>,
     B: Policy<Bd, E>,
 {
     fn redirect(&mut self, attempt: &Attempt<'_>) -> Result<Action, E> {
         match self.a.redirect(attempt) {
-            Ok(Action::Follow) => self.b.redirect(attempt),
+            Ok(Action::Stop) | Err(_) => self.b.redirect(attempt),
             a => a,
         }
     }
@@ -30,43 +40,6 @@ where
     fn clone_body(&self, body: &Bd) -> Option<Bd> {
         self.a.clone_body(body).or_else(|| self.b.clone_body(body))
     }
-}
-
-/// Create a new `Policy` that returns [`Action::Follow`] only if `self` and `other` return
-/// `Action::Follow`.
-///
-/// [`clone_body`][Policy::clone_body] method of the returned `Policy` tries to clone the body
-/// with both policies.
-///
-/// # Example
-///
-/// ```
-/// use bytes::Bytes;
-/// use hyper::Body;
-/// use tower_http::follow_redirect::policy::{self, clone_body_fn, Limited, Policy};
-///
-/// enum MyBody {
-///     Bytes(Bytes),
-///     Hyper(Body),
-/// }
-///
-/// let policy = policy::join::<_, _, _, ()>(
-///     Limited::default(),
-///     clone_body_fn(|body| {
-///         if let MyBody::Bytes(buf) = body {
-///             Some(MyBody::Bytes(buf.clone()))
-///         } else {
-///             None
-///         }
-///     }),
-/// );
-/// ```
-pub fn join<A, B, Bd, E>(a: A, b: B) -> Join<A, B>
-where
-    A: Policy<Bd, E>,
-    B: Policy<Bd, E>,
-{
-    Join { a, b }
 }
 
 #[cfg(test)]
@@ -108,38 +81,38 @@ mod tests {
 
         let mut a = Taint::new(Action::Follow);
         let mut b = Taint::new(Action::Follow);
-        let mut policy = join::<_, _, (), ()>(&mut a, &mut b);
+        let mut policy = Or::new::<(), ()>(&mut a, &mut b);
+        assert!(Policy::<(), ()>::redirect(&mut policy, &attempt)
+            .unwrap()
+            .is_follow());
+        assert!(a.used);
+        assert!(!b.used); // short-circuiting
+
+        let mut a = Taint::new(Action::Stop);
+        let mut b = Taint::new(Action::Follow);
+        let mut policy = Or::new::<(), ()>(&mut a, &mut b);
         assert!(Policy::<(), ()>::redirect(&mut policy, &attempt)
             .unwrap()
             .is_follow());
         assert!(a.used);
         assert!(b.used);
 
-        let mut a = Taint::new(Action::Stop);
-        let mut b = Taint::new(Action::Follow);
-        let mut policy = join::<_, _, (), ()>(&mut a, &mut b);
-        assert!(Policy::<(), ()>::redirect(&mut policy, &attempt)
-            .unwrap()
-            .is_stop());
-        assert!(a.used);
-        assert!(!b.used); // short-circuiting
-
         let mut a = Taint::new(Action::Follow);
         let mut b = Taint::new(Action::Stop);
-        let mut policy = join::<_, _, (), ()>(&mut a, &mut b);
+        let mut policy = Or::new::<(), ()>(&mut a, &mut b);
+        assert!(Policy::<(), ()>::redirect(&mut policy, &attempt)
+            .unwrap()
+            .is_follow());
+        assert!(a.used);
+        assert!(!b.used);
+
+        let mut a = Taint::new(Action::Stop);
+        let mut b = Taint::new(Action::Stop);
+        let mut policy = Or::new::<(), ()>(&mut a, &mut b);
         assert!(Policy::<(), ()>::redirect(&mut policy, &attempt)
             .unwrap()
             .is_stop());
         assert!(a.used);
         assert!(b.used);
-
-        let mut a = Taint::new(Action::Stop);
-        let mut b = Taint::new(Action::Stop);
-        let mut policy = join::<_, _, (), ()>(&mut a, &mut b);
-        assert!(Policy::<(), ()>::redirect(&mut policy, &attempt)
-            .unwrap()
-            .is_stop());
-        assert!(a.used);
-        assert!(!b.used);
     }
 }
