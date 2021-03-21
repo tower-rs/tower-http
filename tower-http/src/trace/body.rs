@@ -1,5 +1,6 @@
 use super::{OnBodyChunk, OnEos, OnFailure};
 use crate::classify::ClassifyEos;
+use futures_core::ready;
 use http::HeaderMap;
 use http_body::Body;
 use pin_project::pin_project;
@@ -44,21 +45,23 @@ where
         let this = self.project();
         let _guard = this.span.enter();
 
-        let result = if let Some(result) = futures_util::ready!(this.inner.poll_data(cx)) {
+        let result = if let Some(result) = ready!(this.inner.poll_data(cx)) {
             result
         } else {
             return Poll::Ready(None);
         };
 
         let latency = this.start.elapsed();
+        *this.start = Instant::now();
 
-        if let Some((classify_eos, mut on_failure)) =
-            this.classify_eos.take().zip(this.on_failure.take())
+        if let Some(((err, classify_eos), mut on_failure)) = result
+            .as_ref()
+            .err()
+            .zip(this.classify_eos.take())
+            .zip(this.on_failure.take())
         {
-            if let Err(err) = &result {
-                let failure_class = classify_eos.classify_error(err);
-                on_failure.on_failure(failure_class, latency);
-            }
+            let failure_class = classify_eos.classify_error(err);
+            on_failure.on_failure(failure_class, latency);
         }
 
         if let Ok(chunk) = &result {
@@ -74,7 +77,7 @@ where
     ) -> Poll<Result<Option<HeaderMap>, Self::Error>> {
         let this = self.project();
         let _guard = this.span.enter();
-        let result = futures_util::ready!(this.inner.poll_trailers(cx));
+        let result = ready!(this.inner.poll_trailers(cx));
 
         let latency = this.start.elapsed();
 
