@@ -8,6 +8,11 @@ pub trait OnFailure<FailureClass> {
     fn on_failure(self, failure_classification: FailureClass, latency: Duration);
 }
 
+impl<FailureClass> OnFailure<FailureClass> for () {
+    #[inline]
+    fn on_failure(self, _: FailureClass, _: Duration) {}
+}
+
 impl<F, FailureClass> OnFailure<FailureClass> for F
 where
     F: FnOnce(FailureClass, Duration),

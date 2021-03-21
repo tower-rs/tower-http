@@ -6,6 +6,11 @@ pub trait OnRequest<B> {
     fn on_request(&mut self, request: &Request<B>);
 }
 
+impl<B> OnRequest<B> for () {
+    #[inline]
+    fn on_request(&mut self, _: &Request<B>) {}
+}
+
 impl<B, F> OnRequest<B> for F
 where
     F: FnMut(&Request<B>),
