@@ -27,7 +27,6 @@ pub struct TraceLayer<
 > {
     pub(crate) make_classifier: M,
     pub(crate) make_span: MakeSpan,
-    pub(crate) add_headers_to_span: bool,
     pub(crate) on_request: OnRequest,
     pub(crate) on_response: OnResponse,
     pub(crate) on_body_chunk: OnBodyChunk,
@@ -55,7 +54,6 @@ where
             on_eos: self.on_eos.clone(),
             on_body_chunk: self.on_body_chunk.clone(),
             make_span: self.make_span.clone(),
-            add_headers_to_span: self.add_headers_to_span,
             make_classifier: self.make_classifier.clone(),
             _error: self._error,
         }
@@ -76,7 +74,6 @@ impl<M, E> TraceLayer<M, E> {
             on_eos: DefaultOnEos::default(),
             on_body_chunk: DefaultOnBodyChunk::default(),
             on_response: DefaultOnResponse::default(),
-            add_headers_to_span: false,
             _error: PhantomData,
         }
     }
@@ -96,7 +93,6 @@ impl<M, E, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
             on_body_chunk: self.on_body_chunk,
             make_span: self.make_span,
             on_response: self.on_response,
-            add_headers_to_span: self.add_headers_to_span,
             make_classifier: self.make_classifier,
             _error: self._error,
         }
@@ -113,7 +109,6 @@ impl<M, E, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
             on_body_chunk: self.on_body_chunk,
             on_failure: self.on_failure,
             make_span: self.make_span,
-            add_headers_to_span: self.add_headers_to_span,
             make_classifier: self.make_classifier,
             _error: self._error,
         }
@@ -130,7 +125,6 @@ impl<M, E, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
             on_request: self.on_request,
             make_span: self.make_span,
             on_response: self.on_response,
-            add_headers_to_span: self.add_headers_to_span,
             make_classifier: self.make_classifier,
             _error: self._error,
         }
@@ -147,7 +141,6 @@ impl<M, E, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
             on_request: self.on_request,
             make_span: self.make_span,
             on_response: self.on_response,
-            add_headers_to_span: self.add_headers_to_span,
             make_classifier: self.make_classifier,
             _error: self._error,
         }
@@ -164,7 +157,6 @@ impl<M, E, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
             on_body_chunk: self.on_body_chunk,
             make_span: self.make_span,
             on_response: self.on_response,
-            add_headers_to_span: self.add_headers_to_span,
             make_classifier: self.make_classifier,
             _error: self._error,
         }
@@ -181,15 +173,9 @@ impl<M, E, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
             on_body_chunk: self.on_body_chunk,
             on_eos: self.on_eos,
             on_response: self.on_response,
-            add_headers_to_span: self.add_headers_to_span,
             make_classifier: self.make_classifier,
             _error: self._error,
         }
-    }
-
-    pub fn add_headers_to_span(mut self, value: bool) -> Self {
-        self.add_headers_to_span = value;
-        self
     }
 }
 
@@ -200,7 +186,6 @@ impl<E> TraceLayer<SharedClassifier<ServerErrorsAsFailures>, E> {
         Self {
             make_classifier: SharedClassifier::new::<E>(ServerErrorsAsFailures::default()),
             make_span: DefaultMakeSpan::new(),
-            add_headers_to_span: false,
             on_response: DefaultOnResponse::default(),
             on_request: DefaultOnRequest::default(),
             on_body_chunk: DefaultOnBodyChunk::default(),
@@ -218,7 +203,6 @@ impl<E> TraceLayer<SharedClassifier<GrpcErrorsAsFailures>, E> {
         Self {
             make_classifier: SharedClassifier::new::<E>(GrpcErrorsAsFailures::default()),
             make_span: DefaultMakeSpan::new(),
-            add_headers_to_span: false,
             on_response: DefaultOnResponse::default(),
             on_request: DefaultOnRequest::default(),
             on_body_chunk: DefaultOnBodyChunk::default(),
@@ -252,7 +236,6 @@ where
             on_body_chunk: self.on_body_chunk.clone(),
             on_response: self.on_response.clone(),
             on_failure: self.on_failure.clone(),
-            add_headers_to_span: self.add_headers_to_span,
             _error: PhantomData,
         }
     }
@@ -273,7 +256,6 @@ where
         f.debug_struct("TraceLayer")
             .field("make_classifier", &self.make_classifier)
             .field("make_span", &self.make_span)
-            .field("add_headers_to_span", &self.add_headers_to_span)
             .field("on_request", &self.on_request)
             .field("on_response", &self.on_response)
             .field("on_body_chunk", &self.on_body_chunk)

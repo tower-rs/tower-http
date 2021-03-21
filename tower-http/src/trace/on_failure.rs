@@ -73,6 +73,14 @@ macro_rules! log_pattern_match {
                         "response failed"
                     );
                 }
+                (Level::$level, LatencyUnit::Micros) => {
+                    tracing::event!(
+                        Level::$level,
+                        classification = tracing::field::display($failure_classification),
+                        latency = format_args!("{} μs", $latency.as_micros()),
+                        "response failed"
+                    );
+                }
                 (Level::$level, LatencyUnit::Nanos) => {
                     tracing::event!(
                         Level::$level,
