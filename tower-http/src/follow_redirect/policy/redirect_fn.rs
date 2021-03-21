@@ -1,5 +1,4 @@
 use super::{Action, Attempt, Policy};
-use http::{response, Uri};
 use std::fmt;
 
 /// A redirection [`Policy`] created from a closure.
@@ -34,7 +33,7 @@ where
 /// the wrapped closure.
 pub fn redirect_fn<F, E>(f: F) -> RedirectFn<F>
 where
-    F: FnMut(&response::Parts, &Uri) -> Result<Action, E>,
+    F: FnMut(&Attempt<'_>) -> Result<Action, E>,
 {
     RedirectFn { f }
 }
