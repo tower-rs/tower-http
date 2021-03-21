@@ -88,7 +88,9 @@ where
                 Ok(trailers) => {
                     if let Err(failure_class) = classify_eos.classify_eos(trailers.as_ref()) {
                         on_failure.on_failure(failure_class, latency);
-                    } else if let Some((on_eos, stream_start)) = this.on_eos.take() {
+                    }
+
+                    if let Some((on_eos, stream_start)) = this.on_eos.take() {
                         on_eos.on_eos(trailers.as_ref(), stream_start.elapsed());
                     }
                 }

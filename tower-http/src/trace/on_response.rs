@@ -26,6 +26,7 @@ where
 pub struct DefaultOnResponse {
     level: Level,
     latency_unit: LatencyUnit,
+    include_headers: bool,
 }
 
 impl Default for DefaultOnResponse {
@@ -33,6 +34,7 @@ impl Default for DefaultOnResponse {
         Self {
             level: DEFAULT_MESSAGE_LEVEL,
             latency_unit: LatencyUnit::Millis,
+            include_headers: false,
         }
     }
 }
@@ -51,6 +53,11 @@ impl DefaultOnResponse {
         self.latency_unit = latency_unit;
         self
     }
+
+    pub fn include_headers(mut self, include_headers: bool) -> Self {
+        self.include_headers = include_headers;
+        self
+    }
 }
 
 // Repeating this pattern match for each case is tedious. So we do it with a quick and
@@ -61,23 +68,61 @@ impl DefaultOnResponse {
 #[allow(unused_macros)]
 macro_rules! log_pattern_match {
     (
-        $this:expr, $latency:expr, $status:expr, [$($level:ident),*]
+        $this:expr, $res:expr, $latency:expr, $include_headers:expr, [$($level:ident),*]
     ) => {
-        match ($this.level, $this.latency_unit) {
+        match ($this.level, $include_headers, $this.latency_unit) {
             $(
-                (Level::$level, LatencyUnit::Millis) => {
+                (Level::$level, true, LatencyUnit::Millis) => {
                     tracing::event!(
                         Level::$level,
                         latency = format_args!("{} ms", $latency.as_millis()),
-                        status = $status,
+                        status = status($res),
+                        response_headers = ?$res.headers(),
                         "finished processing request"
                     );
                 }
-                (Level::$level, LatencyUnit::Nanos) => {
+                (Level::$level, false, LatencyUnit::Millis) => {
+                    tracing::event!(
+                        Level::$level,
+                        latency = format_args!("{} ms", $latency.as_millis()),
+                        status = status($res),
+                        "finished processing request"
+                    );
+                }
+
+                (Level::$level, true, LatencyUnit::Micros) => {
+                    tracing::event!(
+                        Level::$level,
+                        latency = format_args!("{} μs", $latency.as_micros()),
+                        status = status($res),
+                        response_headers = ?$res.headers(),
+                        "finished processing request"
+                    );
+                }
+
+                (Level::$level, false, LatencyUnit::Micros) => {
+                    tracing::event!(
+                        Level::$level,
+                        latency = format_args!("{} μs", $latency.as_micros()),
+                        status = status($res),
+                        "finished processing request"
+                    );
+                }
+
+                (Level::$level, true, LatencyUnit::Nanos) => {
                     tracing::event!(
                         Level::$level,
                         latency = format_args!("{} ns", $latency.as_nanos()),
-                        status = $status,
+                        status = status($res),
+                        response_headers = ?$res.headers(),
+                        "finished processing request"
+                    );
+                }
+                (Level::$level, false, LatencyUnit::Nanos) => {
+                    tracing::event!(
+                        Level::$level,
+                        latency = format_args!("{} ns", $latency.as_nanos()),
+                        status = status($res),
                         "finished processing request"
                     );
                 }
@@ -88,8 +133,13 @@ macro_rules! log_pattern_match {
 
 impl<B> OnResponse<B> for DefaultOnResponse {
     fn on_response(self, response: &Response<B>, latency: Duration) {
-        let status = status(response);
-        log_pattern_match!(self, latency, status, [ERROR, WARN, INFO, DEBUG, TRACE]);
+        log_pattern_match!(
+            self,
+            response,
+            latency,
+            self.include_headers,
+            [ERROR, WARN, INFO, DEBUG, TRACE]
+        );
     }
 }
 

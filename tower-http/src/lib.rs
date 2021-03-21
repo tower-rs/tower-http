@@ -252,5 +252,7 @@ pub enum LatencyUnit {
     /// TODO(david): docs
     Millis,
     /// TODO(david): docs
+    Micros,
+    /// TODO(david): docs
     Nanos,
 }

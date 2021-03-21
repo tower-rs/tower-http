@@ -62,6 +62,13 @@ macro_rules! log_pattern_match {
                         "end of stream"
                     );
                 }
+                (Level::$level, LatencyUnit::Micros) => {
+                    tracing::event!(
+                        Level::$level,
+                        stream_duration = format_args!("{} μs", $stream_duration.as_micros()),
+                        "end of stream"
+                    );
+                }
                 (Level::$level, LatencyUnit::Nanos) => {
                     tracing::event!(
                         Level::$level,
