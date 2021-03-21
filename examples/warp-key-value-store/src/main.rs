@@ -66,7 +66,11 @@ async fn serve_forever(listener: TcpListener) -> Result<(), hyper::Error> {
     // Apply middlewares to our service.
     let service = ServiceBuilder::new()
         // Add high level tracing/logging to all requests
-        .layer(TraceLayer::new_for_http())
+        .layer(
+            TraceLayer::new_for_http().on_body_chunk(|chunk: &Bytes, latency: Duration| {
+                tracing::trace!(size_bytes = chunk.len(), latency = ?latency, "sending body chunk")
+            }),
+        )
         // Set a timeout
         .timeout(Duration::from_secs(10))
         // Share the state with each handler via a request extension
