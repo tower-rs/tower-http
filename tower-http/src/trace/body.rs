@@ -42,23 +42,27 @@ where
         let _guard = this.span.enter();
         let latency = this.start.elapsed();
 
-        if let Some(result) = futures_util::ready!(this.inner.poll_data(cx)) {
-            if let Some((classify_eos, on_failure)) =
-                this.classify_eos.take().zip(this.on_failure.take())
-            {
-                match &result {
-                    Ok(_chunk) => {}
-                    Err(err) => {
-                        let failure_class = classify_eos.classify_error(err);
-                        on_failure.on_failure(failure_class, latency);
-                    }
+        let result = if let Some(result) = futures_util::ready!(this.inner.poll_data(cx)) {
+            result
+        } else {
+            return Poll::Ready(None);
+        };
+
+        if let Some((classify_eos, on_failure)) =
+            this.classify_eos.take().zip(this.on_failure.take())
+        {
+            match &result {
+                Ok(_chunk) => {
+                    // TODO(david): add call back
+                }
+                Err(err) => {
+                    let failure_class = classify_eos.classify_error(err);
+                    on_failure.on_failure(failure_class, latency);
                 }
             }
-
-            Poll::Ready(Some(result))
-        } else {
-            Poll::Ready(None)
         }
+
+        Poll::Ready(Some(result))
     }
 
     fn poll_trailers(
