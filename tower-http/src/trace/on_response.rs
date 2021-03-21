@@ -8,6 +8,11 @@ pub trait OnResponse<B> {
     fn on_response(self, response: &Response<B>, latency: Duration);
 }
 
+impl<B> OnResponse<B> for () {
+    #[inline]
+    fn on_response(self, _: &Response<B>, _: Duration) {}
+}
+
 impl<B, F> OnResponse<B> for F
 where
     F: FnOnce(&Response<B>, Duration),

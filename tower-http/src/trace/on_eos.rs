@@ -8,6 +8,11 @@ pub trait OnEos {
     fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Duration);
 }
 
+impl OnEos for () {
+    #[inline]
+    fn on_eos(self, _: Option<&HeaderMap>, _: Duration) {}
+}
+
 impl<F> OnEos for F
 where
     F: FnOnce(Option<&HeaderMap>, Duration),
