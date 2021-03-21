@@ -21,8 +21,8 @@ impl<F, B, E> Policy<B, E> for CloneBodyFn<F>
 where
     F: Fn(&B) -> Option<B>,
 {
-    fn redirect(&mut self, _: &Attempt<'_>) -> Action<E> {
-        Action::follow()
+    fn redirect(&mut self, _: &Attempt<'_>) -> Result<Action, E> {
+        Ok(Action::Follow)
     }
 
     fn clone_body(&self, body: &B) -> Option<B> {
@@ -33,7 +33,7 @@ where
 /// Create a new redirection [`Policy`] from a closure `F: Fn(&B) -> Option<B>`.
 ///
 /// [`clone_body`][Policy::clone_body] method of the returned `Policy` delegates to the wrapped
-/// closure and [`redirect`][Policy::redirect] method always returns [`Action::follow()`].
+/// closure and [`redirect`][Policy::redirect] method always returns [`Action::Follow`].
 pub fn clone_body_fn<F, B>(f: F) -> CloneBodyFn<F>
 where
     F: Fn(&B) -> Option<B>,

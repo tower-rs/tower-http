@@ -28,6 +28,7 @@ hyper = { version = "0.14", optional = true, default_features = false, features 
 iri-string = { version = "0.3", optional = true }
 tokio = { version = "1", optional = true, default_features = false }
 tokio-util = { version = "0.6", optional = true, default_features = false, features = ["io"] }
+tower = { version = "0.4.1", optional = true }
 
 [dev-dependencies]
 bytes = "1"
@@ -54,7 +55,7 @@ full = [
 ]
 
 add-extension = []
-follow-redirect = ["iri-string"]
+follow-redirect = ["iri-string", "tower/util"]
 map-request-body = []
 map-response-body = []
 propagate-header = []

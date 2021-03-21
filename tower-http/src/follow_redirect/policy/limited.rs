@@ -24,12 +24,12 @@ impl Default for Limited {
 }
 
 impl<B, E> Policy<B, E> for Limited {
-    fn redirect(&mut self, _: &Attempt<'_>) -> Action<E> {
+    fn redirect(&mut self, _: &Attempt<'_>) -> Result<Action, E> {
         if self.remaining > 0 {
             self.remaining -= 1;
-            Action::follow()
+            Ok(Action::Follow)
         } else {
-            Action::stop()
+            Ok(Action::Stop)
         }
     }
 }
@@ -54,7 +54,9 @@ mod tests {
                 location: &uri,
                 previous: &uri,
             };
-            assert!(Policy::<(), ()>::redirect(&mut policy, &attempt).follows());
+            assert!(Policy::<(), ()>::redirect(&mut policy, &attempt)
+                .unwrap()
+                .is_follow());
         }
 
         let mut request = Request::builder().uri(uri.clone()).body(()).unwrap();
@@ -65,6 +67,8 @@ mod tests {
             location: &uri,
             previous: &uri,
         };
-        assert!(Policy::<(), ()>::redirect(&mut policy, &attempt).stops());
+        assert!(Policy::<(), ()>::redirect(&mut policy, &attempt)
+            .unwrap()
+            .is_stop());
     }
 }

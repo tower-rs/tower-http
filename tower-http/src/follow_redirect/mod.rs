@@ -2,8 +2,9 @@
 
 pub mod policy;
 
-use self::policy::{ActionKind, Attempt, Policy, Standard};
+use self::policy::{Action, Attempt, Policy, Standard};
 use futures_core::ready;
+use futures_util::future::Either;
 use http::{
     header::LOCATION, HeaderMap, HeaderValue, Method, Request, Response, StatusCode, Uri, Version,
 };
@@ -21,6 +22,7 @@ use std::{
     str,
     task::{Context, Poll},
 };
+use tower::util::Oneshot;
 use tower_layer::Layer;
 use tower_service::Service;
 
@@ -68,6 +70,8 @@ impl<S> FollowRedirect<S> {
     pub fn standard(inner: S) -> Self {
         Self::new(inner, Standard::default())
     }
+
+    define_inner_service_accessors!();
 }
 
 impl<S, P> FollowRedirect<S, P>
@@ -95,14 +99,15 @@ where
 {
     type Response = Response<ResBody>;
     type Error = S::Error;
-    type Future = ResponseFuture<S::Future, S, ReqBody, P>;
+    type Future = ResponseFuture<S, ReqBody, P>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx)
     }
 
     fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
-        let mut service = self.inner.clone();
+        let service = self.inner.clone();
+        let mut service = mem::replace(&mut self.inner, service);
         let mut policy = self.policy.clone();
         let mut body = BodyRepr::None;
         body.try_clone_from(req.body(), &policy);
@@ -113,7 +118,7 @@ where
             version: req.version(),
             headers: req.headers().clone(),
             body,
-            future: service.call(req),
+            future: Either::Left(service.call(req)),
             service,
             policy,
         }
@@ -123,9 +128,12 @@ where
 /// Response future for [`FollowRedirect`].
 #[pin_project]
 #[derive(Debug)]
-pub struct ResponseFuture<F, S, B, P> {
+pub struct ResponseFuture<S, B, P>
+where
+    S: Service<Request<B>>,
+{
     #[pin]
-    future: F,
+    future: Either<S::Future, Oneshot<S, Request<B>>>,
     service: S,
     policy: P,
     method: Method,
@@ -135,10 +143,9 @@ pub struct ResponseFuture<F, S, B, P> {
     body: BodyRepr<B>,
 }
 
-impl<F, S, ReqBody, ResBody, P> Future for ResponseFuture<F, S, ReqBody, P>
+impl<S, ReqBody, ResBody, P> Future for ResponseFuture<S, ReqBody, P>
 where
-    F: Future<Output = Result<Response<ResBody>, S::Error>>,
-    S: Service<Request<ReqBody>, Future = F> + Clone,
+    S: Service<Request<ReqBody>, Response = Response<ResBody>> + Clone,
     ReqBody: Body + Default,
     P: Policy<ReqBody, S::Error>,
 {
@@ -177,12 +184,7 @@ where
         let location = res
             .headers()
             .get(&LOCATION)
-            .and_then(|loc| str::from_utf8(loc.as_bytes()).ok())
-            .and_then(|loc| RiReferenceStr::<UriSpec>::new(loc).ok())
-            .and_then(|loc| {
-                Some(loc.resolve_against(&RiAbsoluteString::try_from(this.uri.to_string()).ok()?))
-            })
-            .and_then(|loc| Uri::try_from(loc.as_str()).ok());
+            .and_then(|loc| resolve_uri(str::from_utf8(loc.as_bytes()).ok()?, this.uri));
         let location = if let Some(loc) = location {
             loc
         } else {
@@ -194,8 +196,8 @@ where
             location: &location,
             previous: this.uri,
         };
-        match this.policy.redirect(&attempt).kind {
-            ActionKind::Follow => {
+        match this.policy.redirect(&attempt)? {
+            Action::Follow => {
                 this.body.try_clone_from(&body, &this.policy);
 
                 let mut req = Request::new(body);
@@ -204,13 +206,13 @@ where
                 *req.version_mut() = *this.version;
                 *req.headers_mut() = this.headers.clone();
                 this.policy.on_request(&mut req);
-                this.future.set(this.service.call(req));
+                this.future
+                    .set(Either::Right(Oneshot::new(this.service.clone(), req)));
 
                 cx.waker().wake_by_ref();
                 Poll::Pending
             }
-            ActionKind::Stop => Poll::Ready(Ok(res)),
-            ActionKind::Error(e) => Poll::Ready(Err(e)),
+            Action::Stop => Poll::Ready(Ok(res)),
         }
     }
 }
@@ -264,6 +266,14 @@ where
     }
 }
 
+/// Try to resolve a URI reference `relative` against a base URI `base`.
+fn resolve_uri(relative: &str, base: &Uri) -> Option<Uri> {
+    let relative = RiReferenceStr::<UriSpec>::new(relative).ok()?;
+    let base = RiAbsoluteString::try_from(base.to_string()).ok()?;
+    let uri = relative.resolve_against(&base);
+    Uri::try_from(uri.as_str()).ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::{policy::*, *};
@@ -274,7 +284,7 @@ mod tests {
     #[tokio::test]
     async fn follows() {
         let svc = ServiceBuilder::new()
-            .layer(FollowRedirectLayer::new(Action::follow()))
+            .layer(FollowRedirectLayer::new(Action::Follow))
             .service_fn(handle);
         let req = Request::builder()
             .uri("http://example.com/42")
@@ -287,7 +297,7 @@ mod tests {
     #[tokio::test]
     async fn stops() {
         let svc = ServiceBuilder::new()
-            .layer(FollowRedirectLayer::new(Action::stop()))
+            .layer(FollowRedirectLayer::new(Action::Stop))
             .service_fn(handle);
         let req = Request::builder()
             .uri("http://example.com/42")

@@ -10,7 +10,7 @@ pub struct FilterCredentials {
     block_cross_origin: bool,
     block_any: bool,
     remove_blocklisted: bool,
-    remove_any: bool,
+    remove_all: bool,
     blocked: bool,
 }
 
@@ -28,7 +28,7 @@ impl FilterCredentials {
             block_cross_origin: true,
             block_any: false,
             remove_blocklisted: true,
-            remove_any: false,
+            remove_all: false,
             blocked: false,
         }
     }
@@ -57,20 +57,21 @@ impl FilterCredentials {
     ///
     /// - `Authorization`
     /// - `Cookie`
+    /// - `Proxy-Authorization`
     pub fn remove_blocklisted(mut self, enable: bool) -> Self {
         self.remove_blocklisted = enable;
         self
     }
 
     /// Configure `self` to remove all headers in "blocked" redirections.
-    pub fn remove_any(mut self) -> Self {
-        self.remove_any = true;
+    pub fn remove_all(mut self) -> Self {
+        self.remove_all = true;
         self
     }
 
     /// Configure `self` to remove no headers in "blocked" redirections.
     pub fn remove_none(mut self) -> Self {
-        self.remove_any = false;
+        self.remove_all = false;
         self.remove_blocklisted(false)
     }
 }
@@ -82,16 +83,16 @@ impl Default for FilterCredentials {
 }
 
 impl<B, E> Policy<B, E> for FilterCredentials {
-    fn redirect(&mut self, attempt: &Attempt<'_>) -> Action<E> {
+    fn redirect(&mut self, attempt: &Attempt<'_>) -> Result<Action, E> {
         self.blocked = self.block_any
             || (self.block_cross_origin && !eq_origin(attempt.previous(), attempt.location()));
-        Action::follow()
+        Ok(Action::Follow)
     }
 
     fn on_request(&mut self, request: &mut Request<B>) {
         if self.blocked {
             let headers = request.headers_mut();
-            if self.remove_any {
+            if self.remove_all {
                 headers.clear();
             } else if self.remove_blocklisted {
                 for key in BLOCKLIST {
@@ -128,7 +129,9 @@ mod tests {
             location: &same_origin,
             previous: request.uri(),
         };
-        assert!(Policy::<(), ()>::redirect(&mut policy, &attempt).follows());
+        assert!(Policy::<(), ()>::redirect(&mut policy, &attempt)
+            .unwrap()
+            .is_follow());
 
         let mut request = Request::builder()
             .uri(same_origin)
@@ -143,7 +146,9 @@ mod tests {
             location: &cross_origin,
             previous: request.uri(),
         };
-        assert!(Policy::<(), ()>::redirect(&mut policy, &attempt).follows());
+        assert!(Policy::<(), ()>::redirect(&mut policy, &attempt)
+            .unwrap()
+            .is_follow());
 
         let mut request = Request::builder()
             .uri(cross_origin)

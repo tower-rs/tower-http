@@ -15,12 +15,10 @@ where
     A: Policy<Bd, E>,
     B: Policy<Bd, E>,
 {
-    fn redirect(&mut self, attempt: &Attempt<'_>) -> Action<E> {
-        let a = self.a.redirect(attempt);
-        if a.follows() {
-            self.b.redirect(attempt)
-        } else {
-            a
+    fn redirect(&mut self, attempt: &Attempt<'_>) -> Result<Action, E> {
+        match self.a.redirect(attempt) {
+            Ok(Action::Follow) => self.b.redirect(attempt),
+            a => a,
         }
     }
 
@@ -34,8 +32,8 @@ where
     }
 }
 
-/// Create a new `Policy` that returns [`Action::follow()`] only if `self` and `other` return
-/// `Action::follow()`.
+/// Create a new `Policy` that returns [`Action::Follow`] only if `self` and `other` return
+/// `Action::Follow`.
 ///
 /// [`clone_body`][Policy::clone_body] method of the returned `Policy` tries to clone the body
 /// with both policies.
@@ -94,7 +92,7 @@ mod tests {
     where
         P: Policy<B, E>,
     {
-        fn redirect(&mut self, attempt: &Attempt<'_>) -> Action<E> {
+        fn redirect(&mut self, attempt: &Attempt<'_>) -> Result<Action, E> {
             self.used = true;
             self.policy.redirect(attempt)
         }
@@ -108,31 +106,39 @@ mod tests {
             previous: &Uri::from_static("*"),
         };
 
-        let mut a = Taint::new(Action::follow());
-        let mut b = Taint::new(Action::follow());
-        let mut policy = join::<_, _, (), _>(&mut a, &mut b);
-        assert!(Policy::<(), ()>::redirect(&mut policy, &attempt).follows());
+        let mut a = Taint::new(Action::Follow);
+        let mut b = Taint::new(Action::Follow);
+        let mut policy = join::<_, _, (), ()>(&mut a, &mut b);
+        assert!(Policy::<(), ()>::redirect(&mut policy, &attempt)
+            .unwrap()
+            .is_follow());
         assert!(a.used);
         assert!(b.used);
 
-        let mut a = Taint::new(Action::stop());
-        let mut b = Taint::new(Action::follow());
-        let mut policy = join::<_, _, (), _>(&mut a, &mut b);
-        assert!(Policy::<(), ()>::redirect(&mut policy, &attempt).stops());
+        let mut a = Taint::new(Action::Stop);
+        let mut b = Taint::new(Action::Follow);
+        let mut policy = join::<_, _, (), ()>(&mut a, &mut b);
+        assert!(Policy::<(), ()>::redirect(&mut policy, &attempt)
+            .unwrap()
+            .is_stop());
         assert!(a.used);
         assert!(!b.used); // short-circuiting
 
-        let mut a = Taint::new(Action::follow());
-        let mut b = Taint::new(Action::stop());
-        let mut policy = join::<_, _, (), _>(&mut a, &mut b);
-        assert!(Policy::<(), ()>::redirect(&mut policy, &attempt).stops());
+        let mut a = Taint::new(Action::Follow);
+        let mut b = Taint::new(Action::Stop);
+        let mut policy = join::<_, _, (), ()>(&mut a, &mut b);
+        assert!(Policy::<(), ()>::redirect(&mut policy, &attempt)
+            .unwrap()
+            .is_stop());
         assert!(a.used);
         assert!(b.used);
 
-        let mut a = Taint::new(Action::stop());
-        let mut b = Taint::new(Action::stop());
-        let mut policy = join::<_, _, (), _>(&mut a, &mut b);
-        assert!(Policy::<(), ()>::redirect(&mut policy, &attempt).stops());
+        let mut a = Taint::new(Action::Stop);
+        let mut b = Taint::new(Action::Stop);
+        let mut policy = join::<_, _, (), ()>(&mut a, &mut b);
+        assert!(Policy::<(), ()>::redirect(&mut policy, &attempt)
+            .unwrap()
+            .is_stop());
         assert!(a.used);
         assert!(!b.used);
     }
