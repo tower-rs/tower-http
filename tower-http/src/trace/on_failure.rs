@@ -5,14 +5,19 @@ use tracing::Level;
 use super::DEFAULT_ERROR_LEVEL;
 
 pub trait OnFailure<FailureClass> {
-    fn on_failure(self, failure_classification: FailureClass, latency: Duration);
+    fn on_failure(&mut self, failure_classification: FailureClass, latency: Duration);
+}
+
+impl<FailureClass> OnFailure<FailureClass> for () {
+    #[inline]
+    fn on_failure(&mut self, _: FailureClass, _: Duration) {}
 }
 
 impl<F, FailureClass> OnFailure<FailureClass> for F
 where
-    F: FnOnce(FailureClass, Duration),
+    F: FnMut(FailureClass, Duration),
 {
-    fn on_failure(self, failure_classification: FailureClass, latency: Duration) {
+    fn on_failure(&mut self, failure_classification: FailureClass, latency: Duration) {
         self(failure_classification, latency)
     }
 }
@@ -68,6 +73,14 @@ macro_rules! log_pattern_match {
                         "response failed"
                     );
                 }
+                (Level::$level, LatencyUnit::Micros) => {
+                    tracing::event!(
+                        Level::$level,
+                        classification = tracing::field::display($failure_classification),
+                        latency = format_args!("{} μs", $latency.as_micros()),
+                        "response failed"
+                    );
+                }
                 (Level::$level, LatencyUnit::Nanos) => {
                     tracing::event!(
                         Level::$level,
@@ -85,7 +98,7 @@ impl<FailureClass> OnFailure<FailureClass> for DefaultOnFailure
 where
     FailureClass: fmt::Display,
 {
-    fn on_failure(self, failure_classification: FailureClass, latency: Duration) {
+    fn on_failure(&mut self, failure_classification: FailureClass, latency: Duration) {
         log_pattern_match!(
             self,
             &failure_classification,

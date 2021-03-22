@@ -1,4 +1,4 @@
-use super::{OnEos, OnFailure, OnResponse, ResponseBody};
+use super::{OnBodyChunk, OnEos, OnFailure, OnResponse, ResponseBody};
 use crate::classify::{ClassifiedResponse, ClassifyResponse};
 use http::Response;
 use http_body::Body;
@@ -15,28 +15,33 @@ use tracing::Span;
 ///
 /// [`Trace`]: super::Trace
 #[pin_project]
-pub struct ResponseFuture<F, C, OnResponse, OnEos, OnFailure> {
+pub struct ResponseFuture<F, C, OnResponse, OnBodyChunk, OnEos, OnFailure> {
     #[pin]
     pub(crate) inner: F,
     pub(crate) span: Span,
     pub(crate) classifier: Option<C>,
     pub(crate) on_response: Option<OnResponse>,
+    pub(crate) on_body_chunk: Option<OnBodyChunk>,
     pub(crate) on_eos: Option<OnEos>,
     pub(crate) on_failure: Option<OnFailure>,
     pub(crate) start: Instant,
 }
 
-impl<Fut, ResBody, E, C, OnResponseT, OnEosT, OnFailureT> Future
-    for ResponseFuture<Fut, C, OnResponseT, OnEosT, OnFailureT>
+impl<Fut, ResBody, E, C, OnResponseT, OnBodyChunkT, OnEosT, OnFailureT> Future
+    for ResponseFuture<Fut, C, OnResponseT, OnBodyChunkT, OnEosT, OnFailureT>
 where
     Fut: Future<Output = Result<Response<ResBody>, E>>,
     ResBody: Body,
     C: ClassifyResponse<E>,
     OnResponseT: OnResponse<ResBody>,
     OnFailureT: OnFailure<C::FailureClass>,
+    OnBodyChunkT: OnBodyChunk<ResBody::Data>,
     OnEosT: OnEos,
 {
-    type Output = Result<Response<ResponseBody<ResBody, C::ClassifyEos, OnEosT, OnFailureT>>, E>;
+    type Output = Result<
+        Response<ResponseBody<ResBody, C::ClassifyEos, OnBodyChunkT, OnEosT, OnFailureT>>,
+        E,
+    >;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
@@ -46,7 +51,8 @@ where
 
         let classifier = this.classifier.take().unwrap();
         let on_eos = this.on_eos.take();
-        let on_failure = this.on_failure.take().unwrap();
+        let on_body_chunk = this.on_body_chunk.take().unwrap();
+        let mut on_failure = this.on_failure.take().unwrap();
 
         match result {
             Ok(res) => {
@@ -66,7 +72,8 @@ where
                             inner: body,
                             classify_eos: None,
                             on_eos: None,
-                            on_failure: None,
+                            on_body_chunk,
+                            on_failure: Some(on_failure),
                             start,
                             span,
                         });
@@ -81,6 +88,7 @@ where
                             inner: body,
                             classify_eos: Some(classify_eos),
                             on_eos: on_eos.zip(Some(Instant::now())),
+                            on_body_chunk,
                             on_failure: Some(on_failure),
                             start,
                             span,

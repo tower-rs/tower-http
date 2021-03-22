@@ -1,6 +1,7 @@
 use super::{
-    DefaultMakeSpan, DefaultOnEos, DefaultOnFailure, DefaultOnRequest, DefaultOnResponse, MakeSpan,
-    OnEos, OnFailure, OnRequest, OnResponse, ResponseBody, ResponseFuture, TraceLayer,
+    DefaultMakeSpan, DefaultOnBodyChunk, DefaultOnEos, DefaultOnFailure, DefaultOnRequest,
+    DefaultOnResponse, MakeSpan, OnBodyChunk, OnEos, OnFailure, OnRequest, OnResponse,
+    ResponseBody, ResponseFuture, TraceLayer,
 };
 use crate::classify::{
     GrpcErrorsAsFailures, MakeClassifier, ServerErrorsAsFailures, SharedClassifier,
@@ -28,15 +29,16 @@ pub struct Trace<
     MakeSpan = DefaultMakeSpan,
     OnRequest = DefaultOnRequest,
     OnResponse = DefaultOnResponse,
+    OnBodyChunk = DefaultOnBodyChunk,
     OnEos = DefaultOnEos,
     OnFailure = DefaultOnFailure,
 > {
     pub(crate) inner: S,
     pub(crate) make_classifier: M,
     pub(crate) make_span: MakeSpan,
-    pub(crate) add_headers_to_span: bool,
     pub(crate) on_request: OnRequest,
     pub(crate) on_response: OnResponse,
+    pub(crate) on_body_chunk: OnBodyChunk,
     pub(crate) on_eos: OnEos,
     pub(crate) on_failure: OnFailure,
     pub(crate) _error: PhantomData<fn() -> E>,
@@ -52,9 +54,9 @@ impl<S, M, E> Trace<S, M, E> {
             inner,
             make_classifier,
             make_span: DefaultMakeSpan::new(),
-            add_headers_to_span: false,
             on_request: DefaultOnRequest::default(),
             on_response: DefaultOnResponse::default(),
+            on_body_chunk: DefaultOnBodyChunk::default(),
             on_eos: DefaultOnEos::default(),
             on_failure: DefaultOnFailure::default(),
             _error: PhantomData,
@@ -72,22 +74,22 @@ impl<S, M, E> Trace<S, M, E> {
     }
 }
 
-impl<S, M, E, MakeSpan, OnRequest, OnResponse, OnEos, OnFailure>
-    Trace<S, M, E, MakeSpan, OnRequest, OnResponse, OnEos, OnFailure>
+impl<S, M, E, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
+    Trace<S, M, E, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
 {
     define_inner_service_accessors!();
 
     pub fn on_request<NewOnRequest>(
         self,
         new_on_request: NewOnRequest,
-    ) -> Trace<S, M, E, MakeSpan, NewOnRequest, OnResponse, OnEos, OnFailure> {
+    ) -> Trace<S, M, E, MakeSpan, NewOnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure> {
         Trace {
             on_request: new_on_request,
             inner: self.inner,
             on_failure: self.on_failure,
             on_eos: self.on_eos,
+            on_body_chunk: self.on_body_chunk,
             make_span: self.make_span,
-            add_headers_to_span: self.add_headers_to_span,
             on_response: self.on_response,
             make_classifier: self.make_classifier,
             _error: self._error,
@@ -97,15 +99,15 @@ impl<S, M, E, MakeSpan, OnRequest, OnResponse, OnEos, OnFailure>
     pub fn on_response<NewOnResponse>(
         self,
         new_on_response: NewOnResponse,
-    ) -> Trace<S, M, E, MakeSpan, OnRequest, NewOnResponse, OnEos, OnFailure> {
+    ) -> Trace<S, M, E, MakeSpan, OnRequest, NewOnResponse, OnBodyChunk, OnEos, OnFailure> {
         Trace {
             on_response: new_on_response,
             inner: self.inner,
             on_request: self.on_request,
             on_failure: self.on_failure,
+            on_body_chunk: self.on_body_chunk,
             on_eos: self.on_eos,
             make_span: self.make_span,
-            add_headers_to_span: self.add_headers_to_span,
             make_classifier: self.make_classifier,
             _error: self._error,
         }
@@ -114,15 +116,49 @@ impl<S, M, E, MakeSpan, OnRequest, OnResponse, OnEos, OnFailure>
     pub fn on_failure<NewOnFailure>(
         self,
         new_on_failure: NewOnFailure,
-    ) -> Trace<S, M, E, MakeSpan, OnRequest, OnResponse, OnEos, NewOnFailure> {
+    ) -> Trace<S, M, E, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, NewOnFailure> {
         Trace {
             on_failure: new_on_failure,
             inner: self.inner,
             make_span: self.make_span,
+            on_body_chunk: self.on_body_chunk,
             on_request: self.on_request,
             on_eos: self.on_eos,
             on_response: self.on_response,
-            add_headers_to_span: self.add_headers_to_span,
+            make_classifier: self.make_classifier,
+            _error: self._error,
+        }
+    }
+
+    pub fn on_body_chunk<NewOnBodyChunk>(
+        self,
+        new_on_body_chunk: NewOnBodyChunk,
+    ) -> Trace<S, M, E, MakeSpan, OnRequest, OnResponse, NewOnBodyChunk, OnEos, OnFailure> {
+        Trace {
+            on_body_chunk: new_on_body_chunk,
+            on_eos: self.on_eos,
+            make_span: self.make_span,
+            inner: self.inner,
+            on_failure: self.on_failure,
+            on_request: self.on_request,
+            on_response: self.on_response,
+            make_classifier: self.make_classifier,
+            _error: self._error,
+        }
+    }
+
+    pub fn on_eos<NewOnEos>(
+        self,
+        new_on_eos: NewOnEos,
+    ) -> Trace<S, M, E, MakeSpan, OnRequest, OnResponse, OnBodyChunk, NewOnEos, OnFailure> {
+        Trace {
+            on_eos: new_on_eos,
+            make_span: self.make_span,
+            inner: self.inner,
+            on_failure: self.on_failure,
+            on_request: self.on_request,
+            on_body_chunk: self.on_body_chunk,
+            on_response: self.on_response,
             make_classifier: self.make_classifier,
             _error: self._error,
         }
@@ -131,23 +167,18 @@ impl<S, M, E, MakeSpan, OnRequest, OnResponse, OnEos, OnFailure>
     pub fn make_span_with<NewMakeSpan>(
         self,
         new_make_span: NewMakeSpan,
-    ) -> Trace<S, M, E, NewMakeSpan, OnRequest, OnResponse, OnEos, OnFailure> {
+    ) -> Trace<S, M, E, NewMakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure> {
         Trace {
             make_span: new_make_span,
             inner: self.inner,
             on_failure: self.on_failure,
             on_request: self.on_request,
+            on_body_chunk: self.on_body_chunk,
             on_response: self.on_response,
             on_eos: self.on_eos,
-            add_headers_to_span: self.add_headers_to_span,
             make_classifier: self.make_classifier,
             _error: self._error,
         }
-    }
-
-    pub fn add_headers_to_span(mut self, value: bool) -> Self {
-        self.add_headers_to_span = value;
-        self
     }
 }
 
@@ -159,6 +190,7 @@ impl<S, E>
         DefaultMakeSpan,
         DefaultOnRequest,
         DefaultOnResponse,
+        DefaultOnBodyChunk,
         DefaultOnEos,
         DefaultOnFailure,
     >
@@ -172,8 +204,8 @@ impl<S, E>
             make_span: DefaultMakeSpan::new(),
             on_request: DefaultOnRequest::default(),
             on_response: DefaultOnResponse::default(),
+            on_body_chunk: DefaultOnBodyChunk::default(),
             on_eos: DefaultOnEos::default(),
-            add_headers_to_span: false,
             on_failure: DefaultOnFailure::default(),
             _error: PhantomData,
         }
@@ -188,6 +220,7 @@ impl<S, E>
         DefaultMakeSpan,
         DefaultOnRequest,
         DefaultOnResponse,
+        DefaultOnBodyChunk,
         DefaultOnEos,
         DefaultOnFailure,
     >
@@ -201,17 +234,27 @@ impl<S, E>
             make_span: DefaultMakeSpan::new(),
             on_request: DefaultOnRequest::default(),
             on_response: DefaultOnResponse::default(),
+            on_body_chunk: DefaultOnBodyChunk::default(),
             on_eos: DefaultOnEos::default(),
-            add_headers_to_span: false,
             on_failure: DefaultOnFailure::default(),
             _error: PhantomData,
         }
     }
 }
 
-impl<S, ReqBody, ResBody, M, OnRequestT, OnResponseT, OnFailureT, OnEosT, MakeSpanT>
-    Service<Request<ReqBody>>
-    for Trace<S, M, S::Error, MakeSpanT, OnRequestT, OnResponseT, OnEosT, OnFailureT>
+impl<
+        S,
+        ReqBody,
+        ResBody,
+        M,
+        OnRequestT,
+        OnResponseT,
+        OnFailureT,
+        OnBodyChunkT,
+        OnEosT,
+        MakeSpanT,
+    > Service<Request<ReqBody>>
+    for Trace<S, M, S::Error, MakeSpanT, OnRequestT, OnResponseT, OnBodyChunkT, OnEosT, OnFailureT>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
     ReqBody: Body,
@@ -221,12 +264,15 @@ where
     MakeSpanT: MakeSpan<ReqBody>,
     OnRequestT: OnRequest<ReqBody>,
     OnResponseT: OnResponse<ResBody> + Clone,
+    OnBodyChunkT: OnBodyChunk<ResBody::Data> + Clone,
     OnEosT: OnEos + Clone,
     OnFailureT: OnFailure<M::FailureClass> + Clone,
 {
-    type Response = Response<ResponseBody<ResBody, M::ClassifyEos, OnEosT, OnFailureT>>;
+    type Response =
+        Response<ResponseBody<ResBody, M::ClassifyEos, OnBodyChunkT, OnEosT, OnFailureT>>;
     type Error = S::Error;
-    type Future = ResponseFuture<S::Future, M::Classifier, OnResponseT, OnEosT, OnFailureT>;
+    type Future =
+        ResponseFuture<S::Future, M::Classifier, OnResponseT, OnBodyChunkT, OnEosT, OnFailureT>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx)
@@ -236,10 +282,6 @@ where
         let start = Instant::now();
 
         let span = self.make_span.make_span(&req);
-
-        if self.add_headers_to_span {
-            span.record("headers", &tracing::field::debug(req.headers()));
-        }
 
         let classifier = self.make_classifier.make_classifier(&req);
 
@@ -254,6 +296,7 @@ where
             span,
             classifier: Some(classifier),
             on_response: Some(self.on_response.clone()),
+            on_body_chunk: Some(self.on_body_chunk.clone()),
             on_eos: Some(self.on_eos.clone()),
             on_failure: Some(self.on_failure.clone()),
             start,
@@ -261,8 +304,8 @@ where
     }
 }
 
-impl<S, M, E, MakeSpan, OnRequest, OnResponse, OnEos, OnFailure> Clone
-    for Trace<S, M, E, MakeSpan, OnRequest, OnResponse, OnEos, OnFailure>
+impl<S, M, E, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure> Clone
+    for Trace<S, M, E, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
 where
     S: Clone,
     M: Clone,
@@ -270,6 +313,7 @@ where
     OnFailure: Clone,
     OnRequest: Clone,
     OnResponse: Clone,
+    OnBodyChunk: Clone,
     OnEos: Clone,
 {
     fn clone(&self) -> Self {
@@ -278,8 +322,8 @@ where
             on_failure: self.on_failure.clone(),
             make_span: self.make_span.clone(),
             on_response: self.on_response.clone(),
+            on_body_chunk: self.on_body_chunk.clone(),
             on_eos: self.on_eos.clone(),
-            add_headers_to_span: self.add_headers_to_span,
             make_classifier: self.make_classifier.clone(),
             on_request: self.on_request.clone(),
             _error: self._error,
@@ -287,14 +331,15 @@ where
     }
 }
 
-impl<S, M, E, MakeSpan, OnRequest, OnResponse, OnEos, OnFailure> fmt::Debug
-    for Trace<S, M, E, MakeSpan, OnRequest, OnResponse, OnEos, OnFailure>
+impl<S, M, E, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure> fmt::Debug
+    for Trace<S, M, E, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
 where
     S: fmt::Debug,
     M: fmt::Debug,
     MakeSpan: fmt::Debug,
     OnFailure: fmt::Debug,
     OnRequest: fmt::Debug,
+    OnBodyChunk: fmt::Debug,
     OnResponse: fmt::Debug,
     OnEos: fmt::Debug,
 {
@@ -303,9 +348,9 @@ where
             .field("inner", &self.inner)
             .field("make_classifier", &self.make_classifier)
             .field("make_span", &self.make_span)
-            .field("add_headers_to_span", &self.add_headers_to_span)
             .field("on_request", &self.on_request)
             .field("on_response", &self.on_response)
+            .field("on_body_chunk", &self.on_body_chunk)
             .field("on_eos", &self.on_eos)
             .field("on_failure", &self.on_failure)
             .finish()

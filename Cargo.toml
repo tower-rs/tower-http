@@ -2,4 +2,5 @@
 members = [
   "tower-http",
   "examples/warp-key-value-store",
+  "examples/tonic-key-value-store",
 ]
