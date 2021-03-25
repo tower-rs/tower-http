@@ -149,7 +149,12 @@
     missing_docs
 )]
 #![deny(unreachable_pub, broken_intra_doc_links, private_in_public)]
-#![allow(elided_lifetimes_in_paths, clippy::type_complexity)]
+#![allow(
+    elided_lifetimes_in_paths,
+    // TODO: Remove this once the MSRV bumps to 1.42.0 or above.
+    clippy::match_like_matches_macro,
+    clippy::type_complexity
+)]
 #![forbid(unsafe_code)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(test, allow(clippy::float_cmp))]
@@ -195,6 +200,10 @@ pub mod map_request_body;
 #[cfg(feature = "trace")]
 #[cfg_attr(docsrs, doc(cfg(feature = "trace")))]
 pub mod trace;
+
+#[cfg(feature = "follow-redirect")]
+#[cfg_attr(docsrs, doc(cfg(feature = "follow-redirect")))]
+pub mod follow_redirect;
 
 pub mod classify;
 pub mod services;
