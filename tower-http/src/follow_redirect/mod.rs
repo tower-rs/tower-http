@@ -287,10 +287,11 @@ where
         };
         match this.policy.redirect(&attempt)? {
             Action::Follow => {
+                *this.uri = location;
                 this.body.try_clone_from(&body, &this.policy);
 
                 let mut req = Request::new(body);
-                *req.uri_mut() = location;
+                *req.uri_mut() = this.uri.clone();
                 *req.method_mut() = this.method.clone();
                 *req.version_mut() = *this.version;
                 *req.headers_mut() = this.headers.clone();
