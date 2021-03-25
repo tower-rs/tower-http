@@ -23,24 +23,32 @@
 //! use http::{Request, Response};
 //! use hyper::Body;
 //! use tower::{Service, ServiceBuilder, ServiceExt};
-//! use tower_http::follow_redirect::FollowRedirectLayer;
+//! use tower_http::follow_redirect::{FollowRedirectLayer, RequestUri};
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), std::convert::Infallible> {
-//! # let http_client = tower::service_fn(|_| async {
-//! #     Ok::<_, std::convert::Infallible>(Response::new(Body::empty()))
+//! # let http_client = tower::service_fn(|req: Request<_>| async move {
+//! #     let dest = "https://www.rust-lang.org/";
+//! #     let mut res = http::Response::builder();
+//! #     if req.uri() != dest {
+//! #         res = res
+//! #             .status(http::StatusCode::MOVED_PERMANENTLY)
+//! #             .header(http::header::LOCATION, dest);
+//! #     }
+//! #     Ok::<_, std::convert::Infallible>(res.body(Body::empty()).unwrap())
 //! # });
 //! let mut client = ServiceBuilder::new()
 //!     .layer(FollowRedirectLayer::standard())
 //!     .service(http_client);
 //!
 //! let request = Request::builder()
-//!     .uri("https://docs.rs/tower-http")
+//!     .uri("https://rust-lang.org/")
 //!     .body(Body::empty())
 //!     .unwrap();
 //!
-//! // This should retrieve the latest documentation.
 //! let response = client.ready().await?.call(request).await?;
+//! // Get the final request URI.
+//! assert_eq!(response.extensions().get::<RequestUri>().unwrap().0, "https://www.rust-lang.org/");
 //! # Ok(())
 //! # }
 //! ```
@@ -242,7 +250,8 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut this = self.project();
-        let res = ready!(this.future.as_mut().poll(cx)?);
+        let mut res = ready!(this.future.as_mut().poll(cx)?);
+        res.extensions_mut().insert(RequestUri(this.uri.clone()));
 
         match res.status() {
             StatusCode::MOVED_PERMANENTLY | StatusCode::FOUND => {
@@ -306,6 +315,13 @@ where
         }
     }
 }
+
+/// Response [`Extensions`][http::Extensions] value that represents the effective request URI of
+/// a response returned by a [`FollowRedirect`] middleware.
+///
+/// The value differs from the original request's effective URI if the middleware has followed
+/// redirections.
+pub struct RequestUri(pub Uri);
 
 #[derive(Debug)]
 enum BodyRepr<B> {
@@ -382,7 +398,11 @@ mod tests {
             .body(Body::empty())
             .unwrap();
         let res = svc.oneshot(req).await.unwrap();
-        assert_eq!(res.into_body(), 0);
+        assert_eq!(*res.body(), 0);
+        assert_eq!(
+            res.extensions().get::<RequestUri>().unwrap().0,
+            "http://example.com/0"
+        );
     }
 
     #[tokio::test]
@@ -396,7 +416,11 @@ mod tests {
             .body(Body::empty())
             .unwrap();
         let res = svc.oneshot(req).await.unwrap();
-        assert_eq!(res.into_body(), 42);
+        assert_eq!(*res.body(), 42);
+        assert_eq!(
+            res.extensions().get::<RequestUri>().unwrap().0,
+            "http://example.com/42"
+        );
     }
 
     #[tokio::test]
@@ -410,7 +434,11 @@ mod tests {
             .body(Body::empty())
             .unwrap();
         let res = svc.oneshot(req).await.unwrap();
-        assert_eq!(res.into_body(), 42 - 10);
+        assert_eq!(*res.body(), 42 - 10);
+        assert_eq!(
+            res.extensions().get::<RequestUri>().unwrap().0,
+            "http://example.com/32"
+        );
     }
 
     /// A server with an endpoint `GET /{n}` which redirects to `/{n-1}` unless `n` equals zero,
