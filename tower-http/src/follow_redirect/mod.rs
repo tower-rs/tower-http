@@ -1,4 +1,89 @@
 //! Middleware for following redirections.
+//!
+//! # Overview
+//!
+//! The [`FollowRedirect`] middleware retries requests with the inner [`Service`] to follow HTTP
+//! redirections.
+//!
+//! The middleware tries to clone the original [`Request`] when making a redirected request.
+//! However, since [`Extensions`][http::Extensions] are `!Clone`, any extensions set by outer
+//! middlewares will be discarded. Also, the request body cannot always be cloned. When the
+//! original body is known to be empty by [`Body::size_hint`], the middleware uses `Default`
+//! implementation of the body type to create a new request body. If you know that the body can be
+//! cloned in some way, you can tell the middleware to clone it by configuring a [`policy`].
+//!
+//! # Examples
+//!
+//! ## Basic usage
+//!
+//! [`FollowRedirectLayer::standard()`] is a good default constructor which should cover most use
+//! cases.
+//!
+//! ```
+//! use http::{Request, Response};
+//! use hyper::Body;
+//! use tower::{Service, ServiceBuilder, ServiceExt};
+//! use tower_http::follow_redirect::FollowRedirectLayer;
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), std::convert::Infallible> {
+//! # let http_client = tower::service_fn(|_| async {
+//! #     Ok::<_, std::convert::Infallible>(Response::new(Body::empty()))
+//! # });
+//! let mut client = ServiceBuilder::new()
+//!     .layer(FollowRedirectLayer::standard())
+//!     .service(http_client);
+//!
+//! let request = Request::builder()
+//!     .uri("https://docs.rs/tower-http")
+//!     .body(Body::empty())
+//!     .unwrap();
+//!
+//! // This should retrieve the latest documentation.
+//! let response = client.ready().await?.call(request).await?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Customizing the `Policy`
+//!
+//! You can use a [`Policy`] value to customize how the middleware handles redirections.
+//!
+//! ```
+//! use http::{Request, Response};
+//! use hyper::Body;
+//! use tower::{Service, ServiceBuilder, ServiceExt};
+//! use tower_http::follow_redirect::{
+//!     policy::{self, PolicyExt},
+//!     FollowRedirectLayer,
+//! };
+//!
+//! #[derive(Debug)]
+//! enum MyError {
+//!     Hyper(hyper::Error),
+//!     TooManyRedirects,
+//! }
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), MyError> {
+//! # let http_client =
+//! #     tower::service_fn(|_: Request<Body>| async { Ok(Response::new(Body::empty())) });
+//! let policy = policy::Limited::new(10) // Set the maximum number of redirections to 10.
+//!     // Return an error when the limit was reached.
+//!     .or::<_, (), _>(policy::redirect_fn(|_| Err(MyError::TooManyRedirects)))
+//!     // Do not follow cross-origin redirections, and return the redirection responses as-is.
+//!     .and::<_, (), _>(policy::SameOrigin::new());
+//!
+//! let mut client = ServiceBuilder::new()
+//!     .layer(FollowRedirectLayer::new(policy))
+//!     .map_err(MyError::Hyper)
+//!     .service(http_client);
+//!
+//! // ...
+//! # let _ = client.ready().await?.call(Request::default()).await?;
+//! # Ok(())
+//! # }
+//! ```
 
 pub mod policy;
 
@@ -27,6 +112,8 @@ use tower_layer::Layer;
 use tower_service::Service;
 
 /// [`Layer`] for retrying requests with a [`Service`] to follow redirection responses.
+///
+/// See the [module docs](self) for more details.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct FollowRedirectLayer<P = Standard> {
     policy: P,
@@ -59,6 +146,8 @@ where
 }
 
 /// Middleware that retries requests with a [`Service`] to follow redirection responses.
+///
+/// See the [module docs](self) for more details.
 #[derive(Clone, Copy, Debug)]
 pub struct FollowRedirect<S, P = Standard> {
     inner: S,

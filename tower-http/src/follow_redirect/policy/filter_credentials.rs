@@ -4,7 +4,7 @@ use http::{
     Request,
 };
 
-/// A redirection `Policy` that removes credentials from requests in redirections.
+/// A redirection [`Policy`] that removes credentials from requests in redirections.
 #[derive(Clone, Debug)]
 pub struct FilterCredentials {
     block_cross_origin: bool,
