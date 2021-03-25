@@ -167,8 +167,6 @@ impl<S> FollowRedirect<S> {
     pub fn standard(inner: S) -> Self {
         Self::new(inner, Standard::default())
     }
-
-    define_inner_service_accessors!();
 }
 
 impl<S, P> FollowRedirect<S, P>
@@ -186,6 +184,8 @@ where
     pub fn layer(policy: P) -> FollowRedirectLayer<P> {
         FollowRedirectLayer::new(policy)
     }
+
+    define_inner_service_accessors!();
 }
 
 impl<ReqBody, ResBody, S, P> Service<Request<ReqBody>> for FollowRedirect<S, P>
