@@ -16,9 +16,6 @@
 //!
 //! ## Basic usage
 //!
-//! [`FollowRedirectLayer::standard()`] is a good default constructor which should cover most use
-//! cases.
-//!
 //! ```
 //! use http::{Request, Response};
 //! use hyper::Body;
@@ -38,7 +35,7 @@
 //! #     Ok::<_, std::convert::Infallible>(res.body(Body::empty()).unwrap())
 //! # });
 //! let mut client = ServiceBuilder::new()
-//!     .layer(FollowRedirectLayer::standard())
+//!     .layer(FollowRedirectLayer::new())
 //!     .service(http_client);
 //!
 //! let request = Request::builder()
@@ -83,7 +80,7 @@
 //!     .and::<_, (), _>(policy::SameOrigin::new());
 //!
 //! let mut client = ServiceBuilder::new()
-//!     .layer(FollowRedirectLayer::new(policy))
+//!     .layer(FollowRedirectLayer::with_policy(policy))
 //!     .map_err(MyError::Hyper)
 //!     .service(http_client);
 //!
@@ -129,14 +126,14 @@ pub struct FollowRedirectLayer<P = Standard> {
 
 impl FollowRedirectLayer {
     /// Create a new [`FollowRedirectLayer`] with a [`Standard`] redirection policy.
-    pub fn standard() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 }
 
 impl<P> FollowRedirectLayer<P> {
     /// Create a new [`FollowRedirectLayer`] with the given redirection [`Policy`].
-    pub fn new(policy: P) -> Self {
+    pub fn with_policy(policy: P) -> Self {
         FollowRedirectLayer { policy }
     }
 }
@@ -149,7 +146,7 @@ where
     type Service = FollowRedirect<S, P>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        FollowRedirect::new(inner, self.policy.clone())
+        FollowRedirect::with_policy(inner, self.policy.clone())
     }
 }
 
@@ -164,8 +161,15 @@ pub struct FollowRedirect<S, P = Standard> {
 
 impl<S> FollowRedirect<S> {
     /// Create a new [`FollowRedirect`] with a [`Standard`] redirection policy.
-    pub fn standard(inner: S) -> Self {
-        Self::new(inner, Standard::default())
+    pub fn new(inner: S) -> Self {
+        Self::with_policy(inner, Standard::default())
+    }
+
+    /// Returns a new [`Layer`] that wraps services with a `FollowRedirect` middleware.
+    ///
+    /// [`Layer`]: tower_layer::Layer
+    pub fn layer() -> FollowRedirectLayer {
+        FollowRedirectLayer::new()
     }
 }
 
@@ -174,15 +178,16 @@ where
     P: Clone,
 {
     /// Create a new [`FollowRedirect`] with the given redirection [`Policy`].
-    pub fn new(inner: S, policy: P) -> Self {
+    pub fn with_policy(inner: S, policy: P) -> Self {
         FollowRedirect { inner, policy }
     }
 
-    /// Returns a new [`Layer`] that wraps services with a `FollowRedirect` middleware.
+    /// Returns a new [`Layer`] that wraps services with a `FollowRedirect` middleware
+    /// with the given redirection [`Policy`].
     ///
     /// [`Layer`]: tower_layer::Layer
-    pub fn layer(policy: P) -> FollowRedirectLayer<P> {
-        FollowRedirectLayer::new(policy)
+    pub fn layer_with_policy(policy: P) -> FollowRedirectLayer<P> {
+        FollowRedirectLayer::with_policy(policy)
     }
 
     define_inner_service_accessors!();
@@ -390,7 +395,7 @@ mod tests {
     #[tokio::test]
     async fn follows() {
         let svc = ServiceBuilder::new()
-            .layer(FollowRedirectLayer::new(Action::Follow))
+            .layer(FollowRedirectLayer::with_policy(Action::Follow))
             .buffer(1)
             .service_fn(handle);
         let req = Request::builder()
@@ -408,7 +413,7 @@ mod tests {
     #[tokio::test]
     async fn stops() {
         let svc = ServiceBuilder::new()
-            .layer(FollowRedirectLayer::new(Action::Stop))
+            .layer(FollowRedirectLayer::with_policy(Action::Stop))
             .buffer(1)
             .service_fn(handle);
         let req = Request::builder()
@@ -426,7 +431,7 @@ mod tests {
     #[tokio::test]
     async fn limited() {
         let svc = ServiceBuilder::new()
-            .layer(FollowRedirectLayer::new(Limited::new(10)))
+            .layer(FollowRedirectLayer::with_policy(Limited::new(10)))
             .buffer(1)
             .service_fn(handle);
         let req = Request::builder()
