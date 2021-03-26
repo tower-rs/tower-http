@@ -33,7 +33,7 @@
 //! let request = Request::new(Body::empty());
 //!
 //! let response = client
-//!     .ready_and()
+//!     .ready()
 //!     .await?
 //!     .call(request)
 //!     .await?;

@@ -28,7 +28,7 @@
 //!
 //! // Call the service.
 //! let response = service
-//!     .ready_and()
+//!     .ready()
 //!     .await?
 //!     .call(Request::new(Body::empty()))
 //!     .await?;

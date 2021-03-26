@@ -27,7 +27,7 @@
 //!     .body(Body::empty())?;
 //!
 //! let response = svc
-//!     .ready_and()
+//!     .ready()
 //!     .await?
 //!     .call(request)
 //!     .await?;
