@@ -1,10 +1,15 @@
+use super::DEFAULT_ERROR_LEVEL;
 use crate::LatencyUnit;
 use std::{fmt, time::Duration};
 use tracing::Level;
 
-use super::DEFAULT_ERROR_LEVEL;
-
+/// Trait used to tell [`Trace`] what to do when a request fails.
+///
+/// [`Trace`]: super::Trace
 pub trait OnFailure<FailureClass> {
+    /// Do the thing.
+    ///
+    /// `latency` is the duration since the request was received.
     fn on_failure(&mut self, failure_classification: FailureClass, latency: Duration);
 }
 
@@ -22,6 +27,9 @@ where
     }
 }
 
+/// The default [`OnFailure`] implementation used by [`Trace`].
+///
+/// [`Trace`]: super::Trace
 #[derive(Clone, Debug)]
 pub struct DefaultOnFailure {
     level: Level,
@@ -38,19 +46,27 @@ impl Default for DefaultOnFailure {
 }
 
 impl DefaultOnFailure {
+    /// Create a new `DefaultOnFailure`.
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub fn level(self, level: Level) -> Self {
-        Self { level, ..self }
+    /// Set the [`Level`] used for [tracing events].
+    ///
+    /// Defaults to [`Level::DEBUG`].
+    ///
+    /// [tracing events]: https://docs.rs/tracing/latest/tracing/#events
+    pub fn level(mut self, level: Level) -> Self {
+        self.level = level;
+        self
     }
 
-    pub fn latency_unit(self, latency_unit: LatencyUnit) -> Self {
-        Self {
-            latency_unit,
-            ..self
-        }
+    /// Set the [`LatencyUnit`] latencies will be reported in.
+    ///
+    /// Defaults to [`LatencyUnit::Millis`].
+    pub fn latency_unit(mut self, latency_unit: LatencyUnit) -> Self {
+        self.latency_unit = latency_unit;
+        self
     }
 }
 

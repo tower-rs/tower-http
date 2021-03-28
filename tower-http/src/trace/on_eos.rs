@@ -4,7 +4,13 @@ use http::header::HeaderMap;
 use std::time::Duration;
 use tracing::Level;
 
+/// Trait used to tell [`Trace`] what to do when a stream closes.
+///
+/// [`Trace`]: super::Trace
 pub trait OnEos {
+    /// Do the thing.
+    ///
+    /// `stream_duration` is the duration since the response was sent.
     fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Duration);
 }
 
@@ -22,6 +28,9 @@ where
     }
 }
 
+/// The default [`OnEos`] implementation used by [`Trace`].
+///
+/// [`Trace`]: super::Trace
 #[derive(Clone, Debug)]
 pub struct DefaultOnEos {
     level: Level,
@@ -38,8 +47,28 @@ impl Default for DefaultOnEos {
 }
 
 impl DefaultOnEos {
+    /// Create a new [`DefaultOnEos`].
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Set the [`Level`] used for [tracing events].
+    ///
+    /// Defaults to [`Level::DEBUG`].
+    ///
+    /// [tracing events]: https://docs.rs/tracing/latest/tracing/#events
+    /// [`Level::DEBUG`]: https://docs.rs/tracing/latest/tracing/struct.Level.html#associatedconstant.DEBUG
+    pub fn level(mut self, level: Level) -> Self {
+        self.level = level;
+        self
+    }
+
+    /// Set the [`LatencyUnit`] latencies will be reported in.
+    ///
+    /// Defaults to [`LatencyUnit::Millis`].
+    pub fn latency_unit(mut self, latency_unit: LatencyUnit) -> Self {
+        self.latency_unit = latency_unit;
+        self
     }
 }
 

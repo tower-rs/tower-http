@@ -79,6 +79,11 @@ impl<S, M, E, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
 {
     define_inner_service_accessors!();
 
+    /// Customize what to do when a request is received.
+    ///
+    /// `NewOnRequest` is expected to implement [`OnRequest`].
+    ///
+    /// [`OnRequest`]: super::OnRequest
     pub fn on_request<NewOnRequest>(
         self,
         new_on_request: NewOnRequest,
@@ -96,6 +101,11 @@ impl<S, M, E, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
         }
     }
 
+    /// Customize what to do when a response has been produced.
+    ///
+    /// `NewOnResponse` is expected to implement [`OnResponse`].
+    ///
+    /// [`OnResponse`]: super::OnResponse
     pub fn on_response<NewOnResponse>(
         self,
         new_on_response: NewOnResponse,
@@ -113,23 +123,11 @@ impl<S, M, E, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
         }
     }
 
-    pub fn on_failure<NewOnFailure>(
-        self,
-        new_on_failure: NewOnFailure,
-    ) -> Trace<S, M, E, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, NewOnFailure> {
-        Trace {
-            on_failure: new_on_failure,
-            inner: self.inner,
-            make_span: self.make_span,
-            on_body_chunk: self.on_body_chunk,
-            on_request: self.on_request,
-            on_eos: self.on_eos,
-            on_response: self.on_response,
-            make_classifier: self.make_classifier,
-            _error: self._error,
-        }
-    }
-
+    /// Customize what to do when a body chunk has been sent.
+    ///
+    /// `NewOnBodyChunk` is expected to implement [`OnBodyChunk`].
+    ///
+    /// [`OnBodyChunk`]: super::OnBodyChunk
     pub fn on_body_chunk<NewOnBodyChunk>(
         self,
         new_on_body_chunk: NewOnBodyChunk,
@@ -147,6 +145,11 @@ impl<S, M, E, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
         }
     }
 
+    /// Customize what to do when a streaming response has closed.
+    ///
+    /// `NewOnEos` is expected to implement [`OnEos`].
+    ///
+    /// [`OnEos`]: super::OnEos
     pub fn on_eos<NewOnEos>(
         self,
         new_on_eos: NewOnEos,
@@ -164,6 +167,34 @@ impl<S, M, E, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
         }
     }
 
+    /// Customize what to do when a response has been classified as a failure.
+    ///
+    /// `NewOnFailure` is expected to implement [`OnFailure`].
+    ///
+    /// [`OnFailure`]: super::OnFailure
+    pub fn on_failure<NewOnFailure>(
+        self,
+        new_on_failure: NewOnFailure,
+    ) -> Trace<S, M, E, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, NewOnFailure> {
+        Trace {
+            on_failure: new_on_failure,
+            inner: self.inner,
+            make_span: self.make_span,
+            on_body_chunk: self.on_body_chunk,
+            on_request: self.on_request,
+            on_eos: self.on_eos,
+            on_response: self.on_response,
+            make_classifier: self.make_classifier,
+            _error: self._error,
+        }
+    }
+
+    /// Customize how to make [`Span`]s that all request handling will be wrapped in.
+    ///
+    /// `NewMakeSpan` is expected to implement [`MakeSpan`].
+    ///
+    /// [`MakeSpan`]: super::MakeSpan
+    /// [`Span`]: tracing::Span
     pub fn make_span_with<NewMakeSpan>(
         self,
         new_make_span: NewMakeSpan,

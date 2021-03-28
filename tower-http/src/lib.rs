@@ -236,14 +236,14 @@ where
     }
 }
 
-/// TODO(david): docs
+/// The latency unit used to report latencies by middlewares.
 #[non_exhaustive]
 #[derive(Copy, Clone, Debug)]
 pub enum LatencyUnit {
-    /// TODO(david): docs
+    /// Use milliseconds.
     Millis,
-    /// TODO(david): docs
+    /// Use microseconds.
     Micros,
-    /// TODO(david): docs
+    /// Use nanoseconds.
     Nanos,
 }

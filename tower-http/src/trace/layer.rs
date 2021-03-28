@@ -10,7 +10,7 @@ use tower_layer::Layer;
 
 /// [`Layer`] that adds high level [tracing] to a [`Service`].
 ///
-/// See the [module docs](crate::trace) for an example.
+/// See the [module docs](crate::trace) for more details.
 ///
 /// [`Layer`]: tower_layer::Layer
 /// [tracing]: https://crates.io/crates/tracing
@@ -82,6 +82,11 @@ impl<M, E> TraceLayer<M, E> {
 impl<M, E, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
     TraceLayer<M, E, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
 {
+    /// Customize what to do when a request is received.
+    ///
+    /// `NewOnRequest` is expected to implement [`OnRequest`].
+    ///
+    /// [`OnRequest`]: super::OnRequest
     pub fn on_request<NewOnRequest>(
         self,
         new_on_request: NewOnRequest,
@@ -98,6 +103,11 @@ impl<M, E, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
         }
     }
 
+    /// Customize what to do when a response has been produced.
+    ///
+    /// `NewOnResponse` is expected to implement [`OnResponse`].
+    ///
+    /// [`OnResponse`]: super::OnResponse
     pub fn on_response<NewOnResponse>(
         self,
         new_on_response: NewOnResponse,
@@ -114,6 +124,11 @@ impl<M, E, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
         }
     }
 
+    /// Customize what to do when a body chunk has been sent.
+    ///
+    /// `NewOnBodyChunk` is expected to implement [`OnBodyChunk`].
+    ///
+    /// [`OnBodyChunk`]: super::OnBodyChunk
     pub fn on_body_chunk<NewOnBodyChunk>(
         self,
         new_on_body_chunk: NewOnBodyChunk,
@@ -130,6 +145,11 @@ impl<M, E, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
         }
     }
 
+    /// Customize what to do when a streaming response has closed.
+    ///
+    /// `NewOnEos` is expected to implement [`OnEos`].
+    ///
+    /// [`OnEos`]: super::OnEos
     pub fn on_eos<NewOnEos>(
         self,
         new_on_eos: NewOnEos,
@@ -146,6 +166,11 @@ impl<M, E, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
         }
     }
 
+    /// Customize what to do when a response has been classified as a failure.
+    ///
+    /// `NewOnFailure` is expected to implement [`OnFailure`].
+    ///
+    /// [`OnFailure`]: super::OnFailure
     pub fn on_failure<NewOnFailure>(
         self,
         new_on_failure: NewOnFailure,
@@ -162,6 +187,12 @@ impl<M, E, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
         }
     }
 
+    /// Customize how to make [`Span`]s that all request handling will be wrapped in.
+    ///
+    /// `NewMakeSpan` is expected to implement [`MakeSpan`].
+    ///
+    /// [`MakeSpan`]: super::MakeSpan
+    /// [`Span`]: tracing::Span
     pub fn make_span_with<NewMakeSpan>(
         self,
         new_make_span: NewMakeSpan,

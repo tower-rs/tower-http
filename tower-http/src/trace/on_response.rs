@@ -4,7 +4,13 @@ use http::Response;
 use std::time::Duration;
 use tracing::Level;
 
+/// Trait used to tell [`Trace`] what to do when a response has been produced.
+///
+/// [`Trace`]: super::Trace
 pub trait OnResponse<B> {
+    /// Do the thing.
+    ///
+    /// `latency` is the duration since the request was received.
     fn on_response(self, response: &Response<B>, latency: Duration);
 }
 
@@ -22,6 +28,9 @@ where
     }
 }
 
+/// The default [`OnResponse`] implementation used by [`Trace`].
+///
+/// [`Trace`]: super::Trace
 #[derive(Clone, Debug)]
 pub struct DefaultOnResponse {
     level: Level,
@@ -40,20 +49,35 @@ impl Default for DefaultOnResponse {
 }
 
 impl DefaultOnResponse {
+    /// Create a new `DefaultOnResponse`.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Set the [`Level`] used for [tracing events].
+    ///
+    /// Defaults to [`Level::DEBUG`].
+    ///
+    /// [tracing events]: https://docs.rs/tracing/latest/tracing/#events
+    /// [`Level::DEBUG`]: https://docs.rs/tracing/latest/tracing/struct.Level.html#associatedconstant.DEBUG
     pub fn level(mut self, level: Level) -> Self {
         self.level = level;
         self
     }
 
+    /// Set the [`LatencyUnit`] latencies will be reported in.
+    ///
+    /// Defaults to [`LatencyUnit::Millis`].
     pub fn latency_unit(mut self, latency_unit: LatencyUnit) -> Self {
         self.latency_unit = latency_unit;
         self
     }
 
+    /// Include response headers on the [`Event`].
+    ///
+    /// By default headers are not included.
+    ///
+    /// [`Event`]: tracing::Event
     pub fn include_headers(mut self, include_headers: bool) -> Self {
         self.include_headers = include_headers;
         self
@@ -89,7 +113,6 @@ macro_rules! log_pattern_match {
                         "finished processing request"
                     );
                 }
-
                 (Level::$level, true, LatencyUnit::Micros) => {
                     tracing::event!(
                         Level::$level,
@@ -99,7 +122,6 @@ macro_rules! log_pattern_match {
                         "finished processing request"
                     );
                 }
-
                 (Level::$level, false, LatencyUnit::Micros) => {
                     tracing::event!(
                         Level::$level,
@@ -108,7 +130,6 @@ macro_rules! log_pattern_match {
                         "finished processing request"
                     );
                 }
-
                 (Level::$level, true, LatencyUnit::Nanos) => {
                     tracing::event!(
                         Level::$level,

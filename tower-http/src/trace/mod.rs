@@ -7,7 +7,7 @@
 //! ```rust
 //! use http::{Request, Response};
 //! use hyper::Body;
-//! use tower::{ServiceBuilder, service_fn, ServiceExt, Service};
+//! use tower::{ServiceBuilder, ServiceExt, Service};
 //! use tower_http::trace::TraceLayer;
 //! use std::convert::Infallible;
 //!
@@ -21,7 +21,7 @@
 //!
 //! let mut service = ServiceBuilder::new()
 //!     .layer(TraceLayer::new_for_http())
-//!     .service(service_fn(handle));
+//!     .service_fn(handle);
 //!
 //! let request = Request::new(Body::from("foo"));
 //!
@@ -41,16 +41,248 @@
 //! Mar 05 20:50:28.524 DEBUG request{method=GET path="/foo"}: tower_http::trace::on_response: finished processing request latency=1 ms status=200
 //! ```
 //!
-//! TODO(david): Document these things
-//! - gRPC support
-//! - Setting classifiers
-//! - Customizing what to do on request, response, eos, failure
+//! # Customization
+//!
+//! [`Trace`] comes with good defaults but also supports customizing many aspects of the output.
+//!
+//! The default behaviour supports some customization:
+//!
+//! ```rust
+//! use http::{Request, Response, HeaderMap, StatusCode};
+//! use hyper::Body;
+//! use bytes::Bytes;
+//! use tower::ServiceBuilder;
+//! use tracing::Level;
+//! use tower_http::{
+//!     LatencyUnit,
+//!     trace::{TraceLayer, DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse},
+//! };
+//! use std::time::Duration;
+//! # use tower::{ServiceExt, Service};
+//! # use std::convert::Infallible;
+//!
+//! # async fn handle(request: Request<Body>) -> Result<Response<Body>, Infallible> {
+//! #     Ok(Response::new(Body::from("foo")))
+//! # }
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # tracing_subscriber::fmt::init();
+//! #
+//! let service = ServiceBuilder::new()
+//!     .layer(
+//!         TraceLayer::new_for_http()
+//!             .make_span_with(
+//!                 DefaultMakeSpan::new().include_headers(true)
+//!             )
+//!             .on_request(
+//!                 DefaultOnRequest::new().level(Level::INFO)
+//!             )
+//!             .on_response(
+//!                 DefaultOnResponse::new()
+//!                     .level(Level::INFO)
+//!                     .latency_unit(LatencyUnit::Micros)
+//!             )
+//!             // on so on for `on_eos`, `on_body_chunk`, and `on_failure`
+//!     )
+//!     .service_fn(handle);
+//! # let mut service = service;
+//! # let response = service
+//! #     .ready()
+//! #     .await?
+//! #     .call(Request::new(Body::from("foo")))
+//! #     .await?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! However for maximum control you can provide callbacks:
+//!
+//! ```rust
+//! use http::{Request, Response, HeaderMap, StatusCode};
+//! use hyper::Body;
+//! use bytes::Bytes;
+//! use tower::ServiceBuilder;
+//! use tower_http::trace::TraceLayer;
+//! use std::time::Duration;
+//! # use tower::{ServiceExt, Service};
+//! # use std::convert::Infallible;
+//!
+//! # async fn handle(request: Request<Body>) -> Result<Response<Body>, Infallible> {
+//! #     Ok(Response::new(Body::from("foo")))
+//! # }
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # tracing_subscriber::fmt::init();
+//! #
+//! let service = ServiceBuilder::new()
+//!     .layer(
+//!         TraceLayer::new_for_http()
+//!             .make_span_with(|request: &Request<Body>| {
+//!                 tracing::debug_span!("http-request")
+//!             })
+//!             .on_request(|request: &Request<Body>| {
+//!                 tracing::debug!("started {} {}", request.method(), request.uri().path())
+//!             })
+//!             .on_response(|response: &Response<Body>, latency: Duration| {
+//!                 tracing::debug!("response generated in {:?}", latency)
+//!             })
+//!             .on_body_chunk(|chunk: &Bytes, latency: Duration| {
+//!                 tracing::debug!("sending {} bytes", chunk.len())
+//!             })
+//!             .on_eos(|trailers: Option<&HeaderMap>, stream_duration: Duration| {
+//!                 tracing::debug!("stream closed after {:?}", stream_duration)
+//!             })
+//!             .on_failure(|error: StatusCode, latency: Duration| {
+//!                 tracing::debug!("something went wrong")
+//!             })
+//!     )
+//!     .service_fn(handle);
+//! # let mut service = service;
+//! # let response = service
+//! #     .ready()
+//! #     .await?
+//! #     .call(Request::new(Body::from("foo")))
+//! #     .await?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Disabling something
+//!
+//! Setting the behaviour to `()` will be disable that particular step:
+//!
+//! ```rust
+//! use http::StatusCode;
+//! use tower::ServiceBuilder;
+//! use tower_http::trace::TraceLayer;
+//! use std::time::Duration;
+//! # use tower::{ServiceExt, Service};
+//! # use hyper::Body;
+//! # use http::{Response, Request};
+//! # use std::convert::Infallible;
+//!
+//! # async fn handle(request: Request<Body>) -> Result<Response<Body>, Infallible> {
+//! #     Ok(Response::new(Body::from("foo")))
+//! # }
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # tracing_subscriber::fmt::init();
+//! #
+//! let service = ServiceBuilder::new()
+//!     .layer(
+//!         // This configuration will only emit events on failures
+//!         TraceLayer::new_for_http()
+//!             .on_request(())
+//!             .on_response(())
+//!             .on_body_chunk(())
+//!             .on_eos(())
+//!             .on_failure(|error: StatusCode, latency: Duration| {
+//!                 tracing::debug!("something went wrong")
+//!             })
+//!     )
+//!     .service_fn(handle);
+//! # let mut service = service;
+//! # let response = service
+//! #     .ready()
+//! #     .await?
+//! #     .call(Request::new(Body::from("foo")))
+//! #     .await?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! # Providing classifiers
+//!
+//! Tracing requires determining if a response is a success or failure. [`MakeClassifier`] is used
+//! to create a classifier for the incoming request. See the docs for [`MakeClassifier`] and
+//! [`ClassifyResponse`] for more details on classification.
+//!
+//! A [`MakeClassifier`] can be provided when creating a [`TraceLayer`]:
+//!
+//! ```rust
+//! use http::{Request, Response};
+//! use hyper::Body;
+//! use tower::ServiceBuilder;
+//! use tower_http::{
+//!     trace::TraceLayer,
+//!     classify::{
+//!         MakeClassifier, ClassifyResponse, ClassifiedResponse, NeverClassifyEos,
+//!         SharedClassifier,
+//!     },
+//! };
+//! use std::convert::Infallible;
+//!
+//! # async fn handle(request: Request<Body>) -> Result<Response<Body>, Infallible> {
+//! #     Ok(Response::new(Body::from("foo")))
+//! # }
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # tracing_subscriber::fmt::init();
+//! #
+//! // Our `MakeClassifier` that always crates `MyClassifier` classifiers.
+//! #[derive(Copy, Clone)]
+//! struct MyMakeClassify;
+//!
+//! impl MakeClassifier<hyper::Error> for MyMakeClassify {
+//!     type Classifier = MyClassifier;
+//!     type FailureClass = &'static str;
+//!     type ClassifyEos = NeverClassifyEos<&'static str>;
+//!
+//!     fn make_classifier<B>(&self, req: &Request<B>) -> Self::Classifier {
+//!         MyClassifier
+//!     }
+//! }
+//!
+//! // A classifier that classifies failures as `"something went wrong..."`.
+//! #[derive(Copy, Clone)]
+//! struct MyClassifier;
+//!
+//! impl ClassifyResponse<hyper::Error> for MyClassifier {
+//!     type FailureClass = &'static str;
+//!     type ClassifyEos = NeverClassifyEos<&'static str>;
+//!
+//!     fn classify_response<B>(
+//!         self,
+//!         res: &Response<B>
+//!     ) -> ClassifiedResponse<Self::FailureClass, Self::ClassifyEos> {
+//!         // Classify based on the status code.
+//!         if res.status().is_server_error() {
+//!             ClassifiedResponse::Ready(Err("something went wrong..."))
+//!         } else {
+//!             ClassifiedResponse::Ready(Ok(()))
+//!         }
+//!     }
+//!
+//!     fn classify_error(self, error: &hyper::Error) -> Self::FailureClass {
+//!         "something went wrong..."
+//!     }
+//! }
+//!
+//! let service = ServiceBuilder::new()
+//!     // Create a trace layer that uses our classifier.
+//!     .layer(TraceLayer::new(MyMakeClassify))
+//!     .service_fn(handle);
+//!
+//! // Since `MyClassifier` is `Clone` we can also use `SharedClassifier`
+//! // to avoid having to define a separate `MakeClassifier`.
+//! let service = ServiceBuilder::new()
+//!     .layer(TraceLayer::new(SharedClassifier::new(MyClassifier)))
+//!     .service_fn(handle);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! [`TraceLayer`] comes with convenience methods for using common classifiers:
+//!
+//! - [`TraceLayer::new_for_http`] classifies based on the status code. It doesn't consider
+//! streaming responses.
+//! - [`TraceLayer::new_for_grpc`] classifies based on the gRPC protocol and supports streaming
+//! responses.
 //!
 //! [tracing]: https://crates.io/crates/tracing
 //! [`Service`]: tower_service::Service
-
-// TODO(david): Document all the things
-#![allow(missing_docs)]
+//! [`MakeClassifier`]: crate::classify::MakeClassifier
+//! [`ClassifyResponse`]: crate::classify::ClassifyResponse
 
 use tracing::Level;
 
