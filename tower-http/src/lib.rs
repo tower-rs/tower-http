@@ -22,7 +22,7 @@
 //!     sensitive_header::SetSensitiveHeaderLayer,
 //!     set_header::SetResponseHeaderLayer,
 //! };
-//! use tower::{ServiceBuilder, service_fn};
+//! use tower::{ServiceBuilder, service_fn, make::Shared};
 //! use http::{Request, Response, header::{HeaderName, CONTENT_TYPE, AUTHORIZATION}};
 //! use hyper::{Body, Error, server::Server, service::make_service_fn};
 //! use std::{sync::Arc, net::SocketAddr, convert::Infallible};
@@ -68,20 +68,11 @@
 //!         .service(service_fn(handler));
 //!
 //!     // And run our service using `hyper`
-//!     let make_service = make_service_fn(move |_conn| {
-//!         let service = service.clone();
-//!         async move {
-//!             Ok::<_, Infallible>(service)
-//!         }
-//!     });
-//!
 //!     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
-//!
-//!     let server = Server::bind(&addr).serve(make_service);
-//!
-//!     if let Err(e) = server.await {
-//!         eprintln!("server error: {}", e);
-//!     }
+//!     Server::bind(&addr)
+//!         .serve(Shared::new(service))
+//!         .await
+//!         .expect("server error");
 //! }
 //! ```
 //!
