@@ -145,7 +145,7 @@ pub fn set() -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
         })
 }
 
-// Filter for looking up a key
+// Test filter that always fails
 pub fn error() -> impl Filter<Extract = (&'static str,), Error = Rejection> + Clone {
     warp::get()
         .and(path!("debug" / "error"))
