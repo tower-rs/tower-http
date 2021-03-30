@@ -183,6 +183,10 @@ pub mod map_response_body;
 #[cfg_attr(docsrs, doc(cfg(feature = "map-request-body")))]
 pub mod map_request_body;
 
+#[cfg(feature = "etag-caching")]
+#[cfg_attr(docsrs, doc(cfg(feature = "etag-caching")))]
+pub mod etag_caching;
+
 pub mod classify;
 pub mod services;
 

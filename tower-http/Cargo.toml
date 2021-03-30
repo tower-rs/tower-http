@@ -42,6 +42,7 @@ full = [
     "compression",
     "compression-full",
     "decompression-full",
+    "etag-caching",
     "map-request-body",
     "map-response-body",
     "propagate-header",
@@ -51,6 +52,7 @@ full = [
 ]
 
 add-extension = []
+etag-caching = []
 map-request-body = []
 map-response-body = []
 propagate-header = []
