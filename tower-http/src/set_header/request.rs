@@ -38,7 +38,7 @@
 //!
 //! let request = Request::new(Body::empty());
 //!
-//! let response = svc.ready_and().await?.call(request).await?;
+//! let response = svc.ready().await?.call(request).await?;
 //! #
 //! # Ok(())
 //! # }
@@ -79,7 +79,7 @@
 //!
 //! let request = Request::new(Body::empty());
 //!
-//! let response = svc.ready_and().await?.call(request).await?;
+//! let response = svc.ready().await?.call(request).await?;
 //! #
 //! # Ok(())
 //! # }

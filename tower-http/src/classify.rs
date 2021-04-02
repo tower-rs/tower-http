@@ -20,7 +20,7 @@ pub trait MakeClassifier<E> {
         ClassifyEos = Self::ClassifyEos,
     >;
 
-    /// The type of failure classifications..
+    /// The type of failure classifications.
     ///
     /// This might include additional information about the error, such as
     /// whether it was a client or server error, or whether or not it should
@@ -97,9 +97,9 @@ pub trait ClassifyResponse<E> {
     /// In some cases, the response can be classified immediately, without
     /// waiting for a body to complete. This may include:
     ///
-    /// - when the response has an error status code
-    /// - when a successful response does not have a streaming body
-    /// - when the classifier does not care about streaming bodies
+    /// - When the response has an error status code.
+    /// - When a successful response does not have a streaming body.
+    /// - When the classifier does not care about streaming bodies.
     ///
     /// When the response can be classified immediately, `classify_response`
     /// returns a [`ClassifiedResponse::Ready`] which indicates whether the
@@ -119,7 +119,7 @@ pub trait ClassifyResponse<E> {
     /// Classify an error.
     ///
     /// Errors are always errors (doh) but sometimes it might be useful to have multiple classes of
-    /// errors. A retry policy might allows retrying some errors and not others.
+    /// errors. A retry policy might allow retrying some errors and not others.
     fn classify_error(self, error: &E) -> Self::FailureClass;
 }
 
@@ -134,7 +134,7 @@ pub trait ClassifyEos<E> {
     /// Classify an error.
     ///
     /// Errors are always errors (doh) but sometimes it might be useful to have multiple classes of
-    /// errors. A retry policy might allows retrying some errors and not others.
+    /// errors. A retry policy might allow retrying some errors and not others.
     fn classify_error(self, error: &E) -> Self::FailureClass;
 }
 
@@ -172,7 +172,8 @@ impl<T, E> ClassifyEos<E> for NeverClassifyEos<T> {
 
 /// The default classifier used for normal HTTP responses.
 ///
-/// Responses with a `5xx` status code are failures, all others as successes.
+/// Responses with a `5xx` status code are considered failures, all others are considered
+/// successes.
 #[derive(Clone, Debug, Default)]
 pub struct ServerErrorsAsFailures {
     _priv: (),
