@@ -5,7 +5,6 @@ use futures_core::ready;
 use http::{HeaderMap, Response, StatusCode};
 use http_body::{combinators::BoxBody, Body, Empty};
 use std::{
-    convert::Infallible,
     io,
     pin::Pin,
     task::{Context, Poll},
@@ -17,8 +16,12 @@ mod serve_dir;
 mod serve_file;
 
 pub use self::{
-    serve_dir::{ResponseFuture as ServeDirResponseFuture, ServeDir},
-    serve_file::{ResponseFuture as ServeFileResponseFuture, ServeFile},
+    serve_dir::{
+        ResponseBody as ServeDirResponseBody, ResponseFuture as ServeDirResponseFuture, ServeDir,
+    },
+    serve_file::{
+        ResponseBody as ServeFileResponseBody, ResponseFuture as ServeFileResponseFuture, ServeFile,
+    },
 };
 
 // NOTE: This could potentially be upstreamed to `http-body`.

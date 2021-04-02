@@ -57,7 +57,7 @@ impl ServeFile {
 }
 
 impl<R> Service<R> for ServeFile {
-    type Response = Response<BoxBody<Bytes, io::Error>>;
+    type Response = Response<ResponseBody>;
     type Error = io::Error;
     type Future = ResponseFuture;
 
@@ -83,24 +83,34 @@ pub struct ResponseFuture {
 }
 
 impl Future for ResponseFuture {
-    type Output = io::Result<Response<BoxBody<Bytes, io::Error>>>;
+    type Output = io::Result<Response<ResponseBody>>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let result = ready!(Pin::new(&mut self.open_file_future).poll(cx));
 
         let file = match result {
             Ok(file) => file,
-            Err(err) => return Poll::Ready(super::response_from_io_error(err)),
+            Err(err) => {
+                return Poll::Ready(
+                    super::response_from_io_error(err).map(|res| res.map(ResponseBody)),
+                )
+            }
         };
 
-        let body = AsyncReadBody::new(file);
+        let body = AsyncReadBody::new(file).boxed();
+        let body = ResponseBody(body);
 
         let mut res = Response::new(body);
         res.headers_mut()
             .insert(header::CONTENT_TYPE, self.mime.take().unwrap());
 
-        Poll::Ready(Ok(res.map(Body::boxed)))
+        Poll::Ready(Ok(res))
     }
+}
+
+opaque_body! {
+    /// Response body for [`ServeFile`].
+    pub type ResponseBody = BoxBody<Bytes, io::Error>;
 }
 
 #[cfg(test)]

@@ -4,7 +4,6 @@ use futures_util::ready;
 use http::{header, HeaderValue, Request, Response, StatusCode};
 use http_body::{combinators::BoxBody, Body, Empty};
 use std::{
-    convert::Infallible,
     future::Future,
     io,
     path::{Path, PathBuf},
@@ -54,7 +53,7 @@ impl ServeDir {
 }
 
 impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
-    type Response = Response<BoxBody<Bytes, io::Error>>;
+    type Response = Response<ResponseBody>;
     type Error = io::Error;
     type Future = ResponseFuture;
 
@@ -68,7 +67,6 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
         let path = req.uri().path();
         let path = path.trim_start_matches('/');
         let mut full_path = self.base.clone();
-        let mut valid = true;
         for seg in path.split('/') {
             if seg.starts_with("..") || seg.contains('\\') {
                 return ResponseFuture {
@@ -78,38 +76,34 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
             full_path.push(seg);
         }
 
-        let inner = if valid {
-            let append_index_html_on_directories = self.append_index_html_on_directories;
-            let open_file_future = Box::pin(async move {
-                if append_index_html_on_directories {
-                    let is_dir = tokio::fs::metadata(full_path.clone())
-                        .await
-                        .map(|m| m.is_dir())
-                        .unwrap_or(false);
+        let append_index_html_on_directories = self.append_index_html_on_directories;
+        let open_file_future = Box::pin(async move {
+            if append_index_html_on_directories {
+                let is_dir = tokio::fs::metadata(full_path.clone())
+                    .await
+                    .map(|m| m.is_dir())
+                    .unwrap_or(false);
 
-                    if is_dir {
-                        full_path.push("index.html");
-                    }
+                if is_dir {
+                    full_path.push("index.html");
                 }
+            }
 
-                let guess = mime_guess::from_path(&full_path);
-                let mime = guess
-                    .first_raw()
-                    .map(|mime| HeaderValue::from_static(mime))
-                    .unwrap_or_else(|| {
-                        HeaderValue::from_str(mime::APPLICATION_OCTET_STREAM.as_ref()).unwrap()
-                    });
+            let guess = mime_guess::from_path(&full_path);
+            let mime = guess
+                .first_raw()
+                .map(|mime| HeaderValue::from_static(mime))
+                .unwrap_or_else(|| {
+                    HeaderValue::from_str(mime::APPLICATION_OCTET_STREAM.as_ref()).unwrap()
+                });
 
-                let file = File::open(full_path).await?;
-                Ok((file, mime))
-            });
+            let file = File::open(full_path).await?;
+            Ok((file, mime))
+        });
 
-            Inner::Valid(open_file_future)
-        } else {
-            Inner::Invalid
-        };
-
-        ResponseFuture { inner }
+        ResponseFuture {
+            inner: Inner::Valid(open_file_future),
+        }
     }
 }
 
@@ -124,16 +118,21 @@ pub struct ResponseFuture {
 }
 
 impl Future for ResponseFuture {
-    type Output = io::Result<Response<BoxBody<Bytes, io::Error>>>;
+    type Output = io::Result<Response<ResponseBody>>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match &mut self.inner {
             Inner::Valid(open_file_future) => {
                 let (file, mime) = match ready!(Pin::new(open_file_future).poll(cx)) {
                     Ok(inner) => inner,
-                    Err(err) => return Poll::Ready(super::response_from_io_error(err)),
+                    Err(err) => {
+                        return Poll::Ready(
+                            super::response_from_io_error(err).map(|res| res.map(ResponseBody)),
+                        )
+                    }
                 };
                 let body = AsyncReadBody::new(file).boxed();
+                let body = ResponseBody(body);
 
                 let mut res = Response::new(body);
                 res.headers_mut().insert(header::CONTENT_TYPE, mime);
@@ -141,15 +140,23 @@ impl Future for ResponseFuture {
                 Poll::Ready(Ok(res))
             }
             Inner::Invalid => {
+                let body = Empty::new().map_err(|err| match err {}).boxed();
+                let body = ResponseBody(body);
+
                 let res = Response::builder()
                     .status(StatusCode::NOT_FOUND)
-                    .body(Empty::new().map_err(|err| match err {}).boxed())
+                    .body(body)
                     .unwrap();
 
                 Poll::Ready(Ok(res))
             }
         }
     }
+}
+
+opaque_body! {
+    /// Response body for [`ServeDir`].
+    pub type ResponseBody = BoxBody<Bytes, io::Error>;
 }
 
 #[cfg(test)]
