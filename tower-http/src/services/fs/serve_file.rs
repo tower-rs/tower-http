@@ -30,10 +30,10 @@ impl ServeFile {
     pub fn new<P: AsRef<Path>>(path: P) -> Self {
         let guess = mime_guess::from_path(&path);
         let mime = guess
-            .first()
-            .and_then(|mime| HeaderValue::from_str(&mime.to_string()).ok())
+            .first_raw()
+            .map(|mime| HeaderValue::from_static(mime))
             .unwrap_or_else(|| {
-                HeaderValue::from_str(&mime::APPLICATION_OCTET_STREAM.to_string()).unwrap()
+                HeaderValue::from_str(mime::APPLICATION_OCTET_STREAM.as_ref()).unwrap()
             });
 
         let path = path.as_ref().to_owned();
@@ -48,9 +48,8 @@ impl ServeFile {
     /// Will panic if the mime type isn't a valid [header value].
     ///
     /// [header value]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html
-    pub fn new_with_mime<P: AsRef<Path>>(path: P, mime: Mime) -> Self {
-        let mime =
-            HeaderValue::from_str(&mime.to_string()).expect("mime isn't a valid header value");
+    pub fn new_with_mime<P: AsRef<Path>>(path: P, mime: &Mime) -> Self {
+        let mime = HeaderValue::from_str(mime.as_ref()).expect("mime isn't a valid header value");
         let path = path.as_ref().to_owned();
 
         Self { path, mime }
@@ -134,5 +133,6 @@ mod tests {
         let res = svc.oneshot(Request::new(Body::empty())).await.unwrap();
 
         assert_eq!(res.status(), StatusCode::NOT_FOUND);
+        assert!(res.headers().get(header::CONTENT_TYPE).is_none());
     }
 }

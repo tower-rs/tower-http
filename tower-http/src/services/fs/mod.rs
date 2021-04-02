@@ -70,11 +70,7 @@ fn response_from_io_error(
         io::ErrorKind::NotFound | io::ErrorKind::PermissionDenied => {
             let res = Response::builder()
                 .status(StatusCode::NOT_FOUND)
-                .body(
-                    Empty::new()
-                        .map_err(|_err: Infallible| unreachable!())
-                        .boxed(),
-                )
+                .body(Empty::new().map_err(|err| match err {}).boxed())
                 .unwrap();
 
             Ok(res)

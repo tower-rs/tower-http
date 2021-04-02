@@ -65,17 +65,17 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
         // build and validate the path
-        let path = req.uri().path().to_string();
+        let path = req.uri().path();
         let path = path.trim_start_matches('/');
         let mut full_path = self.base.clone();
         let mut valid = true;
         for seg in path.split('/') {
             if seg.starts_with("..") || seg.contains('\\') {
-                valid = false;
-                break;
-            } else {
-                full_path.push(seg);
+                return ResponseFuture {
+                    inner: Inner::Invalid,
+                };
             }
+            full_path.push(seg);
         }
 
         let inner = if valid {
@@ -94,10 +94,10 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
 
                 let guess = mime_guess::from_path(&full_path);
                 let mime = guess
-                    .first()
-                    .and_then(|mime| HeaderValue::from_str(&mime.to_string()).ok())
+                    .first_raw()
+                    .map(|mime| HeaderValue::from_static(mime))
                     .unwrap_or_else(|| {
-                        HeaderValue::from_str(&mime::APPLICATION_OCTET_STREAM.to_string()).unwrap()
+                        HeaderValue::from_str(mime::APPLICATION_OCTET_STREAM.as_ref()).unwrap()
                     });
 
                 let file = File::open(full_path).await?;
@@ -143,11 +143,7 @@ impl Future for ResponseFuture {
             Inner::Invalid => {
                 let res = Response::builder()
                     .status(StatusCode::NOT_FOUND)
-                    .body(
-                        Empty::new()
-                            .map_err(|_err: Infallible| unreachable!())
-                            .boxed(),
-                    )
+                    .body(Empty::new().map_err(|err| match err {}).boxed())
                     .unwrap();
 
                 Poll::Ready(Ok(res))
@@ -214,6 +210,7 @@ mod tests {
         let res = svc.oneshot(req).await.unwrap();
 
         assert_eq!(res.status(), StatusCode::NOT_FOUND);
+        assert!(res.headers().get(header::CONTENT_TYPE).is_none());
 
         let body = body_into_text(res.into_body()).await;
         assert!(body.is_empty());
