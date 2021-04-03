@@ -1,6 +1,54 @@
 //! Middleware that clones a value into each request's [extensions].
 //!
 //! [extensions]: https://docs.rs/http/latest/http/struct.Extensions.html
+//!
+//! # Example
+//!
+//! ```
+//! use tower_http::add_extension::AddExtensionLayer;
+//! use tower::{Service, ServiceExt, ServiceBuilder, service_fn};
+//! use http::{Request, Response};
+//! use hyper::Body;
+//! use std::{sync::Arc, convert::Infallible};
+//!
+//! # struct DatabaseConnectionPool;
+//! # impl DatabaseConnectionPool {
+//! #     fn new() -> DatabaseConnectionPool { DatabaseConnectionPool }
+//! # }
+//! #
+//! /// Shared state across all request handlers --- in this case, a pool of database connections.
+//! struct State {
+//!     pool: DatabaseConnectionPool,
+//! }
+//!
+//! async fn handle(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+//!     // Grab the state from the request extensions.
+//!     let state = req.extensions().get::<Arc<State>>().unwrap();
+//!
+//!     Ok(Response::new(Body::empty()))
+//! }
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! // Construct the shared state.
+//! let state = State {
+//!     pool: DatabaseConnectionPool::new(),
+//! };
+//!
+//! let mut service = ServiceBuilder::new()
+//!     // Share an `Arc<State>` with all requests.
+//!     .layer(AddExtensionLayer::new(Arc::new(state)))
+//!     .service(service_fn(handle));
+//!
+//! // Call the service.
+//! let response = service
+//!     .ready()
+//!     .await?
+//!     .call(Request::new(Body::empty()))
+//!     .await?;
+//! # Ok(())
+//! # }
+//! ```
 
 use http::Request;
 use std::task::{Context, Poll};
@@ -8,6 +56,8 @@ use tower_layer::Layer;
 use tower_service::Service;
 
 /// [`Layer`] for adding some shareable value to [request extensions].
+///
+/// See the [module docs](crate::add_extension) for more details.
 ///
 /// [request extensions]: https://docs.rs/http/latest/http/struct.Extensions.html
 #[derive(Clone, Copy, Debug)]
@@ -37,6 +87,8 @@ where
 }
 
 /// Middleware for adding some shareable value to [request extensions].
+///
+/// See the [module docs](crate::add_extension) for more details.
 ///
 /// [request extensions]: https://docs.rs/http/latest/http/struct.Extensions.html
 #[derive(Clone, Copy, Debug)]

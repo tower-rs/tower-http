@@ -1,4 +1,34 @@
 //! Service that redirects all requests.
+//!
+//! # Example
+//!
+//! Imagine that we run `example.com` and want to redirect all requests using `HTTP` to `HTTPS`.
+//! That can be done like so:
+//!
+//! ```rust
+//! use http::{Request, Uri, StatusCode};
+//! use hyper::Body;
+//! use tower::{Service, ServiceExt};
+//! use tower_http::services::Redirect;
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let uri: Uri = "https://example.com/".parse().unwrap();
+//! let mut service: Redirect<Body> = Redirect::permanent(uri);
+//!
+//! let request = Request::builder()
+//!     .uri("http://example.com")
+//!     .body(Body::empty())
+//!     .unwrap();
+//!
+//! let response = service.oneshot(request).await?;
+//!
+//! assert_eq!(response.status(), StatusCode::PERMANENT_REDIRECT);
+//! assert_eq!(response.headers()["location"], "https://example.com/");
+//! #
+//! # Ok(())
+//! # }
+//! ```
 
 use http::{header, HeaderValue, Response, StatusCode, Uri};
 use std::{
@@ -13,35 +43,7 @@ use tower_service::Service;
 
 /// Service that redirects all requests.
 ///
-/// # Example
-///
-/// Imagine that we run `example.com` and want to redirect all requests using `HTTP` to `HTTPS`.
-/// That can be done like so:
-///
-/// ```rust
-/// use http::{Request, Uri, StatusCode};
-/// use hyper::Body;
-/// use tower::{Service, ServiceExt};
-/// use tower_http::services::Redirect;
-///
-/// # #[tokio::main]
-/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let uri: Uri = "https://example.com/".parse().unwrap();
-/// let mut service: Redirect<Body> = Redirect::permanent(uri);
-///
-/// let request = Request::builder()
-///     .uri("http://example.com")
-///     .body(Body::empty())
-///     .unwrap();
-///
-/// let response = service.oneshot(request).await?;
-///
-/// assert_eq!(response.status(), StatusCode::PERMANENT_REDIRECT);
-/// assert_eq!(response.headers()["location"], "https://example.com/");
-/// #
-/// # Ok(())
-/// # }
-/// ```
+/// See the [module docs](crate::services::redirect) for more details.
 pub struct Redirect<ResBody> {
     status_code: StatusCode,
     location: HeaderValue,

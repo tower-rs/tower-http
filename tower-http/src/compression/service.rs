@@ -9,6 +9,8 @@ use tower_service::Service;
 ///
 /// This uses the `Accept-Encoding` header to pick an appropriate encoding and adds the
 /// `Content-Encoding` header to responses.
+///
+/// See the [module docs](crate::compression) for more details.
 #[derive(Clone, Copy)]
 pub struct Compression<S> {
     pub(crate) inner: S,

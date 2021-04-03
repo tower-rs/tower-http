@@ -25,17 +25,20 @@ tower-service = "0.3"
 # optional dependencies
 async-compression = { version = "0.3", optional = true, features = ["tokio"] }
 hyper = { version = "0.14", optional = true, default_features = false, features = ["stream"] }
+iri-string = { version = "0.3", optional = true }
 mime = { version = "0.3", optional = true, default_features = false }
 mime_guess = { version = "2", optional = true, default_features = false }
 tokio = { version = "1", optional = true, default_features = false }
 tokio-util = { version = "0.6", optional = true, default_features = false, features = ["io"] }
+tower = { version = "0.4.1", optional = true }
 
 [dev-dependencies]
+bytes = "1"
 flate2 = "1.0"
 futures = "0.3"
 hyper = { version = "0.14", features = ["full"] }
 tokio = { version = "1", features = ["full"] }
-tower = { version = "0.4", features = ["util", "retry", "make"] }
+tower = { version = "0.4.6", features = ["buffer", "util", "retry", "make"] }
 
 [features]
 default = []
@@ -44,6 +47,7 @@ full = [
     "compression",
     "compression-full",
     "decompression-full",
+    "follow-redirect",
     "fs",
     "map-request-body",
     "map-response-body",
@@ -54,6 +58,7 @@ full = [
 ]
 
 add-extension = []
+follow-redirect = ["iri-string", "tower/util"]
 fs = ["tokio/fs", "tokio-util/io", "mime_guess", "mime"]
 map-request-body = []
 map-response-body = []
