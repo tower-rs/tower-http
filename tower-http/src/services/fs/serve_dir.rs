@@ -1,7 +1,7 @@
 use super::AsyncReadBody;
 use bytes::Bytes;
 use futures_util::ready;
-use http::{header, HeaderValue, Request, Response, StatusCode};
+use http::{header, HeaderValue, Request, Response, StatusCode, Uri};
 use http_body::{combinators::BoxBody, Body, Empty};
 use std::{
     future::Future,
@@ -77,16 +77,17 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
         }
 
         let append_index_html_on_directories = self.append_index_html_on_directories;
-        let open_file_future = Box::pin(async move {
-            if append_index_html_on_directories {
-                let is_dir = tokio::fs::metadata(full_path.clone())
-                    .await
-                    .map(|m| m.is_dir())
-                    .unwrap_or(false);
+        let uri = req.uri().clone();
 
-                if is_dir {
-                    full_path.push("index.html");
+        let open_file_future = Box::pin(async move {
+            if !uri.path().ends_with('/') {
+                if is_dir(&full_path).await {
+                    let location =
+                        HeaderValue::from_str(&append_slash_on_path(uri).to_string()).unwrap();
+                    return Ok(Output::Redirect(location));
                 }
+            } else if append_index_html_on_directories && is_dir(&full_path).await {
+                full_path.push("index.html");
             }
 
             let guess = mime_guess::from_path(&full_path);
@@ -98,7 +99,7 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
                 });
 
             let file = File::open(full_path).await?;
-            Ok((file, mime))
+            Ok(Output::File(file, mime))
         });
 
         ResponseFuture {
@@ -107,8 +108,50 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
     }
 }
 
+async fn is_dir(full_path: &Path) -> bool {
+    tokio::fs::metadata(full_path)
+        .await
+        .map(|m| m.is_dir())
+        .unwrap_or(false)
+}
+
+fn append_slash_on_path(uri: Uri) -> Uri {
+    let http::uri::Parts {
+        scheme,
+        authority,
+        path_and_query,
+        ..
+    } = uri.into_parts();
+
+    let mut builder = Uri::builder();
+    if let Some(scheme) = scheme {
+        builder = builder.scheme(scheme);
+    }
+    if let Some(authority) = authority {
+        builder = builder.authority(authority);
+    }
+    if let Some(path_and_query) = path_and_query {
+        if let Some(query) = path_and_query.query() {
+            builder = builder.path_and_query(format!("{}/?{}", path_and_query.path(), query));
+        } else {
+            builder = builder.path_and_query(format!("{}/", path_and_query.path()));
+        }
+    } else {
+        builder = builder.path_and_query("/");
+    }
+
+    builder.build().unwrap()
+}
+
+enum Output {
+    File(File, HeaderValue),
+    Redirect(HeaderValue),
+}
+
+type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + Sync + 'static>>;
+
 enum Inner {
-    Valid(Pin<Box<dyn Future<Output = io::Result<(File, HeaderValue)>> + Send + Sync + 'static>>),
+    Valid(BoxFuture<io::Result<Output>>),
     Invalid,
 }
 
@@ -124,7 +167,17 @@ impl Future for ResponseFuture {
         match &mut self.inner {
             Inner::Valid(open_file_future) => {
                 let (file, mime) = match ready!(Pin::new(open_file_future).poll(cx)) {
-                    Ok(inner) => inner,
+                    Ok(Output::File(file, mime)) => (file, mime),
+
+                    Ok(Output::Redirect(location)) => {
+                        let res = Response::builder()
+                            .header(http::header::LOCATION, location)
+                            .status(StatusCode::PERMANENT_REDIRECT)
+                            .body(empty_body())
+                            .unwrap();
+                        return Poll::Ready(Ok(res));
+                    }
+
                     Err(err) => {
                         return Poll::Ready(
                             super::response_from_io_error(err).map(|res| res.map(ResponseBody)),
@@ -140,18 +193,20 @@ impl Future for ResponseFuture {
                 Poll::Ready(Ok(res))
             }
             Inner::Invalid => {
-                let body = Empty::new().map_err(|err| match err {}).boxed();
-                let body = ResponseBody(body);
-
                 let res = Response::builder()
                     .status(StatusCode::NOT_FOUND)
-                    .body(body)
+                    .body(empty_body())
                     .unwrap();
 
                 Poll::Ready(Ok(res))
             }
         }
     }
+}
+
+fn empty_body() -> ResponseBody {
+    let body = Empty::new().map_err(|err| match err {}).boxed();
+    ResponseBody(body)
 }
 
 opaque_body! {
@@ -223,16 +278,25 @@ mod tests {
         assert!(body.is_empty());
     }
 
-    async fn body_into_text<B>(mut body: B) -> String
+    #[tokio::test]
+    async fn redirect_to_trailing_slash_on_dir() {
+        let svc = ServeDir::new(".");
+
+        let req = Request::builder().uri("/src").body(Body::empty()).unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::PERMANENT_REDIRECT);
+
+        let location = &res.headers()[http::header::LOCATION];
+        assert_eq!(location, "/src/");
+    }
+
+    async fn body_into_text<B>(body: B) -> String
     where
         B: HttpBody<Data = bytes::Bytes> + Unpin,
         B::Error: std::fmt::Debug,
     {
-        let mut buf = String::new();
-        while let Some(chunk) = body.data().await {
-            let chunk = chunk.unwrap();
-            buf.push_str(&String::from_utf8(chunk.to_vec()).unwrap());
-        }
-        buf
+        let bytes = hyper::body::to_bytes(body).await.unwrap();
+        String::from_utf8(bytes.to_vec()).unwrap()
     }
 }
