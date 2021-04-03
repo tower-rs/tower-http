@@ -1,7 +1,7 @@
 //! Tools for classifying responses as either success or failure.
 
 use http::{HeaderMap, Request, Response, StatusCode};
-use std::{convert::Infallible, marker::PhantomData};
+use std::{convert::Infallible, fmt, marker::PhantomData};
 
 /// Trait for producing response classifiers from a request.
 ///
@@ -187,28 +187,56 @@ impl ServerErrorsAsFailures {
     /// Returns a [`MakeClassifier`] that produces `ServerErrorsAsFailures`.
     ///
     /// This is a convenience function that simply calls `SharedClassifier::new`.
-    pub fn make_classifier<E>() -> SharedClassifier<Self> {
+    pub fn make_classifier<E>() -> SharedClassifier<Self>
+    where
+        E: fmt::Display,
+    {
         SharedClassifier::new::<E>(Self::new())
     }
 }
 
-impl<E> ClassifyResponse<E> for ServerErrorsAsFailures {
-    type FailureClass = StatusCode;
-    type ClassifyEos = NeverClassifyEos<StatusCode>;
+impl<E> ClassifyResponse<E> for ServerErrorsAsFailures
+where
+    E: fmt::Display,
+{
+    type FailureClass = StatusCodeOrError;
+    type ClassifyEos = NeverClassifyEos<Self::FailureClass>;
 
     fn classify_response<B>(
         self,
         res: &Response<B>,
     ) -> ClassifiedResponse<Self::FailureClass, Self::ClassifyEos> {
         if res.status().is_server_error() {
-            ClassifiedResponse::Ready(Err(res.status()))
+            ClassifiedResponse::Ready(Err(StatusCodeOrError::StatusCode(res.status())))
         } else {
             ClassifiedResponse::Ready(Ok(()))
         }
     }
 
-    fn classify_error(self, _error: &E) -> Self::FailureClass {
-        StatusCode::INTERNAL_SERVER_ERROR
+    fn classify_error(self, error: &E) -> Self::FailureClass {
+        StatusCodeOrError::Error(error.to_string())
+    }
+}
+
+/// The failure class used by [`ServerErrorsAsFailures`].
+#[derive(Debug, Clone)]
+pub enum StatusCodeOrError {
+    /// A failure was classified as a status code.
+    StatusCode(StatusCode),
+    /// An was encountered.
+    ///
+    /// As [`ClassifyResponse::classify_error`] receives a reference to a generic type,
+    /// [`ServerErrorsAsFailures`] requires its type to implement [`fmt::Display`] and uses that
+    /// representation for this variant.
+    Error(String),
+}
+
+impl fmt::Display for StatusCodeOrError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StatusCodeOrError::StatusCode(status) => status.fmt(f),
+            StatusCodeOrError::Error(error) => write!(f, "Error: {}", error),
+        }
     }
 }
 
@@ -239,13 +267,19 @@ impl GrpcErrorsAsFailures {
     /// Returns a [`MakeClassifier`] that produces `GrpcErrorsAsFailures`.
     ///
     /// This is a convenience function that simply calls `SharedClassifier::new`.
-    pub fn make_classifier<E>() -> SharedClassifier<Self> {
+    pub fn make_classifier<E>() -> SharedClassifier<Self>
+    where
+        E: fmt::Display,
+    {
         SharedClassifier::new::<E>(Self::new())
     }
 }
 
-impl<E> ClassifyResponse<E> for GrpcErrorsAsFailures {
-    type FailureClass = i32;
+impl<E> ClassifyResponse<E> for GrpcErrorsAsFailures
+where
+    E: fmt::Display,
+{
+    type FailureClass = GrpcCodeOrError;
     type ClassifyEos = GrpcEosErrorsAsFailures;
 
     fn classify_response<B>(
@@ -259,9 +293,8 @@ impl<E> ClassifyResponse<E> for GrpcErrorsAsFailures {
         }
     }
 
-    fn classify_error(self, _error: &E) -> Self::FailureClass {
-        // https://grpc.github.io/grpc/core/md_doc_statuscodes.html
-        13
+    fn classify_error(self, error: &E) -> Self::FailureClass {
+        GrpcCodeOrError::Error(error.to_string())
     }
 }
 
@@ -271,20 +304,44 @@ pub struct GrpcEosErrorsAsFailures {
     _priv: (),
 }
 
-impl<E> ClassifyEos<E> for GrpcEosErrorsAsFailures {
-    type FailureClass = i32;
+impl<E> ClassifyEos<E> for GrpcEosErrorsAsFailures
+where
+    E: fmt::Display,
+{
+    type FailureClass = GrpcCodeOrError;
 
-    fn classify_eos(self, trailers: Option<&HeaderMap>) -> Result<(), i32> {
+    fn classify_eos(self, trailers: Option<&HeaderMap>) -> Result<(), GrpcCodeOrError> {
         trailers.and_then(classify_grpc_metadata).unwrap_or(Ok(()))
     }
 
-    fn classify_error(self, _error: &E) -> Self::FailureClass {
-        // https://grpc.github.io/grpc/core/md_doc_statuscodes.html
-        13
+    fn classify_error(self, error: &E) -> Self::FailureClass {
+        GrpcCodeOrError::Error(error.to_string())
     }
 }
 
-fn classify_grpc_metadata(headers: &HeaderMap) -> Option<Result<(), i32>> {
+/// The failure class used by [`GrpcErrorsAsFailures`] and [`GrpcEosErrorsAsFailures`].
+#[derive(Debug, Clone)]
+pub enum GrpcCodeOrError {
+    /// A failure was classified as a gRPC code.
+    Code(i32),
+    /// An was encountered.
+    ///
+    /// As [`ClassifyResponse::classify_error`] receives a reference to a generic type,
+    /// [`GrpcEosErrorsAsFailures`] requires its type to implement [`fmt::Display`] and uses that
+    /// representation for this variant.
+    Error(String),
+}
+
+impl fmt::Display for GrpcCodeOrError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GrpcCodeOrError::Code(status) => status.fmt(f),
+            GrpcCodeOrError::Error(error) => write!(f, "Error: {}", error),
+        }
+    }
+}
+
+pub(crate) fn classify_grpc_metadata(headers: &HeaderMap) -> Option<Result<(), GrpcCodeOrError>> {
     let status = headers.get("grpc-status")?;
     let status = status.to_str().ok()?;
     let status = status.parse::<i32>().ok()?;
@@ -292,7 +349,7 @@ fn classify_grpc_metadata(headers: &HeaderMap) -> Option<Result<(), i32>> {
     if status == 0 {
         Some(Ok(()))
     } else {
-        Some(Err(status))
+        Some(Err(GrpcCodeOrError::Code(status)))
     }
 }
 
