@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 
 use super::{body::BodyInner, CompressionBody, Encoding};
-use crate::compression_utils::{BoxError, WrapBody};
+use crate::compression_utils::{supports_transparent_compression, BoxError, WrapBody};
 use futures_util::ready;
 use http::{header, HeaderMap, HeaderValue, Response};
 use http_body::Body;
@@ -65,28 +65,4 @@ where
         let res = Response::from_parts(parts, body);
         Poll::Ready(Ok(res))
     }
-}
-
-#[allow(clippy::clippy::needless_bool)]
-fn supports_transparent_compression(response_headers: &HeaderMap) -> bool {
-    let content_type = if let Some(content_type) = content_type(response_headers) {
-        content_type
-    } else {
-        return true;
-    };
-
-    if content_type == "application/grpc" {
-        // grpc doesn't support transparent compression and instead has its compression own
-        // algorithm that implementations can use
-        // https://grpc.github.io/grpc/core/md_doc_compression.html
-        false
-    } else {
-        // for now just say that all non-grpc requests support compression
-        true
-    }
-}
-
-fn content_type(headers: &HeaderMap) -> Option<&str> {
-    let content_type = headers.get(http::header::CONTENT_TYPE)?;
-    content_type.to_str().ok()
 }
