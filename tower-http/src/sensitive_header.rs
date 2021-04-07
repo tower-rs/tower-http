@@ -9,7 +9,7 @@
 //! use tower::{Service, ServiceExt, ServiceBuilder, service_fn};
 //! use http::{Request, Response, header::AUTHORIZATION};
 //! use hyper::Body;
-//! use std::convert::Infallible;
+//! use std::{iter::once, convert::Infallible};
 //!
 //! async fn handle(req: Request<Body>) -> Result<Response<Body>, Infallible> {
 //!     // ...
@@ -23,7 +23,10 @@
 //!     //
 //!     // `SetSensitiveHeaderLayer` will mark the header as sensitive on both the
 //!     // request and response.
-//!     .layer(SetSensitiveHeaderLayer::new(AUTHORIZATION))
+//!     //
+//!     // The middleware is constructed from an iterator of headers to easily mark
+//!     // multiple headers at once.
+//!     .layer(SetSensitiveHeaderLayer::new(once(AUTHORIZATION)))
 //!     .service(service_fn(handle));
 //!
 //! // Call the service.
@@ -47,7 +50,7 @@ use std::{
 use tower_layer::Layer;
 use tower_service::Service;
 
-/// Mark a header as [sensitive] on both requests and responses.
+/// Mark headers as [sensitive] on both requests and responses.
 ///
 /// Produces [`SetSensitiveHeader`] services.
 ///
@@ -83,14 +86,14 @@ where
     }
 }
 
-/// Mark a header as [sensitive] on both requests and responses.
+/// Mark headers as [sensitive] on both requests and responses.
 ///
 /// See the [module docs](crate::sensitive_header) for more details.
 ///
 /// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
 pub type SetSensitiveHeader<S, I> = SetSensitiveRequestHeader<SetSensitiveResponseHeader<S, I>, I>;
 
-/// Mark a request header as [sensitive].
+/// Mark request headers as [sensitive].
 ///
 /// Produces [`SetSensitiveRequestHeader`] services.
 ///
@@ -126,7 +129,7 @@ where
     }
 }
 
-/// Mark a request header as [sensitive].
+/// Mark request headers as [sensitive].
 ///
 /// See the [module docs](crate::sensitive_header) for more details.
 ///
@@ -184,7 +187,7 @@ where
     }
 }
 
-/// Mark a response header as [sensitive].
+/// Mark response headers as [sensitive].
 ///
 /// Produces [`SetSensitiveResponseHeader`] services.
 ///
@@ -220,7 +223,7 @@ where
     }
 }
 
-/// Mark a response header as [sensitive].
+/// Mark response headers as [sensitive].
 ///
 /// See the [module docs](crate::sensitive_header) for more details.
 ///
