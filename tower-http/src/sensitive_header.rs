@@ -55,24 +55,30 @@ use tower_service::Service;
 ///
 /// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
 #[derive(Clone, Debug)]
-pub struct SetSensitiveHeaderLayer {
-    header: HeaderName,
+pub struct SetSensitiveHeaderLayer<I> {
+    headers: I,
 }
 
-impl SetSensitiveHeaderLayer {
+impl<I> SetSensitiveHeaderLayer<I> {
     /// Create a new [`SetSensitiveHeaderLayer`].
-    pub fn new(header: HeaderName) -> Self {
-        Self { header }
+    pub fn new(headers: I) -> Self
+    where
+        I: IntoIterator<Item = HeaderName> + Clone,
+    {
+        Self { headers }
     }
 }
 
-impl<S> Layer<S> for SetSensitiveHeaderLayer {
-    type Service = SetSensitiveHeader<S>;
+impl<S, I> Layer<S> for SetSensitiveHeaderLayer<I>
+where
+    I: IntoIterator<Item = HeaderName> + Clone,
+{
+    type Service = SetSensitiveHeader<S, I>;
 
     fn layer(&self, inner: S) -> Self::Service {
         SetSensitiveRequestHeader::new(
-            SetSensitiveResponseHeader::new(inner, self.header.clone()),
-            self.header.clone(),
+            SetSensitiveResponseHeader::new(inner, self.headers.clone()),
+            self.headers.clone(),
         )
     }
 }
@@ -82,7 +88,7 @@ impl<S> Layer<S> for SetSensitiveHeaderLayer {
 /// See the [module docs](crate::sensitive_header) for more details.
 ///
 /// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
-pub type SetSensitiveHeader<S> = SetSensitiveRequestHeader<SetSensitiveResponseHeader<S>>;
+pub type SetSensitiveHeader<S, I> = SetSensitiveRequestHeader<SetSensitiveResponseHeader<S, I>, I>;
 
 /// Mark a request header as [sensitive].
 ///
@@ -92,24 +98,30 @@ pub type SetSensitiveHeader<S> = SetSensitiveRequestHeader<SetSensitiveResponseH
 ///
 /// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
 #[derive(Clone, Debug)]
-pub struct SetSensitiveRequestHeaderLayer {
-    header: HeaderName,
+pub struct SetSensitiveRequestHeaderLayer<I> {
+    headers: I,
 }
 
-impl SetSensitiveRequestHeaderLayer {
+impl<I> SetSensitiveRequestHeaderLayer<I> {
     /// Create a new [`SetSensitiveRequestHeaderLayer`].
-    pub fn new(header: HeaderName) -> Self {
-        Self { header }
+    pub fn new(headers: I) -> Self
+    where
+        I: IntoIterator<Item = HeaderName>,
+    {
+        Self { headers }
     }
 }
 
-impl<S> Layer<S> for SetSensitiveRequestHeaderLayer {
-    type Service = SetSensitiveRequestHeader<S>;
+impl<S, I> Layer<S> for SetSensitiveRequestHeaderLayer<I>
+where
+    I: Clone,
+{
+    type Service = SetSensitiveRequestHeader<S, I>;
 
     fn layer(&self, inner: S) -> Self::Service {
         SetSensitiveRequestHeader {
             inner,
-            header: self.header.clone(),
+            headers: self.headers.clone(),
         }
     }
 }
@@ -120,15 +132,18 @@ impl<S> Layer<S> for SetSensitiveRequestHeaderLayer {
 ///
 /// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
 #[derive(Clone, Debug)]
-pub struct SetSensitiveRequestHeader<S> {
+pub struct SetSensitiveRequestHeader<S, I> {
     inner: S,
-    header: HeaderName,
+    headers: I,
 }
 
-impl<S> SetSensitiveRequestHeader<S> {
+impl<S, I> SetSensitiveRequestHeader<S, I> {
     /// Create a new [`SetSensitiveRequestHeader`] service.
-    pub fn new(inner: S, header: HeaderName) -> Self {
-        Self { inner, header }
+    pub fn new(inner: S, headers: I) -> Self
+    where
+        I: IntoIterator<Item = HeaderName>,
+    {
+        Self { inner, headers }
     }
 
     define_inner_service_accessors!();
@@ -136,14 +151,18 @@ impl<S> SetSensitiveRequestHeader<S> {
     /// Returns a new [`Layer`] that wraps services with a `SetSensitiveRequestHeader` middleware.
     ///
     /// [`Layer`]: tower_layer::Layer
-    pub fn layer(header: HeaderName) -> SetSensitiveRequestHeaderLayer {
-        SetSensitiveRequestHeaderLayer::new(header)
+    pub fn layer(headers: I) -> SetSensitiveRequestHeaderLayer<I>
+    where
+        I: IntoIterator<Item = HeaderName>,
+    {
+        SetSensitiveRequestHeaderLayer::new(headers)
     }
 }
 
-impl<ReqBody, ResBody, S> Service<Request<ReqBody>> for SetSensitiveRequestHeader<S>
+impl<ReqBody, ResBody, S, I> Service<Request<ReqBody>> for SetSensitiveRequestHeader<S, I>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
+    I: IntoIterator<Item = HeaderName> + Clone,
 {
     type Response = S::Response;
     type Error = S::Error;
@@ -155,8 +174,10 @@ where
     }
 
     fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
-        if let Some(value) = req.headers_mut().get_mut(&self.header) {
-            value.set_sensitive(true);
+        for header in self.headers.clone() {
+            if let Some(value) = req.headers_mut().get_mut(&header) {
+                value.set_sensitive(true);
+            }
         }
 
         self.inner.call(req)
@@ -171,24 +192,30 @@ where
 ///
 /// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
 #[derive(Clone, Debug)]
-pub struct SetSensitiveResponseHeaderLayer {
-    header: HeaderName,
+pub struct SetSensitiveResponseHeaderLayer<I> {
+    headers: I,
 }
 
-impl SetSensitiveResponseHeaderLayer {
+impl<I> SetSensitiveResponseHeaderLayer<I> {
     /// Create a new [`SetSensitiveResponseHeaderLayer`].
-    pub fn new(header: HeaderName) -> Self {
-        Self { header }
+    pub fn new(headers: I) -> Self
+    where
+        I: IntoIterator<Item = HeaderName>,
+    {
+        Self { headers }
     }
 }
 
-impl<S> Layer<S> for SetSensitiveResponseHeaderLayer {
-    type Service = SetSensitiveResponseHeader<S>;
+impl<S, I> Layer<S> for SetSensitiveResponseHeaderLayer<I>
+where
+    I: Clone,
+{
+    type Service = SetSensitiveResponseHeader<S, I>;
 
     fn layer(&self, inner: S) -> Self::Service {
         SetSensitiveResponseHeader {
             inner,
-            header: self.header.clone(),
+            headers: self.headers.clone(),
         }
     }
 }
@@ -199,15 +226,18 @@ impl<S> Layer<S> for SetSensitiveResponseHeaderLayer {
 ///
 /// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
 #[derive(Clone, Debug)]
-pub struct SetSensitiveResponseHeader<S> {
+pub struct SetSensitiveResponseHeader<S, I> {
     inner: S,
-    header: HeaderName,
+    headers: I,
 }
 
-impl<S> SetSensitiveResponseHeader<S> {
+impl<S, I> SetSensitiveResponseHeader<S, I> {
     /// Create a new [`SetSensitiveResponseHeader`] service.
-    pub fn new(inner: S, header: HeaderName) -> Self {
-        Self { inner, header }
+    pub fn new(inner: S, headers: I) -> Self
+    where
+        I: IntoIterator<Item = HeaderName>,
+    {
+        Self { inner, headers }
     }
 
     define_inner_service_accessors!();
@@ -215,18 +245,22 @@ impl<S> SetSensitiveResponseHeader<S> {
     /// Returns a new [`Layer`] that wraps services with a `SetSensitiveResponseHeader` middleware.
     ///
     /// [`Layer`]: tower_layer::Layer
-    pub fn layer(header: HeaderName) -> SetSensitiveResponseHeaderLayer {
-        SetSensitiveResponseHeaderLayer::new(header)
+    pub fn layer(headers: I) -> SetSensitiveResponseHeaderLayer<I>
+    where
+        I: IntoIterator<Item = HeaderName>,
+    {
+        SetSensitiveResponseHeaderLayer::new(headers)
     }
 }
 
-impl<ReqBody, ResBody, S> Service<Request<ReqBody>> for SetSensitiveResponseHeader<S>
+impl<ReqBody, ResBody, S, I> Service<Request<ReqBody>> for SetSensitiveResponseHeader<S, I>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
+    I: IntoIterator<Item = HeaderName> + Clone,
 {
     type Response = S::Response;
     type Error = S::Error;
-    type Future = SetSensitiveResponseHeaderResponseFuture<S::Future>;
+    type Future = SetSensitiveResponseHeaderResponseFuture<S::Future, I>;
 
     #[inline]
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -236,7 +270,7 @@ where
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
         SetSensitiveResponseHeaderResponseFuture {
             future: self.inner.call(req),
-            header: self.header.clone(),
+            headers: Some(self.headers.clone()),
         }
     }
 }
@@ -244,15 +278,16 @@ where
 /// Response future for [`SetSensitiveResponseHeader`].
 #[pin_project]
 #[derive(Debug)]
-pub struct SetSensitiveResponseHeaderResponseFuture<F> {
+pub struct SetSensitiveResponseHeaderResponseFuture<F, I> {
     #[pin]
     future: F,
-    header: HeaderName,
+    headers: Option<I>,
 }
 
-impl<F, ResBody, E> Future for SetSensitiveResponseHeaderResponseFuture<F>
+impl<F, ResBody, I, E> Future for SetSensitiveResponseHeaderResponseFuture<F, I>
 where
     F: Future<Output = Result<Response<ResBody>, E>>,
+    I: IntoIterator<Item = HeaderName>,
 {
     type Output = F::Output;
 
@@ -260,8 +295,11 @@ where
         let this = self.project();
         let mut res = ready!(this.future.poll(cx)?);
 
-        if let Some(value) = res.headers_mut().get_mut(&*this.header) {
-            value.set_sensitive(true);
+        let headers = this.headers.take().unwrap();
+        for header in headers.into_iter() {
+            if let Some(value) = res.headers_mut().get_mut(&header) {
+                value.set_sensitive(true);
+            }
         }
 
         Poll::Ready(Ok(res))

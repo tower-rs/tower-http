@@ -10,6 +10,7 @@ use proto::{
 };
 use std::{
     collections::HashMap,
+    iter::once,
     net::SocketAddr,
     net::TcpListener,
     sync::{Arc, RwLock},
@@ -135,7 +136,7 @@ async fn serve_forever(listener: TcpListener) -> Result<(), Box<dyn std::error::
         // Compress responses
         .layer(CompressionLayer::new())
         // Mark the `Authorization` header as sensitive so it doesn't show in logs
-        .layer(SetSensitiveHeaderLayer::new(header::AUTHORIZATION))
+        .layer(SetSensitiveHeaderLayer::new(once(header::AUTHORIZATION)))
         // Build our final `Service`
         .service(service);
 
