@@ -7,7 +7,7 @@ This examples contains a simple key/value store with a gRPC API and client built
 Running a server:
 
 ```
-cargo run --bin tonic-key-value-store -- -p 3000 server
+RUST_LOG=tower_http=trace cargo run --bin tonic-key-value-store -- -p 3000 server
 ```
 
 Setting values:
