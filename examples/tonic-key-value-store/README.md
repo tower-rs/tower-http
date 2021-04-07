@@ -13,11 +13,11 @@ RUST_LOG=tower_http=trace cargo run --bin tonic-key-value-store -- -p 3000 serve
 Setting values:
 
 ```
-echo "Hello, World" | cargo run --bin tonic-key-value-store -- -p 3000 set -k foo
+echo "Hello, World" | RUST_LOG=tower_http=trace cargo run --bin tonic-key-value-store -- -p 3000 set -k foo
 ```
 
 Getting values:
 
 ```
-cargo run --bin tonic-key-value-store -- -p 3000 get -k foo
+RUST_LOG=tower_http=trace cargo run --bin tonic-key-value-store -- -p 3000 get -k foo
 ```
