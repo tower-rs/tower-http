@@ -66,7 +66,7 @@ impl<I> SetSensitiveHeaderLayer<I> {
     /// Create a new [`SetSensitiveHeaderLayer`].
     pub fn new(headers: I) -> Self
     where
-        I: IntoIterator<Item = HeaderName> + Clone,
+        for<'a> &'a I: IntoIterator<Item = &'a HeaderName>,
     {
         Self { headers }
     }
@@ -74,7 +74,8 @@ impl<I> SetSensitiveHeaderLayer<I> {
 
 impl<S, I> Layer<S> for SetSensitiveHeaderLayer<I>
 where
-    I: IntoIterator<Item = HeaderName> + Clone,
+    I: Clone,
+    for<'a> &'a I: IntoIterator<Item = &'a HeaderName>,
 {
     type Service = SetSensitiveHeader<S, I>;
 
@@ -109,7 +110,7 @@ impl<I> SetSensitiveRequestHeaderLayer<I> {
     /// Create a new [`SetSensitiveRequestHeaderLayer`].
     pub fn new(headers: I) -> Self
     where
-        I: IntoIterator<Item = HeaderName>,
+        for<'a> &'a I: IntoIterator<Item = &'a HeaderName>,
     {
         Self { headers }
     }
@@ -144,7 +145,7 @@ impl<S, I> SetSensitiveRequestHeader<S, I> {
     /// Create a new [`SetSensitiveRequestHeader`] service.
     pub fn new(inner: S, headers: I) -> Self
     where
-        I: IntoIterator<Item = HeaderName>,
+        for<'a> &'a I: IntoIterator<Item = &'a HeaderName>,
     {
         Self { inner, headers }
     }
@@ -156,7 +157,7 @@ impl<S, I> SetSensitiveRequestHeader<S, I> {
     /// [`Layer`]: tower_layer::Layer
     pub fn layer(headers: I) -> SetSensitiveRequestHeaderLayer<I>
     where
-        I: IntoIterator<Item = HeaderName>,
+        for<'a> &'a I: IntoIterator<Item = &'a HeaderName>,
     {
         SetSensitiveRequestHeaderLayer::new(headers)
     }
@@ -165,7 +166,7 @@ impl<S, I> SetSensitiveRequestHeader<S, I> {
 impl<ReqBody, ResBody, S, I> Service<Request<ReqBody>> for SetSensitiveRequestHeader<S, I>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
-    I: IntoIterator<Item = HeaderName> + Clone,
+    for<'a> &'a I: IntoIterator<Item = &'a HeaderName>,
 {
     type Response = S::Response;
     type Error = S::Error;
@@ -177,8 +178,8 @@ where
     }
 
     fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
-        for header in self.headers.clone() {
-            if let Some(value) = req.headers_mut().get_mut(&header) {
+        for header in &self.headers {
+            if let Some(value) = req.headers_mut().get_mut(header) {
                 value.set_sensitive(true);
             }
         }
@@ -203,7 +204,7 @@ impl<I> SetSensitiveResponseHeaderLayer<I> {
     /// Create a new [`SetSensitiveResponseHeaderLayer`].
     pub fn new(headers: I) -> Self
     where
-        I: IntoIterator<Item = HeaderName>,
+        for<'a> &'a I: IntoIterator<Item = &'a HeaderName>,
     {
         Self { headers }
     }
@@ -238,7 +239,7 @@ impl<S, I> SetSensitiveResponseHeader<S, I> {
     /// Create a new [`SetSensitiveResponseHeader`] service.
     pub fn new(inner: S, headers: I) -> Self
     where
-        I: IntoIterator<Item = HeaderName>,
+        for<'a> &'a I: IntoIterator<Item = &'a HeaderName> + Clone,
     {
         Self { inner, headers }
     }
@@ -250,7 +251,7 @@ impl<S, I> SetSensitiveResponseHeader<S, I> {
     /// [`Layer`]: tower_layer::Layer
     pub fn layer(headers: I) -> SetSensitiveResponseHeaderLayer<I>
     where
-        I: IntoIterator<Item = HeaderName>,
+        for<'a> &'a I: IntoIterator<Item = &'a HeaderName> + Clone,
     {
         SetSensitiveResponseHeaderLayer::new(headers)
     }
@@ -259,7 +260,8 @@ impl<S, I> SetSensitiveResponseHeader<S, I> {
 impl<ReqBody, ResBody, S, I> Service<Request<ReqBody>> for SetSensitiveResponseHeader<S, I>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
-    I: IntoIterator<Item = HeaderName> + Clone,
+    I: Clone,
+    for<'a> &'a I: IntoIterator<Item = &'a HeaderName>,
 {
     type Response = S::Response;
     type Error = S::Error;
@@ -290,7 +292,7 @@ pub struct SetSensitiveResponseHeaderResponseFuture<F, I> {
 impl<F, ResBody, I, E> Future for SetSensitiveResponseHeaderResponseFuture<F, I>
 where
     F: Future<Output = Result<Response<ResBody>, E>>,
-    I: IntoIterator<Item = HeaderName>,
+    for<'a> &'a I: IntoIterator<Item = &'a HeaderName>,
 {
     type Output = F::Output;
 
@@ -300,7 +302,7 @@ where
 
         let headers = this.headers.take().unwrap();
         for header in headers.into_iter() {
-            if let Some(value) = res.headers_mut().get_mut(&header) {
+            if let Some(value) = res.headers_mut().get_mut(header) {
                 value.set_sensitive(true);
             }
         }
