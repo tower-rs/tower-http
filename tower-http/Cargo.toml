@@ -50,6 +50,7 @@ full = [
     "map-response-body",
     "propagate-header",
     "redirect",
+    "routing",
     "sensitive-header",
     "set-header",
 ]
@@ -60,6 +61,7 @@ map-request-body = []
 map-response-body = []
 propagate-header = []
 redirect = []
+routing = []
 sensitive-header = []
 set-header = []
 
