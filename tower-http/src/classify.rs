@@ -223,7 +223,7 @@ where
 pub enum StatusCodeOrError {
     /// A failure was classified as a status code.
     StatusCode(StatusCode),
-    /// An was encountered.
+    /// An error was encountered.
     ///
     /// As [`ClassifyResponse::classify_error`] receives a reference to a generic type,
     /// [`ServerErrorsAsFailures`] requires its type to implement [`fmt::Display`] and uses that
@@ -324,7 +324,7 @@ where
 pub enum GrpcCodeOrError {
     /// A failure was classified as a gRPC code.
     Code(i32),
-    /// An was encountered.
+    /// An error was encountered.
     ///
     /// As [`ClassifyResponse::classify_error`] receives a reference to a generic type,
     /// [`GrpcEosErrorsAsFailures`] requires its type to implement [`fmt::Display`] and uses that
