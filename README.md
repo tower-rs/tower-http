@@ -29,6 +29,7 @@ These are the middlewares included in this crate:
 - `SetResponseHeader`: Set a header on the response.
 - `SetSensitiveRequestHeader`: Marks a given request header as [sensitive].
 - `SetSensitiveResponseHeader`: Marks a given response header as [sensitive].
+- `Trace`: High level logging of requests and responses.
 
 Middlewares uses the [`http`] crate as the HTTP interface so they're compatible with any library or framework that also uses [`http`]. For example hyper and actix.
 

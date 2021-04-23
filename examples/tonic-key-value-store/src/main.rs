@@ -21,8 +21,11 @@ use tonic::{async_trait, body::BoxBody, transport::Channel, Code, Request, Respo
 use tower::{make::Shared, ServiceBuilder};
 use tower::{BoxError, Service};
 use tower_http::{
-    compression::CompressionLayer, decompression::DecompressionLayer,
-    sensitive_header::SetSensitiveHeaderLayer, set_header::SetRequestHeaderLayer,
+    compression::CompressionLayer,
+    decompression::DecompressionLayer,
+    sensitive_header::SetSensitiveHeaderLayer,
+    set_header::SetRequestHeaderLayer,
+    trace::{DefaultMakeSpan, TraceLayer},
 };
 
 mod proto {
@@ -136,6 +139,10 @@ async fn serve_forever(listener: TcpListener) -> Result<(), Box<dyn std::error::
         .layer(CompressionLayer::new())
         // Mark the `Authorization` header as sensitive so it doesn't show in logs
         .layer(SetSensitiveHeaderLayer::new(header::AUTHORIZATION))
+        // Log all requests and responses
+        .layer(
+            TraceLayer::new_for_grpc().make_span_with(DefaultMakeSpan::new().include_headers(true)),
+        )
         // Build our final `Service`
         .service(service);
 
@@ -222,6 +229,10 @@ async fn make_client(
             header::USER_AGENT,
             HeaderValue::from_static("tonic-key-value-store"),
         ))
+        // Log all requests and responses
+        .layer(
+            TraceLayer::new_for_grpc().make_span_with(DefaultMakeSpan::new().include_headers(true)),
+        )
         // Build our final `Service`
         .service(channel);
 
