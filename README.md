@@ -20,6 +20,7 @@ These are the middlewares included in this crate:
 - `AddExtension`: Stick some shareable value in [request extensions].
 - `Compression`: Compression response bodies.
 - `Decompression`: Decompress response bodies.
+- `FollowRedirect`: Follow redirection responses.
 - `MapRequestBody`: Apply a transformation to the request body.
 - `MapResponseBody`: Apply a transformation to the response body.
 - `PropagateHeader`: Propagate a header from the request to the response.
@@ -28,6 +29,7 @@ These are the middlewares included in this crate:
 - `SetResponseHeader`: Set a header on the response.
 - `SetSensitiveRequestHeader`: Marks a given request header as [sensitive].
 - `SetSensitiveResponseHeader`: Marks a given response header as [sensitive].
+- `Trace`: High level logging of requests and responses.
 
 Middlewares uses the [`http`] crate as the HTTP interface so they're compatible with any library or framework that also uses [`http`]. For example hyper and actix.
 

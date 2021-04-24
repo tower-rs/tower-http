@@ -140,7 +140,12 @@
     missing_docs
 )]
 #![deny(unreachable_pub, broken_intra_doc_links, private_in_public)]
-#![allow(elided_lifetimes_in_paths, clippy::type_complexity)]
+#![allow(
+    elided_lifetimes_in_paths,
+    // TODO: Remove this once the MSRV bumps to 1.42.0 or above.
+    clippy::match_like_matches_macro,
+    clippy::type_complexity
+)]
 #![forbid(unsafe_code)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(test, allow(clippy::float_cmp))]
@@ -182,6 +187,14 @@ pub mod map_response_body;
 #[cfg(feature = "map-request-body")]
 #[cfg_attr(docsrs, doc(cfg(feature = "map-request-body")))]
 pub mod map_request_body;
+
+#[cfg(feature = "trace")]
+#[cfg_attr(docsrs, doc(cfg(feature = "trace")))]
+pub mod trace;
+
+#[cfg(feature = "follow-redirect")]
+#[cfg_attr(docsrs, doc(cfg(feature = "follow-redirect")))]
+pub mod follow_redirect;
 
 pub mod classify;
 pub mod services;
@@ -230,4 +243,16 @@ where
             BodyOrIoError::Body(inner) => inner.source(),
         }
     }
+}
+
+/// The latency unit used to report latencies by middlewares.
+#[non_exhaustive]
+#[derive(Copy, Clone, Debug)]
+pub enum LatencyUnit {
+    /// Use milliseconds.
+    Millis,
+    /// Use microseconds.
+    Micros,
+    /// Use nanoseconds.
+    Nanos,
 }

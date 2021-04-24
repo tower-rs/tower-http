@@ -12,8 +12,12 @@ use std::time::Duration;
 use structopt::StructOpt;
 use tower::{make::Shared, ServiceBuilder};
 use tower_http::{
-    add_extension::AddExtensionLayer, compression::CompressionLayer,
-    sensitive_header::SetSensitiveHeaderLayer, set_header::SetResponseHeaderLayer,
+    add_extension::AddExtensionLayer,
+    compression::CompressionLayer,
+    sensitive_header::SetSensitiveHeaderLayer,
+    set_header::SetResponseHeaderLayer,
+    trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
+    LatencyUnit,
 };
 use warp::{filters, path};
 use warp::{Filter, Rejection, Reply};
@@ -57,13 +61,22 @@ async fn serve_forever(listener: TcpListener) -> Result<(), hyper::Error> {
     };
 
     // Build or warp `Filter` by combining each individual filter
-    let filter = get().or(set());
+    let filter = error().or(get()).or(set());
 
     // Convert our `Filter` into a `Service`
     let warp_service = warp::service(filter);
 
     // Apply middlewares to our service.
     let service = ServiceBuilder::new()
+        // Add high level tracing/logging to all requests
+        .layer(
+            TraceLayer::new_for_http()
+                .on_body_chunk(|chunk: &Bytes, latency: Duration| {
+                    tracing::trace!(size_bytes = chunk.len(), latency = ?latency, "sending body chunk")
+                })
+                .make_span_with(DefaultMakeSpan::new().include_headers(true))
+                .on_response(DefaultOnResponse::new().include_headers(true).latency_unit(LatencyUnit::Micros)),
+        )
         // Set a timeout
         .timeout(Duration::from_secs(10))
         // Share the state with each handler via a request extension
@@ -131,6 +144,18 @@ pub fn set() -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
             Response::new(Body::empty())
         })
 }
+
+// Test filter that always fails
+pub fn error() -> impl Filter<Extract = (&'static str,), Error = Rejection> + Clone {
+    warp::get()
+        .and(path!("debug" / "error"))
+        .and_then(|| async move { Err(warp::reject::custom(InternalError)) })
+}
+
+#[derive(Debug)]
+struct InternalError;
+
+impl warp::reject::Reject for InternalError {}
 
 fn content_length_from_response<B>(response: &Response<B>) -> Option<HeaderValue>
 where
