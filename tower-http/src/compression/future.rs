@@ -37,7 +37,7 @@ where
         let (mut parts, body) = res.into_parts();
 
         let body = match (
-            dbg!(supports_transparent_compression(&parts.headers)),
+            supports_transparent_compression(&parts.headers),
             self.encoding,
         ) {
             // if compression is _not_ support or the client doesn't accept it
