@@ -28,6 +28,7 @@ pub use self::{
 // NOTE: This could potentially be upstreamed to `http-body`.
 /// Adapter that turns an `impl AsyncRead` to an `impl Body`.
 #[pin_project]
+#[derive(Debug)]
 pub struct AsyncReadBody<T> {
     #[pin]
     inner: T,
