@@ -241,7 +241,7 @@ impl key_value_store_server::KeyValueStore for ServerImpl {
                 item.ok()
             })
             .map(Ok);
-        let stream: Self::SubscribeStream = Box::pin(stream);
+        let stream = Box::pin(stream) as Self::SubscribeStream;
         let res = Response::new(stream);
 
         Ok(res)
