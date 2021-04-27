@@ -19,7 +19,7 @@ use std::{
 };
 use structopt::StructOpt;
 use tokio::io::AsyncReadExt;
-use tokio::sync::broadcast::{channel, Sender};
+use tokio::sync::broadcast::{self, Sender};
 use tokio_stream::{wrappers::BroadcastStream, Stream};
 use tonic::{async_trait, body::BoxBody, transport::Channel, Code, Request, Response, Status};
 use tower::{make::Shared, ServiceBuilder};
@@ -153,7 +153,7 @@ async fn serve_forever(listener: TcpListener) -> Result<(), Box<dyn std::error::
     // Build our database for holding the key/value pairs
     let db = Arc::new(RwLock::new(HashMap::new()));
 
-    let (tx, _rx) = channel(1024);
+    let (tx, _rx) = broadcast::channel(1024);
 
     // Build our tonic `Service`
     let service = key_value_store_server::KeyValueStoreServer::new(ServerImpl { db, tx });

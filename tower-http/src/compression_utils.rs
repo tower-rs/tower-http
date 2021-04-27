@@ -317,7 +317,7 @@ pub(crate) fn supports_transparent_compression(headers: &HeaderMap) -> bool {
         return true;
     };
 
-    if content_type == "application/grpc" {
+    if content_type.starts_with("application/grpc") {
         // grpc doesn't support transparent compression and instead has its compression own
         // algorithm that implementations can use
         // https://grpc.github.io/grpc/core/md_doc_compression.html
