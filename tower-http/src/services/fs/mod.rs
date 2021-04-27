@@ -4,6 +4,7 @@ use bytes::{Bytes, BytesMut};
 use futures_core::ready;
 use http::{HeaderMap, Response, StatusCode};
 use http_body::{combinators::BoxBody, Body, Empty};
+use pin_project::pin_project;
 use std::{
     io,
     pin::Pin,
@@ -26,7 +27,9 @@ pub use self::{
 
 // NOTE: This could potentially be upstreamed to `http-body`.
 /// Adapter that turns an `impl AsyncRead` to an `impl Body`.
+#[pin_project]
 pub struct AsyncReadBody<T> {
+    #[pin]
     inner: T,
 }
 
@@ -39,17 +42,17 @@ impl<T> AsyncReadBody<T> {
 
 impl<T> Body for AsyncReadBody<T>
 where
-    T: AsyncRead + Unpin,
+    T: AsyncRead,
 {
     type Data = Bytes;
     type Error = io::Error;
 
     fn poll_data(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
         let mut buf = BytesMut::new();
-        let read = ready!(poll_read_buf(Pin::new(&mut self.inner), cx, &mut buf)?);
+        let read = ready!(poll_read_buf(self.project().inner, cx, &mut buf)?);
 
         if read == 0 {
             Poll::Ready(None)
