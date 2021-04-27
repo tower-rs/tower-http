@@ -31,14 +31,17 @@ mime_guess = { version = "2", optional = true, default_features = false }
 tokio = { version = "1", optional = true, default_features = false }
 tokio-util = { version = "0.6", optional = true, default_features = false, features = ["io"] }
 tower = { version = "0.4.1", optional = true }
+tracing = { version = "0.1", default_features = false, optional = true }
 
 [dev-dependencies]
 bytes = "1"
 flate2 = "1.0"
 futures = "0.3"
 hyper = { version = "0.14", features = ["full"] }
+once_cell = "1"
 tokio = { version = "1", features = ["full"] }
 tower = { version = "0.4.6", features = ["buffer", "util", "retry", "make"] }
+tracing-subscriber = "0.2"
 
 [features]
 default = []
@@ -55,6 +58,7 @@ full = [
     "redirect",
     "sensitive-header",
     "set-header",
+    "trace",
 ]
 
 add-extension = []
@@ -66,6 +70,7 @@ propagate-header = []
 redirect = []
 sensitive-header = []
 set-header = []
+trace = ["tracing"]
 
 compression = ["tokio-util", "tokio"]
 compression-br = ["async-compression/brotli", "compression"]

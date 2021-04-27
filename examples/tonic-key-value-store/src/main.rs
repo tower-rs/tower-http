@@ -1,4 +1,5 @@
 use bytes::Bytes;
+use futures::StreamExt;
 use hyper::body::HttpBody;
 use hyper::{
     header::{self, HeaderValue},
@@ -6,23 +7,29 @@ use hyper::{
 };
 use proto::{
     key_value_store_client::KeyValueStoreClient, key_value_store_server, GetReply, GetRequest,
-    SetReply, SetRequest,
+    SetReply, SetRequest, SubscribeReply, SubscribeRequest,
 };
 use std::{
     collections::HashMap,
     net::SocketAddr,
     net::TcpListener,
+    pin::Pin,
     sync::{Arc, RwLock},
     time::Duration,
 };
 use structopt::StructOpt;
 use tokio::io::AsyncReadExt;
+use tokio::sync::broadcast::{self, Sender};
+use tokio_stream::{wrappers::BroadcastStream, Stream};
 use tonic::{async_trait, body::BoxBody, transport::Channel, Code, Request, Response, Status};
 use tower::{make::Shared, ServiceBuilder};
 use tower::{BoxError, Service};
 use tower_http::{
-    compression::CompressionLayer, decompression::DecompressionLayer,
-    sensitive_header::SetSensitiveHeaderLayer, set_header::SetRequestHeaderLayer,
+    compression::CompressionLayer,
+    decompression::DecompressionLayer,
+    sensitive_header::SetSensitiveHeaderLayer,
+    set_header::SetRequestHeaderLayer,
+    trace::{DefaultMakeSpan, TraceLayer},
 };
 
 mod proto {
@@ -56,6 +63,8 @@ enum Command {
         #[structopt(long, short = "k")]
         key: String,
     },
+    /// Subscribe to a stream of inserted keys
+    Subscribe,
 }
 
 #[tokio::main]
@@ -117,6 +126,25 @@ async fn main() {
             // All good :+1:
             println!("OK");
         }
+        Command::Subscribe => {
+            // Create a client for our server
+            let mut client = make_client(addr).await.unwrap();
+
+            // Create a subscription
+            let mut stream = client
+                .subscribe(SubscribeRequest {})
+                .await
+                .unwrap()
+                .into_inner();
+
+            println!("Stream created!");
+
+            // Await new items
+            while let Some(item) = stream.next().await {
+                let item = item.unwrap();
+                println!("key inserted: {:?}", item.key);
+            }
+        }
     }
 }
 
@@ -125,8 +153,10 @@ async fn serve_forever(listener: TcpListener) -> Result<(), Box<dyn std::error::
     // Build our database for holding the key/value pairs
     let db = Arc::new(RwLock::new(HashMap::new()));
 
+    let (tx, _rx) = broadcast::channel(1024);
+
     // Build our tonic `Service`
-    let service = key_value_store_server::KeyValueStoreServer::new(ServerImpl { db });
+    let service = key_value_store_server::KeyValueStoreServer::new(ServerImpl { db, tx });
 
     // Apply middlewares to our service
     let service = ServiceBuilder::new()
@@ -136,6 +166,10 @@ async fn serve_forever(listener: TcpListener) -> Result<(), Box<dyn std::error::
         .layer(CompressionLayer::new())
         // Mark the `Authorization` header as sensitive so it doesn't show in logs
         .layer(SetSensitiveHeaderLayer::new(header::AUTHORIZATION))
+        // Log all requests and responses
+        .layer(
+            TraceLayer::new_for_grpc().make_span_with(DefaultMakeSpan::new().include_headers(true)),
+        )
         // Build our final `Service`
         .service(service);
 
@@ -159,6 +193,7 @@ async fn serve_forever(listener: TcpListener) -> Result<(), Box<dyn std::error::
 #[derive(Debug, Clone)]
 struct ServerImpl {
     db: Arc<RwLock<HashMap<String, Bytes>>>,
+    tx: Sender<SubscribeReply>,
 }
 
 #[async_trait]
@@ -181,9 +216,35 @@ impl key_value_store_server::KeyValueStore for ServerImpl {
         let SetRequest { key, value } = request.into_inner();
         let value = Bytes::from(value);
 
+        self.tx
+            .send(SubscribeReply { key: key.clone() })
+            .expect("failed to send");
+
         self.db.write().unwrap().insert(key, value);
 
         Ok(Response::new(SetReply {}))
+    }
+
+    type SubscribeStream =
+        Pin<Box<dyn Stream<Item = Result<SubscribeReply, Status>> + Send + Sync + 'static>>;
+
+    async fn subscribe(
+        &self,
+        request: Request<SubscribeRequest>,
+    ) -> Result<Response<Self::SubscribeStream>, Status> {
+        let SubscribeRequest {} = request.into_inner();
+
+        let rx = self.tx.subscribe();
+        let stream = BroadcastStream::new(rx)
+            .filter_map(|item| async move {
+                // ignore receive errors
+                item.ok()
+            })
+            .map(Ok);
+        let stream = Box::pin(stream) as Self::SubscribeStream;
+        let res = Response::new(stream);
+
+        Ok(res)
     }
 }
 
@@ -222,6 +283,10 @@ async fn make_client(
             header::USER_AGENT,
             HeaderValue::from_static("tonic-key-value-store"),
         ))
+        // Log all requests and responses
+        .layer(
+            TraceLayer::new_for_grpc().make_span_with(DefaultMakeSpan::new().include_headers(true)),
+        )
         // Build our final `Service`
         .service(channel);
 
@@ -238,6 +303,12 @@ mod tests {
         let addr = run_in_background();
 
         let mut client = make_client(addr).await.unwrap();
+
+        let mut stream = client
+            .subscribe(SubscribeRequest {})
+            .await
+            .unwrap()
+            .into_inner();
 
         let key = "foo".to_string();
         let value = vec![1_u8, 3, 3, 7];
@@ -263,6 +334,14 @@ mod tests {
             .into_inner()
             .value;
         assert_eq!(value, server_value);
+
+        let streamed_key = tokio::time::timeout(Duration::from_millis(100), stream.next())
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap()
+            .key;
+        assert_eq!(streamed_key, "foo");
     }
 
     // Run our service in a background task.

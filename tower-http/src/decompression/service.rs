@@ -1,5 +1,5 @@
 use super::{DecompressionBody, DecompressionLayer, ResponseFuture};
-use crate::compression_utils::{AcceptEncoding, BoxError};
+use crate::compression_utils::{supports_transparent_compression, AcceptEncoding, BoxError};
 use http::{
     header::{self, ACCEPT_ENCODING, RANGE},
     Request, Response,
@@ -102,7 +102,7 @@ where
     }
 
     fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
-        if !req.headers().contains_key(RANGE) {
+        if supports_transparent_compression(req.headers()) && !req.headers().contains_key(RANGE) {
             if let header::Entry::Vacant(entry) = req.headers_mut().entry(ACCEPT_ENCODING) {
                 if let Some(accept) = self.accept.to_header_value() {
                     entry.insert(accept);
