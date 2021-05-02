@@ -24,7 +24,7 @@
 //!     // `SetSensitiveHeaderLayer` will mark the header as sensitive on both the
 //!     // request and response.
 //!     .layer(SetSensitiveHeaderLayer::new(AUTHORIZATION))
-//!     .service(service_fn(handle));
+//!     .service_fn(handle);
 //!
 //! // Call the service.
 //! let response = service

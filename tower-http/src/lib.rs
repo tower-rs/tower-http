@@ -3,7 +3,7 @@
 //! # Overview
 //!
 //! `tower-http` is a library that provides HTTP-specific middlewares and utilities built on top of
-//! the [`tower`] and [`http`] crates.
+//! [`tower`].
 //!
 //! All middlewares uses the [`http`] and [`http-body`] crates as the HTTP abstractions. That means
 //! they're compatible with any library or framework that also uses those crates, such as
@@ -39,7 +39,7 @@
 //!     # todo!()
 //! }
 //!
-//! /// Shared state across all request handlers --- in this case, a pool of database connections.
+//! // Shared state across all request handlers --- in this case, a pool of database connections.
 //! struct State {
 //!     pool: DatabaseConnectionPool,
 //! }
@@ -58,14 +58,14 @@
 //!         .layer(AddExtensionLayer::new(Arc::new(state)))
 //!         // Compress responses
 //!         .layer(CompressionLayer::new())
-//!         // Propagate `X-Request-Header`s from requests to responses
+//!         // Propagate `X-Request-Id`s from requests to responses
 //!         .layer(PropagateHeaderLayer::new(HeaderName::from_static("x-request-id")))
 //!         // Mark the `Authorization` header as sensitive so it doesn't show in logs
 //!         .layer(SetSensitiveHeaderLayer::new(AUTHORIZATION))
 //!         // If the response has a known size set the `Content-Length` header
 //!         .layer(SetResponseHeaderLayer::overriding(CONTENT_TYPE, content_length_from_response))
 //!         // Wrap a `Service` in our middleware stack
-//!         .service(service_fn(handler));
+//!         .service_fn(handler);
 //!
 //!     // And run our service using `hyper`
 //!     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
@@ -78,6 +78,48 @@
 //!
 //! Keep in mind that while this example uses [`hyper`], `tower-http` supports any HTTP
 //! client/server implementation that uses the [`http`] and [`http-body`] crates.
+//!
+//! # Example client
+//!
+//! `tower-http` middlewares can also be applied to HTTP clients:
+//!
+//! ```rust,no_run
+//! use tower_http::{
+//!     decompression::DecompressionLayer,
+//!     set_header::SetRequestHeaderLayer,
+//! };
+//! use tower::{ServiceBuilder, Service, ServiceExt};
+//! use hyper::Body;
+//! use http::{Request, Response, HeaderValue, header::USER_AGENT};
+//!
+//! #[tokio::main]
+//! async fn main() {
+//!     let mut client = ServiceBuilder::new()
+//!         // Set a `User-Agent` header on all requests
+//!         .layer(SetRequestHeaderLayer::<_, Body>::overriding(
+//!             USER_AGENT,
+//!             HeaderValue::from_static("tower-http demo")
+//!         ))
+//!         // Decompress response bodies
+//!         .layer(DecompressionLayer::new())
+//!         // Wrap a `hyper::Client` in our middleware stack
+//!         .service(hyper::Client::new());
+//!
+//!     // Make a request
+//!     let request = Request::builder()
+//!         .uri("http://example.com")
+//!         .body(Body::empty())
+//!         .unwrap();
+//!
+//!     let response = client
+//!         .ready()
+//!         .await
+//!         .unwrap()
+//!         .call(request)
+//!         .await
+//!         .unwrap();
+//! }
+//! ```
 //!
 //! # Feature Flags
 //!
