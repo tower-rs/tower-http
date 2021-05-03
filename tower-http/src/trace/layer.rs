@@ -210,12 +210,15 @@ impl<M, E, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
     }
 }
 
-impl<E> TraceLayer<SharedClassifier<ServerErrorsAsFailures>, E> {
+impl<E> TraceLayer<SharedClassifier<ServerErrorsAsFailures<fn(&E) -> String>>, E> {
     /// Create a new [`TraceLayer`] using [`ServerErrorsAsFailures`] which supports classifying
     /// regular HTTP responses based on the status code.
-    pub fn new_for_http() -> Self {
+    pub fn new_for_http() -> Self
+    where
+        E: fmt::Display,
+    {
         Self {
-            make_classifier: SharedClassifier::new::<E>(ServerErrorsAsFailures::default()),
+            make_classifier: ServerErrorsAsFailures::make_classifier(),
             make_span: DefaultMakeSpan::new(),
             on_response: DefaultOnResponse::default(),
             on_request: DefaultOnRequest::default(),
@@ -227,12 +230,15 @@ impl<E> TraceLayer<SharedClassifier<ServerErrorsAsFailures>, E> {
     }
 }
 
-impl<E> TraceLayer<SharedClassifier<GrpcErrorsAsFailures>, E> {
+impl<E> TraceLayer<SharedClassifier<GrpcErrorsAsFailures<fn(&E) -> String>>, E>
+where
+    E: fmt::Display,
+{
     /// Create a new [`TraceLayer`] using [`GrpcErrorsAsFailures`] which supports classifying
     /// gRPC responses and streams based on the `grpc-status` header.
     pub fn new_for_grpc() -> Self {
         Self {
-            make_classifier: SharedClassifier::new::<E>(GrpcErrorsAsFailures::default()),
+            make_classifier: GrpcErrorsAsFailures::make_classifier(),
             make_span: DefaultMakeSpan::new(),
             on_response: DefaultOnResponse::default(),
             on_request: DefaultOnRequest::default(),

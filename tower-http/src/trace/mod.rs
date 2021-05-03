@@ -316,8 +316,9 @@ const DEFAULT_ERROR_LEVEL: Level = Level::ERROR;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::classify::StatusCodeOrError;
     use bytes::Bytes;
-    use http::{HeaderMap, Request, Response, StatusCode};
+    use http::{HeaderMap, Request, Response};
     use hyper::Body;
     use once_cell::sync::Lazy;
     use std::{
@@ -347,7 +348,7 @@ mod tests {
             .on_eos(|_trailers: Option<&HeaderMap>, _latency: Duration| {
                 ON_EOS.fetch_add(1, Ordering::SeqCst);
             })
-            .on_failure(|_err: StatusCode, _latency: Duration| {
+            .on_failure(|_err: StatusCodeOrError<String>, _latency: Duration| {
                 ON_FAILURE.fetch_add(1, Ordering::SeqCst);
             });
 
@@ -394,7 +395,7 @@ mod tests {
             .on_eos(|_trailers: Option<&HeaderMap>, _latency: Duration| {
                 ON_EOS.fetch_add(1, Ordering::SeqCst);
             })
-            .on_failure(|_err: StatusCode, _latency: Duration| {
+            .on_failure(|_err: StatusCodeOrError<String>, _latency: Duration| {
                 ON_FAILURE.fetch_add(1, Ordering::SeqCst);
             });
 

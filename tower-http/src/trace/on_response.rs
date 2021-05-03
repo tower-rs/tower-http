@@ -154,30 +154,32 @@ macro_rules! log_pattern_match {
 
 impl<B> OnResponse<B> for DefaultOnResponse {
     fn on_response(self, response: &Response<B>, latency: Duration) {
-        log_pattern_match!(
-            self,
-            response,
-            latency,
-            self.include_headers,
-            [ERROR, WARN, INFO, DEBUG, TRACE]
-        );
+        todo!()
+
+        // log_pattern_match!(
+        //     self,
+        //     response,
+        //     latency,
+        //     self.include_headers,
+        //     [ERROR, WARN, INFO, DEBUG, TRACE]
+        // );
     }
 }
 
-fn status<B>(res: &Response<B>) -> i32 {
-    let is_grpc = res
-        .headers()
-        .get(http::header::CONTENT_TYPE)
-        .map_or(false, |value| value == "application/grpc");
+// fn status<B>(res: &Response<B>) -> i32 {
+//     let is_grpc = res
+//         .headers()
+//         .get(http::header::CONTENT_TYPE)
+//         .map_or(false, |value| value == "application/grpc");
 
-    if is_grpc {
-        if let Some(Err(status)) = crate::classify::classify_grpc_metadata(res.headers()) {
-            status
-        } else {
-            // 0 is success in gRPC
-            0
-        }
-    } else {
-        res.status().as_u16().into()
-    }
-}
+//     if is_grpc {
+//         if let Some(Err(status)) = crate::classify::classify_grpc_metadata(res.headers()) {
+//             status
+//         } else {
+//             // 0 is success in gRPC
+//             0
+//         }
+//     } else {
+//         res.status().as_u16().into()
+//     }
+// }

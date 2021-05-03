@@ -174,33 +174,69 @@ impl<T, E> ClassifyEos<E> for NeverClassifyEos<T> {
 ///
 /// Responses with a `5xx` status code are considered failures, all others are considered
 /// successes.
-#[derive(Clone, Debug, Default)]
-pub struct ServerErrorsAsFailures {
-    _priv: (),
+pub struct ServerErrorsAsFailures<F> {
+    map_error: F,
 }
 
-impl ServerErrorsAsFailures {
-    /// Create a new [`ServerErrorsAsFailures`].
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Returns a [`MakeClassifier`] that produces `ServerErrorsAsFailures`.
-    ///
-    /// This is a convenience function that simply calls `SharedClassifier::new`.
-    pub fn make_classifier<E>() -> SharedClassifier<Self>
-    where
-        E: fmt::Display,
-    {
-        SharedClassifier::new::<E>(Self::new())
+impl<F> fmt::Debug for ServerErrorsAsFailures<F> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ServerErrorsAsFailures")
+            .field("map_error", &format_args!("{}", std::any::type_name::<F>()))
+            .finish()
     }
 }
 
-impl<E> ClassifyResponse<E> for ServerErrorsAsFailures
+impl<F> Clone for ServerErrorsAsFailures<F>
+where
+    F: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            map_error: self.map_error.clone(),
+        }
+    }
+}
+
+impl<E> Default for ServerErrorsAsFailures<fn(&E) -> String>
 where
     E: fmt::Display,
 {
-    type FailureClass = StatusCodeOrError;
+    fn default() -> Self {
+        Self::new(ToString::to_string)
+    }
+}
+
+impl<F> ServerErrorsAsFailures<F> {
+    /// Create a new [`ServerErrorsAsFailures`] that uses the given closure to classify errors.
+    pub fn new<E, T>(classify_error: F) -> Self
+    where
+        F: FnOnce(&E) -> T,
+    {
+        Self {
+            map_error: classify_error,
+        }
+    }
+}
+
+impl<E> ServerErrorsAsFailures<fn(&E) -> String> {
+    /// Returns a [`MakeClassifier`] that produces `ServerErrorsAsFailures`.
+    ///
+    /// This is a convenience function that simply calls `SharedClassifier::new`.
+    ///
+    /// Errors will be classified to converting them into a string.
+    pub fn make_classifier() -> SharedClassifier<Self>
+    where
+        E: fmt::Display,
+    {
+        SharedClassifier::new(Self::default())
+    }
+}
+
+impl<E, F, T> ClassifyResponse<E> for ServerErrorsAsFailures<F>
+where
+    F: FnOnce(&E) -> T,
+{
+    type FailureClass = StatusCodeOrError<T>;
     type ClassifyEos = NeverClassifyEos<Self::FailureClass>;
 
     fn classify_response<B>(
@@ -215,28 +251,28 @@ where
     }
 
     fn classify_error(self, error: &E) -> Self::FailureClass {
-        StatusCodeOrError::Error(error.to_string())
+        let mapped_error = (self.map_error)(error);
+        StatusCodeOrError::Error(mapped_error)
     }
 }
 
 /// The failure class used by [`ServerErrorsAsFailures`].
 #[derive(Debug, Clone)]
-pub enum StatusCodeOrError {
+pub enum StatusCodeOrError<T> {
     /// A failure was classified as a status code.
     StatusCode(StatusCode),
-    /// An error was encountered.
-    ///
-    /// As [`ClassifyResponse::classify_error`] receives a reference to a generic type,
-    /// [`ServerErrorsAsFailures`] requires its type to implement [`fmt::Display`] and uses that
-    /// representation for this variant.
-    Error(String),
+    /// An error was encountered and it was classified into a value of type `T`.
+    Error(T),
 }
 
-impl fmt::Display for StatusCodeOrError {
+impl<T> fmt::Display for StatusCodeOrError<T>
+where
+    T: fmt::Display,
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             StatusCodeOrError::StatusCode(status) => status.fmt(f),
-            StatusCodeOrError::Error(error) => write!(f, "Error: {}", error),
+            StatusCodeOrError::Error(error) => error.fmt(f),
         }
     }
 }
@@ -254,34 +290,70 @@ impl fmt::Display for StatusCodeOrError {
 /// - `grpc-status` header value can't parsed into an `i32`.
 ///
 /// All others are considered failures.
-#[derive(Debug, Clone, Default)]
-pub struct GrpcErrorsAsFailures {
-    _priv: (),
+pub struct GrpcErrorsAsFailures<F> {
+    map_error: F,
 }
 
-impl GrpcErrorsAsFailures {
-    /// Create a new [`GrpcErrorsAsFailures`].
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Returns a [`MakeClassifier`] that produces `GrpcErrorsAsFailures`.
-    ///
-    /// This is a convenience function that simply calls `SharedClassifier::new`.
-    pub fn make_classifier<E>() -> SharedClassifier<Self>
-    where
-        E: fmt::Display,
-    {
-        SharedClassifier::new::<E>(Self::new())
+impl<F> fmt::Debug for GrpcErrorsAsFailures<F> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("GrpcErrorsAsFailures")
+            .field("map_error", &format_args!("{}", std::any::type_name::<F>()))
+            .finish()
     }
 }
 
-impl<E> ClassifyResponse<E> for GrpcErrorsAsFailures
+impl<F> Clone for GrpcErrorsAsFailures<F>
+where
+    F: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            map_error: self.map_error.clone(),
+        }
+    }
+}
+
+impl<E> Default for GrpcErrorsAsFailures<fn(&E) -> String>
 where
     E: fmt::Display,
 {
-    type FailureClass = GrpcCodeOrError;
-    type ClassifyEos = GrpcEosErrorsAsFailures;
+    fn default() -> Self {
+        Self::new(ToString::to_string)
+    }
+}
+
+impl<F> GrpcErrorsAsFailures<F> {
+    /// Create a new [`GrpcErrorsAsFailures`] that uses the given closure to classify errors.
+    pub fn new<E, T>(classify_error: F) -> Self
+    where
+        F: FnOnce(&E) -> T,
+    {
+        Self {
+            map_error: classify_error,
+        }
+    }
+}
+
+impl<E> GrpcErrorsAsFailures<fn(&E) -> String>
+where
+    E: fmt::Display,
+{
+    /// Returns a [`MakeClassifier`] that produces `GrpcErrorsAsFailures`.
+    ///
+    /// This is a convenience function that simply calls `SharedClassifier::new`.
+    ///
+    /// Errors will be classified to converting them into a string.
+    pub fn make_classifier() -> SharedClassifier<Self> {
+        SharedClassifier::new(Self::default())
+    }
+}
+
+impl<E, F, T> ClassifyResponse<E> for GrpcErrorsAsFailures<F>
+where
+    F: FnOnce(&E) -> T,
+{
+    type FailureClass = GrpcCodeOrError<T>;
+    type ClassifyEos = GrpcEosErrorsAsFailures<E, F>;
 
     fn classify_response<B>(
         self,
@@ -290,59 +362,86 @@ where
         if let Some(classification) = classify_grpc_metadata(res.headers()) {
             ClassifiedResponse::Ready(classification)
         } else {
-            ClassifiedResponse::RequiresEos(GrpcEosErrorsAsFailures { _priv: () })
+            ClassifiedResponse::RequiresEos(GrpcEosErrorsAsFailures {
+                map_error: self.map_error,
+                _error: PhantomData,
+            })
         }
     }
 
     fn classify_error(self, error: &E) -> Self::FailureClass {
-        GrpcCodeOrError::Error(error.to_string())
+        let mapped_error = (self.map_error)(error);
+        GrpcCodeOrError::Error(mapped_error)
     }
 }
 
 /// The [`ClassifyEos`] for [`GrpcErrorsAsFailures`].
-#[derive(Debug, Clone)]
-pub struct GrpcEosErrorsAsFailures {
-    _priv: (),
+pub struct GrpcEosErrorsAsFailures<E, F = fn(&E) -> String> {
+    map_error: F,
+    _error: PhantomData<fn() -> E>,
 }
 
-impl<E> ClassifyEos<E> for GrpcEosErrorsAsFailures
-where
-    E: fmt::Display,
-{
-    type FailureClass = GrpcCodeOrError;
+impl<E, F> fmt::Debug for GrpcEosErrorsAsFailures<E, F> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("GrpcEosErrorsAsFailures")
+            .field("map_error", &format_args!("{}", std::any::type_name::<F>()))
+            .field("_error", &self._error)
+            .finish()
+    }
+}
 
-    fn classify_eos(self, trailers: Option<&HeaderMap>) -> Result<(), GrpcCodeOrError> {
+impl<E, F> Clone for GrpcEosErrorsAsFailures<E, F>
+where
+    F: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            map_error: self.map_error.clone(),
+            _error: PhantomData,
+        }
+    }
+}
+
+impl<E, F, T> ClassifyEos<E> for GrpcEosErrorsAsFailures<E, F>
+where
+    F: FnOnce(&E) -> T,
+{
+    type FailureClass = GrpcCodeOrError<T>;
+
+    fn classify_eos(self, trailers: Option<&HeaderMap>) -> Result<(), GrpcCodeOrError<T>> {
         trailers.and_then(classify_grpc_metadata).unwrap_or(Ok(()))
     }
 
     fn classify_error(self, error: &E) -> Self::FailureClass {
-        GrpcCodeOrError::Error(error.to_string())
+        let mapped_error = (self.map_error)(error);
+        GrpcCodeOrError::Error(mapped_error)
     }
 }
 
 /// The failure class used by [`GrpcErrorsAsFailures`] and [`GrpcEosErrorsAsFailures`].
 #[derive(Debug, Clone)]
-pub enum GrpcCodeOrError {
+pub enum GrpcCodeOrError<T> {
     /// A failure was classified as a gRPC code.
     Code(i32),
-    /// An error was encountered.
-    ///
-    /// As [`ClassifyResponse::classify_error`] receives a reference to a generic type,
-    /// [`GrpcEosErrorsAsFailures`] requires its type to implement [`fmt::Display`] and uses that
-    /// representation for this variant.
-    Error(String),
+    /// An error was encountered and it was classified into a value of type `T`.
+    Error(T),
 }
 
-impl fmt::Display for GrpcCodeOrError {
+impl<T> fmt::Display for GrpcCodeOrError<T>
+where
+    T: fmt::Display,
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             GrpcCodeOrError::Code(status) => status.fmt(f),
-            GrpcCodeOrError::Error(error) => write!(f, "Error: {}", error),
+            GrpcCodeOrError::Error(error) => error.fmt(f),
         }
     }
 }
 
-pub(crate) fn classify_grpc_metadata(headers: &HeaderMap) -> Option<Result<(), GrpcCodeOrError>> {
+pub(crate) fn classify_grpc_metadata<T>(
+    headers: &HeaderMap,
+) -> Option<Result<(), GrpcCodeOrError<T>>> {
     let status = headers.get("grpc-status")?;
     let status = status.to_str().ok()?;
     let status = status.parse::<i32>().ok()?;

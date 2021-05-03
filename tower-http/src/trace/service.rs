@@ -216,7 +216,7 @@ impl<S, M, E, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
 impl<S, E>
     Trace<
         S,
-        SharedClassifier<ServerErrorsAsFailures>,
+        SharedClassifier<ServerErrorsAsFailures<fn(&E) -> String>>,
         E,
         DefaultMakeSpan,
         DefaultOnRequest,
@@ -228,10 +228,13 @@ impl<S, E>
 {
     /// Create a new [`Trace`] using [`ServerErrorsAsFailures`] which supports classifying
     /// regular HTTP responses based on the status code.
-    pub fn new_for_http(inner: S) -> Self {
+    pub fn new_for_http(inner: S) -> Self
+    where
+        E: fmt::Display,
+    {
         Self {
             inner,
-            make_classifier: SharedClassifier::new::<E>(ServerErrorsAsFailures::default()),
+            make_classifier: ServerErrorsAsFailures::make_classifier(),
             make_span: DefaultMakeSpan::new(),
             on_request: DefaultOnRequest::default(),
             on_response: DefaultOnResponse::default(),
@@ -246,7 +249,7 @@ impl<S, E>
 impl<S, E>
     Trace<
         S,
-        SharedClassifier<GrpcErrorsAsFailures>,
+        SharedClassifier<GrpcErrorsAsFailures<fn(&E) -> String>>,
         E,
         DefaultMakeSpan,
         DefaultOnRequest,
@@ -258,10 +261,13 @@ impl<S, E>
 {
     /// Create a new [`Trace`] using [`GrpcErrorsAsFailures`] which supports classifying
     /// gRPC responses and streams based on the `grpc-status` header.
-    pub fn new_for_grpc(inner: S) -> Self {
+    pub fn new_for_grpc(inner: S) -> Self
+    where
+        E: fmt::Display,
+    {
         Self {
             inner,
-            make_classifier: SharedClassifier::new::<E>(GrpcErrorsAsFailures::default()),
+            make_classifier: GrpcErrorsAsFailures::make_classifier(),
             make_span: DefaultMakeSpan::new(),
             on_request: DefaultOnRequest::default(),
             on_response: DefaultOnResponse::default(),
