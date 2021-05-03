@@ -353,7 +353,7 @@ where
     F: FnOnce(&E) -> T,
 {
     type FailureClass = GrpcCodeOrError<T>;
-    type ClassifyEos = GrpcEosErrorsAsFailures<E, F>;
+    type ClassifyEos = GrpcEosErrorsAsFailures<F>;
 
     fn classify_response<B>(
         self,
@@ -364,7 +364,6 @@ where
         } else {
             ClassifiedResponse::RequiresEos(GrpcEosErrorsAsFailures {
                 map_error: self.map_error,
-                _error: PhantomData,
             })
         }
     }
@@ -376,33 +375,30 @@ where
 }
 
 /// The [`ClassifyEos`] for [`GrpcErrorsAsFailures`].
-pub struct GrpcEosErrorsAsFailures<E, F = fn(&E) -> String> {
+pub struct GrpcEosErrorsAsFailures<F> {
     map_error: F,
-    _error: PhantomData<fn() -> E>,
 }
 
-impl<E, F> fmt::Debug for GrpcEosErrorsAsFailures<E, F> {
+impl<F> fmt::Debug for GrpcEosErrorsAsFailures<F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("GrpcEosErrorsAsFailures")
             .field("map_error", &format_args!("{}", std::any::type_name::<F>()))
-            .field("_error", &self._error)
             .finish()
     }
 }
 
-impl<E, F> Clone for GrpcEosErrorsAsFailures<E, F>
+impl<F> Clone for GrpcEosErrorsAsFailures<F>
 where
     F: Clone,
 {
     fn clone(&self) -> Self {
         Self {
             map_error: self.map_error.clone(),
-            _error: PhantomData,
         }
     }
 }
 
-impl<E, F, T> ClassifyEos<E> for GrpcEosErrorsAsFailures<E, F>
+impl<E, F, T> ClassifyEos<E> for GrpcEosErrorsAsFailures<F>
 where
     F: FnOnce(&E) -> T,
 {
