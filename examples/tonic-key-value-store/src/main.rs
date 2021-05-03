@@ -27,6 +27,7 @@ use tower::{BoxError, Service};
 use tower_http::{
     compression::CompressionLayer,
     decompression::DecompressionLayer,
+    map_response_body::MapResponseBodyLayer,
     sensitive_header::SetSensitiveHeaderLayer,
     set_header::SetRequestHeaderLayer,
     trace::{DefaultMakeSpan, TraceLayer},
@@ -287,11 +288,23 @@ async fn make_client(
         .layer(
             TraceLayer::new_for_grpc().make_span_with(DefaultMakeSpan::new().include_headers(true)),
         )
+        .layer(MapResponseBodyLayer::new(|body: hyper::Body| {
+            body.map_err(TonicOrHyperError::from)
+        }))
+        .map_err(TonicOrHyperError::from)
         // Build our final `Service`
         .service(channel);
 
     // Construct our tonic client
     Ok(KeyValueStoreClient::new(channel))
+}
+
+#[derive(Debug, thiserror::Error)]
+enum TonicOrHyperError {
+    #[error(transparent)]
+    Tonic(#[from] tonic::transport::Error),
+    #[error(transparent)]
+    Hyper(#[from] hyper::Error),
 }
 
 #[cfg(test)]
