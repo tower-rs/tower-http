@@ -31,7 +31,7 @@
 //! let mut service = ServiceBuilder::new()
 //!     // Compress responses based on the `Accept-Encoding` header.
 //!     .layer(CompressionLayer::new())
-//!     .service(service_fn(handle));
+//!     .service_fn(handle);
 //!
 //! // Call the service.
 //! let request = Request::builder()

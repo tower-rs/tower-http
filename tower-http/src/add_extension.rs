@@ -16,7 +16,7 @@
 //! #     fn new() -> DatabaseConnectionPool { DatabaseConnectionPool }
 //! # }
 //! #
-//! /// Shared state across all request handlers --- in this case, a pool of database connections.
+//! // Shared state across all request handlers --- in this case, a pool of database connections.
 //! struct State {
 //!     pool: DatabaseConnectionPool,
 //! }
@@ -38,7 +38,7 @@
 //! let mut service = ServiceBuilder::new()
 //!     // Share an `Arc<State>` with all requests.
 //!     .layer(AddExtensionLayer::new(Arc::new(state)))
-//!     .service(service_fn(handle));
+//!     .service_fn(handle);
 //!
 //! // Call the service.
 //! let response = service
