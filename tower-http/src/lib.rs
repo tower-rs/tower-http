@@ -259,8 +259,11 @@ pub mod trace;
 #[cfg_attr(docsrs, doc(cfg(feature = "follow-redirect")))]
 pub mod follow_redirect;
 
-pub mod classify;
+#[cfg(feature = "metrics")]
+#[cfg_attr(docsrs, doc(cfg(feature = "metrics")))]
 pub mod metrics;
+
+pub mod classify;
 pub mod services;
 
 /// Error type containing either a body error or an IO error.
