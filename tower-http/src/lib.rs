@@ -260,8 +260,8 @@ pub mod trace;
 pub mod follow_redirect;
 
 pub mod classify;
-pub mod services;
 pub mod metrics;
+pub mod services;
 
 /// Error type containing either a body error or an IO error.
 ///
