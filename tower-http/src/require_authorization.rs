@@ -53,11 +53,14 @@
 
 use http::{
     header::{self, HeaderValue},
-    HeaderMap, Request, Response, StatusCode,
+    Request, Response, StatusCode,
 };
+use http_body::Body;
 use pin_project::pin_project;
 use std::{
+    fmt,
     future::Future,
+    marker::PhantomData,
     pin::Pin,
     task::{Context, Poll},
 };
@@ -75,7 +78,7 @@ pub struct RequireAuthorizationLayer<T> {
     auth: T,
 }
 
-impl RequireAuthorizationLayer<Bearer> {
+impl<ResBody> RequireAuthorizationLayer<Bearer<ResBody>> {
     /// Authorize requests using a "bearer token". Commonly used for OAuth 2.
     ///
     /// The `Authorization` header is required to be `Bearer {token}`.
@@ -83,12 +86,15 @@ impl RequireAuthorizationLayer<Bearer> {
     /// # Panics
     ///
     /// Panics if the token is not a valid [`HeaderValue`](http::header::HeaderValue).
-    pub fn bearer(token: &str) -> Self {
+    pub fn bearer(token: &str) -> Self
+    where
+        ResBody: Body + Default,
+    {
         Self::custom(Bearer::new(token))
     }
 }
 
-impl RequireAuthorizationLayer<Basic> {
+impl<ResBody> RequireAuthorizationLayer<Basic<ResBody>> {
     /// Authorize requests using a username and password pair.
     ///
     /// The `Authorization` header is required to be `Basic {credentials}` where `credentials` is
@@ -96,7 +102,10 @@ impl RequireAuthorizationLayer<Basic> {
     ///
     /// Since the username and password is sent in clear text it is recommended to use HTTPS/TLS
     /// with this method. However use of HTTPS/TLS is not enforced by this middleware.
-    pub fn basic(username: &str, password: &str) -> Self {
+    pub fn basic(username: &str, password: &str) -> Self
+    where
+        ResBody: Body + Default,
+    {
         Self::custom(Basic::new(username, password))
     }
 }
@@ -143,7 +152,7 @@ impl<S, T> RequireAuthorization<S, T> {
     define_inner_service_accessors!();
 }
 
-impl<S> RequireAuthorization<S, Bearer> {
+impl<S, ResBody> RequireAuthorization<S, Bearer<ResBody>> {
     /// Authorize requests using a "bearer token". Commonly used for OAuth 2.
     ///
     /// The `Authorization` header is required to be `Bearer {token}`.
@@ -151,12 +160,15 @@ impl<S> RequireAuthorization<S, Bearer> {
     /// # Panics
     ///
     /// Panics if the token is not a valid [`HeaderValue`](http::header::HeaderValue).
-    pub fn bearer(inner: S, token: &str) -> Self {
+    pub fn bearer(inner: S, token: &str) -> Self
+    where
+        ResBody: Body + Default,
+    {
         Self::custom(inner, Bearer::new(token))
     }
 }
 
-impl<S> RequireAuthorization<S, Basic> {
+impl<S, ResBody> RequireAuthorization<S, Basic<ResBody>> {
     /// Authorize requests using a username and password pair.
     ///
     /// The `Authorization` header is required to be `Basic {credentials}` where `credentials` is
@@ -164,7 +176,10 @@ impl<S> RequireAuthorization<S, Basic> {
     ///
     /// Since the username and password is sent in clear text it is recommended to use HTTPS/TLS
     /// with this method. However use of HTTPS/TLS is not enforced by this middleware.
-    pub fn basic(inner: S, username: &str, password: &str) -> Self {
+    pub fn basic(inner: S, username: &str, password: &str) -> Self
+    where
+        ResBody: Body + Default,
+    {
         Self::custom(inner, Basic::new(username, password))
     }
 }
@@ -185,7 +200,7 @@ impl<ReqBody, ResBody, S, T> Service<Request<ReqBody>> for RequireAuthorization<
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
     ResBody: Default,
-    T: AuthorizeRequest,
+    T: AuthorizeRequest<ResponseBody = ResBody>,
 {
     type Response = Response<ResBody>;
     type Error = S::Error;
@@ -195,17 +210,17 @@ where
         self.inner.poll_ready(cx)
     }
 
-    fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
-        if self.auth.authorize(&req) {
+    fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
+        if let Some(output) = self.auth.authorize(&req) {
+            self.auth.on_authorized(&mut req, output);
+
             ResponseFuture {
                 kind: Kind::Future(self.inner.call(req)),
             }
         } else {
-            let body = ResBody::default();
-            let status_code = self.auth.status_code(&req);
-            let headers = self.auth.response_headers(&req);
+            let res = self.auth.unauthorized_response(&req);
             ResponseFuture {
-                kind: Kind::Error(Some((body, status_code, headers))),
+                kind: Kind::Error(Some(res)),
             }
         }
     }
@@ -221,7 +236,7 @@ pub struct ResponseFuture<F, B> {
 #[pin_project(project = KindProj)]
 enum Kind<F, B> {
     Future(#[pin] F),
-    Error(Option<(B, StatusCode, HeaderMap)>),
+    Error(Option<Response<B>>),
 }
 
 impl<F, B, E> Future for ResponseFuture<F, B>
@@ -233,11 +248,8 @@ where
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match self.project().kind.project() {
             KindProj::Future(future) => future.poll(cx),
-            KindProj::Error(data) => {
-                let (body, status_code, headers) = data.take().unwrap();
-                let mut response = Response::new(body);
-                *response.status_mut() = status_code;
-                *response.headers_mut() = headers;
+            KindProj::Error(response) => {
+                let response = response.take().unwrap();
                 Poll::Ready(Ok(response))
             }
         }
@@ -246,94 +258,155 @@ where
 
 /// Trait for authorizing requests.
 pub trait AuthorizeRequest {
+    /// The output type of doing the authorization.
+    ///
+    /// Use `()` if authorization doesn't produce any meaningful output.
+    type Output;
+
+    /// The body type used for responses to unauthorized requests.
+    type ResponseBody: Body;
+
     /// Authorize the request.
     ///
-    /// If `true` is returned then the request is allowed through, otherwise not.
-    fn authorize<B>(&mut self, request: &Request<B>) -> bool;
+    /// If `Some(_)` is returned then the request is allowed through, otherwise not.
+    fn authorize<B>(&mut self, request: &Request<B>) -> Option<Self::Output>;
 
-    /// The status code to use for the response of unauthorized requests.
+    /// Callback for when a request has been successfully authorized.
     ///
-    /// Defaults to [`401 Unauthorized`].
+    /// For example this allows you to save `Self::Output` in a [request extension][] to make it
+    /// available to services further down the stack.
     ///
-    /// [`401 Unauthorized`]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
-    #[allow(unused_variables)]
-    fn status_code<B>(&mut self, request: &Request<B>) -> StatusCode {
-        StatusCode::UNAUTHORIZED
-    }
+    /// Defaults to doing nothing.
+    ///
+    /// [request extension]: https://docs.rs/http/0.2.4/http/struct.Extensions.html
+    fn on_authorized<B>(&mut self, _request: &mut Request<B>, _output: Self::Output) {}
 
-    /// Headers to add to the response of unauthorized requests.
-    ///
-    /// [`Basic`] uses this to set `WWW-Authenticate` on responses.
-    ///
-    /// Defaults to an empty [`HeaderMap`].
-    #[allow(unused_variables)]
-    fn response_headers<B>(&mut self, request: &Request<B>) -> HeaderMap {
-        HeaderMap::new()
-    }
+    /// Create the response for an unauthorized request.
+    fn unauthorized_response<B>(&mut self, request: &Request<B>) -> Response<Self::ResponseBody>;
 }
 
 /// Type that performs "bearer token" authorization.
 ///
 /// See [`RequireAuthorization::bearer`] for more details.
-#[derive(Debug, Clone)]
-pub struct Bearer(HeaderValue);
+pub struct Bearer<ResBody> {
+    header_value: HeaderValue,
+    _ty: PhantomData<fn() -> ResBody>,
+}
 
-impl Bearer {
-    fn new(token: &str) -> Self {
-        Self(
-            format!("Bearer {}", token)
+impl<ResBody> Bearer<ResBody> {
+    fn new(token: &str) -> Self
+    where
+        ResBody: Body + Default,
+    {
+        Self {
+            header_value: format!("Bearer {}", token)
                 .parse()
                 .expect("token is not a valid header value"),
-        )
+            _ty: PhantomData,
+        }
     }
 }
 
-impl AuthorizeRequest for Bearer {
-    fn authorize<B>(&mut self, request: &Request<B>) -> bool {
-        if let Some(actual) = request.headers().get(header::AUTHORIZATION) {
-            actual == self.0
-        } else {
-            false
+impl<ResBody> Clone for Bearer<ResBody> {
+    fn clone(&self) -> Self {
+        Self {
+            header_value: self.header_value.clone(),
+            _ty: PhantomData,
         }
+    }
+}
+
+impl<ResBody> fmt::Debug for Bearer<ResBody> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Bearer")
+            .field("header_value", &self.header_value)
+            .finish()
+    }
+}
+
+impl<ResBody> AuthorizeRequest for Bearer<ResBody>
+where
+    ResBody: Body + Default,
+{
+    type Output = ();
+    type ResponseBody = ResBody;
+
+    fn authorize<B>(&mut self, request: &Request<B>) -> Option<Self::Output> {
+        if let Some(actual) = request.headers().get(header::AUTHORIZATION) {
+            (actual == self.header_value).then(|| ())
+        } else {
+            None
+        }
+    }
+
+    fn unauthorized_response<B>(&mut self, _request: &Request<B>) -> Response<Self::ResponseBody> {
+        let body = ResBody::default();
+        let mut res = Response::new(body);
+        *res.status_mut() = StatusCode::UNAUTHORIZED;
+        res
     }
 }
 
 /// Type that performs basic authorization.
 ///
 /// See [`RequireAuthorization::basic`] for more details.
-#[derive(Debug, Clone)]
-pub struct Basic(HeaderValue);
+pub struct Basic<ResBody> {
+    header_value: HeaderValue,
+    _ty: PhantomData<fn() -> ResBody>,
+}
 
-impl Basic {
-    fn new(username: &str, password: &str) -> Self {
+impl<ResBody> Basic<ResBody> {
+    fn new(username: &str, password: &str) -> Self
+    where
+        ResBody: Body + Default,
+    {
         let encoded = base64::encode(format!("{}:{}", username, password));
         let header_value = format!("Basic {}", encoded).parse().unwrap();
-        Self(header_value)
+        Self {
+            header_value,
+            _ty: PhantomData,
+        }
     }
 }
 
-impl AuthorizeRequest for Basic {
-    fn authorize<B>(&mut self, request: &Request<B>) -> bool {
-        if let Some(actual) = request.headers().get(header::AUTHORIZATION) {
-            actual == self.0
-        } else {
-            false
+impl<ResBody> Clone for Basic<ResBody> {
+    fn clone(&self) -> Self {
+        Self {
+            header_value: self.header_value.clone(),
+            _ty: PhantomData,
         }
-    }
-
-    fn response_headers<B>(&mut self, _request: &Request<B>) -> HeaderMap {
-        let mut headers = HeaderMap::new();
-        headers.insert(header::WWW_AUTHENTICATE, "Basic".parse().unwrap());
-        headers
     }
 }
 
-impl AuthorizeRequest for HeaderValue {
-    fn authorize<B>(&mut self, request: &Request<B>) -> bool {
+impl<ResBody> fmt::Debug for Basic<ResBody> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Basic")
+            .field("header_value", &self.header_value)
+            .finish()
+    }
+}
+
+impl<ResBody> AuthorizeRequest for Basic<ResBody>
+where
+    ResBody: Body + Default,
+{
+    type Output = ();
+    type ResponseBody = ResBody;
+
+    fn authorize<B>(&mut self, request: &Request<B>) -> Option<Self::Output> {
         if let Some(actual) = request.headers().get(header::AUTHORIZATION) {
-            actual == self
+            (actual == self.header_value).then(|| ())
         } else {
-            false
+            None
         }
+    }
+
+    fn unauthorized_response<B>(&mut self, _request: &Request<B>) -> Response<Self::ResponseBody> {
+        let body = ResBody::default();
+        let mut res = Response::new(body);
+        *res.status_mut() = StatusCode::UNAUTHORIZED;
+        res.headers_mut()
+            .insert(header::WWW_AUTHENTICATE, "Basic".parse().unwrap());
+        res
     }
 }
