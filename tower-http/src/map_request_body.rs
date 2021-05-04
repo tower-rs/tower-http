@@ -12,33 +12,15 @@
 //! use tower_http::map_request_body::MapRequestBodyLayer;
 //! use futures::ready;
 //!
-//! #[tokio::main]
-//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let mut svc = ServiceBuilder::new()
-//!         .layer(MapRequestBodyLayer::new(transform_body))
-//!         .service(service_fn(handle));
-//!
-//!     let request = Request::new(Body::from("foobar"));
-//!
-//!     svc.ready_and().await?.call(request).await?;
-//!
-//!     Ok(())
-//! }
-//!
-//! async fn handle<B>(_: Request<B>) -> Result<Response<Body>, Infallible>
-//! where
-//!     B: http_body::Body
-//! {
-//!     Ok(Response::new(Body::from("foo")))
-//! }
-//!
-//! fn transform_body(prior: Body) -> PrintChunkSizesBody {
-//!     PrintChunkSizesBody { inner: prior }
-//! }
-//!
 //! // A wrapper for a `hyper::Body` that prints the size of data chunks
 //! struct PrintChunkSizesBody {
 //!     inner: Body,
+//! }
+//!
+//! impl PrintChunkSizesBody {
+//!     fn new(inner: Body) -> Self {
+//!         Self { inner }
+//!     }
 //! }
 //!
 //! impl http_body::Body for PrintChunkSizesBody {
@@ -72,6 +54,25 @@
 //!         self.inner.size_hint()
 //!     }
 //! }
+//!
+//! async fn handle<B>(_: Request<B>) -> Result<Response<Body>, Infallible> {
+//!     // ...
+//!     # Ok(Response::new(Body::empty()))
+//! }
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let mut svc = ServiceBuilder::new()
+//!     // Wrap response bodies in `PrintChunkSizesBody`
+//!     .layer(MapRequestBodyLayer::new(PrintChunkSizesBody::new))
+//!     .service_fn(handle);
+//!
+//! // Call the service
+//! let request = Request::new(Body::empty());
+//!
+//! svc.ready().await?.call(request).await?;
+//! # Ok(())
+//! # }
 //! ```
 
 use http::Request;

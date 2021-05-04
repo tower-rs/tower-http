@@ -1,6 +1,40 @@
 //! Middlewares that mark headers as [sensitive].
 //!
 //! [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
+//!
+//! # Example
+//!
+//! ```
+//! use tower_http::sensitive_header::SetSensitiveHeaderLayer;
+//! use tower::{Service, ServiceExt, ServiceBuilder, service_fn};
+//! use http::{Request, Response, header::AUTHORIZATION};
+//! use hyper::Body;
+//! use std::convert::Infallible;
+//!
+//! async fn handle(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+//!     // ...
+//!     # Ok(Response::new(Body::empty()))
+//! }
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let mut service = ServiceBuilder::new()
+//!     // Mark the `Authorization` header as sensitive so it doesn't show in logs
+//!     //
+//!     // `SetSensitiveHeaderLayer` will mark the header as sensitive on both the
+//!     // request and response.
+//!     .layer(SetSensitiveHeaderLayer::new(AUTHORIZATION))
+//!     .service_fn(handle);
+//!
+//! // Call the service.
+//! let response = service
+//!     .ready()
+//!     .await?
+//!     .call(Request::new(Body::empty()))
+//!     .await?;
+//! # Ok(())
+//! # }
+//! ```
 
 use futures_util::ready;
 use http::{header::HeaderName, Request, Response};
@@ -16,6 +50,8 @@ use tower_service::Service;
 /// Mark a header as [sensitive] on both requests and responses.
 ///
 /// Produces [`SetSensitiveHeader`] services.
+///
+/// See the [module docs](crate::sensitive_header) for more details.
 ///
 /// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
 #[derive(Clone, Debug)]
@@ -43,12 +79,16 @@ impl<S> Layer<S> for SetSensitiveHeaderLayer {
 
 /// Mark a header as [sensitive] on both requests and responses.
 ///
+/// See the [module docs](crate::sensitive_header) for more details.
+///
 /// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
 pub type SetSensitiveHeader<S> = SetSensitiveRequestHeader<SetSensitiveResponseHeader<S>>;
 
 /// Mark a request header as [sensitive].
 ///
 /// Produces [`SetSensitiveRequestHeader`] services.
+///
+/// See the [module docs](crate::sensitive_header) for more details.
 ///
 /// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
 #[derive(Clone, Debug)]
@@ -75,6 +115,8 @@ impl<S> Layer<S> for SetSensitiveRequestHeaderLayer {
 }
 
 /// Mark a request header as [sensitive].
+///
+/// See the [module docs](crate::sensitive_header) for more details.
 ///
 /// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
 #[derive(Clone, Debug)]
@@ -125,6 +167,8 @@ where
 ///
 /// Produces [`SetSensitiveResponseHeader`] services.
 ///
+/// See the [module docs](crate::sensitive_header) for more details.
+///
 /// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
 #[derive(Clone, Debug)]
 pub struct SetSensitiveResponseHeaderLayer {
@@ -150,6 +194,8 @@ impl<S> Layer<S> for SetSensitiveResponseHeaderLayer {
 }
 
 /// Mark a response header as [sensitive].
+///
+/// See the [module docs](crate::sensitive_header) for more details.
 ///
 /// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
 #[derive(Clone, Debug)]

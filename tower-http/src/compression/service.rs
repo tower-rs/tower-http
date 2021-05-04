@@ -1,5 +1,5 @@
 use super::{CompressionBody, CompressionLayer, Encoding, ResponseFuture};
-use crate::accept_encoding::AcceptEncoding;
+use crate::compression_utils::{AcceptEncoding, BoxError};
 use http::{Request, Response};
 use http_body::Body;
 use std::task::{Context, Poll};
@@ -9,6 +9,8 @@ use tower_service::Service;
 ///
 /// This uses the `Accept-Encoding` header to pick an appropriate encoding and adds the
 /// `Content-Encoding` header to responses.
+///
+/// See the [module docs](crate::compression) for more details.
 #[derive(Clone, Copy)]
 pub struct Compression<S> {
     pub(crate) inner: S,
@@ -86,6 +88,7 @@ impl<ReqBody, ResBody, S> Service<Request<ReqBody>> for Compression<S>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
     ResBody: Body,
+    ResBody::Error: Into<BoxError>,
 {
     type Response = Response<CompressionBody<ResBody>>;
     type Error = S::Error;

@@ -11,7 +11,7 @@
 //! ```
 //! use http::{Request, Response, header::{self, HeaderValue}};
 //! use tower::{Service, ServiceExt, ServiceBuilder};
-//! use tower_http::set_response_header::SetResponseHeaderLayer;
+//! use tower_http::set_header::SetResponseHeaderLayer;
 //! use hyper::Body;
 //!
 //! # #[tokio::main]
@@ -38,7 +38,7 @@
 //!
 //! let request = Request::new(Body::empty());
 //!
-//! let response = svc.ready_and().await?.call(request).await?;
+//! let response = svc.ready().await?.call(request).await?;
 //!
 //! assert_eq!(response.headers()["content-type"], "text/html");
 //! #
@@ -51,7 +51,7 @@
 //! ```
 //! use http::{Request, Response, header::{self, HeaderValue}};
 //! use tower::{Service, ServiceExt, ServiceBuilder};
-//! use tower_http::set_response_header::SetResponseHeaderLayer;
+//! use tower_http::set_header::SetResponseHeaderLayer;
 //! use hyper::Body;
 //! use http_body::Body as _; // for `Body::size_hint`
 //!
@@ -69,7 +69,7 @@
 //!         // `overriding` will insert the header and override any previous values it
 //!         // may have.
 //!         SetResponseHeaderLayer::overriding(
-//!             http::header::CONTENT_LENGTH,
+//!             header::CONTENT_LENGTH,
 //!             |response: &Response<Body>| {
 //!                 if let Some(size) = response.body().size_hint().exact() {
 //!                     // If the response body has a known size, returning `Some` will
@@ -87,7 +87,7 @@
 //!
 //! let request = Request::new(Body::empty());
 //!
-//! let response = svc.ready_and().await?.call(request).await?;
+//! let response = svc.ready().await?.call(request).await?;
 //!
 //! assert_eq!(response.headers()["content-length"], "10");
 //! #
@@ -95,8 +95,9 @@
 //! # }
 //! ```
 
+use super::{InsertHeaderMode, MakeHeaderValue};
 use futures_util::ready;
-use http::{header::HeaderName, HeaderValue, Response};
+use http::{header::HeaderName, Response};
 use pin_project::pin_project;
 use std::{
     fmt,
@@ -159,19 +160,6 @@ where
             mode,
             _marker: PhantomData,
         }
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-enum InsertHeaderMode {
-    Override,
-    Append,
-    IfNotPresent,
-}
-
-impl Default for InsertHeaderMode {
-    fn default() -> Self {
-        Self::Override
     }
 }
 
@@ -305,70 +293,16 @@ where
         let this = self.project();
         let mut res = ready!(this.future.poll(cx)?);
 
-        match *this.mode {
-            InsertHeaderMode::Override => {
-                if let Some(value) = this.make.make_header_value(&res) {
-                    res.headers_mut().insert(this.header_name.clone(), value);
-                }
-            }
-            InsertHeaderMode::IfNotPresent => {
-                if !res.headers().contains_key(&*this.header_name) {
-                    if let Some(value) = this.make.make_header_value(&res) {
-                        res.headers_mut().insert(this.header_name.clone(), value);
-                    }
-                }
-            }
-            InsertHeaderMode::Append => {
-                if let Some(value) = this.make.make_header_value(&res) {
-                    res.headers_mut().append(this.header_name.clone(), value);
-                }
-            }
-        }
+        this.mode.apply(this.header_name, &mut res, &mut *this.make);
 
         Poll::Ready(Ok(res))
-    }
-}
-
-/// Trait for producing header values.
-///
-/// Used by [`SetResponseHeader`].
-///
-/// This trait is implemented for closures with the correct type signature. Typically
-/// users will not have to implement this trait for their own types.
-///
-/// It is also implemented directly for [`HeaderValue`]. When a fixed header value
-/// should be added to all responses, it can be  supplied directly to
-/// [`SetResponseHeaderLayer`].
-pub trait MakeHeaderValue<T> {
-    /// Try to create a header value from the request or response.
-    fn make_header_value(&mut self, message: &T) -> Option<HeaderValue>;
-}
-
-impl<F, T> MakeHeaderValue<T> for F
-where
-    F: FnMut(&T) -> Option<HeaderValue>,
-{
-    fn make_header_value(&mut self, message: &T) -> Option<HeaderValue> {
-        self(message)
-    }
-}
-
-impl<T> MakeHeaderValue<T> for HeaderValue {
-    fn make_header_value(&mut self, _message: &T) -> Option<HeaderValue> {
-        Some(self.clone())
-    }
-}
-
-impl<T> MakeHeaderValue<T> for Option<HeaderValue> {
-    fn make_header_value(&mut self, _message: &T) -> Option<HeaderValue> {
-        self.clone()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use http::header;
+    use http::{header, HeaderValue};
     use hyper::Body;
     use std::convert::Infallible;
     use tower::{service_fn, ServiceExt};

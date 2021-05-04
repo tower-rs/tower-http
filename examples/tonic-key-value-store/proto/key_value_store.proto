@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package key_value_store;
+
+service KeyValueStore {
+    rpc Get (GetRequest) returns (GetReply);
+    rpc Set (SetRequest) returns (SetReply);
+    rpc Subscribe (SubscribeRequest) returns (stream SubscribeReply);
+}
+
+message GetRequest {
+   string key = 1;
+}
+
+message GetReply {
+   bytes value = 1;
+}
+
+message SetRequest {
+   string key = 1;
+   bytes value = 2;
+}
+
+message SetReply {}
+
+message SubscribeRequest {}
+
+message SubscribeReply {
+   string key = 1;
+}
