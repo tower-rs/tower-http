@@ -21,6 +21,7 @@ These are the middlewares included in this crate:
 - `Compression`: Compression response bodies.
 - `Decompression`: Decompress response bodies.
 - `FollowRedirect`: Follow redirection responses.
+- `InFlightRequests`: Measure the number of requests a service is currently processing.
 - `MapRequestBody`: Apply a transformation to the request body.
 - `MapResponseBody`: Apply a transformation to the response body.
 - `PropagateHeader`: Propagate a header from the request to the response.

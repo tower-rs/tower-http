@@ -18,19 +18,22 @@
 //! use tower_http::{
 //!     add_extension::AddExtensionLayer,
 //!     compression::CompressionLayer,
+//!     metrics::InFlightRequestsLayer,
 //!     propagate_header::PropagateHeaderLayer,
-//!     sensitive_header::SetSensitiveHeaderLayer,
+//!     sensitive_header::{SetSensitiveResponseHeaderLayer, SetSensitiveRequestHeaderLayer},
 //!     set_header::SetResponseHeaderLayer,
+//!     trace::TraceLayer,
 //! };
 //! use tower::{ServiceBuilder, service_fn, make::Shared};
 //! use http::{Request, Response, header::{HeaderName, CONTENT_TYPE, AUTHORIZATION}};
 //! use hyper::{Body, Error, server::Server, service::make_service_fn};
-//! use std::{sync::Arc, net::SocketAddr, convert::Infallible};
+//! use std::{sync::Arc, net::SocketAddr, convert::Infallible, time::Duration};
 //! # struct DatabaseConnectionPool;
 //! # impl DatabaseConnectionPool {
 //! #     fn new() -> DatabaseConnectionPool { DatabaseConnectionPool }
 //! # }
 //! # fn content_length_from_response<B>(_: &http::Response<B>) -> Option<http::HeaderValue> { None }
+//! # async fn update_in_flight_requests_metric(count: usize) {}
 //!
 //! // Our request handler. This is where we would implement the application logic
 //! // for responding to HTTP requests...
@@ -51,17 +54,35 @@
 //!         pool: DatabaseConnectionPool::new(),
 //!     };
 //!
+//!     // Create a `Layer` for counting in-flight requests and its associated counter.
+//!     let (in_flight_requests_layer, counter) = InFlightRequestsLayer::pair();
+//!
+//!     // Spawn a task that will receive the number of in-flight requests every 10 seconds.
+//!     tokio::spawn(
+//!         counter.run_emitter(Duration::from_secs(10), |count: usize| async move {
+//!             update_in_flight_requests_metric(count).await;
+//!         }),
+//!     );
+//!
 //!     // Use `tower`'s `ServiceBuilder` API to build a stack of `tower` middleware
 //!     // wrapping our request handler.
 //!     let service = ServiceBuilder::new()
+//!         // Mark the `Authorization` header as sensitive on requests so it doesn't show in logs
+//!         // This must be applied before `TraceLayer`
+//!         .layer(SetSensitiveRequestHeaderLayer::new(AUTHORIZATION))
+//!         // High level tracing of requests and responses
+//!         .layer(TraceLayer::new_for_http())
+//!         // Mark the `Authorization` header as sensitive on responses
+//!         // This must be applied after `TraceLayer`
+//!         .layer(SetSensitiveResponseHeaderLayer::new(AUTHORIZATION))
+//!         // Keep track of the number of in-flight requests
+//!         .layer(in_flight_requests_layer)
 //!         // Share an `Arc<State>` with all requests
 //!         .layer(AddExtensionLayer::new(Arc::new(state)))
 //!         // Compress responses
 //!         .layer(CompressionLayer::new())
 //!         // Propagate `X-Request-Id`s from requests to responses
 //!         .layer(PropagateHeaderLayer::new(HeaderName::from_static("x-request-id")))
-//!         // Mark the `Authorization` header as sensitive so it doesn't show in logs
-//!         .layer(SetSensitiveHeaderLayer::new(AUTHORIZATION))
 //!         // If the response has a known size set the `Content-Length` header
 //!         .layer(SetResponseHeaderLayer::overriding(CONTENT_TYPE, content_length_from_response))
 //!         // Wrap a `Service` in our middleware stack
@@ -240,6 +261,7 @@ pub mod follow_redirect;
 
 pub mod classify;
 pub mod services;
+pub mod metrics;
 
 /// Error type containing either a body error or an IO error.
 ///
