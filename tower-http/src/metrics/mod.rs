@@ -8,9 +8,5 @@
 
 pub mod in_flight_requests;
 
-// requests per scond
-// error rate
-// throughput, bytes per second/minute
-
 #[doc(inline)]
 pub use self::in_flight_requests::{InFlightRequests, InFlightRequestsLayer};
