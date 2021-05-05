@@ -1,7 +1,7 @@
 //! Tools for classifying responses as either success or failure.
 
 use http::{HeaderMap, Request, Response, StatusCode};
-use std::{convert::Infallible, marker::PhantomData};
+use std::{convert::Infallible, marker::PhantomData, num::NonZeroI32};
 
 /// Trait for producing response classifiers from a request.
 ///
@@ -253,10 +253,14 @@ impl<E> ClassifyResponse<E> for GrpcErrorsAsFailures {
         self,
         res: &Response<B>,
     ) -> ClassifiedResponse<Self::FailureClass, Self::ClassifyEos> {
-        if let Some(classification) = classify_grpc_metadata(res.headers()) {
-            ClassifiedResponse::Ready(classification)
-        } else {
-            ClassifiedResponse::RequiresEos(GrpcEosErrorsAsFailures { _priv: () })
+        match classify_grpc_metadata(res.headers()) {
+            ParsedGrpcStatus::Success
+            | ParsedGrpcStatus::HeaderNotString
+            | ParsedGrpcStatus::HeaderNotInt => ClassifiedResponse::Ready(Ok(())),
+            ParsedGrpcStatus::NonSuccess(status) => ClassifiedResponse::Ready(Err(status.get())),
+            ParsedGrpcStatus::GrpcStatusHeaderMissing => {
+                ClassifiedResponse::RequiresEos(GrpcEosErrorsAsFailures { _priv: () })
+            }
         }
     }
 
@@ -276,7 +280,17 @@ impl<E> ClassifyEos<E> for GrpcEosErrorsAsFailures {
     type FailureClass = i32;
 
     fn classify_eos(self, trailers: Option<&HeaderMap>) -> Result<(), i32> {
-        trailers.and_then(classify_grpc_metadata).unwrap_or(Ok(()))
+        if let Some(trailers) = trailers {
+            match classify_grpc_metadata(trailers) {
+                ParsedGrpcStatus::Success
+                | ParsedGrpcStatus::GrpcStatusHeaderMissing
+                | ParsedGrpcStatus::HeaderNotString
+                | ParsedGrpcStatus::HeaderNotInt => Ok(()),
+                ParsedGrpcStatus::NonSuccess(status) => Err(status.get()),
+            }
+        } else {
+            Ok(())
+        }
     }
 
     fn classify_error(self, _error: &E) -> Self::FailureClass {
@@ -285,16 +299,36 @@ impl<E> ClassifyEos<E> for GrpcEosErrorsAsFailures {
     }
 }
 
-pub(crate) fn classify_grpc_metadata(headers: &HeaderMap) -> Option<Result<(), i32>> {
-    let status = headers.get("grpc-status")?;
-    let status = status.to_str().ok()?;
-    let status = status.parse::<i32>().ok()?;
+#[allow(clippy::if_let_some_result)]
+pub(crate) fn classify_grpc_metadata(headers: &HeaderMap) -> ParsedGrpcStatus {
+    macro_rules! or_else {
+        ($expr:expr, $other:ident) => {
+            if let Some(value) = $expr {
+                value
+            } else {
+                return ParsedGrpcStatus::$other;
+            }
+        };
+    }
+
+    let status = or_else!(headers.get("grpc-status"), GrpcStatusHeaderMissing);
+    let status = or_else!(status.to_str().ok(), HeaderNotString);
+    let status = or_else!(status.parse::<i32>().ok(), HeaderNotInt);
 
     if status == 0 {
-        Some(Ok(()))
+        ParsedGrpcStatus::Success
     } else {
-        Some(Err(status))
+        ParsedGrpcStatus::NonSuccess(NonZeroI32::new(status).unwrap())
     }
+}
+
+pub(crate) enum ParsedGrpcStatus {
+    Success,
+    NonSuccess(NonZeroI32),
+    GrpcStatusHeaderMissing,
+    // these two are treated as `Success` but kept separate for clarity
+    HeaderNotString,
+    HeaderNotInt,
 }
 
 // Just verify that we can actually use this response classifier to determine retries as well

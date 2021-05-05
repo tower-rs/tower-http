@@ -54,18 +54,18 @@ where
         let latency = this.start.elapsed();
         *this.start = Instant::now();
 
-        if let Some(((err, classify_eos), mut on_failure)) = result
-            .as_ref()
-            .err()
-            .zip(this.classify_eos.take())
-            .zip(this.on_failure.take())
-        {
-            let failure_class = classify_eos.classify_error(err);
-            on_failure.on_failure(failure_class, latency);
-        }
-
-        if let Ok(chunk) = &result {
-            this.on_body_chunk.on_body_chunk(chunk, latency);
+        match &result {
+            Ok(chunk) => {
+                this.on_body_chunk.on_body_chunk(chunk, latency);
+            }
+            Err(err) => {
+                if let Some((classify_eos, mut on_failure)) =
+                    this.classify_eos.take().zip(this.on_failure.take())
+                {
+                    let failure_class = classify_eos.classify_error(err);
+                    on_failure.on_failure(failure_class, latency);
+                }
+            }
         }
 
         Poll::Ready(Some(result))

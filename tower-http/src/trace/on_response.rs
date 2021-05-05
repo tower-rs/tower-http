@@ -94,56 +94,103 @@ macro_rules! log_pattern_match {
     (
         $this:expr, $res:expr, $latency:expr, $include_headers:expr, [$($level:ident),*]
     ) => {
-        match ($this.level, $include_headers, $this.latency_unit) {
+        match ($this.level, $include_headers, $this.latency_unit, status($res)) {
             $(
-                (Level::$level, true, LatencyUnit::Millis) => {
+                (Level::$level, true, LatencyUnit::Millis, None) => {
                     tracing::event!(
                         Level::$level,
                         latency = format_args!("{} ms", $latency.as_millis()),
-                        status = status($res),
                         response_headers = ?$res.headers(),
                         "finished processing request"
                     );
                 }
-                (Level::$level, false, LatencyUnit::Millis) => {
+                (Level::$level, false, LatencyUnit::Millis, None) => {
                     tracing::event!(
                         Level::$level,
                         latency = format_args!("{} ms", $latency.as_millis()),
-                        status = status($res),
                         "finished processing request"
                     );
                 }
-                (Level::$level, true, LatencyUnit::Micros) => {
+                (Level::$level, true, LatencyUnit::Millis, Some(status)) => {
                     tracing::event!(
                         Level::$level,
-                        latency = format_args!("{} μs", $latency.as_micros()),
-                        status = status($res),
+                        latency = format_args!("{} ms", $latency.as_millis()),
+                        status = status,
                         response_headers = ?$res.headers(),
                         "finished processing request"
                     );
                 }
-                (Level::$level, false, LatencyUnit::Micros) => {
+                (Level::$level, false, LatencyUnit::Millis, Some(status)) => {
                     tracing::event!(
                         Level::$level,
-                        latency = format_args!("{} μs", $latency.as_micros()),
-                        status = status($res),
+                        latency = format_args!("{} ms", $latency.as_millis()),
+                        status = status,
                         "finished processing request"
                     );
                 }
-                (Level::$level, true, LatencyUnit::Nanos) => {
+
+                (Level::$level, true, LatencyUnit::Micros, None) => {
                     tracing::event!(
                         Level::$level,
-                        latency = format_args!("{} ns", $latency.as_nanos()),
-                        status = status($res),
+                        latency = format_args!("{} μs", $latency.as_micros()),
                         response_headers = ?$res.headers(),
                         "finished processing request"
                     );
                 }
-                (Level::$level, false, LatencyUnit::Nanos) => {
+                (Level::$level, false, LatencyUnit::Micros, None) => {
+                    tracing::event!(
+                        Level::$level,
+                        latency = format_args!("{} μs", $latency.as_micros()),
+                        "finished processing request"
+                    );
+                }
+                (Level::$level, true, LatencyUnit::Micros, Some(status)) => {
+                    tracing::event!(
+                        Level::$level,
+                        latency = format_args!("{} μs", $latency.as_micros()),
+                        status = status,
+                        response_headers = ?$res.headers(),
+                        "finished processing request"
+                    );
+                }
+                (Level::$level, false, LatencyUnit::Micros, Some(status)) => {
+                    tracing::event!(
+                        Level::$level,
+                        latency = format_args!("{} μs", $latency.as_micros()),
+                        status = status,
+                        "finished processing request"
+                    );
+                }
+
+                (Level::$level, true, LatencyUnit::Nanos, None) => {
                     tracing::event!(
                         Level::$level,
                         latency = format_args!("{} ns", $latency.as_nanos()),
-                        status = status($res),
+                        response_headers = ?$res.headers(),
+                        "finished processing request"
+                    );
+                }
+                (Level::$level, false, LatencyUnit::Nanos, None) => {
+                    tracing::event!(
+                        Level::$level,
+                        latency = format_args!("{} ns", $latency.as_nanos()),
+                        "finished processing request"
+                    );
+                }
+                (Level::$level, true, LatencyUnit::Nanos, Some(status)) => {
+                    tracing::event!(
+                        Level::$level,
+                        latency = format_args!("{} ns", $latency.as_nanos()),
+                        status = status,
+                        response_headers = ?$res.headers(),
+                        "finished processing request"
+                    );
+                }
+                (Level::$level, false, LatencyUnit::Nanos, Some(status)) => {
+                    tracing::event!(
+                        Level::$level,
+                        latency = format_args!("{} ns", $latency.as_nanos()),
+                        status = status,
                         "finished processing request"
                     );
                 }
@@ -164,20 +211,25 @@ impl<B> OnResponse<B> for DefaultOnResponse {
     }
 }
 
-fn status<B>(res: &Response<B>) -> i32 {
+fn status<B>(res: &Response<B>) -> Option<i32> {
+    use crate::classify::ParsedGrpcStatus;
+
     let is_grpc = res
         .headers()
         .get(http::header::CONTENT_TYPE)
         .map_or(false, |value| value == "application/grpc");
 
     if is_grpc {
-        if let Some(Err(status)) = crate::classify::classify_grpc_metadata(res.headers()) {
-            status
-        } else {
-            // 0 is success in gRPC
-            0
+        match crate::classify::classify_grpc_metadata(res.headers()) {
+            ParsedGrpcStatus::Success
+            | ParsedGrpcStatus::HeaderNotString
+            | ParsedGrpcStatus::HeaderNotInt => Some(0),
+            ParsedGrpcStatus::NonSuccess(status) => Some(status.get()),
+            // if `grpc-status` is missing then its a streaming response and there is no status
+            // _yet_, so its neither success nor error
+            ParsedGrpcStatus::GrpcStatusHeaderMissing => None,
         }
     } else {
-        res.status().as_u16().into()
+        Some(res.status().as_u16().into())
     }
 }
