@@ -360,7 +360,7 @@ where
         res: &Response<B>,
     ) -> ClassifiedResponse<Self::FailureClass, Self::ClassifyEos> {
         if let Some(classification) = classify_grpc_metadata(res.headers()) {
-            ClassifiedResponse::Ready(classification)
+            ClassifiedResponse::Ready(classification.map_err(GrpcCodeOrError::Code))
         } else {
             ClassifiedResponse::RequiresEos(GrpcEosErrorsAsFailures {
                 map_error: self.map_error,
@@ -405,7 +405,11 @@ where
     type FailureClass = GrpcCodeOrError<T>;
 
     fn classify_eos(self, trailers: Option<&HeaderMap>) -> Result<(), GrpcCodeOrError<T>> {
-        trailers.and_then(classify_grpc_metadata).unwrap_or(Ok(()))
+        trailers
+            .and_then(|trailers| {
+                classify_grpc_metadata(trailers).map(|result| result.map_err(GrpcCodeOrError::Code))
+            })
+            .unwrap_or(Ok(()))
     }
 
     fn classify_error(self, error: &E) -> Self::FailureClass {
@@ -435,9 +439,7 @@ where
     }
 }
 
-pub(crate) fn classify_grpc_metadata<T>(
-    headers: &HeaderMap,
-) -> Option<Result<(), GrpcCodeOrError<T>>> {
+pub(crate) fn classify_grpc_metadata(headers: &HeaderMap) -> Option<Result<(), i32>> {
     let status = headers.get("grpc-status")?;
     let status = status.to_str().ok()?;
     let status = status.parse::<i32>().ok()?;
@@ -445,7 +447,7 @@ pub(crate) fn classify_grpc_metadata<T>(
     if status == 0 {
         Some(Ok(()))
     } else {
-        Some(Err(GrpcCodeOrError::Code(status)))
+        Some(Err(status))
     }
 }
 
