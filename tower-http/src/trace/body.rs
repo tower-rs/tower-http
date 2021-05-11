@@ -103,4 +103,12 @@ where
 
         Poll::Ready(result)
     }
+
+    fn is_end_stream(&self) -> bool {
+        self.inner.is_end_stream()
+    }
+
+    fn size_hint(&self) -> http_body::SizeHint {
+        self.inner.size_hint()
+    }
 }
