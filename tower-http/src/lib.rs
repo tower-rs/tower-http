@@ -18,7 +18,6 @@
 //! use tower_http::{
 //!     add_extension::AddExtensionLayer,
 //!     compression::CompressionLayer,
-//!     metrics::InFlightRequestsLayer,
 //!     propagate_header::PropagateHeaderLayer,
 //!     sensitive_header::{SetSensitiveResponseHeaderLayer, SetSensitiveRequestHeaderLayer},
 //!     set_header::SetResponseHeaderLayer,
@@ -54,16 +53,6 @@
 //!         pool: DatabaseConnectionPool::new(),
 //!     };
 //!
-//!     // Create a `Layer` for counting in-flight requests and its associated counter.
-//!     let (in_flight_requests_layer, counter) = InFlightRequestsLayer::pair();
-//!
-//!     // Spawn a task that will receive the number of in-flight requests every 10 seconds.
-//!     tokio::spawn(
-//!         counter.run_emitter(Duration::from_secs(10), |count: usize| async move {
-//!             update_in_flight_requests_metric(count).await;
-//!         }),
-//!     );
-//!
 //!     // Use `tower`'s `ServiceBuilder` API to build a stack of `tower` middleware
 //!     // wrapping our request handler.
 //!     let service = ServiceBuilder::new()
@@ -75,8 +64,6 @@
 //!         // Mark the `Authorization` header as sensitive on responses
 //!         // This must be applied after `TraceLayer`
 //!         .layer(SetSensitiveResponseHeaderLayer::new(AUTHORIZATION))
-//!         // Keep track of the number of in-flight requests
-//!         .layer(in_flight_requests_layer)
 //!         // Share an `Arc<State>` with all requests
 //!         .layer(AddExtensionLayer::new(Arc::new(state)))
 //!         // Compress responses
