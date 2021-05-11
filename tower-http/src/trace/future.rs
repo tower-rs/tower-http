@@ -32,7 +32,9 @@ impl<Fut, ResBody, E, C, OnResponseT, OnBodyChunkT, OnEosT, OnFailureT> Future
 where
     Fut: Future<Output = Result<Response<ResBody>, E>>,
     ResBody: Body,
-    C: ClassifyResponse<E>,
+    ResBody::Error: std::fmt::Display + 'static,
+    E: std::fmt::Display + 'static,
+    C: ClassifyResponse,
     OnResponseT: OnResponse<ResBody>,
     OnFailureT: OnFailure<C::FailureClass>,
     OnBodyChunkT: OnBodyChunk<ResBody::Data>,

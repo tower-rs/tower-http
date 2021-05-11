@@ -102,7 +102,7 @@
 //! use hyper::Body;
 //! use bytes::Bytes;
 //! use tower::ServiceBuilder;
-//! use tower_http::trace::TraceLayer;
+//! use tower_http::{classify::ServerErrorsFailureClass, trace::TraceLayer};
 //! use std::time::Duration;
 //! # use tower::{ServiceExt, Service};
 //! # use std::convert::Infallible;
@@ -132,7 +132,7 @@
 //!             .on_eos(|trailers: Option<&HeaderMap>, stream_duration: Duration| {
 //!                 tracing::debug!("stream closed after {:?}", stream_duration)
 //!             })
-//!             .on_failure(|error: StatusCode, latency: Duration| {
+//!             .on_failure(|error: ServerErrorsFailureClass, latency: Duration| {
 //!                 tracing::debug!("something went wrong")
 //!             })
 //!     )
@@ -154,7 +154,7 @@
 //! ```rust
 //! use http::StatusCode;
 //! use tower::ServiceBuilder;
-//! use tower_http::trace::TraceLayer;
+//! use tower_http::{classify::ServerErrorsFailureClass, trace::TraceLayer};
 //! use std::time::Duration;
 //! # use tower::{ServiceExt, Service};
 //! # use hyper::Body;
@@ -176,7 +176,7 @@
 //!             .on_response(())
 //!             .on_body_chunk(())
 //!             .on_eos(())
-//!             .on_failure(|error: StatusCode, latency: Duration| {
+//!             .on_failure(|error: ServerErrorsFailureClass, latency: Duration| {
 //!                 tracing::debug!("something went wrong")
 //!             })
 //!     )
@@ -223,7 +223,7 @@
 //! #[derive(Copy, Clone)]
 //! struct MyMakeClassify;
 //!
-//! impl MakeClassifier<hyper::Error> for MyMakeClassify {
+//! impl MakeClassifier for MyMakeClassify {
 //!     type Classifier = MyClassifier;
 //!     type FailureClass = &'static str;
 //!     type ClassifyEos = NeverClassifyEos<&'static str>;
@@ -237,7 +237,7 @@
 //! #[derive(Copy, Clone)]
 //! struct MyClassifier;
 //!
-//! impl ClassifyResponse<hyper::Error> for MyClassifier {
+//! impl ClassifyResponse for MyClassifier {
 //!     type FailureClass = &'static str;
 //!     type ClassifyEos = NeverClassifyEos<&'static str>;
 //!
@@ -253,7 +253,10 @@
 //!         }
 //!     }
 //!
-//!     fn classify_error(self, error: &hyper::Error) -> Self::FailureClass {
+//!     fn classify_error<E>(self, error: &E) -> Self::FailureClass
+//!     where
+//!         E: std::fmt::Display + 'static,
+//!     {
 //!         "something went wrong..."
 //!     }
 //! }
@@ -316,8 +319,9 @@ const DEFAULT_ERROR_LEVEL: Level = Level::ERROR;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::classify::ServerErrorsFailureClass;
     use bytes::Bytes;
-    use http::{HeaderMap, Request, Response, StatusCode};
+    use http::{HeaderMap, Request, Response};
     use hyper::Body;
     use once_cell::sync::Lazy;
     use std::{
@@ -334,7 +338,7 @@ mod tests {
         static ON_EOS: Lazy<AtomicU32> = Lazy::new(|| AtomicU32::new(0));
         static ON_FAILURE: Lazy<AtomicU32> = Lazy::new(|| AtomicU32::new(0));
 
-        let trace_layer = TraceLayer::<_, BoxError>::new_for_http()
+        let trace_layer = TraceLayer::new_for_http()
             .on_request(|_req: &Request<Body>| {
                 ON_REQUEST_COUNT.fetch_add(1, Ordering::SeqCst);
             })
@@ -347,7 +351,7 @@ mod tests {
             .on_eos(|_trailers: Option<&HeaderMap>, _latency: Duration| {
                 ON_EOS.fetch_add(1, Ordering::SeqCst);
             })
-            .on_failure(|_err: StatusCode, _latency: Duration| {
+            .on_failure(|_class: ServerErrorsFailureClass, _latency: Duration| {
                 ON_FAILURE.fetch_add(1, Ordering::SeqCst);
             });
 
@@ -381,7 +385,7 @@ mod tests {
         static ON_EOS: Lazy<AtomicU32> = Lazy::new(|| AtomicU32::new(0));
         static ON_FAILURE: Lazy<AtomicU32> = Lazy::new(|| AtomicU32::new(0));
 
-        let trace_layer = TraceLayer::<_, BoxError>::new_for_http()
+        let trace_layer = TraceLayer::new_for_http()
             .on_request(|_req: &Request<Body>| {
                 ON_REQUEST_COUNT.fetch_add(1, Ordering::SeqCst);
             })
@@ -394,7 +398,7 @@ mod tests {
             .on_eos(|_trailers: Option<&HeaderMap>, _latency: Duration| {
                 ON_EOS.fetch_add(1, Ordering::SeqCst);
             })
-            .on_failure(|_err: StatusCode, _latency: Duration| {
+            .on_failure(|_class: ServerErrorsFailureClass, _latency: Duration| {
                 ON_FAILURE.fetch_add(1, Ordering::SeqCst);
             });
 
