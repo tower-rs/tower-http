@@ -1,7 +1,7 @@
 use super::DEFAULT_ERROR_LEVEL;
 use crate::LatencyUnit;
 use std::{fmt, time::Duration};
-use tracing::Level;
+use tracing::{Level, Span};
 
 /// Trait used to tell [`Trace`] what to do when a request fails.
 ///
@@ -10,20 +10,33 @@ pub trait OnFailure<FailureClass> {
     /// Do the thing.
     ///
     /// `latency` is the duration since the request was received.
-    fn on_failure(&mut self, failure_classification: FailureClass, latency: Duration);
+    ///
+    /// `current_span` can be used to record field values that weren't know when the span was
+    /// created.
+    fn on_failure(
+        &mut self,
+        failure_classification: FailureClass,
+        latency: Duration,
+        current_span: &Span,
+    );
 }
 
 impl<FailureClass> OnFailure<FailureClass> for () {
     #[inline]
-    fn on_failure(&mut self, _: FailureClass, _: Duration) {}
+    fn on_failure(&mut self, _: FailureClass, _: Duration, _: &Span) {}
 }
 
 impl<F, FailureClass> OnFailure<FailureClass> for F
 where
-    F: FnMut(FailureClass, Duration),
+    F: FnMut(FailureClass, Duration, &Span),
 {
-    fn on_failure(&mut self, failure_classification: FailureClass, latency: Duration) {
-        self(failure_classification, latency)
+    fn on_failure(
+        &mut self,
+        failure_classification: FailureClass,
+        latency: Duration,
+        current_span: &Span,
+    ) {
+        self(failure_classification, latency, current_span)
     }
 }
 
@@ -114,7 +127,12 @@ impl<FailureClass> OnFailure<FailureClass> for DefaultOnFailure
 where
     FailureClass: fmt::Display,
 {
-    fn on_failure(&mut self, failure_classification: FailureClass, latency: Duration) {
+    fn on_failure(
+        &mut self,
+        failure_classification: FailureClass,
+        latency: Duration,
+        _span: &Span,
+    ) {
         log_pattern_match!(
             self,
             &failure_classification,

@@ -104,6 +104,7 @@
 //! use tower::ServiceBuilder;
 //! use tower_http::trace::TraceLayer;
 //! use std::time::Duration;
+//! use tracing::Span;
 //! # use tower::{ServiceExt, Service};
 //! # use std::convert::Infallible;
 //!
@@ -120,19 +121,19 @@
 //!             .make_span_with(|request: &Request<Body>| {
 //!                 tracing::debug_span!("http-request")
 //!             })
-//!             .on_request(|request: &Request<Body>| {
+//!             .on_request(|request: &Request<Body>, current_span: &Span| {
 //!                 tracing::debug!("started {} {}", request.method(), request.uri().path())
 //!             })
-//!             .on_response(|response: &Response<Body>, latency: Duration| {
+//!             .on_response(|response: &Response<Body>, latency: Duration, current_span: &Span| {
 //!                 tracing::debug!("response generated in {:?}", latency)
 //!             })
-//!             .on_body_chunk(|chunk: &Bytes, latency: Duration| {
+//!             .on_body_chunk(|chunk: &Bytes, latency: Duration, current_span: &Span| {
 //!                 tracing::debug!("sending {} bytes", chunk.len())
 //!             })
-//!             .on_eos(|trailers: Option<&HeaderMap>, stream_duration: Duration| {
+//!             .on_eos(|trailers: Option<&HeaderMap>, stream_duration: Duration, current_span: &Span| {
 //!                 tracing::debug!("stream closed after {:?}", stream_duration)
 //!             })
-//!             .on_failure(|error: StatusCode, latency: Duration| {
+//!             .on_failure(|error: StatusCode, latency: Duration, current_span: &Span| {
 //!                 tracing::debug!("something went wrong")
 //!             })
 //!     )
@@ -156,6 +157,7 @@
 //! use tower::ServiceBuilder;
 //! use tower_http::trace::TraceLayer;
 //! use std::time::Duration;
+//! use tracing::Span;
 //! # use tower::{ServiceExt, Service};
 //! # use hyper::Body;
 //! # use http::{Response, Request};
@@ -176,7 +178,7 @@
 //!             .on_response(())
 //!             .on_body_chunk(())
 //!             .on_eos(())
-//!             .on_failure(|error: StatusCode, latency: Duration| {
+//!             .on_failure(|error: StatusCode, latency: Duration, current_span: &Span| {
 //!                 tracing::debug!("something went wrong")
 //!             })
 //!     )
@@ -325,6 +327,7 @@ mod tests {
         time::Duration,
     };
     use tower::{BoxError, Service, ServiceBuilder, ServiceExt};
+    use tracing::Span;
 
     #[tokio::test]
     async fn unary_request() {
@@ -335,19 +338,25 @@ mod tests {
         static ON_FAILURE: Lazy<AtomicU32> = Lazy::new(|| AtomicU32::new(0));
 
         let trace_layer = TraceLayer::<_, BoxError>::new_for_http()
-            .on_request(|_req: &Request<Body>| {
+            .make_span_with(|_req: &Request<Body>| {
+                tracing::info_span!("test-span", foo = tracing::field::Empty)
+            })
+            .on_request(|_req: &Request<Body>, span: &Span| {
+                span.record("foo", &42);
                 ON_REQUEST_COUNT.fetch_add(1, Ordering::SeqCst);
             })
-            .on_response(|_res: &Response<Body>, _latency: Duration| {
+            .on_response(|_res: &Response<Body>, _latency: Duration, _span: &Span| {
                 ON_RESPONSE_COUNT.fetch_add(1, Ordering::SeqCst);
             })
-            .on_body_chunk(|_chunk: &Bytes, _latency: Duration| {
+            .on_body_chunk(|_chunk: &Bytes, _latency: Duration, _span: &Span| {
                 ON_BODY_CHUNK_COUNT.fetch_add(1, Ordering::SeqCst);
             })
-            .on_eos(|_trailers: Option<&HeaderMap>, _latency: Duration| {
-                ON_EOS.fetch_add(1, Ordering::SeqCst);
-            })
-            .on_failure(|_err: StatusCode, _latency: Duration| {
+            .on_eos(
+                |_trailers: Option<&HeaderMap>, _latency: Duration, _span: &Span| {
+                    ON_EOS.fetch_add(1, Ordering::SeqCst);
+                },
+            )
+            .on_failure(|_err: StatusCode, _latency: Duration, _span: &Span| {
                 ON_FAILURE.fetch_add(1, Ordering::SeqCst);
             });
 
@@ -382,19 +391,21 @@ mod tests {
         static ON_FAILURE: Lazy<AtomicU32> = Lazy::new(|| AtomicU32::new(0));
 
         let trace_layer = TraceLayer::<_, BoxError>::new_for_http()
-            .on_request(|_req: &Request<Body>| {
+            .on_request(|_req: &Request<Body>, _span: &Span| {
                 ON_REQUEST_COUNT.fetch_add(1, Ordering::SeqCst);
             })
-            .on_response(|_res: &Response<Body>, _latency: Duration| {
+            .on_response(|_res: &Response<Body>, _latency: Duration, _span: &Span| {
                 ON_RESPONSE_COUNT.fetch_add(1, Ordering::SeqCst);
             })
-            .on_body_chunk(|_chunk: &Bytes, _latency: Duration| {
+            .on_body_chunk(|_chunk: &Bytes, _latency: Duration, _span: &Span| {
                 ON_BODY_CHUNK_COUNT.fetch_add(1, Ordering::SeqCst);
             })
-            .on_eos(|_trailers: Option<&HeaderMap>, _latency: Duration| {
-                ON_EOS.fetch_add(1, Ordering::SeqCst);
-            })
-            .on_failure(|_err: StatusCode, _latency: Duration| {
+            .on_eos(
+                |_trailers: Option<&HeaderMap>, _latency: Duration, _span: &Span| {
+                    ON_EOS.fetch_add(1, Ordering::SeqCst);
+                },
+            )
+            .on_failure(|_err: StatusCode, _latency: Duration, _span: &Span| {
                 ON_FAILURE.fetch_add(1, Ordering::SeqCst);
             });
 

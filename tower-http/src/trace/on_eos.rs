@@ -2,7 +2,7 @@ use super::DEFAULT_MESSAGE_LEVEL;
 use crate::{classify::ParsedGrpcStatus, LatencyUnit};
 use http::header::HeaderMap;
 use std::time::Duration;
-use tracing::Level;
+use tracing::{Level, Span};
 
 /// Trait used to tell [`Trace`] what to do when a stream closes.
 ///
@@ -11,20 +11,23 @@ pub trait OnEos {
     /// Do the thing.
     ///
     /// `stream_duration` is the duration since the response was sent.
-    fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Duration);
+    ///
+    /// `current_span` can be used to record field values that weren't know when the span was
+    /// created.
+    fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Duration, current_span: &Span);
 }
 
 impl OnEos for () {
     #[inline]
-    fn on_eos(self, _: Option<&HeaderMap>, _: Duration) {}
+    fn on_eos(self, _: Option<&HeaderMap>, _: Duration, _: &Span) {}
 }
 
 impl<F> OnEos for F
 where
-    F: FnOnce(Option<&HeaderMap>, Duration),
+    F: FnOnce(Option<&HeaderMap>, Duration, &Span),
 {
-    fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Duration) {
-        self(trailers, stream_duration)
+    fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Duration, current_span: &Span) {
+        self(trailers, stream_duration, current_span)
     }
 }
 
@@ -137,7 +140,7 @@ macro_rules! log_pattern_match {
 }
 
 impl OnEos for DefaultOnEos {
-    fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Duration) {
+    fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Duration, _span: &Span) {
         let status =
             trailers.and_then(
                 |trailers| match crate::classify::classify_grpc_metadata(trailers) {

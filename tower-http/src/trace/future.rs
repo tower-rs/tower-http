@@ -62,10 +62,13 @@ where
                 match classification {
                     ClassifiedResponse::Ready(classification) => {
                         if let Err(failure_class) = classification {
-                            on_failure.on_failure(failure_class, latency);
+                            on_failure.on_failure(failure_class, latency, this.span);
                         }
 
-                        this.on_response.take().unwrap().on_response(&res, latency);
+                        this.on_response
+                            .take()
+                            .unwrap()
+                            .on_response(&res, latency, this.span);
 
                         let span = this.span.clone();
                         let res = res.map(|body| ResponseBody {
@@ -81,7 +84,10 @@ where
                         Poll::Ready(Ok(res))
                     }
                     ClassifiedResponse::RequiresEos(classify_eos) => {
-                        this.on_response.take().unwrap().on_response(&res, latency);
+                        this.on_response
+                            .take()
+                            .unwrap()
+                            .on_response(&res, latency, this.span);
 
                         let span = this.span.clone();
                         let res = res.map(|body| ResponseBody {
@@ -100,7 +106,7 @@ where
             }
             Err(err) => {
                 let failure_class = classifier.classify_error(&err);
-                on_failure.on_failure(failure_class, latency);
+                on_failure.on_failure(failure_class, latency, this.span);
 
                 Poll::Ready(Err(err))
             }

@@ -1,26 +1,30 @@
 use super::DEFAULT_MESSAGE_LEVEL;
 use http::Request;
 use tracing::Level;
+use tracing::Span;
 
 /// Trait used to tell [`Trace`] what to do when a request is received.
 ///
 /// [`Trace`]: super::Trace
 pub trait OnRequest<B> {
     /// Do the thing.
-    fn on_request(&mut self, request: &Request<B>);
+    ///
+    /// `current_span` can be used to record field values that weren't know when the span was
+    /// created.
+    fn on_request(&mut self, request: &Request<B>, current_span: &Span);
 }
 
 impl<B> OnRequest<B> for () {
     #[inline]
-    fn on_request(&mut self, _: &Request<B>) {}
+    fn on_request(&mut self, _: &Request<B>, _current_span: &Span) {}
 }
 
 impl<B, F> OnRequest<B> for F
 where
-    F: FnMut(&Request<B>),
+    F: FnMut(&Request<B>, &Span),
 {
-    fn on_request(&mut self, request: &Request<B>) {
-        self(request)
+    fn on_request(&mut self, request: &Request<B>, current_span: &Span) {
+        self(request, current_span)
     }
 }
 
@@ -59,7 +63,7 @@ impl DefaultOnRequest {
 }
 
 impl<B> OnRequest<B> for DefaultOnRequest {
-    fn on_request(&mut self, _request: &Request<B>) {
+    fn on_request(&mut self, _request: &Request<B>, _span: &Span) {
         match self.level {
             Level::ERROR => {
                 tracing::event!(Level::ERROR, "started processing request");

@@ -56,14 +56,14 @@ where
 
         match &result {
             Ok(chunk) => {
-                this.on_body_chunk.on_body_chunk(chunk, latency);
+                this.on_body_chunk.on_body_chunk(chunk, latency, this.span);
             }
             Err(err) => {
                 if let Some((classify_eos, mut on_failure)) =
                     this.classify_eos.take().zip(this.on_failure.take())
                 {
                     let failure_class = classify_eos.classify_error(err);
-                    on_failure.on_failure(failure_class, latency);
+                    on_failure.on_failure(failure_class, latency, this.span);
                 }
             }
         }
@@ -87,16 +87,16 @@ where
             match &result {
                 Ok(trailers) => {
                     if let Err(failure_class) = classify_eos.classify_eos(trailers.as_ref()) {
-                        on_failure.on_failure(failure_class, latency);
+                        on_failure.on_failure(failure_class, latency, this.span);
                     }
 
                     if let Some((on_eos, stream_start)) = this.on_eos.take() {
-                        on_eos.on_eos(trailers.as_ref(), stream_start.elapsed());
+                        on_eos.on_eos(trailers.as_ref(), stream_start.elapsed(), this.span);
                     }
                 }
                 Err(err) => {
                     let failure_class = classify_eos.classify_error(err);
-                    on_failure.on_failure(failure_class, latency);
+                    on_failure.on_failure(failure_class, latency, this.span);
                 }
             }
         }
