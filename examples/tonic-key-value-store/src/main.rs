@@ -23,7 +23,8 @@ use tower::{make::Shared, ServiceBuilder};
 use tower::{BoxError, Service};
 use tower_http::{
     compression::CompressionLayer, decompression::DecompressionLayer,
-    sensitive_header::SetSensitiveHeaderLayer, set_header::SetRequestHeaderLayer,
+    sensitive_header::SetSensitiveHeaderLayer,
+    set_header::SetRequestHeaderLayer,
 };
 
 mod proto {
@@ -136,7 +137,7 @@ async fn serve_forever(listener: TcpListener) -> Result<(), Box<dyn std::error::
         // Compress responses
         .layer(CompressionLayer::new())
         // Mark the `Authorization` header as sensitive so it doesn't show in logs
-        .layer(SetSensitiveHeaderLayer::new(once(header::AUTHORIZATION)))
+        .layer(SetSensitiveHeaderLayer::new(&[&header::AUTHORIZATION]))
         // Build our final `Service`
         .service(service);
 
