@@ -9,7 +9,7 @@ pub trait OnBodyChunk<B> {
     ///
     /// `latency` is the duration since the response was sent or since the last body chunk as sent.
     ///
-    /// `current_span` can be used to record field values that weren't know when the span was
+    /// `current_span` can be used to record field values that weren't known when the span was
     /// created.
     ///
     /// If you're using [hyper] as your server `B` will most likely be [`Bytes`].

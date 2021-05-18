@@ -13,7 +13,7 @@ pub trait OnResponse<B> {
     ///
     /// `latency` is the duration since the request was received.
     ///
-    /// `current_span` can be used to record field values that weren't know when the span was
+    /// `current_span` can be used to record field values that weren't known when the span was
     /// created.
     fn on_response(self, response: &Response<B>, latency: Duration, current_span: &Span);
 }
