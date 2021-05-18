@@ -161,11 +161,11 @@ fn content_length_from_response<B>(response: &Response<B>) -> Option<HeaderValue
 where
     B: HttpBody,
 {
-    if let Some(size) = response.body().size_hint().exact() {
-        Some(HeaderValue::from_str(&size.to_string()).unwrap())
-    } else {
-        None
-    }
+    response
+        .body()
+        .size_hint()
+        .exact()
+        .map(|size| HeaderValue::from_str(&size.to_string()).unwrap())
 }
 
 #[cfg(test)]
