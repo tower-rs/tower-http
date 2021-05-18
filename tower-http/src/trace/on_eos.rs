@@ -12,9 +12,9 @@ pub trait OnEos {
     ///
     /// `stream_duration` is the duration since the response was sent.
     ///
-    /// `current_span` can be used to record field values that weren't know when the span was
+    /// `span` can be used to record field values that weren't know when the span was
     /// created.
-    fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Duration, current_span: &Span);
+    fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Duration, span: &Span);
 }
 
 impl OnEos for () {
@@ -26,8 +26,8 @@ impl<F> OnEos for F
 where
     F: FnOnce(Option<&HeaderMap>, Duration, &Span),
 {
-    fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Duration, current_span: &Span) {
-        self(trailers, stream_duration, current_span)
+    fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Duration, span: &Span) {
+        self(trailers, stream_duration, span)
     }
 }
 

@@ -9,22 +9,22 @@ pub trait OnBodyChunk<B> {
     ///
     /// `latency` is the duration since the response was sent or since the last body chunk as sent.
     ///
-    /// `current_span` can be used to record field values that weren't known when the span was
+    /// `span` can be used to record field values that weren't known when the span was
     /// created.
     ///
     /// If you're using [hyper] as your server `B` will most likely be [`Bytes`].
     ///
     /// [hyper]: https://hyper.rs
     /// [`Bytes`]: https://docs.rs/bytes/latest/bytes/struct.Bytes.html
-    fn on_body_chunk(&mut self, chunk: &B, latency: Duration, current_span: &Span);
+    fn on_body_chunk(&mut self, chunk: &B, latency: Duration, span: &Span);
 }
 
 impl<B, F> OnBodyChunk<B> for F
 where
     F: FnMut(&B, Duration, &Span),
 {
-    fn on_body_chunk(&mut self, chunk: &B, latency: Duration, current_span: &Span) {
-        self(chunk, latency, current_span)
+    fn on_body_chunk(&mut self, chunk: &B, latency: Duration, span: &Span) {
+        self(chunk, latency, span)
     }
 }
 

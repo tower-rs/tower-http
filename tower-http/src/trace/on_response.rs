@@ -13,9 +13,9 @@ pub trait OnResponse<B> {
     ///
     /// `latency` is the duration since the request was received.
     ///
-    /// `current_span` can be used to record field values that weren't known when the span was
+    /// `span` can be used to record field values that weren't known when the span was
     /// created.
-    fn on_response(self, response: &Response<B>, latency: Duration, current_span: &Span);
+    fn on_response(self, response: &Response<B>, latency: Duration, span: &Span);
 }
 
 impl<B> OnResponse<B> for () {
@@ -27,8 +27,8 @@ impl<B, F> OnResponse<B> for F
 where
     F: FnOnce(&Response<B>, Duration, &Span),
 {
-    fn on_response(self, response: &Response<B>, latency: Duration, current_span: &Span) {
-        self(response, latency, current_span)
+    fn on_response(self, response: &Response<B>, latency: Duration, span: &Span) {
+        self(response, latency, span)
     }
 }
 
@@ -204,7 +204,7 @@ macro_rules! log_pattern_match {
 }
 
 impl<B> OnResponse<B> for DefaultOnResponse {
-    fn on_response(self, response: &Response<B>, latency: Duration, _current_span: &Span) {
+    fn on_response(self, response: &Response<B>, latency: Duration, _span: &Span) {
         log_pattern_match!(
             self,
             response,

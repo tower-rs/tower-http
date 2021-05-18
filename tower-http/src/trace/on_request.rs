@@ -9,22 +9,22 @@ use tracing::Span;
 pub trait OnRequest<B> {
     /// Do the thing.
     ///
-    /// `current_span` can be used to record field values that weren't known when the span was
+    /// `span` can be used to record field values that weren't known when the span was
     /// created.
-    fn on_request(&mut self, request: &Request<B>, current_span: &Span);
+    fn on_request(&mut self, request: &Request<B>, span: &Span);
 }
 
 impl<B> OnRequest<B> for () {
     #[inline]
-    fn on_request(&mut self, _: &Request<B>, _current_span: &Span) {}
+    fn on_request(&mut self, _: &Request<B>, _span: &Span) {}
 }
 
 impl<B, F> OnRequest<B> for F
 where
     F: FnMut(&Request<B>, &Span),
 {
-    fn on_request(&mut self, request: &Request<B>, current_span: &Span) {
-        self(request, current_span)
+    fn on_request(&mut self, request: &Request<B>, span: &Span) {
+        self(request, span)
     }
 }
 

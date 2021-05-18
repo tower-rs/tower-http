@@ -11,14 +11,9 @@ pub trait OnFailure<FailureClass> {
     ///
     /// `latency` is the duration since the request was received.
     ///
-    /// `current_span` can be used to record field values that weren't know when the span was
+    /// `span` can be used to record field values that weren't know when the span was
     /// created.
-    fn on_failure(
-        &mut self,
-        failure_classification: FailureClass,
-        latency: Duration,
-        current_span: &Span,
-    );
+    fn on_failure(&mut self, failure_classification: FailureClass, latency: Duration, span: &Span);
 }
 
 impl<FailureClass> OnFailure<FailureClass> for () {
@@ -30,13 +25,8 @@ impl<F, FailureClass> OnFailure<FailureClass> for F
 where
     F: FnMut(FailureClass, Duration, &Span),
 {
-    fn on_failure(
-        &mut self,
-        failure_classification: FailureClass,
-        latency: Duration,
-        current_span: &Span,
-    ) {
-        self(failure_classification, latency, current_span)
+    fn on_failure(&mut self, failure_classification: FailureClass, latency: Duration, span: &Span) {
+        self(failure_classification, latency, span)
     }
 }
 
