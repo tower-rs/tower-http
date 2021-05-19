@@ -19,7 +19,7 @@
 //!     add_extension::AddExtensionLayer,
 //!     compression::CompressionLayer,
 //!     propagate_header::PropagateHeaderLayer,
-//!     sensitive_header::SetSensitiveHeaderLayer,
+//!     sensitive_headers::SetSensitiveHeadersLayer,
 //!     set_header::SetResponseHeaderLayer,
 //! };
 //! use tower::{ServiceBuilder, service_fn, make::Shared};
@@ -61,7 +61,7 @@
 //!         // Propagate `X-Request-Header`s from requests to responses
 //!         .layer(PropagateHeaderLayer::new(HeaderName::from_static("x-request-id")))
 //!         // Mark the `Authorization` header as sensitive so it doesn't show in logs
-//!         .layer(SetSensitiveHeaderLayer::new(vec![AUTHORIZATION]))
+//!         .layer(SetSensitiveHeadersLayer::new(vec![AUTHORIZATION]))
 //!         // If the response has a known size set the `Content-Length` header
 //!         .layer(SetResponseHeaderLayer::overriding(CONTENT_TYPE, content_length_from_response))
 //!         // Wrap a `Service` in our middleware stack
@@ -169,9 +169,9 @@ pub mod compression;
 #[cfg_attr(docsrs, doc(cfg(feature = "add-extension")))]
 pub mod add_extension;
 
-#[cfg(feature = "sensitive-header")]
-#[cfg_attr(docsrs, doc(cfg(feature = "sensitive-header")))]
-pub mod sensitive_header;
+#[cfg(feature = "sensitive-headers")]
+#[cfg_attr(docsrs, doc(cfg(feature = "sensitive-headers")))]
+pub mod sensitive_headers;
 
 #[cfg(feature = "decompression")]
 #[cfg_attr(docsrs, doc(cfg(feature = "decompression")))]

@@ -50,7 +50,7 @@ full = [
     "map-response-body",
     "propagate-header",
     "redirect",
-    "sensitive-header",
+    "sensitive-headers",
     "set-header",
 ]
 
@@ -60,7 +60,7 @@ map-request-body = []
 map-response-body = []
 propagate-header = []
 redirect = []
-sensitive-header = []
+sensitive-headers = []
 set-header = []
 
 compression = ["bytes", "tokio-util", "tokio"]

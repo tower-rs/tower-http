@@ -13,8 +13,7 @@ use structopt::StructOpt;
 use tower::{make::Shared, ServiceBuilder};
 use tower_http::{
     add_extension::AddExtensionLayer, compression::CompressionLayer,
-    // sensitive_header::SetSensitiveHeaderLayer,
-    set_header::SetResponseHeaderLayer,
+    sensitive_headers::SetSensitiveHeadersLayer, set_header::SetResponseHeaderLayer,
 };
 use warp::{filters, path};
 use warp::{Filter, Rejection, Reply};
@@ -82,10 +81,10 @@ async fn serve_forever(listener: TcpListener) -> Result<(), hyper::Error> {
             HeaderValue::from_static("application/octet-stream"),
         ))
         // Mark the `Authorization` and `Cookie` headers as sensitive so it doesn't show in logs
-        // .layer(SetSensitiveHeaderLayer::new(vec![
-        //     header::AUTHORIZATION,
-        //     header::COOKIE,
-        // ]))
+        .layer(SetSensitiveHeadersLayer::new(vec![
+            header::AUTHORIZATION,
+            header::COOKIE,
+        ]))
         // Build our final `Service`
         .service(warp_service);
 
