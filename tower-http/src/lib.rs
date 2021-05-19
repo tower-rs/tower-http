@@ -20,7 +20,7 @@
 //!     compression::CompressionLayer,
 //!     propagate_header::PropagateHeaderLayer,
 //!     sensitive_headers::SetSensitiveRequestHeadersLayer,
-//!     set_header::SetResponseHeaderLayer,
+//!     set_header::SetResponseHeadersLayer,
 //!     trace::TraceLayer,
 //! };
 //! use tower::{ServiceBuilder, service_fn, make::Shared};
@@ -66,7 +66,7 @@
 //!         // Propagate `X-Request-Id`s from requests to responses
 //!         .layer(PropagateHeaderLayer::new(HeaderName::from_static("x-request-id")))
 //!         // If the response has a known size set the `Content-Length` header
-//!         .layer(SetResponseHeaderLayer::overriding(CONTENT_TYPE, content_length_from_response))
+//!         .layer(SetResponseHeadersLayer::overriding(CONTENT_TYPE, content_length_from_response))
 //!         // Wrap a `Service` in our middleware stack
 //!         .service_fn(handler);
 //!
@@ -157,6 +157,7 @@
 //! [`Service`]: https://docs.rs/tower/latest/tower/trait.Service.html
 //! [chat]: https://discord.gg/tokio
 //! [issue]: https://github.com/tower-rs/tower-http/issues/new
+//! [`Trace`]: crate::trace::Trace
 
 #![doc(html_root_url = "https://docs.rs/tower-http/0.1.0")]
 #![warn(

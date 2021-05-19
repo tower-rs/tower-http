@@ -38,6 +38,49 @@
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! Its important to think about the order in which requests and responses arrive at your
+//! middleware. For example to hide headers both on requests and responses when using
+//! [`TraceLayer`] you have to apply [`SetSensitiveRequestHeadersLayer`] before [`TraceLayer`]
+//! and [`SetSensitiveResponseHeadersLayer`] afterwards.
+//!
+//! ```
+//! use tower_http::{
+//!     trace::TraceLayer,
+//!     sensitive_headers::{
+//!         SetSensitiveRequestHeadersLayer,
+//!         SetSensitiveResponseHeadersLayer,
+//!     },
+//! };
+//! use tower::{Service, ServiceExt, ServiceBuilder, service_fn};
+//! use http::header;
+//! use std::sync::Arc;
+//! # use http::{Request, Response};
+//! # use hyper::Body;
+//! # use std::convert::Infallible;
+//! # async fn handle(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+//! #     Ok(Response::new(Body::empty()))
+//! # }
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let headers = Arc::new(vec![
+//!     header::AUTHORIZATION,
+//!     header::PROXY_AUTHORIZATION,
+//!     header::COOKIE,
+//!     header::SET_COOKIE,
+//! ]);
+//!
+//! let service = ServiceBuilder::new()
+//!     .layer(SetSensitiveRequestHeadersLayer::from_shared(Arc::clone(&headers)))
+//!     .layer(TraceLayer::<_, hyper::Error>::new_for_http())
+//!     .layer(SetSensitiveResponseHeadersLayer::from_shared(headers))
+//!     .service_fn(handle);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! [`TraceLayer`]: crate::trace::TraceLayer
 
 use futures_util::ready;
 use http::{header::HeaderName, Request, Response};
@@ -55,7 +98,7 @@ use tower_service::Service;
 ///
 /// Produces [`SetSensitiveHeaders`] services.
 ///
-/// See the [module docs](crate::sensitive_header) for more details.
+/// See the [module docs](crate::sensitive_headers) for more details.
 ///
 /// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
 #[derive(Clone, Debug)]
@@ -93,7 +136,7 @@ impl<S> Layer<S> for SetSensitiveHeadersLayer {
 
 /// Mark headers as [sensitive] on both requests and responses.
 ///
-/// See the [module docs](crate::sensitive_header) for more details.
+/// See the [module docs](crate::sensitive_headers) for more details.
 ///
 /// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
 pub type SetSensitiveHeaders<S> = SetSensitiveRequestHeaders<SetSensitiveResponseHeaders<S>>;
@@ -102,7 +145,7 @@ pub type SetSensitiveHeaders<S> = SetSensitiveRequestHeaders<SetSensitiveRespons
 ///
 /// Produces [`SetSensitiveRequestHeaders`] services.
 ///
-/// See the [module docs](crate::sensitive_header) for more details.
+/// See the [module docs](crate::sensitive_headers) for more details.
 ///
 /// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
 #[derive(Clone, Debug)]
@@ -140,7 +183,7 @@ impl<S> Layer<S> for SetSensitiveRequestHeadersLayer {
 
 /// Mark request headers as [sensitive].
 ///
-/// See the [module docs](crate::sensitive_header) for more details.
+/// See the [module docs](crate::sensitive_headers) for more details.
 ///
 /// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
 #[derive(Clone, Debug)]
@@ -206,7 +249,7 @@ where
 ///
 /// Produces [`SetSensitiveResponseHeaders`] services.
 ///
-/// See the [module docs](crate::sensitive_header) for more details.
+/// See the [module docs](crate::sensitive_headers) for more details.
 ///
 /// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
 #[derive(Clone, Debug)]
@@ -244,7 +287,7 @@ impl<S> Layer<S> for SetSensitiveResponseHeadersLayer {
 
 /// Mark response headers as [sensitive].
 ///
-/// See the [module docs](crate::sensitive_header) for more details.
+/// See the [module docs](crate::sensitive_headers) for more details.
 ///
 /// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
 #[derive(Clone, Debug)]
