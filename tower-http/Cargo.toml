@@ -13,30 +13,35 @@ categories = ["asynchronous", "network-programming", "web-programming"]
 keywords = ["io", "async", "non-blocking", "futures", "service", "http"]
 
 [dependencies]
+bytes = "1"
 futures-core = "0.3"
 futures-util = { version = "0.3", default_features = false, features = [] }
 http = "0.2"
-http-body = "0.4"
+http-body = "0.4.1"
 pin-project = "1"
 tower-layer = "0.3"
 tower-service = "0.3"
 
 # optional dependencies
 async-compression = { version = "0.3", optional = true, features = ["tokio"] }
-bytes = { version = "1", optional = true }
 hyper = { version = "0.14", optional = true, default_features = false, features = ["stream"] }
 iri-string = { version = "0.3", optional = true }
+mime = { version = "0.3", optional = true, default_features = false }
+mime_guess = { version = "2", optional = true, default_features = false }
 tokio = { version = "1", optional = true, default_features = false }
 tokio-util = { version = "0.6", optional = true, default_features = false, features = ["io"] }
 tower = { version = "0.4.1", optional = true }
+tracing = { version = "0.1", default_features = false, optional = true }
 
 [dev-dependencies]
 bytes = "1"
 flate2 = "1.0"
 futures = "0.3"
 hyper = { version = "0.14", features = ["full"] }
+once_cell = "1"
 tokio = { version = "1", features = ["full"] }
 tower = { version = "0.4.6", features = ["buffer", "util", "retry", "make"] }
+tracing-subscriber = "0.2"
 
 [features]
 default = []
@@ -46,30 +51,34 @@ full = [
     "compression-full",
     "decompression-full",
     "follow-redirect",
+    "fs",
     "map-request-body",
     "map-response-body",
     "propagate-header",
     "redirect",
     "sensitive-headers",
     "set-header",
+    "trace",
 ]
 
 add-extension = []
 follow-redirect = ["iri-string", "tower/util"]
+fs = ["tokio/fs", "tokio-util/io", "mime_guess", "mime"]
 map-request-body = []
 map-response-body = []
 propagate-header = []
 redirect = []
 sensitive-headers = []
 set-header = []
+trace = ["tracing"]
 
-compression = ["bytes", "tokio-util", "tokio"]
+compression = ["tokio-util", "tokio"]
 compression-br = ["async-compression/brotli", "compression"]
 compression-deflate = ["async-compression/zlib", "compression"]
 compression-full = ["compression-br", "compression-deflate", "compression-gzip"]
 compression-gzip = ["async-compression/gzip", "compression"]
 
-decompression = ["bytes", "tokio-util", "tokio"]
+decompression = ["tokio-util", "tokio"]
 decompression-br = ["async-compression/brotli", "decompression"]
 decompression-deflate = ["async-compression/zlib", "decompression"]
 decompression-full = ["decompression-br", "decompression-deflate", "decompression-gzip"]

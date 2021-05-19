@@ -1,3 +1,6 @@
 fn main() {
-    tonic_build::compile_protos("proto/key_value_store.proto").unwrap();
+    tonic_build::configure()
+        .format(false)
+        .compile(&["key_value_store.proto"], &["proto"])
+        .unwrap();
 }
