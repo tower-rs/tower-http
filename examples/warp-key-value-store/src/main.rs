@@ -66,7 +66,7 @@ async fn serve_forever(listener: TcpListener) -> Result<(), hyper::Error> {
     // Convert our `Filter` into a `Service`
     let warp_service = warp::service(filter);
 
-    // Apply middlewares to our service.
+    // Apply middleware to our service.
     let service = ServiceBuilder::new()
         // Add high level tracing/logging to all requests
         .layer(

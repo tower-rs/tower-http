@@ -1,6 +1,6 @@
 [package]
 name = "tower-http"
-description = "Tower middlewares and utilities for HTTP clients and servers"
+description = "Tower middleware and utilities for HTTP clients and servers"
 version = "0.1.0"
 authors = ["Tower Maintainers <team@tower-rs.com>"]
 edition = "2018"
@@ -24,6 +24,7 @@ tower-service = "0.3"
 
 # optional dependencies
 async-compression = { version = "0.3", optional = true, features = ["tokio"] }
+base64 = { version = "0.13", optional = true }
 hyper = { version = "0.14", optional = true, default_features = false, features = ["stream"] }
 iri-string = { version = "0.3", optional = true }
 mime = { version = "0.3", optional = true, default_features = false }
@@ -47,6 +48,7 @@ tracing-subscriber = "0.2"
 default = []
 full = [
     "add-extension",
+    "auth",
     "compression",
     "compression-full",
     "decompression-full",
@@ -62,6 +64,7 @@ full = [
 ]
 
 add-extension = []
+auth = ["base64"]
 follow-redirect = ["iri-string", "tower/util"]
 fs = ["tokio/fs", "tokio-util/io", "mime_guess", "mime"]
 map-request-body = []
