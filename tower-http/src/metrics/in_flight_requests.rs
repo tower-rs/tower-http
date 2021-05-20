@@ -2,8 +2,7 @@
 //!
 //! In-flight requests is the number of requests a service is currently processing. The processing
 //! of a request starts when it is received by the service (`tower::Service::call` is called) and
-//! is considered complete when the entire response body as been generated
-//! (`http_body::Body::poll_{data,trailers}` completes) or when an error occurs along the way.
+//! is considered complete when the response body is consumed, dropped, or an error happens.
 //!
 //! # Example
 //!
@@ -279,5 +278,46 @@ where
         cx: &mut Context<'_>,
     ) -> Poll<Result<Option<http::HeaderMap>, Self::Error>> {
         self.project().inner.poll_trailers(cx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[allow(unused_imports)]
+    use super::*;
+    use http::Request;
+    use hyper::Body;
+    use tower::{BoxError, ServiceBuilder};
+
+    #[tokio::test]
+    async fn basic() {
+        let (in_flight_requests_layer, counter) = InFlightRequestsLayer::pair();
+
+        let mut service = ServiceBuilder::new()
+            .layer(in_flight_requests_layer)
+            .service_fn(echo);
+        assert_eq!(counter.get(), 0);
+
+        // driving service to ready shouldn't increment the counter
+        futures::future::poll_fn(|cx| service.poll_ready(cx))
+            .await
+            .unwrap();
+        assert_eq!(counter.get(), 0);
+
+        // creating the response future should increment the count
+        let response_future = service.call(Request::new(Body::empty()));
+        assert_eq!(counter.get(), 1);
+
+        // count shouldn't decrement until the full body has been comsumed
+        let response = response_future.await.unwrap();
+        assert_eq!(counter.get(), 1);
+
+        let body = response.into_body();
+        hyper::body::to_bytes(body).await.unwrap();
+        assert_eq!(counter.get(), 0);
+    }
+
+    async fn echo(req: Request<Body>) -> Result<Response<Body>, BoxError> {
+        Ok(Response::new(req.into_body()))
     }
 }
