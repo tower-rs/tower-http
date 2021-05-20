@@ -71,7 +71,7 @@ async fn serve_forever(listener: TcpListener) -> Result<(), hyper::Error> {
         // Add high level tracing/logging to all requests
         .layer(
             TraceLayer::new_for_http()
-                .on_body_chunk(|chunk: &Bytes, latency: Duration| {
+                .on_body_chunk(|chunk: &Bytes, latency: Duration, _: &tracing::Span| {
                     tracing::trace!(size_bytes = chunk.len(), latency = ?latency, "sending body chunk")
                 })
                 .make_span_with(DefaultMakeSpan::new().include_headers(true))
@@ -161,11 +161,11 @@ fn content_length_from_response<B>(response: &Response<B>) -> Option<HeaderValue
 where
     B: HttpBody,
 {
-    if let Some(size) = response.body().size_hint().exact() {
-        Some(HeaderValue::from_str(&size.to_string()).unwrap())
-    } else {
-        None
-    }
+    response
+        .body()
+        .size_hint()
+        .exact()
+        .map(|size| HeaderValue::from_str(&size.to_string()).unwrap())
 }
 
 #[cfg(test)]

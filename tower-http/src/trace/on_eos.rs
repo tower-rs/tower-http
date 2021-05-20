@@ -2,7 +2,7 @@ use super::DEFAULT_MESSAGE_LEVEL;
 use crate::{classify::ParsedGrpcStatus, LatencyUnit};
 use http::header::HeaderMap;
 use std::time::Duration;
-use tracing::Level;
+use tracing::{Level, Span};
 
 /// Trait used to tell [`Trace`] what to do when a stream closes.
 ///
@@ -11,20 +11,28 @@ pub trait OnEos {
     /// Do the thing.
     ///
     /// `stream_duration` is the duration since the response was sent.
-    fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Duration);
+    ///
+    /// `span` is the `tracing` [`Span`], corresponding to this request, produced by the closure
+    /// passed to [`TraceLayer::make_span_with`]. It can be used to [record field values][record]
+    /// that weren't known when the span was created.
+    ///
+    /// [`Span`]: https://docs.rs/tracing/latest/tracing/span/index.html
+    /// [record]: https://docs.rs/tracing/latest/tracing/span/struct.Span.html#method.record
+    /// [`TraceLayer::make_span_with`]: crate::trace::TraceLayer::make_span_with
+    fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Duration, span: &Span);
 }
 
 impl OnEos for () {
     #[inline]
-    fn on_eos(self, _: Option<&HeaderMap>, _: Duration) {}
+    fn on_eos(self, _: Option<&HeaderMap>, _: Duration, _: &Span) {}
 }
 
 impl<F> OnEos for F
 where
-    F: FnOnce(Option<&HeaderMap>, Duration),
+    F: FnOnce(Option<&HeaderMap>, Duration, &Span),
 {
-    fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Duration) {
-        self(trailers, stream_duration)
+    fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Duration, span: &Span) {
+        self(trailers, stream_duration, span)
     }
 }
 
@@ -137,7 +145,7 @@ macro_rules! log_pattern_match {
 }
 
 impl OnEos for DefaultOnEos {
-    fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Duration) {
+    fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Duration, _span: &Span) {
         let status =
             trailers.and_then(
                 |trailers| match crate::classify::classify_grpc_metadata(trailers) {

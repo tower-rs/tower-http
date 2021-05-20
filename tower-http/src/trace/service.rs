@@ -318,7 +318,7 @@ where
 
         let future = {
             let _guard = span.enter();
-            self.on_request.on_request(&req);
+            self.on_request.on_request(&req, &span);
             self.inner.call(req)
         };
 
