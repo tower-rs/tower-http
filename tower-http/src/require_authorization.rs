@@ -35,7 +35,7 @@
 //!
 //! assert_eq!(StatusCode::OK, response.status());
 //!
-//! // Requests with invalid token get a `401 Unauthorized` response
+//! // Requests with an invalid token get a `401 Unauthorized` response
 //! let request = Request::builder()
 //!     .body(Body::empty())
 //!     .unwrap();
@@ -278,7 +278,8 @@ pub trait AuthorizeRequest {
     ///
     /// Defaults to doing nothing.
     ///
-    /// [request extension]: https://docs.rs/http/0.2.4/http/struct.Extensions.html
+    /// [request extension]: https://docs.rs/http/latest/http/struct.Extensions.html
+    #[inline]
     fn on_authorized<B>(&mut self, _request: &mut Request<B>, _output: Self::Output) {}
 
     /// Create the response for an unauthorized request.
@@ -408,5 +409,161 @@ where
         res.headers_mut()
             .insert(header::WWW_AUTHENTICATE, "Basic".parse().unwrap());
         res
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[allow(unused_imports)]
+    use super::*;
+    use http::header;
+    use hyper::Body;
+    use tower::{BoxError, ServiceBuilder, ServiceExt};
+
+    #[tokio::test]
+    async fn valid_basic_token() {
+        let mut service = ServiceBuilder::new()
+            .layer(RequireAuthorizationLayer::basic("foo", "bar"))
+            .service_fn(echo);
+
+        let request = Request::get("/")
+            .header(
+                header::AUTHORIZATION,
+                format!("Basic {}", base64::encode("foo:bar")),
+            )
+            .body(Body::empty())
+            .unwrap();
+
+        let res = service.ready().await.unwrap().call(request).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn invalid_basic_token() {
+        let mut service = ServiceBuilder::new()
+            .layer(RequireAuthorizationLayer::basic("foo", "bar"))
+            .service_fn(echo);
+
+        let request = Request::get("/")
+            .header(
+                header::AUTHORIZATION,
+                format!("Basic {}", base64::encode("wrong:credentials")),
+            )
+            .body(Body::empty())
+            .unwrap();
+
+        let res = service.ready().await.unwrap().call(request).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+
+        let www_authenticate = res.headers().get(header::WWW_AUTHENTICATE).unwrap();
+        assert_eq!(www_authenticate, "Basic");
+    }
+
+    #[tokio::test]
+    async fn valid_bearer_token() {
+        let mut service = ServiceBuilder::new()
+            .layer(RequireAuthorizationLayer::bearer("foobar"))
+            .service_fn(echo);
+
+        let request = Request::get("/")
+            .header(header::AUTHORIZATION, "Bearer foobar")
+            .body(Body::empty())
+            .unwrap();
+
+        let res = service.ready().await.unwrap().call(request).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn basic_auth_is_case_sensitive_in_prefix() {
+        let mut service = ServiceBuilder::new()
+            .layer(RequireAuthorizationLayer::basic("foo", "bar"))
+            .service_fn(echo);
+
+        let request = Request::get("/")
+            .header(
+                header::AUTHORIZATION,
+                format!("basic {}", base64::encode("foo:bar")),
+            )
+            .body(Body::empty())
+            .unwrap();
+
+        let res = service.ready().await.unwrap().call(request).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn basic_auth_is_case_sensitive_in_value() {
+        let mut service = ServiceBuilder::new()
+            .layer(RequireAuthorizationLayer::basic("foo", "bar"))
+            .service_fn(echo);
+
+        let request = Request::get("/")
+            .header(
+                header::AUTHORIZATION,
+                format!("Basic {}", base64::encode("Foo:bar")),
+            )
+            .body(Body::empty())
+            .unwrap();
+
+        let res = service.ready().await.unwrap().call(request).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn invalid_bearer_token() {
+        let mut service = ServiceBuilder::new()
+            .layer(RequireAuthorizationLayer::bearer("foobar"))
+            .service_fn(echo);
+
+        let request = Request::get("/")
+            .header(header::AUTHORIZATION, "Bearer wat")
+            .body(Body::empty())
+            .unwrap();
+
+        let res = service.ready().await.unwrap().call(request).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn bearer_token_is_case_sensitive_in_prefix() {
+        let mut service = ServiceBuilder::new()
+            .layer(RequireAuthorizationLayer::bearer("foobar"))
+            .service_fn(echo);
+
+        let request = Request::get("/")
+            .header(header::AUTHORIZATION, "bearer foobar")
+            .body(Body::empty())
+            .unwrap();
+
+        let res = service.ready().await.unwrap().call(request).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn bearer_token_is_case_sensitive_in_token() {
+        let mut service = ServiceBuilder::new()
+            .layer(RequireAuthorizationLayer::bearer("foobar"))
+            .service_fn(echo);
+
+        let request = Request::get("/")
+            .header(header::AUTHORIZATION, "Bearer Foobar")
+            .body(Body::empty())
+            .unwrap();
+
+        let res = service.ready().await.unwrap().call(request).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    async fn echo(req: Request<Body>) -> Result<Response<Body>, BoxError> {
+        Ok(Response::new(req.into_body()))
     }
 }
