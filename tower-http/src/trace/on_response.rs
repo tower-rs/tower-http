@@ -13,8 +13,13 @@ pub trait OnResponse<B> {
     ///
     /// `latency` is the duration since the request was received.
     ///
-    /// `span` can be used to record field values that weren't known when the span was
+    /// `span` is the `tracing` [`Span`] corresponding to this request, produced
+    /// the closure passed to [`TraceLayer::make_span_with`]. It can be used to
+    /// [record field values][record] that weren't known when the span was
     /// created.
+    ///
+    /// [`Span`]: https://docs.rs/tracing/latest/tracing/span/index.html
+    /// [record]: https://docs.rs/tracing/latest/tracing/span/struct.Span.html#method.record
     fn on_response(self, response: &Response<B>, latency: Duration, span: &Span);
 }
 
@@ -204,7 +209,7 @@ macro_rules! log_pattern_match {
 }
 
 impl<B> OnResponse<B> for DefaultOnResponse {
-    fn on_response(self, response: &Response<B>, latency: Duration, _span: &Span) {
+    fn on_response(self, response: &Response<B>, latency: Duration, _: &Span) {
         log_pattern_match!(
             self,
             response,

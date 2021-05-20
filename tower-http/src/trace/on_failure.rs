@@ -11,8 +11,13 @@ pub trait OnFailure<FailureClass> {
     ///
     /// `latency` is the duration since the request was received.
     ///
-    /// `span` can be used to record field values that weren't know when the span was
+    /// `span` is the `tracing` [`Span`] corresponding to this request, produced
+    /// the closure passed to [`TraceLayer::make_span_with`]. It can be used to
+    /// [record field values][record] that weren't known when the span was
     /// created.
+    ///
+    /// [`Span`]: https://docs.rs/tracing/latest/tracing/span/index.html
+    /// [record]: https://docs.rs/tracing/latest/tracing/span/struct.Span.html#method.record
     fn on_failure(&mut self, failure_classification: FailureClass, latency: Duration, span: &Span);
 }
 
@@ -121,7 +126,7 @@ where
         &mut self,
         failure_classification: FailureClass,
         latency: Duration,
-        _span: &Span,
+        _: &Span,
     ) {
         log_pattern_match!(
             self,

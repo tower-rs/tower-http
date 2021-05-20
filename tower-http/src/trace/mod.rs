@@ -178,7 +178,7 @@
 //!             .on_response(())
 //!             .on_body_chunk(())
 //!             .on_eos(())
-//!             .on_failure(|error: StatusCode, latency: Duration, span: &Span| {
+//!             .on_failure(|error: StatusCode, latency: Duration, _: &Span| {
 //!                 tracing::debug!("something went wrong")
 //!             })
 //!     )

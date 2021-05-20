@@ -9,8 +9,13 @@ pub trait OnBodyChunk<B> {
     ///
     /// `latency` is the duration since the response was sent or since the last body chunk as sent.
     ///
-    /// `span` can be used to record field values that weren't known when the span was
+    /// `span` is the `tracing` [`Span`] corresponding to this request, produced
+    /// the closure passed to [`TraceLayer::make_span_with`]. It can be used to
+    /// [record field values][record] that weren't known when the span was
     /// created.
+    ///
+    /// [`Span`]: https://docs.rs/tracing/latest/tracing/span/index.html
+    /// [record]: https://docs.rs/tracing/latest/tracing/span/struct.Span.html#method.record
     ///
     /// If you're using [hyper] as your server `B` will most likely be [`Bytes`].
     ///
