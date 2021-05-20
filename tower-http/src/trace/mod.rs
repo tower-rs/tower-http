@@ -121,19 +121,19 @@
 //!             .make_span_with(|request: &Request<Body>| {
 //!                 tracing::debug_span!("http-request")
 //!             })
-//!             .on_request(|request: &Request<Body>, span: &Span| {
+//!             .on_request(|request: &Request<Body>, _span: &Span| {
 //!                 tracing::debug!("started {} {}", request.method(), request.uri().path())
 //!             })
-//!             .on_response(|response: &Response<Body>, latency: Duration, span: &Span| {
+//!             .on_response(|response: &Response<Body>, latency: Duration, _span: &Span| {
 //!                 tracing::debug!("response generated in {:?}", latency)
 //!             })
-//!             .on_body_chunk(|chunk: &Bytes, latency: Duration, span: &Span| {
+//!             .on_body_chunk(|chunk: &Bytes, latency: Duration, _span: &Span| {
 //!                 tracing::debug!("sending {} bytes", chunk.len())
 //!             })
-//!             .on_eos(|trailers: Option<&HeaderMap>, stream_duration: Duration, span: &Span| {
+//!             .on_eos(|trailers: Option<&HeaderMap>, stream_duration: Duration, _span: &Span| {
 //!                 tracing::debug!("stream closed after {:?}", stream_duration)
 //!             })
-//!             .on_failure(|error: StatusCode, latency: Duration, span: &Span| {
+//!             .on_failure(|error: StatusCode, latency: Duration, _span: &Span| {
 //!                 tracing::debug!("something went wrong")
 //!             })
 //!     )
@@ -178,7 +178,7 @@
 //!             .on_response(())
 //!             .on_body_chunk(())
 //!             .on_eos(())
-//!             .on_failure(|error: StatusCode, latency: Duration, _: &Span| {
+//!             .on_failure(|error: StatusCode, latency: Duration, _span: &Span| {
 //!                 tracing::debug!("something went wrong")
 //!             })
 //!     )

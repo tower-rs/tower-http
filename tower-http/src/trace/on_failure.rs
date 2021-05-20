@@ -122,12 +122,7 @@ impl<FailureClass> OnFailure<FailureClass> for DefaultOnFailure
 where
     FailureClass: fmt::Display,
 {
-    fn on_failure(
-        &mut self,
-        failure_classification: FailureClass,
-        latency: Duration,
-        _: &Span,
-    ) {
+    fn on_failure(&mut self, failure_classification: FailureClass, latency: Duration, _: &Span) {
         log_pattern_match!(
             self,
             &failure_classification,
