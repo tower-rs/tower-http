@@ -279,6 +279,16 @@ where
     ) -> Poll<Result<Option<http::HeaderMap>, Self::Error>> {
         self.project().inner.poll_trailers(cx)
     }
+
+    #[inline]
+    fn is_end_stream(&self) -> bool {
+        self.inner.is_end_stream()
+    }
+
+    #[inline]
+    fn size_hint(&self) -> http_body::SizeHint {
+        self.inner.size_hint()
+    }
 }
 
 #[cfg(test)]
