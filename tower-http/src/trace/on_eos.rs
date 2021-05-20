@@ -1,5 +1,5 @@
 use super::DEFAULT_MESSAGE_LEVEL;
-use crate::LatencyUnit;
+use crate::{classify::ParsedGrpcStatus, LatencyUnit};
 use http::header::HeaderMap;
 use std::time::Duration;
 use tracing::Level;
@@ -80,28 +80,54 @@ impl DefaultOnEos {
 #[allow(unused_macros)]
 macro_rules! log_pattern_match {
     (
-        $this:expr, $stream_duration:expr, [$($level:ident),*]
+        $this:expr, $stream_duration:expr, $status:expr, [$($level:ident),*]
     ) => {
-        match ($this.level, $this.latency_unit) {
+        match ($this.level, $this.latency_unit, $status) {
             $(
-                (Level::$level, LatencyUnit::Millis) => {
+                (Level::$level, LatencyUnit::Millis, None) => {
                     tracing::event!(
                         Level::$level,
                         stream_duration = format_args!("{} ms", $stream_duration.as_millis()),
                         "end of stream"
                     );
                 }
-                (Level::$level, LatencyUnit::Micros) => {
+                (Level::$level, LatencyUnit::Millis, Some(status)) => {
+                    tracing::event!(
+                        Level::$level,
+                        stream_duration = format_args!("{} ms", $stream_duration.as_millis()),
+                        status = status,
+                        "end of stream"
+                    );
+                }
+
+                (Level::$level, LatencyUnit::Micros, None) => {
                     tracing::event!(
                         Level::$level,
                         stream_duration = format_args!("{} μs", $stream_duration.as_micros()),
                         "end of stream"
                     );
                 }
-                (Level::$level, LatencyUnit::Nanos) => {
+                (Level::$level, LatencyUnit::Micros, Some(status)) => {
+                    tracing::event!(
+                        Level::$level,
+                        stream_duration = format_args!("{} μs", $stream_duration.as_micros()),
+                        status = status,
+                        "end of stream"
+                    );
+                }
+
+                (Level::$level, LatencyUnit::Nanos, None) => {
                     tracing::event!(
                         Level::$level,
                         stream_duration = format_args!("{} ns", $stream_duration.as_nanos()),
+                        "end of stream"
+                    );
+                }
+                (Level::$level, LatencyUnit::Nanos, Some(status)) => {
+                    tracing::event!(
+                        Level::$level,
+                        stream_duration = format_args!("{} ns", $stream_duration.as_nanos()),
+                        status = status,
                         "end of stream"
                     );
                 }
@@ -111,7 +137,23 @@ macro_rules! log_pattern_match {
 }
 
 impl OnEos for DefaultOnEos {
-    fn on_eos(self, _trailers: Option<&HeaderMap>, stream_duration: Duration) {
-        log_pattern_match!(self, stream_duration, [ERROR, WARN, INFO, DEBUG, TRACE]);
+    fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Duration) {
+        let status =
+            trailers.and_then(
+                |trailers| match crate::classify::classify_grpc_metadata(trailers) {
+                    ParsedGrpcStatus::Success
+                    | ParsedGrpcStatus::HeaderNotString
+                    | ParsedGrpcStatus::HeaderNotInt => Some(0),
+                    ParsedGrpcStatus::NonSuccess(status) => Some(status.get()),
+                    ParsedGrpcStatus::GrpcStatusHeaderMissing => None,
+                },
+            );
+
+        log_pattern_match!(
+            self,
+            stream_duration,
+            status,
+            [ERROR, WARN, INFO, DEBUG, TRACE]
+        );
     }
 }

@@ -19,9 +19,10 @@
 //!     add_extension::AddExtensionLayer,
 //!     compression::CompressionLayer,
 //!     propagate_header::PropagateHeaderLayer,
-//!     sensitive_header::SetSensitiveHeaderLayer,
 //!     require_authorization::RequireAuthorizationLayer,
+//!     sensitive_header::SetSensitiveRequestHeaderLayer,
 //!     set_header::SetResponseHeaderLayer,
+//!     trace::TraceLayer,
 //! };
 //! use tower::{ServiceBuilder, service_fn, make::Shared};
 //! use http::{Request, Response, header::{HeaderName, CONTENT_TYPE, AUTHORIZATION}};
@@ -55,14 +56,16 @@
 //!     // Use `tower`'s `ServiceBuilder` API to build a stack of `tower` middleware
 //!     // wrapping our request handler.
 //!     let service = ServiceBuilder::new()
+//!         // Mark the `Authorization` request header as sensitive so it doesn't show in logs
+//!         .layer(SetSensitiveRequestHeaderLayer::new(AUTHORIZATION))
+//!         // High level logging of requests and responses
+//!         .layer(TraceLayer::new_for_http())
 //!         // Share an `Arc<State>` with all requests
 //!         .layer(AddExtensionLayer::new(Arc::new(state)))
 //!         // Compress responses
 //!         .layer(CompressionLayer::new())
 //!         // Propagate `X-Request-Id`s from requests to responses
 //!         .layer(PropagateHeaderLayer::new(HeaderName::from_static("x-request-id")))
-//!         // Mark the `Authorization` header as sensitive so it doesn't show in logs
-//!         .layer(SetSensitiveHeaderLayer::new(AUTHORIZATION))
 //!         // If the response has a known size set the `Content-Length` header
 //!         .layer(SetResponseHeaderLayer::overriding(CONTENT_TYPE, content_length_from_response))
 //!         // Authorize requests using a token
@@ -128,11 +131,11 @@
 //!
 //! All middleware are disabled by default and can be enabled using [cargo features].
 //!
-//! For example, to enable the [`AddExtension`] middleware, add the "add-extension" feature flag
-//! in your`Cargo.toml`:
+//! For example, to enable the [`Trace`] middleware, add the "trace" feature flag in
+//! your `Cargo.toml`:
 //!
 //! ```toml
-//! tower-http = { version = "0.1.0", features = ["add-extension"] }
+//! tower-http = { version = "0.1.0", features = ["trace"] }
 //! ```
 //!
 //! You can use `"full"` to enable everything:
@@ -141,6 +144,13 @@
 //! tower-http = { version = "0.1.0", features = ["full"] }
 //! ```
 //!
+//! # Getting Help
+//!
+//! First, see if the answer to your question can be found in the API documentation. If the answer
+//! is not there, there is an active community in the [Tower Discord channel][chat]. We would be
+//! happy to try to answer your question. If that doesn't work, try opening an [issue] with the
+//! question.
+//!
 //! [`tower`]: https://crates.io/crates/tower
 //! [`http`]: https://crates.io/crates/http
 //! [`http-body`]: https://crates.io/crates/http-body
@@ -148,6 +158,8 @@
 //! [cargo features]: https://doc.rust-lang.org/cargo/reference/features.html
 //! [`AddExtension`]: crate::add_extension::AddExtension
 //! [`Service`]: https://docs.rs/tower/latest/tower/trait.Service.html
+//! [chat]: https://discord.gg/tokio
+//! [issue]: https://github.com/tower-rs/tower-http/issues/new
 
 #![doc(html_root_url = "https://docs.rs/tower-http/0.1.0")]
 #![warn(

@@ -26,5 +26,5 @@ RUST_LOG=tower_http=trace cargo run --bin tonic-key-value-store -- -p 3000 get -
 Create a stream of new keys:
 
 ```
-cargo run --bin tonic-key-value-store -- -p 3000 subscribe
+RUST_LOG=tower_http=trace cargo run --bin tonic-key-value-store -- -p 3000 subscribe
 ```

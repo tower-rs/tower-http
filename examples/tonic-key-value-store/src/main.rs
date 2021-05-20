@@ -153,7 +153,10 @@ async fn serve_forever(listener: TcpListener) -> Result<(), Box<dyn std::error::
     // Build our database for holding the key/value pairs
     let db = Arc::new(RwLock::new(HashMap::new()));
 
-    let (tx, _rx) = broadcast::channel(1024);
+    let (tx, rx) = broadcast::channel(1024);
+
+    // Drop the first receiver to avoid retaining messages in the channel
+    drop(rx);
 
     // Build our tonic `Service`
     let service = key_value_store_server::KeyValueStoreServer::new(ServerImpl { db, tx });
@@ -216,9 +219,8 @@ impl key_value_store_server::KeyValueStore for ServerImpl {
         let SetRequest { key, value } = request.into_inner();
         let value = Bytes::from(value);
 
-        self.tx
-            .send(SubscribeReply { key: key.clone() })
-            .expect("failed to send");
+        // SendError is only possible when there are no subscribers - so can safely be ignored here
+        let _send = self.tx.send(SubscribeReply { key: key.clone() });
 
         self.db.write().unwrap().insert(key, value);
 
