@@ -5,7 +5,7 @@ initial churn is over, Tower HTTP still isn't released on crates.io. We are
 actively working on that and you can follow the progress towards 0.1.0
 [here][milestone].
 
-Tower middlewares and utilities for HTTP clients and servers.
+Tower middleware and utilities for HTTP clients and servers.
 
 [![Build status](https://github.com/tower-rs/tower-http/workflows/CI/badge.svg)](https://github.com/tower-rs/tower-http/actions)
 [![Crates.io](https://img.shields.io/crates/v/tower-http)](https://crates.io/crates/tower-http)
@@ -14,9 +14,9 @@ Tower middlewares and utilities for HTTP clients and servers.
 
 More information about this crate can be found in the [crate documentation][docs].
 
-## Middlewares
+## Middleware
 
-Tower HTTP contains lots of middlewares that are generally useful when building
+Tower HTTP contains lots of middleware that are generally useful when building
 HTTP servers and clients. Some of the highlights are:
 
 - `Trace` adds high level logging of requests and responses. Supports both
@@ -24,12 +24,12 @@ HTTP servers and clients. Some of the highlights are:
 - `Compression` and `Decompression` to compress/decompress response bodies.
 - `FollowRedirect` to automatically follow redirection responses.
 
-See the [docs] for the complete list of middlewares.
+See the [docs] for the complete list of middleware.
 
-Middlewares uses the [`http`] crate as the HTTP interface so they're compatible
+Middleware uses the [`http`] crate as the HTTP interface so they're compatible
 with any library or framework that also uses [`http`]. For example [hyper].
 
-The middlewares were originally extracted from one of [@EmbarkStudios] internal
+The middleware were originally extracted from one of [@EmbarkStudios] internal
 projects.
 
 ## Examples

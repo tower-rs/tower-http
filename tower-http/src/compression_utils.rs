@@ -1,4 +1,4 @@
-//! Types used by compression and decompression middlewares.
+//! Types used by compression and decompression middleware.
 
 use bytes::{Bytes, BytesMut};
 use futures_core::Stream;

@@ -128,7 +128,7 @@ that the example is correct and provides additional test coverage.
 The trick to documentation tests is striking a balance between being succinct
 for a reader to understand and actually testing the API.
 
-All middlewares should have at least one example that demonstrates how to use
+All middleware should have at least one example that demonstrates how to use
 them. The example should highlight the most common use case that we expect most
 users to have. If the middleware can be configured there should be at least two
 examples: One that uses the default configuration (as that is probably the most
