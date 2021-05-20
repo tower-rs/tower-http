@@ -19,7 +19,7 @@
 //!     add_extension::AddExtensionLayer,
 //!     compression::CompressionLayer,
 //!     propagate_header::PropagateHeaderLayer,
-//!     require_authorization::RequireAuthorizationLayer,
+//!     auth::RequireAuthorizationLayer,
 //!     sensitive_header::SetSensitiveRequestHeaderLayer,
 //!     set_header::SetResponseHeaderLayer,
 //!     trace::TraceLayer,
@@ -160,6 +160,7 @@
 //! [`Service`]: https://docs.rs/tower/latest/tower/trait.Service.html
 //! [chat]: https://discord.gg/tokio
 //! [issue]: https://github.com/tower-rs/tower-http/issues/new
+//! [`Trace`]: crate::trace::Trace
 
 #![doc(html_root_url = "https://docs.rs/tower-http/0.1.0")]
 #![warn(
@@ -210,9 +211,9 @@
 #[macro_use]
 pub(crate) mod macros;
 
-#[cfg(feature = "require-authorization")]
-#[cfg_attr(docsrs, doc(cfg(feature = "require-authorization")))]
-pub mod require_authorization;
+#[cfg(feature = "auth")]
+#[cfg_attr(docsrs, doc(cfg(feature = "auth")))]
+pub mod auth;
 
 #[cfg(feature = "set-header")]
 #[cfg_attr(docsrs, doc(cfg(feature = "set-header")))]

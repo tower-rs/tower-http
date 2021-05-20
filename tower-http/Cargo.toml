@@ -48,6 +48,7 @@ tracing-subscriber = "0.2"
 default = []
 full = [
     "add-extension",
+    "auth",
     "compression",
     "compression-full",
     "decompression-full",
@@ -57,20 +58,19 @@ full = [
     "map-response-body",
     "propagate-header",
     "redirect",
-    "require-authorization",
     "sensitive-header",
     "set-header",
     "trace",
 ]
 
 add-extension = []
+auth = ["base64"]
 follow-redirect = ["iri-string", "tower/util"]
 fs = ["tokio/fs", "tokio-util/io", "mime_guess", "mime"]
 map-request-body = []
 map-response-body = []
 propagate-header = []
 redirect = []
-require-authorization = ["base64"]
 sensitive-header = []
 set-header = []
 trace = ["tracing"]

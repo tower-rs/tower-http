@@ -5,7 +5,7 @@
 //! # Example
 //!
 //! ```
-//! use tower_http::require_authorization::RequireAuthorizationLayer;
+//! use tower_http::auth::RequireAuthorizationLayer;
 //! use hyper::{Request, Response, Body, Error};
 //! use http::{StatusCode, header::AUTHORIZATION};
 //! use tower::{Service, ServiceExt, ServiceBuilder, service_fn};
@@ -19,7 +19,7 @@
 //! let mut service = ServiceBuilder::new()
 //!     // Require the `Authorization` header to be `Bearer passwordlol`
 //!     .layer(RequireAuthorizationLayer::bearer("passwordlol"))
-//!     .service(service_fn(handle));
+//!     .service_fn(handle);
 //!
 //! // Requests with the correct token are allowed through
 //! let request = Request::builder()
@@ -50,6 +50,66 @@
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! Custom authorization schemes can be made by implementing [`AuthorizeRequest`]:
+//!
+//! ```
+//! use tower_http::auth::{RequireAuthorizationLayer, AuthorizeRequest};
+//! use hyper::{Request, Response, Body, Error};
+//! use http::{StatusCode, header::AUTHORIZATION};
+//! use tower::{Service, ServiceExt, ServiceBuilder, service_fn};
+//!
+//! #[derive(Clone, Copy)]
+//! struct MyAuth;
+//!
+//! impl AuthorizeRequest for MyAuth {
+//!     type Output = UserId;
+//!     type ResponseBody = Body;
+//!
+//!     fn authorize<B>(&mut self, request: &Request<B>) -> Option<UserId> {
+//!         // ...
+//!         # None
+//!     }
+//!
+//!     fn on_authorized<B>(&mut self, request: &mut Request<B>, user_id: UserId) {
+//!         // Set `user_id` as a request extension so it can be accessed by other
+//!         // services down the stack.
+//!         request.extensions_mut().insert(user_id);
+//!     }
+//!
+//!     fn unauthorized_response<B>(&mut self, request: &Request<B>) -> Response<Body> {
+//!         Response::builder()
+//!             .status(StatusCode::UNAUTHORIZED)
+//!             .body(Body::empty())
+//!             .unwrap()
+//!     }
+//! }
+//!
+//! #[derive(Debug)]
+//! struct UserId(String);
+//!
+//! async fn handle(request: Request<Body>) -> Result<Response<Body>, Error> {
+//!     // Access the `UserId` that was set in `on_authorized`. If `handle` gets called the
+//!     // request was authorized and `UserId` will be present.
+//!     let user_id = request
+//!         .extensions()
+//!         .get::<UserId>()
+//!         .expect("UserId will be there if request was authorized");
+//!
+//!     println!("request from {:?}", user_id);
+//!
+//!     Ok(Response::new(Body::empty()))
+//! }
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let service = ServiceBuilder::new()
+//!     // Authorize requests using `MyAuth`
+//!     .layer(RequireAuthorizationLayer::custom(MyAuth))
+//!     .service_fn(handle);
+//! # Ok(())
+//! # }
+//! ```
 
 use http::{
     header::{self, HeaderValue},
@@ -70,7 +130,7 @@ use tower_service::Service;
 /// Layer that applies [`RequireAuthorization`] which authorizes all requests using the
 /// [`Authorization`] header.
 ///
-/// See the [module docs](crate::require_authorization) for an example.
+/// See the [module docs](crate::auth::require_authorization) for an example.
 ///
 /// [`Authorization`]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Authorization
 #[derive(Debug, Clone)]
@@ -115,8 +175,6 @@ where
     T: AuthorizeRequest,
 {
     /// Authorize requests using a custom scheme.
-    ///
-    /// The `Authorization` header is required to have the value provided.
     pub fn custom(auth: T) -> RequireAuthorizationLayer<T> {
         Self { auth }
     }
@@ -135,7 +193,7 @@ where
 
 /// Middleware that authorizes all requests using the [`Authorization`] header.
 ///
-/// See the [module docs](crate::require_authorization) for an example.
+/// See the [module docs](crate::auth::require_authorization) for an example.
 ///
 /// [`Authorization`]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Authorization
 #[derive(Clone, Debug)]
@@ -213,15 +271,10 @@ where
     fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
         if let Some(output) = self.auth.authorize(&req) {
             self.auth.on_authorized(&mut req, output);
-
-            ResponseFuture {
-                kind: Kind::Future(self.inner.call(req)),
-            }
+            ResponseFuture::future(self.inner.call(req))
         } else {
             let res = self.auth.unauthorized_response(&req);
-            ResponseFuture {
-                kind: Kind::Error(Some(res)),
-            }
+            ResponseFuture::invalid_auth(res)
         }
     }
 }
@@ -231,6 +284,20 @@ where
 pub struct ResponseFuture<F, B> {
     #[pin]
     kind: Kind<F, B>,
+}
+
+impl<F, B> ResponseFuture<F, B> {
+    fn future(future: F) -> Self {
+        Self {
+            kind: Kind::Future(future),
+        }
+    }
+
+    fn invalid_auth(res: Response<B>) -> Self {
+        Self {
+            kind: Kind::Error(Some(res)),
+        }
+    }
 }
 
 #[pin_project(project = KindProj)]
@@ -274,11 +341,15 @@ pub trait AuthorizeRequest {
     /// Callback for when a request has been successfully authorized.
     ///
     /// For example this allows you to save `Self::Output` in a [request extension][] to make it
-    /// available to services further down the stack.
+    /// available to services further down the stack. This could for example be the "claims" for a
+    /// valid [JWT].
     ///
     /// Defaults to doing nothing.
     ///
+    /// See the [module docs](crate::auth::require_authorization) for an example.
+    ///
     /// [request extension]: https://docs.rs/http/latest/http/struct.Extensions.html
+    /// [JWT]: https://jwt.io
     #[inline]
     fn on_authorized<B>(&mut self, _request: &mut Request<B>, _output: Self::Output) {}
 
