@@ -12,13 +12,13 @@ pub trait OnEos {
     ///
     /// `stream_duration` is the duration since the response was sent.
     ///
-    /// `span` is the `tracing` [`Span`] corresponding to this request, produced
-    /// the closure passed to [`TraceLayer::make_span_with`]. It can be used to
-    /// [record field values][record] that weren't known when the span was
-    /// created.
+    /// `span` is the `tracing` [`Span`], corresponding to this request, produced by the closure
+    /// passed to [`TraceLayer::make_span_with`]. It can be used to [record field values][record]
+    /// that weren't known when the span was created.
     ///
     /// [`Span`]: https://docs.rs/tracing/latest/tracing/span/index.html
     /// [record]: https://docs.rs/tracing/latest/tracing/span/struct.Span.html#method.record
+    /// [`TraceLayer::make_span_with`]: crate::trace::TraceLayer::make_span_with
     fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Duration, span: &Span);
 }
 

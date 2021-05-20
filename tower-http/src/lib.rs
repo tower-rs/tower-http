@@ -157,6 +157,7 @@
 //! [`Service`]: https://docs.rs/tower/latest/tower/trait.Service.html
 //! [chat]: https://discord.gg/tokio
 //! [issue]: https://github.com/tower-rs/tower-http/issues/new
+//! [`Trace`]: crate::trace::Trace
 
 #![doc(html_root_url = "https://docs.rs/tower-http/0.1.0")]
 #![warn(

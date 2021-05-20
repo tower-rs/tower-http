@@ -14,6 +14,7 @@
 //! async fn handle(request: Request<Body>) -> Result<Response<Body>, Infallible> {
 //!     Ok(Response::new(Body::from("foo")))
 //! }
+//!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! // Setup tracing
@@ -193,6 +194,49 @@
 //! # }
 //! ```
 //!
+//! # Recording fields on the span
+//!
+//! All callbacks receive a reference to the [tracing] [`Span`], corresponding to this request,
+//! produced by the closure passed to [`TraceLayer::make_span_with`]. It can be used to [record
+//! field values][record] that weren't known when the span was created.
+//!
+//! ```rust
+//! use http::{Request, Response, HeaderMap, StatusCode};
+//! use hyper::Body;
+//! use bytes::Bytes;
+//! use tower::ServiceBuilder;
+//! use tower_http::trace::TraceLayer;
+//! use tracing::Span;
+//! use std::time::Duration;
+//! # use std::convert::Infallible;
+//!
+//! # async fn handle(request: Request<Body>) -> Result<Response<Body>, Infallible> {
+//! #     Ok(Response::new(Body::from("foo")))
+//! # }
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # tracing_subscriber::fmt::init();
+//! #
+//! let service = ServiceBuilder::new()
+//!     .layer(
+//!         TraceLayer::<_, hyper::Error>::new_for_http()
+//!             .make_span_with(|request: &Request<Body>| {
+//!                 tracing::debug_span!(
+//!                     "http-request",
+//!                     status_code = tracing::field::Empty,
+//!                 )
+//!             })
+//!             .on_response(|response: &Response<Body>, _latency: Duration, span: &Span| {
+//!                 span.record("status_code", &tracing::field::display(response.status()));
+//!
+//!                 tracing::debug!("response generated")
+//!             })
+//!     )
+//!     .service_fn(handle);
+//! # Ok(())
+//! # }
+//! ```
+//!
 //! # Providing classifiers
 //!
 //! Tracing requires determining if a response is a success or failure. [`MakeClassifier`] is used
@@ -285,6 +329,9 @@
 //! [`Service`]: tower_service::Service
 //! [`MakeClassifier`]: crate::classify::MakeClassifier
 //! [`ClassifyResponse`]: crate::classify::ClassifyResponse
+//! [record]: https://docs.rs/tracing/latest/tracing/span/struct.Span.html#method.record
+//! [`TraceLayer::make_span_with`]: crate::trace::TraceLayer::make_span_with
+//! [`Span`]: tracing::Span
 
 use tracing::Level;
 
