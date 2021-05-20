@@ -2,16 +2,16 @@
 //!
 //! # Overview
 //!
-//! `tower-http` is a library that provides HTTP-specific middlewares and utilities built on top of
+//! `tower-http` is a library that provides HTTP-specific middleware and utilities built on top of
 //! [`tower`].
 //!
-//! All middlewares uses the [`http`] and [`http-body`] crates as the HTTP abstractions. That means
+//! All middleware uses the [`http`] and [`http-body`] crates as the HTTP abstractions. That means
 //! they're compatible with any library or framework that also uses those crates, such as
 //! [`hyper`].
 //!
 //! # Example server
 //!
-//! This example shows how to apply middlewares from `tower-http` to a [`Service`] and then run
+//! This example shows how to apply middleware from `tower-http` to a [`Service`] and then run
 //! that service using [`hyper`].
 //!
 //! ```rust,no_run
@@ -87,7 +87,7 @@
 //!
 //! # Example client
 //!
-//! `tower-http` middlewares can also be applied to HTTP clients:
+//! `tower-http` middleware can also be applied to HTTP clients:
 //!
 //! ```rust,no_run
 //! use tower_http::{
@@ -306,7 +306,7 @@ where
     }
 }
 
-/// The latency unit used to report latencies by middlewares.
+/// The latency unit used to report latencies by middleware.
 #[non_exhaustive]
 #[derive(Copy, Clone, Debug)]
 pub enum LatencyUnit {

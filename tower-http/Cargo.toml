@@ -1,6 +1,6 @@
 [package]
 name = "tower-http"
-description = "Tower middlewares and utilities for HTTP clients and servers"
+description = "Tower middleware and utilities for HTTP clients and servers"
 version = "0.1.0"
 authors = ["Tower Maintainers <team@tower-rs.com>"]
 edition = "2018"

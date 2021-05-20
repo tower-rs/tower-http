@@ -161,7 +161,7 @@ async fn serve_forever(listener: TcpListener) -> Result<(), Box<dyn std::error::
     // Build our tonic `Service`
     let service = key_value_store_server::KeyValueStoreServer::new(ServerImpl { db, tx });
 
-    // Apply middlewares to our service
+    // Apply middleware to our service
     let service = ServiceBuilder::new()
         // Set a timeout
         .timeout(Duration::from_secs(10))
@@ -182,7 +182,7 @@ async fn serve_forever(listener: TcpListener) -> Result<(), Box<dyn std::error::
     tracing::info!("Listening on {}", addr);
 
     // We cannot use `tonic::transport::Server` directly as it requires services to implement
-    // `tonic::transport::NamedService` which tower-http middlewares don't
+    // `tonic::transport::NamedService` which tower-http middleware don't
     Server::from_tcp(listener)?
         // Required for gRPC
         .http2_only(true)
@@ -250,7 +250,7 @@ impl key_value_store_server::KeyValueStore for ServerImpl {
     }
 }
 
-// Build a client with a few middlewares applied and connect to the server
+// Build a client with a few middleware applied and connect to the server
 async fn make_client(
     addr: SocketAddr,
 ) -> Result<
@@ -273,10 +273,10 @@ async fn make_client(
         .unwrap();
 
     // We have to use a `tonic::transport::Channel` as it implementes `Service` so we can apply
-    // middlewares to it
+    // middleware to it
     let channel = Channel::builder(uri).connect().await?;
 
-    // Apply middlewares to our client
+    // Apply middleware to our client
     let channel = ServiceBuilder::new()
         // Decompress response bodies
         .layer(DecompressionLayer::new())
