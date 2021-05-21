@@ -28,7 +28,7 @@
 //!     .unwrap();
 //!
 //! let response = service
-//!     .ready_and()
+//!     .ready()
 //!     .await?
 //!     .call(request)
 //!     .await?;
@@ -41,7 +41,7 @@
 //!     .unwrap();
 //!
 //! let response = service
-//!     .ready_and()
+//!     .ready()
 //!     .await?
 //!     .call(request)
 //!     .await?;
