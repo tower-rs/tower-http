@@ -20,19 +20,20 @@
 //!     compression::CompressionLayer,
 //!     propagate_header::PropagateHeaderLayer,
 //!     auth::RequireAuthorizationLayer,
-//!     sensitive_header::SetSensitiveRequestHeaderLayer,
+//!     sensitive_header::{SetSensitiveResponseHeaderLayer, SetSensitiveRequestHeaderLayer},
 //!     set_header::SetResponseHeaderLayer,
 //!     trace::TraceLayer,
 //! };
 //! use tower::{ServiceBuilder, service_fn, make::Shared};
 //! use http::{Request, Response, header::{HeaderName, CONTENT_TYPE, AUTHORIZATION}};
 //! use hyper::{Body, Error, server::Server, service::make_service_fn};
-//! use std::{sync::Arc, net::SocketAddr, convert::Infallible};
+//! use std::{sync::Arc, net::SocketAddr, convert::Infallible, time::Duration};
 //! # struct DatabaseConnectionPool;
 //! # impl DatabaseConnectionPool {
 //! #     fn new() -> DatabaseConnectionPool { DatabaseConnectionPool }
 //! # }
 //! # fn content_length_from_response<B>(_: &http::Response<B>) -> Option<http::HeaderValue> { None }
+//! # async fn update_in_flight_requests_metric(count: usize) {}
 //!
 //! // Our request handler. This is where we would implement the application logic
 //! // for responding to HTTP requests...
@@ -56,10 +57,14 @@
 //!     // Use `tower`'s `ServiceBuilder` API to build a stack of `tower` middleware
 //!     // wrapping our request handler.
 //!     let service = ServiceBuilder::new()
-//!         // Mark the `Authorization` request header as sensitive so it doesn't show in logs
+//!         // Mark the `Authorization` header as sensitive on requests so it doesn't show in logs
+//!         // This must be applied before `TraceLayer`
 //!         .layer(SetSensitiveRequestHeaderLayer::new(AUTHORIZATION))
-//!         // High level logging of requests and responses
+//!         // High level tracing of requests and responses
 //!         .layer(TraceLayer::new_for_http())
+//!         // Mark the `Authorization` header as sensitive on responses
+//!         // This must be applied after `TraceLayer`
+//!         .layer(SetSensitiveResponseHeaderLayer::new(AUTHORIZATION))
 //!         // Share an `Arc<State>` with all requests
 //!         .layer(AddExtensionLayer::new(Arc::new(state)))
 //!         // Compress responses
@@ -257,6 +262,10 @@ pub mod trace;
 #[cfg(feature = "follow-redirect")]
 #[cfg_attr(docsrs, doc(cfg(feature = "follow-redirect")))]
 pub mod follow_redirect;
+
+#[cfg(feature = "metrics")]
+#[cfg_attr(docsrs, doc(cfg(feature = "metrics")))]
+pub mod metrics;
 
 pub mod classify;
 pub mod services;
