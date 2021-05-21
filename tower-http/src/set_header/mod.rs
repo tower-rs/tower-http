@@ -10,7 +10,7 @@ pub mod response;
 #[doc(inline)]
 pub use self::{
     request::{SetRequestHeader, SetRequestHeaderLayer},
-    response::{SetResponseHeader, SetResponseHeadersLayer},
+    response::{SetResponseHeader, SetResponseHeaderLayer},
 };
 
 /// Trait for producing header values.

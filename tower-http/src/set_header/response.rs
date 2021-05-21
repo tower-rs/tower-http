@@ -11,7 +11,7 @@
 //! ```
 //! use http::{Request, Response, header::{self, HeaderValue}};
 //! use tower::{Service, ServiceExt, ServiceBuilder};
-//! use tower_http::set_header::SetResponseHeadersLayer;
+//! use tower_http::set_header::SetResponseHeaderLayer;
 //! use hyper::Body;
 //!
 //! # #[tokio::main]
@@ -29,7 +29,7 @@
 //!         //
 //!         // `if_not_present` will only insert the header if it does not already
 //!         // have a value.
-//!         SetResponseHeadersLayer::<_, Body>::if_not_present(
+//!         SetResponseHeaderLayer::<_, Body>::if_not_present(
 //!             header::CONTENT_TYPE,
 //!             HeaderValue::from_static("text/html"),
 //!         )
@@ -51,7 +51,7 @@
 //! ```
 //! use http::{Request, Response, header::{self, HeaderValue}};
 //! use tower::{Service, ServiceExt, ServiceBuilder};
-//! use tower_http::set_header::SetResponseHeadersLayer;
+//! use tower_http::set_header::SetResponseHeaderLayer;
 //! use hyper::Body;
 //! use http_body::Body as _; // for `Body::size_hint`
 //!
@@ -68,7 +68,7 @@
 //!         //
 //!         // `overriding` will insert the header and override any previous values it
 //!         // may have.
-//!         SetResponseHeadersLayer::overriding(
+//!         SetResponseHeaderLayer::overriding(
 //!             header::CONTENT_LENGTH,
 //!             |response: &Response<Body>| {
 //!                 if let Some(size) = response.body().size_hint().exact() {
@@ -111,16 +111,16 @@ use tower_service::Service;
 /// Layer that applies [`SetResponseHeader`] which adds a response header.
 ///
 /// See [`SetResponseHeader`] for more details.
-pub struct SetResponseHeadersLayer<M, T> {
+pub struct SetResponseHeaderLayer<M, T> {
     header_name: HeaderName,
     make: M,
     mode: InsertHeaderMode,
     _marker: PhantomData<fn() -> T>,
 }
 
-impl<M, T> fmt::Debug for SetResponseHeadersLayer<M, T> {
+impl<M, T> fmt::Debug for SetResponseHeaderLayer<M, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SetResponseHeadersLayer")
+        f.debug_struct("SetResponseHeaderLayer")
             .field("header_name", &self.header_name)
             .field("mode", &self.mode)
             .field("make", &std::any::type_name::<M>())
@@ -128,23 +128,23 @@ impl<M, T> fmt::Debug for SetResponseHeadersLayer<M, T> {
     }
 }
 
-impl<M, T> SetResponseHeadersLayer<M, T>
+impl<M, T> SetResponseHeaderLayer<M, T>
 where
     M: MakeHeaderValue<T>,
 {
-    /// Create a new [`SetResponseHeadersLayer`]. If a previous value exists for the same header, it
+    /// Create a new [`SetResponseHeaderLayer`]. If a previous value exists for the same header, it
     /// is removed and replaced with the new header value.
     pub fn overriding(header_name: HeaderName, make: M) -> Self {
         Self::new(header_name, make, InsertHeaderMode::Override)
     }
 
-    /// Create a new [`SetResponseHeadersLayer`]. The new header is always added, preserving any
+    /// Create a new [`SetResponseHeaderLayer`]. The new header is always added, preserving any
     /// existing values. If previous values exist, the header will have multiple values.
     pub fn appending(header_name: HeaderName, make: M) -> Self {
         Self::new(header_name, make, InsertHeaderMode::Append)
     }
 
-    /// Create a new [`SetResponseHeadersLayer`]. If a previous value exists for the header, the new
+    /// Create a new [`SetResponseHeaderLayer`]. If a previous value exists for the header, the new
     /// value is not inserted.
     pub fn if_not_present(header_name: HeaderName, make: M) -> Self {
         Self::new(header_name, make, InsertHeaderMode::IfNotPresent)
@@ -163,7 +163,7 @@ where
     }
 }
 
-impl<T, S, M> Layer<S> for SetResponseHeadersLayer<M, T>
+impl<T, S, M> Layer<S> for SetResponseHeaderLayer<M, T>
 where
     M: MakeHeaderValue<T> + Clone,
 {
@@ -179,7 +179,7 @@ where
     }
 }
 
-impl<M, T> Clone for SetResponseHeadersLayer<M, T>
+impl<M, T> Clone for SetResponseHeaderLayer<M, T>
 where
     M: Clone,
 {

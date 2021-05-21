@@ -20,7 +20,7 @@
 //!     compression::CompressionLayer,
 //!     propagate_header::PropagateHeaderLayer,
 //!     sensitive_headers::SetSensitiveRequestHeadersLayer,
-//!     set_header::SetResponseHeadersLayer,
+//!     set_header::SetResponseHeaderLayer,
 //!     trace::TraceLayer,
 //! };
 //! use tower::{ServiceBuilder, service_fn, make::Shared};
@@ -66,7 +66,7 @@
 //!         // Propagate `X-Request-Id`s from requests to responses
 //!         .layer(PropagateHeaderLayer::new(HeaderName::from_static("x-request-id")))
 //!         // If the response has a known size set the `Content-Length` header
-//!         .layer(SetResponseHeadersLayer::overriding(CONTENT_TYPE, content_length_from_response))
+//!         .layer(SetResponseHeaderLayer::overriding(CONTENT_TYPE, content_length_from_response))
 //!         // Wrap a `Service` in our middleware stack
 //!         .service_fn(handler);
 //!

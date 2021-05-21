@@ -15,7 +15,7 @@ use tower_http::{
     add_extension::AddExtensionLayer,
     compression::CompressionLayer,
     sensitive_headers::SetSensitiveHeadersLayer,
-    set_header::SetResponseHeadersLayer,
+    set_header::SetResponseHeaderLayer,
     trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
     LatencyUnit,
 };
@@ -84,12 +84,12 @@ async fn serve_forever(listener: TcpListener) -> Result<(), hyper::Error> {
         // Compress responses
         .layer(CompressionLayer::new())
         // If the response has a known size set the `Content-Length` header
-        .layer(SetResponseHeadersLayer::overriding(
+        .layer(SetResponseHeaderLayer::overriding(
             header::CONTENT_LENGTH,
             content_length_from_response,
         ))
         // Set a `Content-Type` if there isn't one already.
-        .layer(SetResponseHeadersLayer::<_, Request<Body>>::if_not_present(
+        .layer(SetResponseHeaderLayer::<_, Request<Body>>::if_not_present(
             header::CONTENT_TYPE,
             HeaderValue::from_static("application/octet-stream"),
         ))
