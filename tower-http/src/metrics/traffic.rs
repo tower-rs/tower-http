@@ -1,4 +1,96 @@
-#![allow(missing_docs)]
+//! Middleware for adding high level traffic metrics to a [`Service`].
+//!
+//! The primary focus of this middleware is to enable adding request per second/minute and error
+//! rate metrics.
+//!
+//! The middleware doesn't do any kind of aggregate but instead uses a [`MetricsSink`] which
+//! contains callbacks that the middleware will call. These methods can call into your actual
+//! metrics system as appropriate. See [`MetricsSink`] for details on when each callback is called.
+//!
+//! Additionally it uses a [classifier] to determine if responses are success or failure.
+//!
+//! [classifier]: crate::classify
+//!
+//! # Example
+//!
+//! ```rust
+//! use http::{Request, Response, HeaderMap};
+//! use hyper::Body;
+//! use tower::{ServiceBuilder, ServiceExt, Service};
+//! use tower_http::{
+//!     classify::{GrpcErrorsAsFailures, ClassifiedResponse},
+//!     metrics::traffic::{TrafficLayer, MetricsSink, FailedAt},
+//! };
+//!
+//! async fn handle(request: Request<Body>) -> Result<Response<Body>, hyper::Error> {
+//!     Ok(Response::new(Body::from("foo")))
+//! }
+//!
+//! #[derive(Clone)]
+//! struct MyMetricsSink;
+//!
+//! impl MetricsSink<i32> for MyMetricsSink {
+//!     type Data = ();
+//!
+//!     fn prepare<B>(&mut self, request: &Request<B>) -> Self::Data {
+//!         // Prepare some data that will be passed to the other callbacks
+//!     }
+//!
+//!     fn on_response<B>(
+//!         &mut self,
+//!         response: &Response<B>,
+//!         classification: ClassifiedResponse<i32, ()>,
+//!         data: &mut Self::Data,
+//!     ) {
+//!         // ...
+//!     }
+//!
+//!     fn on_eos(
+//!         self,
+//!         trailers: Option<&HeaderMap>,
+//!         classification: Result<(), i32>,
+//!         data: Self::Data,
+//!     ) {
+//!         // ...
+//!     }
+//!
+//!     fn on_failure(
+//!         self,
+//!         failed_at: FailedAt,
+//!         failure_classification: i32,
+//!         data: Self::Data,
+//!     ) {
+//!         // ...
+//!     }
+//! }
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! // Classifier that supports gRPC. Use `ServerErrorsAsFailures` for regular
+//! // non-streaming HTTP requests or build your own by implementing `MakeClassifier`.
+//! let classifier = GrpcErrorsAsFailures::make_classifier::<hyper::Error>();
+//!
+//! let mut service = ServiceBuilder::new()
+//!     // Add the middleware to our service. It will automatically call the callbacks
+//!     // on the `MetricsSink` trait.
+//!     .layer(TrafficLayer::new(classifier, MyMetricsSink))
+//!     .service_fn(handle);
+//!
+//! // Send a request.
+//! let request = Request::new(Body::from("foo"));
+//!
+//! let response = service
+//!     .ready()
+//!     .await?
+//!     .call(request)
+//!     .await?;
+//!
+//! // Consume the response body.
+//! let body = response.into_body();
+//! let bytes = hyper::body::to_bytes(body).await.unwrap();
+//! # Ok(())
+//! # }
+//! ```
 
 use crate::classify::{ClassifiedResponse, ClassifyEos, ClassifyResponse, MakeClassifier};
 use futures_core::ready;
@@ -9,218 +101,97 @@ use std::{
     future::Future,
     pin::Pin,
     task::{Context, Poll},
-    time::{Duration, Instant},
+    time::Instant,
 };
 use tower_layer::Layer;
 use tower_service::Service;
 
 // ===== layer =====
 
+/// [`Layer`] for adding high level traffic metrics to a [`Service`].
+///
+/// See the [module docs](crate::metrics::traffic) for more details.
+///
+/// [`Layer`]: tower_layer::Layer
+/// [`Service`]: tower_service::Service
 #[derive(Debug, Clone)]
-pub struct TrafficLayer<M, OnRequest = (), OnResponse = (), OnEos = (), OnFailure = ()> {
+pub struct TrafficLayer<M, MetricsSink> {
     make_classifier: M,
-    on_request: OnRequest,
-    on_response: OnResponse,
-    on_eos: OnEos,
-    on_failure: OnFailure,
+    sink: MetricsSink,
 }
 
-impl<M> TrafficLayer<M> {
-    pub fn new(make_classifier: M) -> Self {
+impl<M, MetricsSink> TrafficLayer<M, MetricsSink> {
+    /// Create a new `TrafficLayer`.
+    pub fn new(make_classifier: M, sink: MetricsSink) -> Self {
         TrafficLayer {
             make_classifier,
-            on_request: (),
-            on_response: (),
-            on_eos: (),
-            on_failure: (),
+            sink,
         }
     }
 }
 
-impl<M, OnRequest, OnResponse, OnEos, OnFailure>
-    TrafficLayer<M, OnRequest, OnResponse, OnEos, OnFailure>
-{
-    pub fn on_request<NewOnRequest>(
-        self,
-        new_on_request: NewOnRequest,
-    ) -> TrafficLayer<M, NewOnRequest, OnResponse, OnEos, OnFailure> {
-        TrafficLayer {
-            make_classifier: self.make_classifier,
-            on_request: new_on_request,
-            on_response: self.on_response,
-            on_eos: self.on_eos,
-            on_failure: self.on_failure,
-        }
-    }
-
-    pub fn on_response<NewOnResponse>(
-        self,
-        new_on_response: NewOnResponse,
-    ) -> TrafficLayer<M, OnRequest, NewOnResponse, OnEos, OnFailure> {
-        TrafficLayer {
-            make_classifier: self.make_classifier,
-            on_request: self.on_request,
-            on_failure: self.on_failure,
-            on_eos: self.on_eos,
-            on_response: new_on_response,
-        }
-    }
-
-    pub fn on_failure<NewOnFailure>(
-        self,
-        new_on_failure: NewOnFailure,
-    ) -> TrafficLayer<M, OnRequest, OnResponse, OnEos, NewOnFailure> {
-        TrafficLayer {
-            make_classifier: self.make_classifier,
-            on_request: self.on_request,
-            on_failure: new_on_failure,
-            on_response: self.on_response,
-            on_eos: self.on_eos,
-        }
-    }
-
-    pub fn on_eos<NewOnEos>(
-        self,
-        new_on_eos: NewOnEos,
-    ) -> TrafficLayer<M, OnRequest, OnResponse, NewOnEos, OnFailure> {
-        TrafficLayer {
-            make_classifier: self.make_classifier,
-            on_request: self.on_request,
-            on_failure: self.on_failure,
-            on_response: self.on_response,
-            on_eos: new_on_eos,
-        }
-    }
-}
-
-impl<S, M, OnRequest, OnResponse, OnEos, OnFailure> Layer<S>
-    for TrafficLayer<M, OnRequest, OnResponse, OnEos, OnFailure>
+impl<S, M, MetricsSink> Layer<S> for TrafficLayer<M, MetricsSink>
 where
     M: Clone,
-    OnRequest: Clone,
-    OnResponse: Clone,
-    OnEos: Clone,
-    OnFailure: Clone,
+    MetricsSink: Clone,
 {
-    type Service = Traffic<S, M, OnRequest, OnResponse, OnEos, OnFailure>;
+    type Service = Traffic<S, M, MetricsSink>;
 
     fn layer(&self, inner: S) -> Self::Service {
         Traffic {
             inner,
             make_classifier: self.make_classifier.clone(),
-            on_request: self.on_request.clone(),
-            on_response: self.on_response.clone(),
-            on_eos: self.on_eos.clone(),
-            on_failure: self.on_failure.clone(),
+            sink: self.sink.clone(),
         }
     }
 }
 
 // ===== service =====
 
+/// Middleware for adding high level traffic metrics to a [`Service`].
+///
+/// See the [module docs](crate::metrics::traffic) for more details.
+///
+/// [`Layer`]: tower_layer::Layer
+/// [`Service`]: tower_service::Service
 #[derive(Debug, Clone)]
-pub struct Traffic<S, M, OnRequest = (), OnResponse = (), OnEos = (), OnFailure = ()> {
+pub struct Traffic<S, M, MetricsSink> {
     inner: S,
     make_classifier: M,
-    on_request: OnRequest,
-    on_response: OnResponse,
-    on_eos: OnEos,
-    on_failure: OnFailure,
+    sink: MetricsSink,
 }
 
-impl<S, M> Traffic<S, M> {
-    pub fn new(inner: S, make_classifier: M) -> Self {
+impl<S, M, MetricsSink> Traffic<S, M, MetricsSink> {
+    /// Create a new `Traffic`.
+    pub fn new(inner: S, make_classifier: M, sink: MetricsSink) -> Self {
         Self {
             inner,
             make_classifier,
-            on_request: (),
-            on_response: (),
-            on_eos: (),
-            on_failure: (),
+            sink,
         }
     }
 
-    pub fn layer(make_classifier: M) -> TrafficLayer<M> {
-        TrafficLayer::new(make_classifier)
+    /// Returns a new [`Layer`] that wraps services with a [`Traffic`] middleware.
+    ///
+    /// [`Layer`]: tower_layer::Layer
+    pub fn layer(make_classifier: M, sink: MetricsSink) -> TrafficLayer<M, MetricsSink> {
+        TrafficLayer::new(make_classifier, sink)
     }
-}
 
-impl<S, M, OnRequest, OnResponse, OnEos, OnFailure>
-    Traffic<S, M, OnRequest, OnResponse, OnEos, OnFailure>
-{
     define_inner_service_accessors!();
-
-    pub fn on_request<NewOnRequest>(
-        self,
-        new_on_request: NewOnRequest,
-    ) -> Traffic<S, M, NewOnRequest, OnResponse, OnEos, OnFailure> {
-        Traffic {
-            inner: self.inner,
-            make_classifier: self.make_classifier,
-            on_request: new_on_request,
-            on_response: self.on_response,
-            on_failure: self.on_failure,
-            on_eos: self.on_eos,
-        }
-    }
-
-    pub fn on_response<NewOnResponse>(
-        self,
-        new_on_response: NewOnResponse,
-    ) -> Traffic<S, M, OnRequest, NewOnResponse, OnEos, OnFailure> {
-        Traffic {
-            inner: self.inner,
-            make_classifier: self.make_classifier,
-            on_request: self.on_request,
-            on_failure: self.on_failure,
-            on_response: new_on_response,
-            on_eos: self.on_eos,
-        }
-    }
-
-    pub fn on_failure<NewOnFailure>(
-        self,
-        new_on_failure: NewOnFailure,
-    ) -> Traffic<S, M, OnRequest, OnResponse, OnEos, NewOnFailure> {
-        Traffic {
-            inner: self.inner,
-            make_classifier: self.make_classifier,
-            on_request: self.on_request,
-            on_failure: new_on_failure,
-            on_response: self.on_response,
-            on_eos: self.on_eos,
-        }
-    }
-
-    pub fn on_eos<NewOnEos>(
-        self,
-        new_on_eos: NewOnEos,
-    ) -> Traffic<S, M, OnRequest, OnResponse, NewOnEos, OnFailure> {
-        Traffic {
-            inner: self.inner,
-            make_classifier: self.make_classifier,
-            on_request: self.on_request,
-            on_failure: self.on_failure,
-            on_response: self.on_response,
-            on_eos: new_on_eos,
-        }
-    }
 }
 
-impl<S, M, ReqBody, ResBody, OnRequestT, OnResponseT, OnEosT, OnFailureT> Service<Request<ReqBody>>
-    for Traffic<S, M, OnRequestT, OnResponseT, OnEosT, OnFailureT>
+impl<S, M, ReqBody, ResBody, MetricsSinkT> Service<Request<ReqBody>> for Traffic<S, M, MetricsSinkT>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
     ResBody: Body,
     M: MakeClassifier<S::Error>,
-    OnRequestT: OnRequest<M::Classifier, ReqBody>,
-    OnResponseT: OnResponse<ResBody, M::FailureClass> + Clone,
-    OnFailureT: OnFailure<M::FailureClass> + Clone,
-    OnEosT: OnEos<M::FailureClass> + Clone,
+    MetricsSinkT: MetricsSink<M::FailureClass> + Clone,
 {
-    type Response = Response<ResponseBody<ResBody, M::ClassifyEos, OnEosT, OnFailureT>>;
+    type Response =
+        Response<ResponseBody<ResBody, M::ClassifyEos, MetricsSinkT, MetricsSinkT::Data>>;
     type Error = S::Error;
-    type Future = ResponseFuture<S::Future, M::Classifier, OnResponseT, OnEosT, OnFailureT>;
+    type Future = ResponseFuture<S::Future, M::Classifier, MetricsSinkT, MetricsSinkT::Data>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx)
@@ -229,7 +200,7 @@ where
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
         let request_received_at = Instant::now();
 
-        self.on_request.on_request(&req);
+        let sink_data = self.sink.prepare(&req);
 
         let classifier = self.make_classifier.make_classifier(&req);
 
@@ -237,78 +208,71 @@ where
             inner: self.inner.call(req),
             classifier: Some(classifier),
             request_received_at,
-            on_response: Some(self.on_response.clone()),
-            on_failure: Some(self.on_failure.clone()),
-            on_eos: Some(self.on_eos.clone()),
+            sink: Some(self.sink.clone()),
+            sink_data: Some(sink_data),
         }
     }
 }
 
 // ===== future =====
 
+/// Response future for [`Traffic`].
 #[pin_project]
-pub struct ResponseFuture<F, C, OnResponse, OnEos, OnFailure> {
+pub struct ResponseFuture<F, C, MetricsSink, SinkData> {
     #[pin]
     inner: F,
     classifier: Option<C>,
     request_received_at: Instant,
-    on_response: Option<OnResponse>,
-    on_eos: Option<OnEos>,
-    on_failure: Option<OnFailure>,
+    sink: Option<MetricsSink>,
+    sink_data: Option<SinkData>,
 }
 
-impl<F, C, ResBody, E, OnResponseT, OnEosT, OnFailureT> Future
-    for ResponseFuture<F, C, OnResponseT, OnEosT, OnFailureT>
+impl<F, C, ResBody, E, MetricsSinkT, SinkData> Future
+    for ResponseFuture<F, C, MetricsSinkT, SinkData>
 where
     F: Future<Output = Result<Response<ResBody>, E>>,
     ResBody: Body,
     C: ClassifyResponse<E>,
-    OnResponseT: OnResponse<ResBody, C::FailureClass>,
-    OnFailureT: OnFailure<C::FailureClass>,
-    OnEosT: OnEos<C::FailureClass>,
+    MetricsSinkT: MetricsSink<C::FailureClass, Data = SinkData>,
 {
-    type Output = Result<Response<ResponseBody<ResBody, C::ClassifyEos, OnEosT, OnFailureT>>, E>;
+    type Output = Result<
+        Response<ResponseBody<ResBody, C::ClassifyEos, MetricsSinkT, MetricsSinkT::Data>>,
+        E,
+    >;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
         let result = ready!(this.inner.poll(cx));
-        let latency = this.request_received_at.elapsed();
 
-        let classifier: C = this.classifier.take().unwrap();
+        let classifier = this.classifier.take().unwrap();
 
         match result {
             Ok(res) => {
                 let classification = classifier.classify_response(&res);
+                let mut sink: MetricsSinkT = this.sink.take().unwrap();
+                let mut sink_data = this.sink_data.take().unwrap();
 
                 match classification {
                     ClassifiedResponse::Ready(classification) => {
-                        this.on_response
-                            .take()
-                            .unwrap()
-                            .on_response(&res, classification, latency);
-
-                        let on_failure = this.on_failure.take().unwrap();
+                        sink.on_response(
+                            &res,
+                            ClassifiedResponse::Ready(classification),
+                            &mut sink_data,
+                        );
 
                         let res = res.map(|body| ResponseBody {
                             inner: body,
-                            classify_eos: None,
-                            on_eos: None,
-                            on_failure: Some(on_failure),
-                            stream_start: Instant::now(),
+                            parts: None,
                         });
 
                         Poll::Ready(Ok(res))
                     }
                     ClassifiedResponse::RequiresEos(classify_eos) => {
-                        let on_failure = this.on_failure.take().unwrap();
-                        let on_eos = this.on_eos.take().unwrap();
+                        sink.on_response(&res, ClassifiedResponse::RequiresEos(()), &mut sink_data);
 
                         let res = res.map(|body| ResponseBody {
                             inner: body,
-                            classify_eos: Some(classify_eos),
-                            on_eos: Some(on_eos),
-                            on_failure: Some(on_failure),
-                            stream_start: Instant::now(),
+                            parts: Some((classify_eos, sink, sink_data)),
                         });
 
                         Poll::Ready(Ok(res))
@@ -317,10 +281,11 @@ where
             }
             Err(err) => {
                 let classification = classifier.classify_error(&err);
-                this.on_failure
-                    .take()
-                    .unwrap()
-                    .on_failure(FailedAt::Response, classification);
+                this.sink.take().unwrap().on_failure(
+                    FailedAt::Response,
+                    classification,
+                    this.sink_data.take().unwrap(),
+                );
 
                 Poll::Ready(Err(err))
             }
@@ -330,22 +295,19 @@ where
 
 // ===== body =====
 
+/// Response body for [`Traffic`].
 #[pin_project]
-pub struct ResponseBody<B, C, OnEos, OnFailure> {
+pub struct ResponseBody<B, C, MetricsSink, SinkData> {
     #[pin]
     inner: B,
-    classify_eos: Option<C>,
-    on_eos: Option<OnEos>,
-    on_failure: Option<OnFailure>,
-    stream_start: Instant,
+    parts: Option<(C, MetricsSink, SinkData)>,
 }
 
-impl<B, C, OnEosT, OnFailureT> Body for ResponseBody<B, C, OnEosT, OnFailureT>
+impl<B, C, MetricsSinkT, SinkData> Body for ResponseBody<B, C, MetricsSinkT, SinkData>
 where
     B: Body,
     C: ClassifyEos<B::Error>,
-    OnEosT: OnEos<C::FailureClass>,
-    OnFailureT: OnFailure<C::FailureClass>,
+    MetricsSinkT: MetricsSink<C::FailureClass, Data = SinkData>,
 {
     type Data = B::Data;
     type Error = B::Error;
@@ -357,18 +319,15 @@ where
         let this = self.project();
 
         let result = ready!(this.inner.poll_data(cx));
-        let stream_duration = this.stream_start.elapsed();
 
         match result {
             None => Poll::Ready(None),
             Some(Ok(chunk)) => Poll::Ready(Some(Ok(chunk))),
             Some(Err(err)) => {
-                let classify_eos = this.classify_eos.take().unwrap();
-                let classification = classify_eos.classify_error(&err);
-                this.on_failure.take().unwrap().on_failure(
-                    FailedAt::Body(FailedAtBody { stream_duration }),
-                    classification,
-                );
+                if let Some((classify_eos, sink, sink_data)) = this.parts.take() {
+                    let classification = classify_eos.classify_error(&err);
+                    sink.on_failure(FailedAt::Body, classification, sink_data);
+                }
 
                 Poll::Ready(Some(Err(err)))
             }
@@ -382,32 +341,22 @@ where
         let this = self.project();
 
         let result = ready!(this.inner.poll_trailers(cx));
-        let stream_duration = this.stream_start.elapsed();
-
-        let classify_eos = this.classify_eos.take().unwrap();
 
         match result {
             Ok(trailers) => {
-                let classification = this
-                    .classify_eos
-                    .take()
-                    .unwrap()
-                    .classify_eos(trailers.as_ref());
-
-                this.on_eos.take().unwrap().on_eos(
-                    trailers.as_ref(),
-                    classification,
-                    stream_duration,
-                );
+                if let Some((classify_eos, sink, sink_data)) = this.parts.take() {
+                    let trailers = trailers.as_ref();
+                    let classification = classify_eos.classify_eos(trailers);
+                    sink.on_eos(trailers, classification, sink_data);
+                }
 
                 Poll::Ready(Ok(trailers))
             }
             Err(err) => {
-                let classification = classify_eos.classify_error(&err);
-                this.on_failure.take().unwrap().on_failure(
-                    FailedAt::Body(FailedAtBody { stream_duration }),
-                    classification,
-                );
+                if let Some((classify_eos, sink, sink_data)) = this.parts.take() {
+                    let classification = classify_eos.classify_error(&err);
+                    sink.on_failure(FailedAt::Body, classification, sink_data);
+                }
 
                 Poll::Ready(Err(err))
             }
@@ -425,161 +374,136 @@ where
 
 // ===== callbacks =====
 
-pub trait OnRequest<C, B> {
-    fn on_request(&mut self, request: &Request<B>);
-}
+/// Trait that defines callbacks for [`Traffic`] to call.
+pub trait MetricsSink<FailureClass>: Sized {
+    /// Additional data required for creating metric events.
+    ///
+    /// This could for example be a struct that contains the request path and HTTP method so they
+    /// can be included in events.
+    type Data;
 
-impl<C, B, F> OnRequest<C, B> for F
-where
-    F: FnMut(&Request<B>),
-{
-    fn on_request(&mut self, request: &Request<B>) {
-        self(request)
-    }
-}
+    /// Create an instance of `Self::Data` from the request.
+    ///
+    /// This method is called immediately after the request is received by [`Service::call`].
+    ///
+    /// The value returned here will be passed to the other methods in this trait.
+    fn prepare<B>(&mut self, request: &Request<B>) -> Self::Data;
 
-impl<C, B> OnRequest<C, B> for () {
+    /// Perform some action when a response has been generated.
+    ///
+    /// If the response is _not_ the start of a stream (as determined by the classifier passed to
+    /// [`Traffic::new`] or [`TrafficLayer::new`]) then `classification` will be
+    /// [`ClassifiedResponse::Ready`], otherwise it will be [`ClassifiedResponse::RequiresEos`]
+    /// with `()` as the associated data.
+    ///
+    /// This method is called whenever [`Service::call`] of the inner service returns
+    /// `Ok(response)`, regardless if the classifier determines if the response is classified as a
+    /// success or a failure. If the response is classified as a failure then `classification` will
+    /// be [`ClassifiedResponse::Ready`] containing `Err(failure_class)`, otherwise `Ok(())`.
+    ///
+    /// In the case where the response is succesfully generated but is classified to be a failure
+    /// [`on_response`] is called and `on_failure` is _not_ called.
+    ///
+    /// A stream that ends succesfully will trigger two callbacks. [`on_response`] will be called
+    /// once the response has been generated and the stream has started and [`on_eos`] will be
+    /// called once the stream has ended.
+    ///
+    /// The default implementation does nothing and returns immediately.
+    ///
+    /// [`on_response`]: MetricsSink::on_response
+    /// [`on_eos`]: MetricsSink::on_eos
     #[inline]
-    fn on_request(&mut self, _: &Request<B>) {}
-}
-
-pub trait OnResponse<ResBody, FailureClass> {
-    fn on_response(
-        self,
-        response: &Response<ResBody>,
-        classification: Result<(), FailureClass>,
-        latency: Duration,
-    );
-}
-
-impl<B, FailureClass, F> OnResponse<B, FailureClass> for F
-where
-    F: FnOnce(&Response<B>, Result<(), FailureClass>, Duration),
-{
-    fn on_response(
-        self,
+    #[allow(unused_variables)]
+    fn on_response<B>(
+        &mut self,
         response: &Response<B>,
-        classification: Result<(), FailureClass>,
-        latency: Duration,
+        classification: ClassifiedResponse<FailureClass, ()>,
+        data: &mut Self::Data,
     ) {
-        self(response, classification, latency)
     }
-}
 
-impl<B, FailureClass> OnResponse<B, FailureClass> for () {
+    /// Perform some action when a stream has ended.
+    ///
+    /// This is called when [`Body::poll_trailers`] completes with `Ok(trailers)` regardless if
+    /// the trailers are classified as a failure.
+    ///
+    /// If the trailers were classified as a success then `classification` will be `Ok(())`
+    /// otherwise `Err(failure_class)`.
+    ///
+    /// The default implementation does nothing and returns immediately.
     #[inline]
-    fn on_response(self, _: &Response<B>, _: Result<(), FailureClass>, _: Duration) {}
-}
-
-pub trait OnEos<FailureClass> {
+    #[allow(unused_variables)]
     fn on_eos(
         self,
         trailers: Option<&HeaderMap>,
         classification: Result<(), FailureClass>,
-        stream_duration: Duration,
-    );
-}
-
-impl<FailureClass, F> OnEos<FailureClass> for F
-where
-    F: FnOnce(Option<&HeaderMap>, Result<(), FailureClass>, Duration),
-{
-    fn on_eos(
-        self,
-        trailers: Option<&HeaderMap>,
-        classification: Result<(), FailureClass>,
-        stream_duration: Duration,
+        data: Self::Data,
     ) {
-        self(trailers, classification, stream_duration)
+    }
+
+    /// Perform some action when an error has been encountered.
+    ///
+    /// This method is only called in these scenarios:
+    ///
+    /// - The inner [`Service`]'s response future resolves to an error.
+    /// - [`Body::poll_data`] or [`Body::poll_trailers`] returns an error.
+    ///
+    /// That means this method is _not_ called if a response is classified as a failure (then
+    /// [`on_response`] is called) or an end-of-stream is classified as a failure (then [`on_eos`]
+    /// is called).
+    ///
+    /// `failed_at` specifies where the error happened.
+    ///
+    /// The default implementation does nothing and returns immediately.
+    ///
+    /// [`on_response`]: MetricsSink::on_response
+    /// [`on_eos`]: MetricsSink::on_eos
+    #[inline]
+    #[allow(unused_variables)]
+    fn on_failure(
+        self,
+        failed_at: FailedAt,
+        failure_classification: FailureClass,
+        data: Self::Data,
+    ) {
     }
 }
 
-impl<FailureClass> OnEos<FailureClass> for () {
-    #[inline]
-    fn on_eos(self, _: Option<&HeaderMap>, _: Result<(), FailureClass>, _: Duration) {}
-}
-
-pub trait OnFailure<FailureClass> {
-    fn on_failure(self, failed_at: FailedAt, failure_classification: FailureClass);
-}
-
-impl<FailureClass, F> OnFailure<FailureClass> for F
-where
-    F: FnOnce(FailedAt, FailureClass),
-{
-    fn on_failure(self, failed_at: FailedAt, failure_classification: FailureClass) {
-        self(failed_at, failure_classification)
-    }
-}
-
-impl<FailureClass> OnFailure<FailureClass> for () {
-    #[inline]
-    fn on_failure(self, _: FailedAt, _: FailureClass) {}
-}
-
+/// Enum used to specify where an error was encountered.
 #[derive(Debug)]
 pub enum FailedAt {
+    /// Generating the response failed.
     Response,
-    Body(FailedAtBody),
-    Trailers(FailedAtBody),
-}
-
-#[derive(Debug)]
-pub struct FailedAtBody {
-    stream_duration: Duration,
-}
-
-impl FailedAtBody {
-    pub fn stream_duration(&self) -> Duration {
-        self.stream_duration
-    }
+    /// Generating the response body failed.
+    Body,
+    /// Generating the response trailers failed.
+    Trailers,
 }
 
 #[cfg(test)]
 mod tests {
-    #![allow(warnings)]
-
     use super::*;
-    use crate::classify::{GrpcEosErrorsAsFailures, GrpcErrorsAsFailures};
+    use crate::classify::ServerErrorsAsFailures;
     use http::{Method, Request, Response, StatusCode, Uri, Version};
     use hyper::Body;
-    use tower::{BoxError, Service, ServiceBuilder, ServiceExt};
+    use metrics_lib as metrics;
+    use tower::{Service, ServiceBuilder, ServiceExt};
 
     #[tokio::test]
     async fn unary_request() {
         let mut svc = ServiceBuilder::new()
-            .layer(
-                TrafficLayer::new(MyMakeClassify)
-                    .on_request(|_: &Request<Body>| {})
-                    .on_response(
-                        |_res: &Response<Body>,
-                         class: Result<(), MyFailureClass>,
-                         _latency: Duration| {
-                            todo!();
-                        },
-                    )
-                    .on_eos(
-                        |_trailers: Option<&HeaderMap>,
-                         class: Result<(), MyFailureClass>,
-                         _stream_duration: Duration| {
-                            todo!();
-                        },
-                    )
-                    .on_failure(|_: FailedAt, class: MyFailureClass| {
-                        todo!();
-                    }),
-            )
+            .layer(TrafficLayer::new(
+                ServerErrorsAsFailures::make_classifier::<hyper::Error>(),
+                MySink,
+            ))
             .service_fn(echo);
 
-        let res = svc
-            .ready()
+        svc.ready()
             .await
             .unwrap()
             .call(Request::new(Body::from("foobar")))
             .await
             .unwrap();
-
-        hyper::body::to_bytes(res.into_body()).await.unwrap();
     }
 
     async fn echo(req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
@@ -587,111 +511,123 @@ mod tests {
     }
 
     #[derive(Clone)]
-    struct MyMakeClassify;
+    struct MySink;
 
-    impl MakeClassifier<hyper::Error> for MyMakeClassify {
-        type Classifier = MyClassifier;
-        type FailureClass = MyFailureClass;
-        type ClassifyEos = MyClassifyEos;
-
-        fn make_classifier<B>(&self, req: &Request<B>) -> Self::Classifier {
-            MyClassifier {
-                uri: req.uri().clone(),
-                method: req.method().clone(),
-                version: req.version(),
-                inner: GrpcErrorsAsFailures::new(),
-            }
-        }
-    }
-
-    struct MyClassifier {
+    struct SinkData {
         uri: Uri,
         method: Method,
         version: Version,
-        inner: GrpcErrorsAsFailures,
+        request_received_at: Instant,
+        stream_start: Option<Instant>,
     }
 
-    impl ClassifyResponse<hyper::Error> for MyClassifier {
-        type FailureClass = MyFailureClass;
-        type ClassifyEos = MyClassifyEos;
+    // How one might write a sink that uses the `metrics` crate as the backend.
+    impl MetricsSink<StatusCode> for MySink {
+        type Data = SinkData;
 
-        fn classify_response<B>(
+        fn prepare<B>(&mut self, request: &Request<B>) -> Self::Data {
+            SinkData {
+                uri: request.uri().clone(),
+                method: request.method().clone(),
+                version: request.version(),
+                request_received_at: Instant::now(),
+                stream_start: None,
+            }
+        }
+
+        fn on_response<B>(
+            &mut self,
+            response: &Response<B>,
+            classification: ClassifiedResponse<StatusCode, ()>,
+            data: &mut SinkData,
+        ) {
+            let duration_ms = data.request_received_at.elapsed().as_millis() as f64;
+
+            let is_error = if let ClassifiedResponse::Ready(class) = &classification {
+                class.is_err()
+            } else {
+                false
+            };
+
+            let is_stream = matches!(classification, ClassifiedResponse::RequiresEos(_));
+
+            metrics::increment_counter!(
+                "http_requests_total",
+                "path" => data.uri.path().to_string(),
+                "method" => data.method.to_string(),
+                "code" => response.status().to_string(),
+                "version" => format!("{:?}", data.version),
+                "is_error" => is_error.then(|| "true").unwrap_or("false"),
+                "is_stream" => is_stream.then(|| "true").unwrap_or("false"),
+            );
+
+            metrics::histogram!(
+                "request_duration_milliseconds",
+                duration_ms,
+                "path" => data.uri.path().to_string(),
+                "method" => data.method.to_string(),
+                "code" => response.status().to_string(),
+                "version" => format!("{:?}", data.version),
+                "is_error" => is_error.then(|| "true").unwrap_or("false"),
+            );
+
+            if is_stream {
+                data.stream_start = Some(Instant::now());
+            }
+        }
+
+        fn on_eos(
             self,
-            res: &Response<B>,
-        ) -> ClassifiedResponse<Self::FailureClass, Self::ClassifyEos> {
-            let uri = self.uri.clone();
-            let method = self.method.clone();
-            let version = self.version;
+            _trailers: Option<&HeaderMap>,
+            classification: Result<(), StatusCode>,
+            data: SinkData,
+        ) {
+            let stream_duration = data.stream_start.unwrap().elapsed().as_millis() as f64;
 
-            match ClassifyResponse::<hyper::Error>::classify_response(self.inner, res) {
-                ClassifiedResponse::Ready(result) => {
-                    ClassifiedResponse::Ready(result.map_err(|grpc_code| MyFailureClass {
-                        grpc_code,
-                        uri,
-                        method,
-                        version,
-                    }))
+            let is_error = classification.is_err();
+
+            metrics::histogram!(
+                "stream_duration_milliseconds",
+                stream_duration,
+                "path" => data.uri.path().to_string(),
+                "method" => data.method.to_string(),
+                "version" => format!("{:?}", data.version),
+                "is_error" => is_error.then(|| "true").unwrap_or("false"),
+            );
+        }
+
+        fn on_failure(
+            self,
+            failed_at: FailedAt,
+            _failure_classification: StatusCode,
+            data: SinkData,
+        ) {
+            match failed_at {
+                FailedAt::Response => {
+                    metrics::increment_counter!(
+                        "request_error",
+                        "path" => data.uri.path().to_string(),
+                        "method" => data.method.to_string(),
+                        "version" => format!("{:?}", data.version),
+                    );
                 }
-                ClassifiedResponse::RequiresEos(classify_eos) => {
-                    ClassifiedResponse::RequiresEos(MyClassifyEos {
-                        inner: classify_eos,
-                        uri,
-                        method,
-                        version,
-                    })
+                FailedAt::Body => {
+                    metrics::increment_counter!(
+                        "body_error",
+                        "path" => data.uri.path().to_string(),
+                        "method" => data.method.to_string(),
+                        "version" => format!("{:?}", data.version),
+                    );
+                }
+                FailedAt::Trailers => {
+                    metrics::increment_counter!(
+                        "trailers_error",
+                        "path" => data.uri.path().to_string(),
+                        "method" => data.method.to_string(),
+                        "version" => format!("{:?}", data.version),
+                    );
                 }
             }
         }
-
-        fn classify_error(self, error: &hyper::Error) -> Self::FailureClass {
-            MyFailureClass {
-                uri: self.uri.clone(),
-                method: self.method.clone(),
-                version: self.version,
-                grpc_code: self.inner.classify_error(error),
-            }
-        }
-    }
-
-    struct MyClassifyEos {
-        inner: GrpcEosErrorsAsFailures,
-        uri: Uri,
-        method: Method,
-        version: Version,
-    }
-
-    impl ClassifyEos<hyper::Error> for MyClassifyEos {
-        type FailureClass = MyFailureClass;
-
-        fn classify_eos(self, trailers: Option<&HeaderMap>) -> Result<(), Self::FailureClass> {
-            let uri = self.uri.clone();
-            let method = self.method.clone();
-            let version = self.version;
-
-            ClassifyEos::<hyper::Error>::classify_eos(self.inner, trailers).map_err(|grpc_code| {
-                MyFailureClass {
-                    grpc_code,
-                    uri,
-                    method,
-                    version,
-                }
-            })
-        }
-
-        fn classify_error(self, error: &hyper::Error) -> Self::FailureClass {
-            MyFailureClass {
-                grpc_code: self.inner.classify_error(error),
-                uri: self.uri.clone(),
-                method: self.method.clone(),
-                version: self.version,
-            }
-        }
-    }
-
-    struct MyFailureClass {
-        uri: Uri,
-        method: Method,
-        version: Version,
-        grpc_code: i32,
     }
 }
