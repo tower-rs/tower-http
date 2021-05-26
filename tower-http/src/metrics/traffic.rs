@@ -391,27 +391,15 @@ pub trait MetricsSink<FailureClass>: Sized {
 
     /// Perform some action when a response has been generated.
     ///
-    /// If the response is _not_ the start of a stream (as determined by the classifier passed to
+    /// This method is called when the inner [`Service`]'s response future completes with
+    /// `Ok(response)`, regardless if the response is classified as a success or a failure.
+    ///
+    /// If the response is the start of a stream (as determined by the classifier passed to
     /// [`Traffic::new`] or [`TrafficLayer::new`]) then `classification` will be
-    /// [`ClassifiedResponse::Ready`], otherwise it will be [`ClassifiedResponse::RequiresEos`]
-    /// with `()` as the associated data.
-    ///
-    /// This method is called whenever [`Service::call`] of the inner service returns
-    /// `Ok(response)`, regardless if the classifier determines if the response is classified as a
-    /// success or a failure. If the response is classified as a failure then `classification` will
-    /// be [`ClassifiedResponse::Ready`] containing `Err(failure_class)`, otherwise `Ok(())`.
-    ///
-    /// In the case where the response is succesfully generated but is classified to be a failure
-    /// [`on_response`] is called and `on_failure` is _not_ called.
-    ///
-    /// A stream that ends succesfully will trigger two callbacks. [`on_response`] will be called
-    /// once the response has been generated and the stream has started and [`on_eos`] will be
-    /// called once the stream has ended.
+    /// [`ClassifiedResponse::RequiresEos(())`], otherwise it will be
+    /// [`ClassifiedResponse::Ready`].
     ///
     /// The default implementation does nothing and returns immediately.
-    ///
-    /// [`on_response`]: MetricsSink::on_response
-    /// [`on_eos`]: MetricsSink::on_eos
     #[inline]
     #[allow(unused_variables)]
     fn on_response<B>(
@@ -427,10 +415,17 @@ pub trait MetricsSink<FailureClass>: Sized {
     /// This is called when [`Body::poll_trailers`] completes with `Ok(trailers)` regardless if
     /// the trailers are classified as a failure.
     ///
+    /// A stream that ends succesfully will trigger two callbacks. [`on_response`] will be called
+    /// once the response has been generated and the stream has started and [`on_eos`] will be
+    /// called once the stream has ended.
+    ///
     /// If the trailers were classified as a success then `classification` will be `Ok(())`
     /// otherwise `Err(failure_class)`.
     ///
     /// The default implementation does nothing and returns immediately.
+    ///
+    /// [`on_response`]: MetricsSink::on_response
+    /// [`on_eos`]: MetricsSink::on_eos
     #[inline]
     #[allow(unused_variables)]
     fn on_eos(
@@ -446,7 +441,8 @@ pub trait MetricsSink<FailureClass>: Sized {
     /// This method is only called in these scenarios:
     ///
     /// - The inner [`Service`]'s response future resolves to an error.
-    /// - [`Body::poll_data`] or [`Body::poll_trailers`] returns an error.
+    /// - [`Body::poll_data`] returns an error.
+    /// - [`Body::poll_trailers`] returns an error.
     ///
     /// That means this method is _not_ called if a response is classified as a failure (then
     /// [`on_response`] is called) or an end-of-stream is classified as a failure (then [`on_eos`]
