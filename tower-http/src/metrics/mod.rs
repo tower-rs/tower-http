@@ -7,6 +7,10 @@
 //! [In-flight requests]: in_flight_requests
 
 pub mod in_flight_requests;
+pub mod traffic;
 
 #[doc(inline)]
-pub use self::in_flight_requests::{InFlightRequests, InFlightRequestsLayer};
+pub use self::{
+    in_flight_requests::{InFlightRequests, InFlightRequestsLayer},
+    traffic::{Traffic, TrafficLayer},
+};
