@@ -59,7 +59,7 @@ full = [
     "metrics",
     "propagate-header",
     "redirect",
-    "sensitive-header",
+    "sensitive-headers",
     "set-header",
     "trace",
 ]
@@ -73,7 +73,7 @@ map-response-body = []
 metrics = ["tokio/time"]
 propagate-header = []
 redirect = []
-sensitive-header = []
+sensitive-headers = []
 set-header = []
 trace = ["tracing"]
 

@@ -26,25 +26,25 @@ HTTP servers and clients. Some of the highlights are:
 
 See the [docs] for the complete list of middleware.
 
-Middleware uses the [`http`] crate as the HTTP interface so they're compatible
-with any library or framework that also uses [`http`]. For example [hyper].
+Middleware uses the [http] crate as the HTTP interface so they're compatible
+with any library or framework that also uses [http]. For example [hyper].
 
 The middleware were originally extracted from one of [@EmbarkStudios] internal
 projects.
 
 ## Examples
 
-The [`examples`] folder contains various examples of how to use Tower HTTP:
+The [examples] folder contains various examples of how to use Tower HTTP:
 
-- [`warp-key-value-store`]: A key/value store with an HTTP API built with warp.
-- [`tonic-key-value-store`]: A key/value store with a gRPC API and client built with tonic.
+- [warp-key-value-store]: A key/value store with an HTTP API built with warp.
+- [tonic-key-value-store]: A key/value store with a gRPC API and client built with tonic.
 
 ## Getting Help
 
-First, see if the answer to your question can be found in the API documentation.
-If the answer is not there, there is an active community in the [Tower Discord
-channel][chat]. We would be happy to try to answer your question. If that
-doesn't work, try opening an [issue] with the question.
+If you're new to tower its [guides] might help. In the tower-http repo we also
+have a [number of examples][examples] showing how to put everything together.
+You're also welcome to ask in the [`#tower` Discord channel][chat] or open an
+[issue] with your question.
 
 ## Contributing
 
@@ -65,12 +65,14 @@ for inclusion in Tower HTTP by you, shall be licensed as MIT, without any
 additional terms or conditions.
 
 [@EmbarkStudios]: https://github.com/EmbarkStudios
-[`examples`]: https://github.com/tower-rs/tower-http/tree/master/examples
-[`http`]: https://crates.io/crates/http
-[`tonic-key-value-store`]: https://github.com/tower-rs/tower-http/tree/master/examples/tonic-key-value-store
-[`warp-key-value-store`]: https://github.com/tower-rs/tower-http/tree/master/examples/warp-key-value-store
+[examples]: https://github.com/tower-rs/tower-http/tree/master/examples
+[http]: https://crates.io/crates/http
+[tonic-key-value-store]: https://github.com/tower-rs/tower-http/tree/master/examples/tonic-key-value-store
+[warp-key-value-store]: https://github.com/tower-rs/tower-http/tree/master/examples/warp-key-value-store
 [chat]: https://discord.gg/tokio
 [docs]: https://docs.rs/tower-http
 [hyper]: https://github.com/hyperium/hyper
 [issue]: https://github.com/tower-rs/tower-http/issues/new
 [milestone]: https://github.com/tower-rs/tower-http/milestones
+[examples]: https://github.com/tower-rs/tower-http/tree/master/examples
+[guides]: https://github.com/tower-rs/tower/tree/master/guides
