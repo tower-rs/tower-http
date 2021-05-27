@@ -1,4 +1,4 @@
-//! Middlewares that mark headers as [sensitive].
+//! Middleware that mark headers as [sensitive].
 //!
 //! [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
 //!

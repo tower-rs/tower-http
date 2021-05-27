@@ -2,16 +2,16 @@
 //!
 //! # Overview
 //!
-//! `tower-http` is a library that provides HTTP-specific middlewares and utilities built on top of
+//! `tower-http` is a library that provides HTTP-specific middleware and utilities built on top of
 //! [`tower`].
 //!
-//! All middlewares uses the [`http`] and [`http-body`] crates as the HTTP abstractions. That means
+//! All middleware uses the [`http`] and [`http-body`] crates as the HTTP abstractions. That means
 //! they're compatible with any library or framework that also uses those crates, such as
 //! [`hyper`].
 //!
 //! # Example server
 //!
-//! This example shows how to apply middlewares from `tower-http` to a [`Service`] and then run
+//! This example shows how to apply middleware from `tower-http` to a [`Service`] and then run
 //! that service using [`hyper`].
 //!
 //! ```rust,no_run
@@ -19,19 +19,21 @@
 //!     add_extension::AddExtensionLayer,
 //!     compression::CompressionLayer,
 //!     propagate_header::PropagateHeaderLayer,
-//!     sensitive_header::SetSensitiveRequestHeaderLayer,
+//!     auth::RequireAuthorizationLayer,
+//!     sensitive_header::{SetSensitiveResponseHeaderLayer, SetSensitiveRequestHeaderLayer},
 //!     set_header::SetResponseHeaderLayer,
 //!     trace::TraceLayer,
 //! };
 //! use tower::{ServiceBuilder, service_fn, make::Shared};
 //! use http::{Request, Response, header::{HeaderName, CONTENT_TYPE, AUTHORIZATION}};
 //! use hyper::{Body, Error, server::Server, service::make_service_fn};
-//! use std::{sync::Arc, net::SocketAddr, convert::Infallible};
+//! use std::{sync::Arc, net::SocketAddr, convert::Infallible, time::Duration};
 //! # struct DatabaseConnectionPool;
 //! # impl DatabaseConnectionPool {
 //! #     fn new() -> DatabaseConnectionPool { DatabaseConnectionPool }
 //! # }
 //! # fn content_length_from_response<B>(_: &http::Response<B>) -> Option<http::HeaderValue> { None }
+//! # async fn update_in_flight_requests_metric(count: usize) {}
 //!
 //! // Our request handler. This is where we would implement the application logic
 //! // for responding to HTTP requests...
@@ -55,10 +57,14 @@
 //!     // Use `tower`'s `ServiceBuilder` API to build a stack of `tower` middleware
 //!     // wrapping our request handler.
 //!     let service = ServiceBuilder::new()
-//!         // Mark the `Authorization` request header as sensitive so it doesn't show in logs
+//!         // Mark the `Authorization` header as sensitive on requests so it doesn't show in logs
+//!         // This must be applied before `TraceLayer`
 //!         .layer(SetSensitiveRequestHeaderLayer::new(AUTHORIZATION))
-//!         // High level logging of requests and responses
+//!         // High level tracing of requests and responses
 //!         .layer(TraceLayer::new_for_http())
+//!         // Mark the `Authorization` header as sensitive on responses
+//!         // This must be applied after `TraceLayer`
+//!         .layer(SetSensitiveResponseHeaderLayer::new(AUTHORIZATION))
 //!         // Share an `Arc<State>` with all requests
 //!         .layer(AddExtensionLayer::new(Arc::new(state)))
 //!         // Compress responses
@@ -67,6 +73,8 @@
 //!         .layer(PropagateHeaderLayer::new(HeaderName::from_static("x-request-id")))
 //!         // If the response has a known size set the `Content-Length` header
 //!         .layer(SetResponseHeaderLayer::overriding(CONTENT_TYPE, content_length_from_response))
+//!         // Authorize requests using a token
+//!         .layer(RequireAuthorizationLayer::bearer("passwordlol"))
 //!         // Wrap a `Service` in our middleware stack
 //!         .service_fn(handler);
 //!
@@ -84,7 +92,7 @@
 //!
 //! # Example client
 //!
-//! `tower-http` middlewares can also be applied to HTTP clients:
+//! `tower-http` middleware can also be applied to HTTP clients:
 //!
 //! ```rust,no_run
 //! use tower_http::{
@@ -157,6 +165,7 @@
 //! [`Service`]: https://docs.rs/tower/latest/tower/trait.Service.html
 //! [chat]: https://discord.gg/tokio
 //! [issue]: https://github.com/tower-rs/tower-http/issues/new
+//! [`Trace`]: crate::trace::Trace
 
 #![doc(html_root_url = "https://docs.rs/tower-http/0.1.0")]
 #![warn(
@@ -207,6 +216,10 @@
 #[macro_use]
 pub(crate) mod macros;
 
+#[cfg(feature = "auth")]
+#[cfg_attr(docsrs, doc(cfg(feature = "auth")))]
+pub mod auth;
+
 #[cfg(feature = "set-header")]
 #[cfg_attr(docsrs, doc(cfg(feature = "set-header")))]
 pub mod set_header;
@@ -249,6 +262,10 @@ pub mod trace;
 #[cfg(feature = "follow-redirect")]
 #[cfg_attr(docsrs, doc(cfg(feature = "follow-redirect")))]
 pub mod follow_redirect;
+
+#[cfg(feature = "metrics")]
+#[cfg_attr(docsrs, doc(cfg(feature = "metrics")))]
+pub mod metrics;
 
 pub mod classify;
 pub mod services;
@@ -299,7 +316,7 @@ where
     }
 }
 
-/// The latency unit used to report latencies by middlewares.
+/// The latency unit used to report latencies by middleware.
 #[non_exhaustive]
 #[derive(Copy, Clone, Debug)]
 pub enum LatencyUnit {

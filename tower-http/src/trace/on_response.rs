@@ -3,6 +3,7 @@ use crate::LatencyUnit;
 use http::Response;
 use std::time::Duration;
 use tracing::Level;
+use tracing::Span;
 
 /// Trait used to tell [`Trace`] what to do when a response has been produced.
 ///
@@ -11,20 +12,28 @@ pub trait OnResponse<B> {
     /// Do the thing.
     ///
     /// `latency` is the duration since the request was received.
-    fn on_response(self, response: &Response<B>, latency: Duration);
+    ///
+    /// `span` is the `tracing` [`Span`], corresponding to this request, produced by the closure
+    /// passed to [`TraceLayer::make_span_with`]. It can be used to [record field values][record]
+    /// that weren't known when the span was created.
+    ///
+    /// [`Span`]: https://docs.rs/tracing/latest/tracing/span/index.html
+    /// [record]: https://docs.rs/tracing/latest/tracing/span/struct.Span.html#method.record
+    /// [`TraceLayer::make_span_with`]: crate::trace::TraceLayer::make_span_with
+    fn on_response(self, response: &Response<B>, latency: Duration, span: &Span);
 }
 
 impl<B> OnResponse<B> for () {
     #[inline]
-    fn on_response(self, _: &Response<B>, _: Duration) {}
+    fn on_response(self, _: &Response<B>, _: Duration, _: &Span) {}
 }
 
 impl<B, F> OnResponse<B> for F
 where
-    F: FnOnce(&Response<B>, Duration),
+    F: FnOnce(&Response<B>, Duration, &Span),
 {
-    fn on_response(self, response: &Response<B>, latency: Duration) {
-        self(response, latency)
+    fn on_response(self, response: &Response<B>, latency: Duration, span: &Span) {
+        self(response, latency, span)
     }
 }
 
@@ -200,7 +209,7 @@ macro_rules! log_pattern_match {
 }
 
 impl<B> OnResponse<B> for DefaultOnResponse {
-    fn on_response(self, response: &Response<B>, latency: Duration) {
+    fn on_response(self, response: &Response<B>, latency: Duration, _: &Span) {
         log_pattern_match!(
             self,
             response,

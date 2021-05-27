@@ -1,4 +1,4 @@
-//! Middlewares for setting headers on requests and responses.
+//! Middleware for setting headers on requests and responses.
 //!
 //! See [request] and [response] for more details.
 
