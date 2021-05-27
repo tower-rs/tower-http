@@ -73,7 +73,7 @@
 //!
 //! let service = ServiceBuilder::new()
 //!     .layer(SetSensitiveRequestHeadersLayer::from_shared(Arc::clone(&headers)))
-//!     .layer(TraceLayer::<_, hyper::Error>::new_for_http())
+//!     .layer(TraceLayer::new_for_http())
 //!     .layer(SetSensitiveResponseHeadersLayer::from_shared(headers))
 //!     .service_fn(handle);
 //! # Ok(())
