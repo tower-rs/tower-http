@@ -2,17 +2,17 @@
 //!
 //! # Overview
 //!
-//! `tower-http` is a library that provides HTTP-specific middleware and utilities built on top of
-//! [`tower`].
+//! tower-http is a library that provides HTTP-specific middleware and utilities built on top of
+//! [tower].
 //!
-//! All middleware uses the [`http`] and [`http-body`] crates as the HTTP abstractions. That means
+//! All middleware uses the [http] and [http-body] crates as the HTTP abstractions. That means
 //! they're compatible with any library or framework that also uses those crates, such as
-//! [`hyper`].
+//! [hyper], [tonic], and [warp].
 //!
 //! # Example server
 //!
-//! This example shows how to apply middleware from `tower-http` to a [`Service`] and then run
-//! that service using [`hyper`].
+//! This example shows how to apply middleware from tower-http to a [`Service`] and then run
+//! that service using [hyper].
 //!
 //! ```rust,no_run
 //! use tower_http::{
@@ -54,7 +54,7 @@
 //!         pool: DatabaseConnectionPool::new(),
 //!     };
 //!
-//!     // Use `tower`'s `ServiceBuilder` API to build a stack of `tower` middleware
+//!     // Use tower's `ServiceBuilder` API to build a stack of tower middleware
 //!     // wrapping our request handler.
 //!     let service = ServiceBuilder::new()
 //!         // Mark the `Authorization` request header as sensitive so it doesn't show in logs
@@ -83,12 +83,12 @@
 //! }
 //! ```
 //!
-//! Keep in mind that while this example uses [`hyper`], `tower-http` supports any HTTP
-//! client/server implementation that uses the [`http`] and [`http-body`] crates.
+//! Keep in mind that while this example uses [hyper], tower-http supports any HTTP
+//! client/server implementation that uses the [http] and [http-body] crates.
 //!
 //! # Example client
 //!
-//! `tower-http` middleware can also be applied to HTTP clients:
+//! tower-http middleware can also be applied to HTTP clients:
 //!
 //! ```rust,no_run
 //! use tower_http::{
@@ -109,7 +109,9 @@
 //!         ))
 //!         // Decompress response bodies
 //!         .layer(DecompressionLayer::new())
-//!         // Wrap a `hyper::Client` in our middleware stack
+//!         // Wrap a `hyper::Client` in our middleware stack.
+//!         // This is possible because `hyper::Client` implements
+//!         // `tower::Service`.
 //!         .service(hyper::Client::new());
 //!
 //!     // Make a request
@@ -147,21 +149,24 @@
 //!
 //! # Getting Help
 //!
-//! First, see if the answer to your question can be found in the API documentation. If the answer
-//! is not there, there is an active community in the [Tower Discord channel][chat]. We would be
-//! happy to try to answer your question. If that doesn't work, try opening an [issue] with the
-//! question.
+//! If you're new to tower its [guides] might help. In the tower-http repo we also have a [number
+//! of examples][examples] showing how to put everything together. You're also welcome to ask in
+//! the [`#tower` Discord channel][chat] or open an [issue] with your question.
 //!
-//! [`tower`]: https://crates.io/crates/tower
-//! [`http`]: https://crates.io/crates/http
-//! [`http-body`]: https://crates.io/crates/http-body
-//! [`hyper`]: https://crates.io/crates/hyper
+//! [tower]: https://crates.io/crates/tower
+//! [http]: https://crates.io/crates/http
+//! [http-body]: https://crates.io/crates/http-body
+//! [hyper]: https://crates.io/crates/hyper
+//! [guides]: https://github.com/tower-rs/tower/tree/master/guides
+//! [tonic]: https://crates.io/crates/tonic
+//! [warp]: https://crates.io/crates/warp
 //! [cargo features]: https://doc.rust-lang.org/cargo/reference/features.html
 //! [`AddExtension`]: crate::add_extension::AddExtension
 //! [`Service`]: https://docs.rs/tower/latest/tower/trait.Service.html
 //! [chat]: https://discord.gg/tokio
 //! [issue]: https://github.com/tower-rs/tower-http/issues/new
 //! [`Trace`]: crate::trace::Trace
+//! [examples]: https://github.com/tower-rs/tower-http/tree/master/examples
 
 #![doc(html_root_url = "https://docs.rs/tower-http/0.1.0")]
 #![warn(

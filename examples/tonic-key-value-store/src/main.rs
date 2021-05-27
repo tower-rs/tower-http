@@ -273,7 +273,7 @@ async fn make_client(
         .parse::<tonic::transport::Uri>()
         .unwrap();
 
-    // We have to use a `tonic::transport::Channel` as it implementes `Service` so we can apply
+    // We have to use a `tonic::transport::Channel` as it implements `Service` so we can apply
     // middleware to it
     let channel = Channel::builder(uri).connect().await?;
 
