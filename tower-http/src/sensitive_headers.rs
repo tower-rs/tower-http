@@ -85,10 +85,10 @@
 use futures_util::ready;
 use http::{header::HeaderName, Request, Response};
 use pin_project::pin_project;
-use std::future::Future;
-use std::sync::Arc;
 use std::{
+    future::Future,
     pin::Pin,
+    sync::Arc,
     task::{Context, Poll},
 };
 use tower_layer::Layer;
