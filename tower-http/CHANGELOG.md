@@ -13,6 +13,6 @@ None.
 
 None.
 
-# 0.1.0 (XXX XX, 2021)
+# 0.1.0 (May 27, 2021)
 
 - Initial release.
