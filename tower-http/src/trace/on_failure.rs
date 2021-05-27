@@ -1,7 +1,7 @@
 use super::DEFAULT_ERROR_LEVEL;
 use crate::LatencyUnit;
 use std::{fmt, time::Duration};
-use tracing::Level;
+use tracing::{Level, Span};
 
 /// Trait used to tell [`Trace`] what to do when a request fails.
 ///
@@ -10,20 +10,28 @@ pub trait OnFailure<FailureClass> {
     /// Do the thing.
     ///
     /// `latency` is the duration since the request was received.
-    fn on_failure(&mut self, failure_classification: FailureClass, latency: Duration);
+    ///
+    /// `span` is the `tracing` [`Span`], corresponding to this request, produced by the closure
+    /// passed to [`TraceLayer::make_span_with`]. It can be used to [record field values][record]
+    /// that weren't known when the span was created.
+    ///
+    /// [`Span`]: https://docs.rs/tracing/latest/tracing/span/index.html
+    /// [record]: https://docs.rs/tracing/latest/tracing/span/struct.Span.html#method.record
+    /// [`TraceLayer::make_span_with`]: crate::trace::TraceLayer::make_span_with
+    fn on_failure(&mut self, failure_classification: FailureClass, latency: Duration, span: &Span);
 }
 
 impl<FailureClass> OnFailure<FailureClass> for () {
     #[inline]
-    fn on_failure(&mut self, _: FailureClass, _: Duration) {}
+    fn on_failure(&mut self, _: FailureClass, _: Duration, _: &Span) {}
 }
 
 impl<F, FailureClass> OnFailure<FailureClass> for F
 where
-    F: FnMut(FailureClass, Duration),
+    F: FnMut(FailureClass, Duration, &Span),
 {
-    fn on_failure(&mut self, failure_classification: FailureClass, latency: Duration) {
-        self(failure_classification, latency)
+    fn on_failure(&mut self, failure_classification: FailureClass, latency: Duration, span: &Span) {
+        self(failure_classification, latency, span)
     }
 }
 
@@ -114,7 +122,7 @@ impl<FailureClass> OnFailure<FailureClass> for DefaultOnFailure
 where
     FailureClass: fmt::Display,
 {
-    fn on_failure(&mut self, failure_classification: FailureClass, latency: Duration) {
+    fn on_failure(&mut self, failure_classification: FailureClass, latency: Duration, _: &Span) {
         log_pattern_match!(
             self,
             &failure_classification,
