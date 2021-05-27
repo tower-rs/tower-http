@@ -64,7 +64,7 @@
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let headers = Arc::new(vec![
+//! let headers: Arc<[_]> = Arc::new([
 //!     header::AUTHORIZATION,
 //!     header::PROXY_AUTHORIZATION,
 //!     header::COOKIE,
@@ -103,7 +103,7 @@ use tower_service::Service;
 /// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
 #[derive(Clone, Debug)]
 pub struct SetSensitiveHeadersLayer {
-    headers: Arc<Vec<HeaderName>>,
+    headers: Arc<[HeaderName]>,
 }
 
 impl SetSensitiveHeadersLayer {
@@ -113,12 +113,11 @@ impl SetSensitiveHeadersLayer {
         I: IntoIterator<Item = HeaderName>,
     {
         let headers = headers.into_iter().collect::<Vec<_>>();
-        let headers = Arc::new(headers);
-        Self::from_shared(headers)
+        Self::from_shared(headers.into())
     }
 
-    /// Create a new [`SetSensitiveHeadersLayer`] from a shared vector of headers.
-    pub fn from_shared(headers: Arc<Vec<HeaderName>>) -> Self {
+    /// Create a new [`SetSensitiveHeadersLayer`] from a shared slice of headers.
+    pub fn from_shared(headers: Arc<[HeaderName]>) -> Self {
         Self { headers }
     }
 }
@@ -150,7 +149,7 @@ pub type SetSensitiveHeaders<S> = SetSensitiveRequestHeaders<SetSensitiveRespons
 /// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
 #[derive(Clone, Debug)]
 pub struct SetSensitiveRequestHeadersLayer {
-    headers: Arc<Vec<HeaderName>>,
+    headers: Arc<[HeaderName]>,
 }
 
 impl SetSensitiveRequestHeadersLayer {
@@ -160,12 +159,11 @@ impl SetSensitiveRequestHeadersLayer {
         I: IntoIterator<Item = HeaderName>,
     {
         let headers = headers.into_iter().collect::<Vec<_>>();
-        let headers = Arc::new(headers);
-        Self::from_shared(headers)
+        Self::from_shared(headers.into())
     }
 
-    /// Create a new [`SetSensitiveRequestHeadersLayer`] from a shared vector of headers.
-    pub fn from_shared(headers: Arc<Vec<HeaderName>>) -> Self {
+    /// Create a new [`SetSensitiveRequestHeadersLayer`] from a shared slice of headers.
+    pub fn from_shared(headers: Arc<[HeaderName]>) -> Self {
         Self { headers }
     }
 }
@@ -189,7 +187,7 @@ impl<S> Layer<S> for SetSensitiveRequestHeadersLayer {
 #[derive(Clone, Debug)]
 pub struct SetSensitiveRequestHeaders<S> {
     inner: S,
-    headers: Arc<Vec<HeaderName>>,
+    headers: Arc<[HeaderName]>,
 }
 
 impl<S> SetSensitiveRequestHeaders<S> {
@@ -199,12 +197,11 @@ impl<S> SetSensitiveRequestHeaders<S> {
         I: IntoIterator<Item = HeaderName>,
     {
         let headers = headers.into_iter().collect::<Vec<_>>();
-        let headers = Arc::new(headers);
-        Self::from_shared(inner, headers)
+        Self::from_shared(inner, headers.into())
     }
 
-    /// Create a new [`SetSensitiveRequestHeaders`] from a shared vector of headers.
-    pub fn from_shared(inner: S, headers: Arc<Vec<HeaderName>>) -> Self {
+    /// Create a new [`SetSensitiveRequestHeaders`] from a shared slice of headers.
+    pub fn from_shared(inner: S, headers: Arc<[HeaderName]>) -> Self {
         Self { inner, headers }
     }
 
@@ -254,7 +251,7 @@ where
 /// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
 #[derive(Clone, Debug)]
 pub struct SetSensitiveResponseHeadersLayer {
-    headers: Arc<Vec<HeaderName>>,
+    headers: Arc<[HeaderName]>,
 }
 
 impl SetSensitiveResponseHeadersLayer {
@@ -264,12 +261,11 @@ impl SetSensitiveResponseHeadersLayer {
         I: IntoIterator<Item = HeaderName>,
     {
         let headers = headers.into_iter().collect::<Vec<_>>();
-        let headers = Arc::new(headers);
-        Self::from_shared(headers)
+        Self::from_shared(headers.into())
     }
 
-    /// Create a new [`SetSensitiveResponseHeadersLayer`] from a shared vector of headers.
-    pub fn from_shared(headers: Arc<Vec<HeaderName>>) -> Self {
+    /// Create a new [`SetSensitiveResponseHeadersLayer`] from a shared slice of headers.
+    pub fn from_shared(headers: Arc<[HeaderName]>) -> Self {
         Self { headers }
     }
 }
@@ -293,7 +289,7 @@ impl<S> Layer<S> for SetSensitiveResponseHeadersLayer {
 #[derive(Clone, Debug)]
 pub struct SetSensitiveResponseHeaders<S> {
     inner: S,
-    headers: Arc<Vec<HeaderName>>,
+    headers: Arc<[HeaderName]>,
 }
 
 impl<S> SetSensitiveResponseHeaders<S> {
@@ -303,12 +299,11 @@ impl<S> SetSensitiveResponseHeaders<S> {
         I: IntoIterator<Item = HeaderName>,
     {
         let headers = headers.into_iter().collect::<Vec<_>>();
-        let headers = Arc::new(headers);
-        Self::from_shared(inner, headers)
+        Self::from_shared(inner, headers.into())
     }
 
-    /// Create a new [`SetSensitiveResponseHeaders`] from a shared vector of headers.
-    pub fn from_shared(inner: S, headers: Arc<Vec<HeaderName>>) -> Self {
+    /// Create a new [`SetSensitiveResponseHeaders`] from a shared slice of headers.
+    pub fn from_shared(inner: S, headers: Arc<[HeaderName]>) -> Self {
         Self { inner, headers }
     }
 
@@ -352,7 +347,7 @@ where
 pub struct SetSensitiveResponseHeadersResponseFuture<F> {
     #[pin]
     future: F,
-    headers: Arc<Vec<HeaderName>>,
+    headers: Arc<[HeaderName]>,
 }
 
 impl<F, ResBody, E> Future for SetSensitiveResponseHeadersResponseFuture<F>
