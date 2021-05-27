@@ -407,9 +407,11 @@ mod tests {
                     ON_EOS.fetch_add(1, Ordering::SeqCst);
                 },
             )
-            .on_failure(|_class: ServerErrorsFailureClass, _latency: Duration, _span: &Span| {
-                ON_FAILURE.fetch_add(1, Ordering::SeqCst);
-            });
+            .on_failure(
+                |_class: ServerErrorsFailureClass, _latency: Duration, _span: &Span| {
+                    ON_FAILURE.fetch_add(1, Ordering::SeqCst);
+                },
+            );
 
         let mut svc = ServiceBuilder::new().layer(trace_layer).service_fn(echo);
 
@@ -456,9 +458,11 @@ mod tests {
                     ON_EOS.fetch_add(1, Ordering::SeqCst);
                 },
             )
-            .on_failure(|_class: ServerErrorsFailureClass, _latency: Duration, _span: &Span| {
-                ON_FAILURE.fetch_add(1, Ordering::SeqCst);
-            });
+            .on_failure(
+                |_class: ServerErrorsFailureClass, _latency: Duration, _span: &Span| {
+                    ON_FAILURE.fetch_add(1, Ordering::SeqCst);
+                },
+            );
 
         let mut svc = ServiceBuilder::new()
             .layer(trace_layer)
