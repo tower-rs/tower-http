@@ -46,7 +46,7 @@ pub trait MetricsSink<FailureClass>: Sized {
     /// This is called when [`Body::poll_trailers`] completes with `Ok(trailers)` regardless if
     /// the trailers are classified as a failure.
     ///
-    /// A stream that ends succesfully will trigger two callbacks. [`on_response`] will be called
+    /// A stream that ends successfully will trigger two callbacks. [`on_response`] will be called
     /// once the response has been generated and the stream has started and [`on_eos`] will be
     /// called once the stream has ended.
     ///
