@@ -10,7 +10,7 @@ repository = "https://github.com/tower-rs/tower-http"
 homepage = "https://github.com/tower-rs/tower-http"
 documentation = "https://docs.rs/tower-http/0.1.0/tower_http/"
 categories = ["asynchronous", "network-programming", "web-programming"]
-keywords = ["io", "async", "non-blocking", "futures", "service", "http"]
+keywords = ["io", "async", "futures", "service", "http"]
 
 [dependencies]
 bytes = "1"
