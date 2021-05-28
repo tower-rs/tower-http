@@ -1,10 +1,5 @@
 # Tower HTTP
 
-**NOTE:** This crate is still under active development and while most of the
-initial churn is over, Tower HTTP still isn't released on crates.io. We are
-actively working on that and you can follow the progress towards 0.1.0
-[here][milestone].
-
 Tower middleware and utilities for HTTP clients and servers.
 
 [![Build status](https://github.com/tower-rs/tower-http/workflows/CI/badge.svg)](https://github.com/tower-rs/tower-http/actions)
