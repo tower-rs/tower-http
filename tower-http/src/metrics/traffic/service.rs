@@ -3,6 +3,7 @@ use crate::classify::MakeClassifier;
 use http::{Request, Response};
 use http_body::Body;
 use std::{
+    fmt,
     task::{Context, Poll},
     time::Instant,
 };
@@ -45,8 +46,9 @@ impl<S, M, ReqBody, ResBody, MetricsSinkT> Service<Request<ReqBody>> for Traffic
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
     ResBody: Body,
-    M: MakeClassifier<S::Error>,
+    M: MakeClassifier,
     MetricsSinkT: MetricsSink<M::FailureClass> + Clone,
+    S::Error: fmt::Display + 'static,
 {
     type Response =
         Response<ResponseBody<ResBody, M::ClassifyEos, MetricsSinkT, MetricsSinkT::Data>>;

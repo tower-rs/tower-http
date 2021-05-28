@@ -5,6 +5,7 @@ use http::Response;
 use http_body::Body;
 use pin_project::pin_project;
 use std::{
+    fmt,
     future::Future,
     pin::Pin,
     task::{Context, Poll},
@@ -12,6 +13,8 @@ use std::{
 };
 
 /// Response future for [`Traffic`].
+///
+/// [`Traffic`]: crate::metrics::Traffic
 #[pin_project]
 pub struct ResponseFuture<F, C, MetricsSink, SinkData> {
     #[pin]
@@ -27,8 +30,9 @@ impl<F, C, ResBody, E, MetricsSinkT, SinkData> Future
 where
     F: Future<Output = Result<Response<ResBody>, E>>,
     ResBody: Body,
-    C: ClassifyResponse<E>,
+    C: ClassifyResponse,
     MetricsSinkT: MetricsSink<C::FailureClass, Data = SinkData>,
+    E: fmt::Display + 'static,
 {
     type Output = Result<
         Response<ResponseBody<ResBody, C::ClassifyEos, MetricsSinkT, MetricsSinkT::Data>>,

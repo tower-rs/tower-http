@@ -10,6 +10,7 @@
 //! Additionally it uses a [classifier] to determine if responses are success or failure.
 //!
 //! [classifier]: crate::classify
+//! [`Service`]: tower::Service
 //!
 //! # Example
 //!
@@ -18,7 +19,7 @@
 //! use hyper::Body;
 //! use tower::{ServiceBuilder, ServiceExt, Service};
 //! use tower_http::{
-//!     classify::{GrpcErrorsAsFailures, ClassifiedResponse},
+//!     classify::{GrpcErrorsAsFailures, GrpcFailureClass, ClassifiedResponse},
 //!     metrics::traffic::{TrafficLayer, MetricsSink, FailedAt},
 //! };
 //!
@@ -29,7 +30,7 @@
 //! #[derive(Clone)]
 //! struct MyMetricsSink;
 //!
-//! impl MetricsSink<i32> for MyMetricsSink {
+//! impl MetricsSink<GrpcFailureClass> for MyMetricsSink {
 //!     type Data = ();
 //!
 //!     fn prepare<B>(&mut self, request: &Request<B>) -> Self::Data {
@@ -39,7 +40,7 @@
 //!     fn on_response<B>(
 //!         &mut self,
 //!         response: &Response<B>,
-//!         classification: ClassifiedResponse<i32, ()>,
+//!         classification: ClassifiedResponse<GrpcFailureClass, ()>,
 //!         data: &mut Self::Data,
 //!     ) {
 //!         // ...
@@ -48,7 +49,7 @@
 //!     fn on_eos(
 //!         self,
 //!         trailers: Option<&HeaderMap>,
-//!         classification: Result<(), i32>,
+//!         classification: Result<(), GrpcFailureClass>,
 //!         data: Self::Data,
 //!     ) {
 //!         // ...
@@ -57,7 +58,7 @@
 //!     fn on_failure(
 //!         self,
 //!         failed_at: FailedAt,
-//!         failure_classification: i32,
+//!         failure_classification: GrpcFailureClass,
 //!         data: Self::Data,
 //!     ) {
 //!         // ...
@@ -68,7 +69,7 @@
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! // Classifier that supports gRPC. Use `ServerErrorsAsFailures` for regular
 //! // non-streaming HTTP requests or build your own by implementing `MakeClassifier`.
-//! let classifier = GrpcErrorsAsFailures::make_classifier::<hyper::Error>();
+//! let classifier = GrpcErrorsAsFailures::make_classifier();
 //!
 //! let mut service = ServiceBuilder::new()
 //!     // Add the middleware to our service. It will automatically call the callbacks
@@ -117,8 +118,8 @@ pub enum FailedAt {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::classify::{ClassifiedResponse, ServerErrorsAsFailures};
-    use http::{HeaderMap, Method, Request, Response, StatusCode, Uri, Version};
+    use crate::classify::{ClassifiedResponse, ServerErrorsAsFailures, ServerErrorsFailureClass};
+    use http::{HeaderMap, Method, Request, Response, Uri, Version};
     use hyper::Body;
     use metrics_lib as metrics;
     use std::time::Instant;
@@ -128,7 +129,7 @@ mod tests {
     async fn unary_request() {
         let mut svc = ServiceBuilder::new()
             .layer(TrafficLayer::new(
-                ServerErrorsAsFailures::make_classifier::<hyper::Error>(),
+                ServerErrorsAsFailures::make_classifier(),
                 MySink,
             ))
             .service_fn(echo);
@@ -157,7 +158,7 @@ mod tests {
     }
 
     // How one might write a sink that uses the `metrics` crate as the backend.
-    impl MetricsSink<StatusCode> for MySink {
+    impl MetricsSink<ServerErrorsFailureClass> for MySink {
         type Data = SinkData;
 
         fn prepare<B>(&mut self, request: &Request<B>) -> Self::Data {
@@ -170,21 +171,28 @@ mod tests {
             }
         }
 
+        #[allow(warnings)]
         fn on_response<B>(
             &mut self,
             response: &Response<B>,
-            classification: ClassifiedResponse<StatusCode, ()>,
+            classification: ClassifiedResponse<ServerErrorsFailureClass, ()>,
             data: &mut SinkData,
         ) {
+            let is_stream;
+            let is_error;
+
+            match classification {
+                ClassifiedResponse::Ready(class) => {
+                    is_error = class.is_err();
+                    is_stream = false;
+                }
+                ClassifiedResponse::RequiresEos(_) => {
+                    is_error = false;
+                    is_stream = true;
+                }
+            }
+
             let duration_ms = data.request_received_at.elapsed().as_millis() as f64;
-
-            let is_error = if let ClassifiedResponse::Ready(class) = &classification {
-                class.is_err()
-            } else {
-                false
-            };
-
-            let is_stream = matches!(classification, ClassifiedResponse::RequiresEos(_));
 
             metrics::increment_counter!(
                 "http_requests_total",
@@ -205,16 +213,12 @@ mod tests {
                 "version" => format!("{:?}", data.version),
                 "is_error" => is_error.then(|| "true").unwrap_or("false"),
             );
-
-            if is_stream {
-                data.stream_start = Some(Instant::now());
-            }
         }
 
         fn on_eos(
             self,
             _trailers: Option<&HeaderMap>,
-            classification: Result<(), StatusCode>,
+            classification: Result<(), ServerErrorsFailureClass>,
             data: SinkData,
         ) {
             let stream_duration = data.stream_start.unwrap().elapsed().as_millis() as f64;
@@ -234,7 +238,7 @@ mod tests {
         fn on_failure(
             self,
             failed_at: FailedAt,
-            _failure_classification: StatusCode,
+            _failure_classification: ServerErrorsFailureClass,
             data: SinkData,
         ) {
             match failed_at {

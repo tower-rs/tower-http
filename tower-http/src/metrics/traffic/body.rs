@@ -4,11 +4,14 @@ use futures_core::ready;
 use http_body::Body;
 use pin_project::pin_project;
 use std::{
+    fmt,
     pin::Pin,
     task::{Context, Poll},
 };
 
 /// Response body for [`Traffic`].
+///
+/// [`Traffic`]: crate::metrics::Traffic
 #[pin_project]
 pub struct ResponseBody<B, C, MetricsSink, SinkData> {
     #[pin]
@@ -19,7 +22,8 @@ pub struct ResponseBody<B, C, MetricsSink, SinkData> {
 impl<B, C, MetricsSinkT, SinkData> Body for ResponseBody<B, C, MetricsSinkT, SinkData>
 where
     B: Body,
-    C: ClassifyEos<B::Error>,
+    B::Error: fmt::Display + 'static,
+    C: ClassifyEos,
     MetricsSinkT: MetricsSink<C::FailureClass, Data = SinkData>,
 {
     type Data = B::Data;

@@ -6,6 +6,10 @@ use http::{HeaderMap, Request, Response};
 ///
 /// The generic `FailureClass` parameter is the failure class of the classifier passed to
 /// [`Traffic::new`] or [`TrafficLayer::new`]).
+///
+/// [`Traffic`]: crate::metrics::Traffic
+/// [`Traffic::new`]: crate::metrics::Traffic::new
+/// [`TrafficLayer::new`]: crate::metrics::TrafficLayer::new
 pub trait MetricsSink<FailureClass>: Sized {
     /// Additional data required for creating metric events.
     ///
@@ -18,6 +22,8 @@ pub trait MetricsSink<FailureClass>: Sized {
     /// This method is called immediately after the request is received by [`Service::call`].
     ///
     /// The value returned here will be passed to the other methods in this trait.
+    ///
+    /// [`Service::call`]: tower::Service::call
     fn prepare<B>(&mut self, request: &Request<B>) -> Self::Data;
 
     /// Perform some action when a response has been generated.
@@ -31,6 +37,11 @@ pub trait MetricsSink<FailureClass>: Sized {
     /// [`ClassifiedResponse::Ready`].
     ///
     /// The default implementation does nothing and returns immediately.
+    ///
+    /// [`Traffic::new`]: crate::metrics::Traffic::new
+    /// [`TrafficLayer::new`]: crate::metrics::TrafficLayer::new
+    /// [`ClassifiedResponse::RequiresEos(())`]: crate::classify::ClassifiedResponse::RequiresEos
+    /// [`Service`]: tower::Service
     #[inline]
     #[allow(unused_variables)]
     fn on_response<B>(
@@ -57,6 +68,7 @@ pub trait MetricsSink<FailureClass>: Sized {
     ///
     /// [`on_response`]: MetricsSink::on_response
     /// [`on_eos`]: MetricsSink::on_eos
+    /// [`Body::poll_trailers`]: http_body::Body::poll_trailers
     #[inline]
     #[allow(unused_variables)]
     fn on_eos(
@@ -83,8 +95,12 @@ pub trait MetricsSink<FailureClass>: Sized {
     ///
     /// The default implementation does nothing and returns immediately.
     ///
+    /// [`Service`]: tower::Service
     /// [`on_response`]: MetricsSink::on_response
     /// [`on_eos`]: MetricsSink::on_eos
+    /// [`Service::call`]: tower::Service::call
+    /// [`Body::poll_data`]: http_body::Body::poll_data
+    /// [`Body::poll_trailers`]: http_body::Body::poll_trailers
     #[inline]
     #[allow(unused_variables)]
     fn on_failure(
