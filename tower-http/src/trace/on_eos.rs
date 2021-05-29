@@ -6,6 +6,9 @@ use tracing::{Level, Span};
 
 /// Trait used to tell [`Trace`] what to do when a stream closes.
 ///
+/// See the [module docs](../trace/index.html#on_eos) for details on exactly when the `on_eos`
+/// callback is called.
+///
 /// [`Trace`]: super::Trace
 pub trait OnEos {
     /// Do the thing.

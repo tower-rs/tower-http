@@ -3,6 +3,9 @@ use tracing::Span;
 
 /// Trait used to tell [`Trace`] what to do when a body chunk has been sent.
 ///
+/// See the [module docs](../trace/index.html#on_body_chunk) for details on exactly when the
+/// `on_body_chunk` callback is called.
+///
 /// [`Trace`]: super::Trace
 pub trait OnBodyChunk<B> {
     /// Do the thing.

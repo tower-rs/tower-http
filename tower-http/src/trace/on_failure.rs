@@ -5,6 +5,9 @@ use tracing::{Level, Span};
 
 /// Trait used to tell [`Trace`] what to do when a request fails.
 ///
+/// See the [module docs](../trace/index.html#on_failure) for details on exactly when the
+/// `on_failure` callback is called.
+///
 /// [`Trace`]: super::Trace
 pub trait OnFailure<FailureClass> {
     /// Do the thing.
