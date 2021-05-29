@@ -3,6 +3,10 @@
 use http::{HeaderMap, Request, Response, StatusCode};
 use std::{convert::Infallible, fmt, marker::PhantomData, num::NonZeroI32};
 
+mod status_in_range_is_error;
+
+pub use self::status_in_range_is_error::{StatusInRangeAsFailures, StatusInRangeFailureClass};
+
 /// Trait for producing response classifiers from a request.
 ///
 /// This is useful when a classifier depends on data from the request. For example, this could
@@ -173,6 +177,12 @@ impl<T> ClassifyEos for NeverClassifyEos<T> {
     {
         // `NeverClassifyEos` contains an `Infallible` so it can never be constructed
         unreachable!()
+    }
+}
+
+impl<T> fmt::Debug for NeverClassifyEos<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NeverClassifyEos").finish()
     }
 }
 

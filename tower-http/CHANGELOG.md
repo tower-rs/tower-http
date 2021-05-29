@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
-None.
+- Add `StatusInRangeAsFailures` which is a response classifier that considers
+  responses with status code in a certain range as failures. Useful for HTTP
+  clients where both server errors (5xx) and client errors (4xx) are considered
+  failures.
+- Implement `Debug` for `NeverClassifyEos`.
 
 ## Breaking changes
 
