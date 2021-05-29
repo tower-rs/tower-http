@@ -3,6 +3,10 @@
 use http::{HeaderMap, Request, Response, StatusCode};
 use std::{convert::Infallible, fmt, marker::PhantomData, num::NonZeroI32};
 
+mod map_failure_class;
+
+pub use self::map_failure_class::MapFailureClass;
+
 /// Trait for producing response classifiers from a request.
 ///
 /// This is useful when a classifier depends on data from the request. For example, this could
@@ -122,6 +126,60 @@ pub trait ClassifyResponse {
     fn classify_error<E>(self, error: &E) -> Self::FailureClass
     where
         E: fmt::Display + 'static;
+
+    /// Transform the failure classification using a function.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use tower_http::classify::{
+    ///     ServerErrorsAsFailures, ServerErrorsFailureClass,
+    ///     ClassifyResponse, ClassifiedResponse
+    /// };
+    /// use http::{Response, StatusCode};
+    /// use http_body::Empty;
+    /// use bytes::Bytes;
+    ///
+    /// fn transform_failure_class(class: ServerErrorsFailureClass) -> NewFailureClass {
+    ///     match class {
+    ///         // Convert status codes into u16
+    ///         ServerErrorsFailureClass::StatusCode(status) => {
+    ///             NewFailureClass::Status(status.as_u16())
+    ///         }
+    ///         // Don't change errors.
+    ///         ServerErrorsFailureClass::Error(error) => {
+    ///             NewFailureClass::Error(error)
+    ///         }
+    ///     }
+    /// }
+    ///
+    /// enum NewFailureClass {
+    ///     Status(u16),
+    ///     Error(String),
+    /// }
+    ///
+    /// // Create a classifier who's failure class will be transformed by `transform_failure_class`
+    /// let classifier = ServerErrorsAsFailures::new().map_failure_class(transform_failure_class);
+    ///
+    /// let response = Response::builder()
+    ///     .status(StatusCode::INTERNAL_SERVER_ERROR)
+    ///     .body(Empty::<Bytes>::new())
+    ///     .unwrap();
+    ///
+    /// let classification = classifier.classify_response(&response);
+    ///
+    /// assert!(matches!(
+    ///     classification,
+    ///     ClassifiedResponse::Ready(Err(NewFailureClass::Status(500)))
+    /// ));
+    /// ```
+    fn map_failure_class<F, NewClass>(self, f: F) -> MapFailureClass<Self, F>
+    where
+        Self: Sized,
+        F: FnOnce(Self::FailureClass) -> NewClass,
+    {
+        MapFailureClass::new(self, f)
+    }
 }
 
 /// Trait for classifying end of streams (EOS) as either success or failure.
@@ -139,6 +197,17 @@ pub trait ClassifyEos {
     fn classify_error<E>(self, error: &E) -> Self::FailureClass
     where
         E: fmt::Display + 'static;
+
+    /// Transform the failure classification using a function.
+    ///
+    /// See [`ClassifyResponse::map_failure_class`] for more details.
+    fn map_failure_class<F, NewClass>(self, f: F) -> MapFailureClass<Self, F>
+    where
+        Self: Sized,
+        F: FnOnce(Self::FailureClass) -> NewClass,
+    {
+        MapFailureClass::new(self, f)
+    }
 }
 
 /// Result of doing a classification.
