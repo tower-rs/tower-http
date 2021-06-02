@@ -61,7 +61,7 @@ impl DefaultOnFailure {
 
     /// Set the [`Level`] used for [tracing events].
     ///
-    /// Defaults to [`Level::DEBUG`].
+    /// Defaults to [`Level::ERROR`].
     ///
     /// [tracing events]: https://docs.rs/tracing/latest/tracing/#events
     pub fn level(mut self, level: Level) -> Self {
