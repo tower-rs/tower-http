@@ -59,6 +59,14 @@ impl StatusInRangeAsFailures {
         Self { range }
     }
 
+    /// Createa a new `StatusInRangeAsFailures` that classifies client and server responses as
+    /// failures.
+    ///
+    /// This is a convenience for `StatusInRangeAsFailures::new(400..=599)`.
+    pub fn new_for_client_and_server_errors() -> Self {
+        Self::new(400..=599)
+    }
+
     /// Convert this `StatusInRangeAsFailures` into a [`MakeClassifier`].
     ///
     /// [`MakeClassifier`]: super::MakeClassifier
