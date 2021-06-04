@@ -321,6 +321,14 @@ pub mod cors;
 pub mod classify;
 pub mod services;
 
+#[cfg(feature = "util")]
+mod builder;
+
+#[cfg(feature = "util")]
+#[cfg_attr(docsrs, doc(cfg(feature = "util")))]
+#[doc(inline)]
+pub use self::builder::ServiceBuilderExt;
+
 /// The latency unit used to report latencies by middleware.
 #[non_exhaustive]
 #[derive(Copy, Clone, Debug)]
@@ -335,3 +343,8 @@ pub enum LatencyUnit {
 
 /// Alias for a type-erased error type.
 pub type BoxError = Box<dyn std::error::Error + Send + Sync>;
+
+mod sealed {
+    #[allow(unreachable_pub)]
+    pub trait Sealed<T> {}
+}
