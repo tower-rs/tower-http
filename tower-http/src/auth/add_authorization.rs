@@ -83,6 +83,17 @@ impl AddAuthorizationLayer {
             HeaderValue::from_str(&format!("Bearer {}", token)).expect("token is not valid header");
         Self { value }
     }
+
+    /// Mark the header as [sensitive].
+    ///
+    /// This can for example be used to hide the header value from logs.
+    ///
+    /// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
+    #[allow(clippy::wrong_self_convention)]
+    pub fn as_sensitive(mut self, sensitive: bool) -> Self {
+        self.value.set_sensitive(sensitive);
+        self
+    }
 }
 
 impl<S> Layer<S> for AddAuthorizationLayer {
@@ -135,6 +146,17 @@ impl<S> AddAuthorization<S> {
     }
 
     define_inner_service_accessors!();
+
+    /// Mark the header as [sensitive].
+    ///
+    /// This can for example be used to hide the header value from logs.
+    ///
+    /// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
+    #[allow(clippy::wrong_self_convention)]
+    pub fn as_sensitive(mut self, sensitive: bool) -> Self {
+        self.value.set_sensitive(sensitive);
+        self
+    }
 }
 
 impl<S, ReqBody> Service<Request<ReqBody>> for AddAuthorization<S>
@@ -195,6 +217,30 @@ mod tests {
 
         // make a client that adds auth
         let mut client = AddAuthorization::bearer(svc, "foo");
+
+        let res = client
+            .ready()
+            .await
+            .unwrap()
+            .call(Request::new(Body::empty()))
+            .await
+            .unwrap();
+
+        assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn making_header_sensitive() {
+        let svc = ServiceBuilder::new()
+            .layer(RequireAuthorizationLayer::bearer("foo"))
+            .service_fn(|request: Request<Body>| async move {
+                let auth = request.headers().get(http::header::AUTHORIZATION).unwrap();
+                assert!(auth.is_sensitive());
+
+                Ok::<_, hyper::Error>(Response::new(Body::empty()))
+            });
+
+        let mut client = AddAuthorization::bearer(svc, "foo").as_sensitive(true);
 
         let res = client
             .ready()
