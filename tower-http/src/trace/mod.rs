@@ -232,8 +232,7 @@
 //!
 //! - The inner [`Service`]'s response future resolves to an error.
 //! - A response is classified as a failure.
-//! - Every time [`Body::poll_data`] returns an error. If a streaming body
-//! produces multiple errors then `on_failure` will be called for each error.
+//! - [`Body::poll_data`] returns an error.
 //! - [`Body::poll_trailers`] returns an error.
 //! - And end-of-stream is classified as a failure.
 //!
