@@ -1,4 +1,4 @@
-use super::{FailedAt, MetricsSink};
+use super::{FailedAt, Callbacks};
 use crate::classify::ClassifyEos;
 use futures_core::ready;
 use http_body::Body;
@@ -13,18 +13,18 @@ use std::{
 ///
 /// [`Traffic`]: crate::metrics::Traffic
 #[pin_project]
-pub struct ResponseBody<B, C, MetricsSink, SinkData> {
+pub struct ResponseBody<B, C, Callbacks, CallbacksData> {
     #[pin]
     pub(super) inner: B,
-    pub(super) parts: Option<(C, MetricsSink, SinkData)>,
+    pub(super) parts: Option<(C, Callbacks, CallbacksData)>,
 }
 
-impl<B, C, MetricsSinkT, SinkData> Body for ResponseBody<B, C, MetricsSinkT, SinkData>
+impl<B, C, CallbacksT, CallbacksData> Body for ResponseBody<B, C, CallbacksT, CallbacksData>
 where
     B: Body,
     B::Error: fmt::Display + 'static,
     C: ClassifyEos,
-    MetricsSinkT: MetricsSink<C::FailureClass, Data = SinkData>,
+    CallbacksT: Callbacks<C::FailureClass, Data = CallbacksData>,
 {
     type Data = B::Data;
     type Error = B::Error;
@@ -41,9 +41,9 @@ where
             None => Poll::Ready(None),
             Some(Ok(chunk)) => Poll::Ready(Some(Ok(chunk))),
             Some(Err(err)) => {
-                if let Some((classify_eos, sink, sink_data)) = this.parts.take() {
+                if let Some((classify_eos, callbacks, callbacks_data)) = this.parts.take() {
                     let classification = classify_eos.classify_error(&err);
-                    sink.on_failure(FailedAt::Body, classification, sink_data);
+                    callbacks.on_failure(FailedAt::Body, classification, callbacks_data);
                 }
 
                 Poll::Ready(Some(Err(err)))
@@ -61,18 +61,18 @@ where
 
         match result {
             Ok(trailers) => {
-                if let Some((classify_eos, sink, sink_data)) = this.parts.take() {
+                if let Some((classify_eos, callbacks, callbacks_data)) = this.parts.take() {
                     let trailers = trailers.as_ref();
                     let classification = classify_eos.classify_eos(trailers);
-                    sink.on_eos(trailers, classification, sink_data);
+                    callbacks.on_eos(trailers, classification, callbacks_data);
                 }
 
                 Poll::Ready(Ok(trailers))
             }
             Err(err) => {
-                if let Some((classify_eos, sink, sink_data)) = this.parts.take() {
+                if let Some((classify_eos, callbacks, callbacks_data)) = this.parts.take() {
                     let classification = classify_eos.classify_error(&err);
-                    sink.on_failure(FailedAt::Body, classification, sink_data);
+                    callbacks.on_failure(FailedAt::Body, classification, callbacks_data);
                 }
 
                 Poll::Ready(Err(err))

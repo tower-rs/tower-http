@@ -3,9 +3,9 @@
 //! The primary focus of this middleware is to enable adding request per second/minute and error
 //! rate metrics.
 //!
-//! The middleware doesn't do any kind of aggregate but instead uses a [`MetricsSink`] which
+//! The middleware doesn't do any kind of aggregate but instead uses a [`Callbacks`] which
 //! contains callbacks that the middleware will call. These methods can call into your actual
-//! metrics system as appropriate. See [`MetricsSink`] for details on when each callback is called.
+//! metrics system as appropriate. See [`Callbacks`] for details on when each callback is called.
 //!
 //! Additionally it uses a [classifier] to determine if responses are success or failure.
 //!
@@ -20,7 +20,7 @@
 //! use tower::{ServiceBuilder, ServiceExt, Service};
 //! use tower_http::{
 //!     classify::{GrpcErrorsAsFailures, GrpcFailureClass, ClassifiedResponse},
-//!     metrics::traffic::{TrafficLayer, MetricsSink, FailedAt},
+//!     metrics::traffic::{TrafficLayer, Callbacks, FailedAt},
 //! };
 //!
 //! async fn handle(request: Request<Body>) -> Result<Response<Body>, hyper::Error> {
@@ -28,9 +28,9 @@
 //! }
 //!
 //! #[derive(Clone)]
-//! struct MyMetricsSink;
+//! struct MyCallbacks;
 //!
-//! impl MetricsSink<GrpcFailureClass> for MyMetricsSink {
+//! impl Callbacks<GrpcFailureClass> for MyCallbacks {
 //!     type Data = ();
 //!
 //!     fn prepare<B>(&mut self, request: &Request<B>) -> Self::Data {
@@ -73,8 +73,8 @@
 //!
 //! let mut service = ServiceBuilder::new()
 //!     // Add the middleware to our service. It will automatically call the callbacks
-//!     // on the `MetricsSink` trait.
-//!     .layer(TrafficLayer::new(classifier, MyMetricsSink))
+//!     // on the `Callbacks` trait.
+//!     .layer(TrafficLayer::new(classifier, MyCallbacks))
 //!     .service_fn(handle);
 //!
 //! // Send a request.
@@ -96,11 +96,11 @@
 mod body;
 mod future;
 mod layer;
-mod metrics_sink;
+mod callbacks;
 mod service;
 
 pub use self::{
-    body::ResponseBody, future::ResponseFuture, layer::TrafficLayer, metrics_sink::MetricsSink,
+    body::ResponseBody, future::ResponseFuture, layer::TrafficLayer, callbacks::Callbacks,
     service::Traffic,
 };
 
@@ -130,7 +130,7 @@ mod tests {
         let mut svc = ServiceBuilder::new()
             .layer(TrafficLayer::new(
                 ServerErrorsAsFailures::make_classifier(),
-                MySink,
+                MyCallbacks,
             ))
             .service_fn(echo);
 
@@ -147,9 +147,9 @@ mod tests {
     }
 
     #[derive(Clone)]
-    struct MySink;
+    struct MyCallbacks;
 
-    struct SinkData {
+    struct Data {
         uri: Uri,
         method: Method,
         version: Version,
@@ -157,12 +157,12 @@ mod tests {
         stream_start: Option<Instant>,
     }
 
-    // How one might write a sink that uses the `metrics` crate as the backend.
-    impl MetricsSink<ServerErrorsFailureClass> for MySink {
-        type Data = SinkData;
+    // How one might write a callbacks that uses the `metrics` crate as the backend.
+    impl Callbacks<ServerErrorsFailureClass> for MyCallbacks {
+        type Data = Data;
 
         fn prepare<B>(&mut self, request: &Request<B>) -> Self::Data {
-            SinkData {
+            Data {
                 uri: request.uri().clone(),
                 method: request.method().clone(),
                 version: request.version(),
@@ -176,7 +176,7 @@ mod tests {
             &mut self,
             response: &Response<B>,
             classification: ClassifiedResponse<ServerErrorsFailureClass, ()>,
-            data: &mut SinkData,
+            data: &mut Data,
         ) {
             let is_stream;
             let is_error;
@@ -219,7 +219,7 @@ mod tests {
             self,
             _trailers: Option<&HeaderMap>,
             classification: Result<(), ServerErrorsFailureClass>,
-            data: SinkData,
+            data: Data,
         ) {
             let stream_duration = data.stream_start.unwrap().elapsed().as_millis() as f64;
 
@@ -239,7 +239,7 @@ mod tests {
             self,
             failed_at: FailedAt,
             _failure_classification: ServerErrorsFailureClass,
-            data: SinkData,
+            data: Data,
         ) {
             match failed_at {
                 FailedAt::Response => {

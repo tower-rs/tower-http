@@ -10,7 +10,7 @@ use http::{HeaderMap, Request, Response};
 /// [`Traffic`]: crate::metrics::Traffic
 /// [`Traffic::new`]: crate::metrics::Traffic::new
 /// [`TrafficLayer::new`]: crate::metrics::TrafficLayer::new
-pub trait MetricsSink<FailureClass>: Sized {
+pub trait Callbacks<FailureClass>: Sized {
     /// Additional data required for creating metric events.
     ///
     /// This could for example be a struct that contains the request path and HTTP method so they
@@ -66,8 +66,8 @@ pub trait MetricsSink<FailureClass>: Sized {
     ///
     /// The default implementation does nothing and returns immediately.
     ///
-    /// [`on_response`]: MetricsSink::on_response
-    /// [`on_eos`]: MetricsSink::on_eos
+    /// [`on_response`]: Callbacks::on_response
+    /// [`on_eos`]: Callbacks::on_eos
     /// [`Body::poll_trailers`]: http_body::Body::poll_trailers
     #[inline]
     #[allow(unused_variables)]
@@ -96,8 +96,8 @@ pub trait MetricsSink<FailureClass>: Sized {
     /// The default implementation does nothing and returns immediately.
     ///
     /// [`Service`]: tower::Service
-    /// [`on_response`]: MetricsSink::on_response
-    /// [`on_eos`]: MetricsSink::on_eos
+    /// [`on_response`]: Callbacks::on_response
+    /// [`on_eos`]: Callbacks::on_eos
     /// [`Service::call`]: tower::Service::call
     /// [`Body::poll_data`]: http_body::Body::poll_data
     /// [`Body::poll_trailers`]: http_body::Body::poll_trailers

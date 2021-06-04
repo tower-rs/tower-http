@@ -8,33 +8,33 @@ use tower_layer::Layer;
 /// [`Layer`]: tower_layer::Layer
 /// [`Service`]: tower_service::Service
 #[derive(Debug, Clone)]
-pub struct TrafficLayer<M, MetricsSink> {
+pub struct TrafficLayer<M, Callbacks> {
     make_classifier: M,
-    sink: MetricsSink,
+    callbacks: Callbacks,
 }
 
-impl<M, MetricsSink> TrafficLayer<M, MetricsSink> {
+impl<M, Callbacks> TrafficLayer<M, Callbacks> {
     /// Create a new `TrafficLayer`.
-    pub fn new(make_classifier: M, sink: MetricsSink) -> Self {
+    pub fn new(make_classifier: M, callbacks: Callbacks) -> Self {
         TrafficLayer {
             make_classifier,
-            sink,
+            callbacks,
         }
     }
 }
 
-impl<S, M, MetricsSink> Layer<S> for TrafficLayer<M, MetricsSink>
+impl<S, M, Callbacks> Layer<S> for TrafficLayer<M, Callbacks>
 where
     M: Clone,
-    MetricsSink: Clone,
+    Callbacks: Clone,
 {
-    type Service = Traffic<S, M, MetricsSink>;
+    type Service = Traffic<S, M, Callbacks>;
 
     fn layer(&self, inner: S) -> Self::Service {
         Traffic {
             inner,
             make_classifier: self.make_classifier.clone(),
-            sink: self.sink.clone(),
+            callbacks: self.callbacks.clone(),
         }
     }
 }
