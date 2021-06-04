@@ -222,7 +222,7 @@ impl ClassifyResponse for ServerErrorsAsFailures {
     }
 }
 
-/// The failure class for [`GrpcErrorsAsFailures`].
+/// The failure class for [`ServerErrorsAsFailures`].
 #[derive(Debug)]
 pub enum ServerErrorsFailureClass {
     /// A response was classified as a failure with the corresponding status.
