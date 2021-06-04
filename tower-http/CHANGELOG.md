@@ -7,7 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
-None.
+- Add `metrics::Traffic` for measuring how many responses or errors a service is
+  producing.
 
 ## Breaking changes
 
