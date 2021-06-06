@@ -208,9 +208,10 @@
 //! future completes with `Ok(response)` regardless if the response is
 //! classified as a success or a failure.
 //!
-//! So if you're using [`ServerErrorsAsFailures`] as your classifier and the
-//! inner service responds with `500 Internal Server Error` then the
-//! `on_response` callback is still called.
+//! For example if you're using [`ServerErrorsAsFailures`] as your classifier
+//! and the inner service responds with `500 Internal Server Error` then the
+//! `on_response` callback is still called. `on_failure` would _also_ be called
+//! in this case since the response was classified as a failure.
 //!
 //! ### `on_body_chunk`
 //!
