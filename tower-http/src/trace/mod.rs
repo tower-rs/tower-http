@@ -234,7 +234,7 @@
 //! - A response is classified as a failure.
 //! - [`Body::poll_data`] returns an error.
 //! - [`Body::poll_trailers`] returns an error.
-//! - And end-of-stream is classified as a failure.
+//! - An end-of-stream is classified as a failure.
 //!
 //! # Recording fields on the span
 //!
