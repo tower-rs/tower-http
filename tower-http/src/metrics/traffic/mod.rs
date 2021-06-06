@@ -94,13 +94,13 @@
 //! ```
 
 mod body;
+mod callbacks;
 mod future;
 mod layer;
-mod callbacks;
 mod service;
 
 pub use self::{
-    body::ResponseBody, future::ResponseFuture, layer::TrafficLayer, callbacks::Callbacks,
+    body::ResponseBody, callbacks::Callbacks, future::ResponseFuture, layer::TrafficLayer,
     service::Traffic,
 };
 

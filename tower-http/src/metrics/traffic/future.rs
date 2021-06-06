@@ -1,4 +1,4 @@
-use super::{FailedAt, Callbacks, ResponseBody};
+use super::{Callbacks, FailedAt, ResponseBody};
 use crate::classify::{ClassifiedResponse, ClassifyResponse};
 use futures_core::ready;
 use http::Response;
@@ -34,10 +34,8 @@ where
     CallbacksT: Callbacks<C::FailureClass, Data = CallbacksData>,
     E: fmt::Display + 'static,
 {
-    type Output = Result<
-        Response<ResponseBody<ResBody, C::ClassifyEos, CallbacksT, CallbacksT::Data>>,
-        E,
-    >;
+    type Output =
+        Result<Response<ResponseBody<ResBody, C::ClassifyEos, CallbacksT, CallbacksT::Data>>, E>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
@@ -67,7 +65,11 @@ where
                         Poll::Ready(Ok(res))
                     }
                     ClassifiedResponse::RequiresEos(classify_eos) => {
-                        callbacks.on_response(&res, ClassifiedResponse::RequiresEos(()), &mut callbacks_data);
+                        callbacks.on_response(
+                            &res,
+                            ClassifiedResponse::RequiresEos(()),
+                            &mut callbacks_data,
+                        );
 
                         let res = res.map(|body| ResponseBody {
                             inner: body,

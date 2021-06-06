@@ -1,4 +1,4 @@
-use super::{FailedAt, Callbacks};
+use super::{Callbacks, FailedAt};
 use crate::classify::ClassifyEos;
 use futures_core::ready;
 use http_body::Body;
