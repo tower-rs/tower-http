@@ -8,9 +8,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 # Unreleased
 
 - Clarify exactly when each `Trace` callback is called.
-- Call `Trace`'s `on_failure` callback each time the response body produces an
-  error (in `http_body::Body::poll_data`). It would previously only be called
-  the first time.
 
 ## Breaking changes
 
