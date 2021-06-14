@@ -39,7 +39,13 @@ where
 
         match result {
             None => Poll::Ready(None),
-            Some(Ok(chunk)) => Poll::Ready(Some(Ok(chunk))),
+            Some(Ok(chunk)) => {
+                if let Some((_, callbacks, callbacks_data)) = &this.parts {
+                    callbacks.on_body_chunk(&chunk, callbacks_data);
+                }
+
+                Poll::Ready(Some(Ok(chunk)))
+            }
             Some(Err(err)) => {
                 if let Some((classify_eos, callbacks, callbacks_data)) = this.parts.take() {
                     let classification = classify_eos.classify_error(&err);
