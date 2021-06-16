@@ -78,7 +78,7 @@ where
             Err(err) => {
                 if let Some((classify_eos, callbacks, callbacks_data)) = this.parts.take() {
                     let classification = classify_eos.classify_error(&err);
-                    callbacks.on_failure(FailedAt::Body, classification, callbacks_data);
+                    callbacks.on_failure(FailedAt::Trailers, classification, callbacks_data);
                 }
 
                 Poll::Ready(Err(err))

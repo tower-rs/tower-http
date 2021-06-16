@@ -9,7 +9,6 @@ use std::{
     future::Future,
     pin::Pin,
     task::{Context, Poll},
-    time::Instant,
 };
 
 /// Response future for [`Traffic`].
@@ -20,7 +19,6 @@ pub struct ResponseFuture<F, C, Callbacks, CallbacksData> {
     #[pin]
     pub(super) inner: F,
     pub(super) classifier: Option<C>,
-    pub(super) request_received_at: Instant,
     pub(super) callbacks: Option<Callbacks>,
     pub(super) callbacks_data: Option<CallbacksData>,
 }
@@ -41,13 +39,24 @@ where
         let this = self.project();
         let result = ready!(this.inner.poll(cx));
 
-        let classifier = this.classifier.take().unwrap();
+        let classifier = this
+            .classifier
+            .take()
+            .expect("polled ResponseFuture after completion");
+
+        let mut callbacks = this
+            .callbacks
+            .take()
+            .expect("polled ResponseFuture after completion");
+
+        let mut callbacks_data = this
+            .callbacks_data
+            .take()
+            .expect("polled ResponseFuture after completion");
 
         match result {
             Ok(res) => {
                 let classification = classifier.classify_response(&res);
-                let mut callbacks: CallbacksT = this.callbacks.take().unwrap();
-                let mut callbacks_data = this.callbacks_data.take().unwrap();
 
                 match classification {
                     ClassifiedResponse::Ready(classification) => {
@@ -82,11 +91,7 @@ where
             }
             Err(err) => {
                 let classification = classifier.classify_error(&err);
-                this.callbacks.take().unwrap().on_failure(
-                    FailedAt::Response,
-                    classification,
-                    this.callbacks_data.take().unwrap(),
-                );
+                callbacks.on_failure(FailedAt::Response, classification, callbacks_data);
 
                 Poll::Ready(Err(err))
             }

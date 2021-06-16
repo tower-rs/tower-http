@@ -5,7 +5,6 @@ use http_body::Body;
 use std::{
     fmt,
     task::{Context, Poll},
-    time::Instant,
 };
 use tower_service::Service;
 
@@ -59,8 +58,6 @@ where
     }
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
-        let request_received_at = Instant::now();
-
         let callbacks_data = self.callbacks.prepare(&req);
 
         let classifier = self.make_classifier.make_classifier(&req);
@@ -68,7 +65,6 @@ where
         ResponseFuture {
             inner: self.inner.call(req),
             classifier: Some(classifier),
-            request_received_at,
             callbacks: Some(self.callbacks.clone()),
             callbacks_data: Some(callbacks_data),
         }

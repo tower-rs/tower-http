@@ -7,7 +7,7 @@
 //! contains callbacks that the middleware will call. These methods can call into your actual
 //! metrics system as appropriate. See [`Callbacks`] for details on when each callback is called.
 //!
-//! Additionally it uses a [classifier] to determine if responses are success or failure.
+//! Additionally, it uses a [classifier] to determine if responses are success or failure.
 //!
 //! [classifier]: crate::classify
 //! [`Service`]: tower::Service
@@ -134,12 +134,15 @@ mod tests {
             ))
             .service_fn(echo);
 
-        svc.ready()
+        let res = svc
+            .ready()
             .await
             .unwrap()
             .call(Request::new(Body::from("foobar")))
             .await
             .unwrap();
+
+        hyper::body::to_bytes(res.into_body()).await.unwrap();
     }
 
     async fn echo(req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
@@ -192,7 +195,7 @@ mod tests {
                 }
             }
 
-            let duration_ms = data.request_received_at.elapsed().as_millis() as f64;
+            let duration_secs = data.request_received_at.elapsed().as_secs_f64();
 
             metrics::increment_counter!(
                 "http_requests_total",
@@ -206,7 +209,7 @@ mod tests {
 
             metrics::histogram!(
                 "request_duration_milliseconds",
-                duration_ms,
+                duration_secs,
                 "path" => data.uri.path().to_string(),
                 "method" => data.method.to_string(),
                 "code" => response.status().to_string(),
@@ -221,7 +224,7 @@ mod tests {
             classification: Result<(), ServerErrorsFailureClass>,
             data: Data,
         ) {
-            let stream_duration = data.stream_start.unwrap().elapsed().as_millis() as f64;
+            let stream_duration = data.stream_start.unwrap().elapsed().as_secs_f64();
 
             let is_error = classification.is_err();
 
