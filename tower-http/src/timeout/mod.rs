@@ -42,6 +42,7 @@ impl<B> TimeoutBody<B> {
     }
 }
 
+// Only start the timeout after first poll of the body. This enum manages that.
 #[allow(clippy::large_enum_variant)]
 #[pin_project(project = StateProj)]
 #[derive(Debug)]
