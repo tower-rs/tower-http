@@ -67,7 +67,7 @@ full = [
 
 add-extension = []
 auth = ["base64"]
-timeout = []
+timeout = ["tower/timeout"]
 follow-redirect = ["iri-string", "tower/util"]
 fs = ["tokio/fs", "tokio-util/io", "mime_guess", "mime"]
 map-request-body = []

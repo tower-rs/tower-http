@@ -3,7 +3,7 @@
 //! Note these middleware differ from [`tower::timeout::Timeout`] which only
 //! adds a timeout to the response future and doesn't consider request bodies.
 
-use crate::BoxError;
+use tower::BoxError;
 use http_body::Body;
 use pin_project::pin_project;
 use std::{
