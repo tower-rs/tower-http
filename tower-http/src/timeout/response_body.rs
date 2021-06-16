@@ -133,8 +133,8 @@ where
 
         match result {
             Ok(res) => {
-                let sleep = tokio::time::sleep(*this.timeout);
-                let res = res.map(|body| TimeoutBody { inner: body, sleep });
+                let timeout = *this.timeout;
+                let res = res.map(|body| TimeoutBody::new(body, timeout));
                 Poll::Ready(Ok(res))
             }
             Err(err) => Poll::Ready(Err(err)),
@@ -183,6 +183,29 @@ mod tests {
         .await
         .unwrap_err();
         assert!(poll_trailers_err.is::<tower::timeout::error::Elapsed>());
+    }
+
+    #[tokio::test]
+    async fn doesnt_start_counting_down_until_first_poll() {
+        let timeout = Duration::from_millis(10);
+
+        let svc = ServiceBuilder::new()
+            .layer(ResponseBodyTimeoutLayer::new(timeout))
+            .service_fn(|_: Request<Body>| async {
+                let (mut tx, body) = Body::channel();
+                tokio::spawn(async move {
+                    tokio::time::sleep(timeout).await;
+                    tx.send_data(Bytes::from("hi")).await.unwrap();
+                });
+                Ok::<_, tower::BoxError>(Response::new(body))
+            });
+
+        let res = svc.oneshot(Request::new(Body::empty())).await.unwrap();
+
+        tokio::time::sleep(timeout).await;
+
+        let bytes = hyper::body::to_bytes(res.into_body()).await.unwrap();
+        assert_eq!(&bytes[..], b"hi");
     }
 
     struct BodyThatHangs;

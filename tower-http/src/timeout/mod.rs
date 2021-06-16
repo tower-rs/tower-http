@@ -10,6 +10,7 @@ use std::{
     future::Future,
     pin::Pin,
     task::{Context, Poll},
+    time::Duration,
 };
 use tokio::time::Sleep;
 
@@ -27,9 +28,40 @@ pub use self::{
 #[derive(Debug)]
 pub struct TimeoutBody<B> {
     #[pin]
-    pub(crate) inner: B,
+    inner: B,
     #[pin]
-    pub(crate) sleep: Sleep,
+    state: State,
+}
+
+impl<B> TimeoutBody<B> {
+    pub(crate) fn new(inner: B, timeout: Duration) -> Self {
+        Self {
+            inner,
+            state: State::NotPolled(timeout),
+        }
+    }
+}
+
+#[allow(clippy::large_enum_variant)]
+#[pin_project(project = StateProj)]
+#[derive(Debug)]
+enum State {
+    NotPolled(Duration),
+    SleepPending(#[pin] Sleep),
+}
+
+impl Future for State {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        loop {
+            let new_state = match self.as_mut().project() {
+                StateProj::NotPolled(timeout) => State::SleepPending(tokio::time::sleep(*timeout)),
+                StateProj::SleepPending(sleep) => return sleep.poll(cx),
+            };
+            self.set(new_state);
+        }
+    }
 }
 
 impl<B> Body for TimeoutBody<B>
@@ -51,7 +83,7 @@ where
             return Poll::Ready(chunk);
         }
 
-        if this.sleep.poll(cx).is_ready() {
+        if this.state.poll(cx).is_ready() {
             let err = tower::timeout::error::Elapsed::new().into();
             return Poll::Ready(Some(Err(err)));
         }
@@ -70,7 +102,7 @@ where
             return Poll::Ready(trailers);
         }
 
-        if this.sleep.poll(cx).is_ready() {
+        if this.state.poll(cx).is_ready() {
             let err = tower::timeout::error::Elapsed::new().into();
             return Poll::Ready(Err(err));
         }

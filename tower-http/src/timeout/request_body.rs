@@ -137,8 +137,7 @@ where
     }
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
-        let sleep = tokio::time::sleep(self.timeout);
         self.inner
-            .call(req.map(|body| TimeoutBody { inner: body, sleep }))
+            .call(req.map(|body| TimeoutBody::new(body, self.timeout)))
     }
 }

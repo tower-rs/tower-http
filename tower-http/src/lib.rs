@@ -94,10 +94,12 @@
 //! use tower_http::{
 //!     decompression::DecompressionLayer,
 //!     set_header::SetRequestHeaderLayer,
+//!     timeout::RequestBodyTimeoutLayer,
 //! };
 //! use tower::{ServiceBuilder, Service, ServiceExt};
 //! use hyper::Body;
 //! use http::{Request, Response, HeaderValue, header::USER_AGENT};
+//! use std::time::Duration;
 //!
 //! #[tokio::main]
 //! async fn main() {
