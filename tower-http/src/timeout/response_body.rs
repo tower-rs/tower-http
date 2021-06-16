@@ -25,9 +25,9 @@
 //! # }
 //! ```
 
+use super::TimeoutBody;
 use futures_core::ready;
 use http::Response;
-use http_body::Body;
 use pin_project::pin_project;
 use std::{
     future::Future,
@@ -35,19 +35,17 @@ use std::{
     task::{Context, Poll},
     time::Duration,
 };
-use tokio::time::Sleep;
-use tower::BoxError;
 use tower_layer::Layer;
 use tower_service::Service;
 
 /// Layer that applies [`ResponseBodyTimeout`] which adds a timeout to the
-/// response bodies.
+/// response body.
 ///
 /// If generating the response body doesn't complete within the specified time,
 /// an error is returned.
 ///
 /// See the [module docs](crate::timeout::response_body) for an example.
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct ResponseBodyTimeoutLayer {
     timeout: Duration,
 }
@@ -73,7 +71,7 @@ impl<S> Layer<S> for ResponseBodyTimeoutLayer {
 /// an error is returned.
 ///
 /// See the [module docs](crate::timeout::response_body) for an example.
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct ResponseBodyTimeout<S> {
     inner: S,
     timeout: Duration,
@@ -99,7 +97,7 @@ impl<S, R, ResBody> Service<R> for ResponseBodyTimeout<S>
 where
     S: Service<R, Response = Response<ResBody>>,
 {
-    type Response = Response<ResponseBody<ResBody>>;
+    type Response = Response<TimeoutBody<ResBody>>;
     type Error = S::Error;
     type Future = ResponseFuture<S::Future>;
 
@@ -127,7 +125,7 @@ impl<F, B, E> Future for ResponseFuture<F>
 where
     F: Future<Output = Result<Response<B>, E>>,
 {
-    type Output = Result<Response<ResponseBody<B>>, E>;
+    type Output = Result<Response<TimeoutBody<B>>, E>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
@@ -136,68 +134,11 @@ where
         match result {
             Ok(res) => {
                 let sleep = tokio::time::sleep(*this.timeout);
-                let res = res.map(|body| ResponseBody { inner: body, sleep });
+                let res = res.map(|body| TimeoutBody { inner: body, sleep });
                 Poll::Ready(Ok(res))
             }
             Err(err) => Poll::Ready(Err(err)),
         }
-    }
-}
-
-/// Response body for [`ResponseBodyTimeout`].
-#[pin_project]
-#[derive(Debug)]
-pub struct ResponseBody<B> {
-    #[pin]
-    inner: B,
-    #[pin]
-    sleep: Sleep,
-}
-
-impl<B> Body for ResponseBody<B>
-where
-    B: Body,
-    B::Error: Into<BoxError>,
-{
-    type Data = B::Data;
-    type Error = BoxError;
-
-    fn poll_data(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
-        let this = self.project();
-
-        if let Poll::Ready(chunk) = this.inner.poll_data(cx) {
-            let chunk = chunk.map(|chunk| chunk.map_err(Into::into));
-            return Poll::Ready(chunk);
-        }
-
-        if this.sleep.poll(cx).is_ready() {
-            let err = tower::timeout::error::Elapsed::new().into();
-            return Poll::Ready(Some(Err(err)));
-        }
-
-        Poll::Pending
-    }
-
-    fn poll_trailers(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<Option<http::HeaderMap>, Self::Error>> {
-        let this = self.project();
-
-        if let Poll::Ready(trailers) = this.inner.poll_trailers(cx) {
-            let trailers = trailers.map_err(Into::into);
-            return Poll::Ready(trailers);
-        }
-
-        if this.sleep.poll(cx).is_ready() {
-            let err = tower::timeout::error::Elapsed::new().into();
-            return Poll::Ready(Err(err));
-        }
-
-        Poll::Pending
     }
 }
 
