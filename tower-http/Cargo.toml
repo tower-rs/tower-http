@@ -49,6 +49,7 @@ default = []
 full = [
     "add-extension",
     "auth",
+    "timeout",
     "compression",
     "compression-full",
     "decompression-full",
@@ -66,6 +67,7 @@ full = [
 
 add-extension = []
 auth = ["base64"]
+timeout = []
 follow-redirect = ["iri-string", "tower/util"]
 fs = ["tokio/fs", "tokio-util/io", "mime_guess", "mime"]
 map-request-body = []

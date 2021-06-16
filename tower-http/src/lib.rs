@@ -210,12 +210,15 @@
     clippy::match_like_matches_macro,
     clippy::type_complexity
 )]
-#![forbid(unsafe_code)]
+#![cfg_attr(not(test), forbid(unsafe_code))]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(test, allow(clippy::float_cmp))]
 
 #[macro_use]
 pub(crate) mod macros;
+
+#[cfg(test)]
+pub(crate) mod test_utils;
 
 #[cfg(feature = "auth")]
 #[cfg_attr(docsrs, doc(cfg(feature = "auth")))]
@@ -267,6 +270,10 @@ pub mod follow_redirect;
 #[cfg(feature = "metrics")]
 #[cfg_attr(docsrs, doc(cfg(feature = "metrics")))]
 pub mod metrics;
+
+#[cfg(feature = "timeout")]
+#[cfg_attr(docsrs, doc(cfg(feature = "timeout")))]
+pub mod timeout;
 
 pub mod classify;
 pub mod services;
