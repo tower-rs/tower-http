@@ -141,3 +141,27 @@ where
             .call(req.map(|body| TimeoutBody::new(body, self.timeout)))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[allow(unused_imports)]
+    use super::*;
+    use http::{Request, Response};
+    use hyper::{Body, Error};
+
+    #[allow(dead_code)]
+    async fn is_compatible_with_hyper() {
+        let svc = tower::service_fn(handle);
+        let svc = RequestBodyTimeout::new(svc, Duration::from_secs(1));
+
+        let make_service = tower::make::Shared::new(svc);
+
+        let addr = std::net::SocketAddr::from(([127, 0, 0, 1], 3000));
+        let server = hyper::Server::bind(&addr).serve(make_service);
+        server.await.unwrap();
+    }
+
+    async fn handle<B>(_req: Request<B>) -> Result<Response<Body>, Error> {
+        Ok(Response::new(Body::from("Hello, World!")))
+    }
+}
