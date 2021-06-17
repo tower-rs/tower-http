@@ -3,7 +3,6 @@
 //! Note these middleware differ from [`tower::timeout::Timeout`] which only
 //! adds a timeout to the response future and doesn't consider request bodies.
 
-use tower::BoxError;
 use http_body::Body;
 use pin_project::pin_project;
 use std::{
@@ -13,6 +12,7 @@ use std::{
     time::Duration,
 };
 use tokio::time::Sleep;
+use tower::BoxError;
 
 pub mod request_body;
 pub mod response_body;
@@ -117,5 +117,13 @@ where
 
     fn size_hint(&self) -> http_body::SizeHint {
         self.inner.size_hint()
+    }
+}
+
+impl<B> Default for TimeoutBody<B> where B: Default {
+    fn default() -> Self {
+        // We assume that `B::default` is empty so the value of the timeout
+        // shouldn't matter. Polling an empty body should be quick
+        TimeoutBody::new(B::default(), Duration::from_secs(10))
     }
 }
