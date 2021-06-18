@@ -120,7 +120,10 @@ where
     }
 }
 
-impl<B> Default for TimeoutBody<B> where B: Default {
+impl<B> Default for TimeoutBody<B>
+where
+    B: Default,
+{
     fn default() -> Self {
         // We assume that `B::default` is empty so the value of the timeout
         // shouldn't matter. Polling an empty body should be quick
