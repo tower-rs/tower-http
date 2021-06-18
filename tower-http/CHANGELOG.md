@@ -7,7 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
-None.
+- Add `RequestBodyTimeout` and `ResponseBodyTimeout` which apply timeouts to
+  request and response bodies respectively.
 
 ## Breaking changes
 
