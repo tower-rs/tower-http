@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
-None.
+- Clarify exactly when each `Trace` callback is called.
 
 ## Breaking changes
 
