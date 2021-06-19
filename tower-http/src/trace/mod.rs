@@ -194,6 +194,49 @@
 //! # }
 //! ```
 //!
+//! # When the callbacks are called
+//!
+//! ### `on_request`
+//!
+//! The `on_request` callback is called when the request arrives at the
+//! middleware in [`Service::call`] just prior to passing the request to the
+//! inner service.
+//!
+//! ### `on_response`
+//!
+//! The `on_response` callback is called when the inner service's response
+//! future completes with `Ok(response)` regardless if the response is
+//! classified as a success or a failure.
+//!
+//! For example if you're using [`ServerErrorsAsFailures`] as your classifier
+//! and the inner service responds with `500 Internal Server Error` then the
+//! `on_response` callback is still called. `on_failure` would _also_ be called
+//! in this case since the response was classified as a failure.
+//!
+//! ### `on_body_chunk`
+//!
+//! The `on_body_chunk` callback is called when the response body produces a new
+//! chunk, that is when [`Body::poll_data`] returns `Poll::Ready(Some(Ok(chunk)))`.
+//!
+//! `on_body_chunk` is called even if the chunk is empty.
+//!
+//! ### `on_eos`
+//!
+//! The `on_eos` callback is called when a streaming response body ends, that is
+//! when [`Body::poll_trailers`] returns `Poll::Ready(Ok(trailers))`.
+//!
+//! `on_eos` is called even if the trailers produced are `None`.
+//!
+//! ### `on_failure`
+//!
+//! The `on_failure` callback is called when:
+//!
+//! - The inner [`Service`]'s response future resolves to an error.
+//! - A response is classified as a failure.
+//! - [`Body::poll_data`] returns an error.
+//! - [`Body::poll_trailers`] returns an error.
+//! - An end-of-stream is classified as a failure.
+//!
 //! # Recording fields on the span
 //!
 //! All callbacks receive a reference to the [tracing] [`Span`], corresponding to this request,
@@ -330,11 +373,15 @@
 //!
 //! [tracing]: https://crates.io/crates/tracing
 //! [`Service`]: tower_service::Service
+//! [`Service::call`]: tower_service::Service::call
 //! [`MakeClassifier`]: crate::classify::MakeClassifier
 //! [`ClassifyResponse`]: crate::classify::ClassifyResponse
 //! [record]: https://docs.rs/tracing/latest/tracing/span/struct.Span.html#method.record
 //! [`TraceLayer::make_span_with`]: crate::trace::TraceLayer::make_span_with
 //! [`Span`]: tracing::Span
+//! [`ServerErrorsAsFailures`]: crate::classify::ServerErrorsAsFailures
+//! [`Body::poll_trailers`]: http_body::Body::poll_trailers
+//! [`Body::poll_data`]: http_body::Body::poll_data
 
 use tracing::Level;
 
