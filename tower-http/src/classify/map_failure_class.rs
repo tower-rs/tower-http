@@ -2,7 +2,8 @@ use super::{ClassifiedResponse, ClassifyEos, ClassifyResponse};
 use http::{HeaderMap, Response};
 use std::fmt;
 
-/// Response classifier that transforms the failure class of some other classify.
+/// Response classifier that transforms the failure class of some other
+/// classifier.
 ///
 /// Created with [`ClassifyResponse::map_failure_class`] or
 /// [`ClassifyEos::map_failure_class`].
