@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
+- Add `ClassifyResponse::map_failure_class` and `ClassifyEos::map_failure_class`
+  for transforming the failure classification using a function.
 - Clarify exactly when each `Trace` callback is called.
 
 ## Breaking changes
