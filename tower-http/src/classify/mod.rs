@@ -46,6 +46,53 @@ pub trait MakeClassifier {
 /// When a type implementing [`ClassifyResponse`] doesn't depend on information
 /// from the request, [`SharedClassifier`] can be used to turn an instance of that type
 /// into a [`MakeClassifier`].
+///
+/// # Example
+///
+/// ```
+/// use std::fmt;
+/// use tower_http::classify::{
+///     ClassifyResponse, ClassifiedResponse, NeverClassifyEos,
+///     SharedClassifier, MakeClassifier,
+/// };
+/// use http::Response;
+///
+/// // A response classifier that only considers errors to be failures.
+/// #[derive(Clone, Copy)]
+/// struct MyClassifier;
+///
+/// impl ClassifyResponse for MyClassifier {
+///     type FailureClass = String;
+///     type ClassifyEos = NeverClassifyEos<Self::FailureClass>;
+///
+///     fn classify_response<B>(
+///         self,
+///         _res: &Response<B>,
+///     ) -> ClassifiedResponse<Self::FailureClass, Self::ClassifyEos> {
+///         ClassifiedResponse::Ready(Ok(()))
+///     }
+///
+///     fn classify_error<E>(self, error: &E) -> Self::FailureClass
+///     where
+///         E: fmt::Display + 'static,
+///     {
+///         error.to_string()
+///     }
+/// }
+///
+/// // Some function that requires a `MakeClassifier`
+/// fn use_make_classifier<M: MakeClassifier>(make: M) {
+///     // ...
+/// }
+///
+/// // `MyClassifier` doesn't implement `MakeClassifier` but since it doesn't
+/// // care about the incoming request we can make `MyClassifier`s by cloning.
+/// // That is what `SharedClassifier` does.
+/// let make_classifier = SharedClassifier::new(MyClassifier);
+///
+/// // We now have a `MakeClassifier`!
+/// use_make_classifier(make_classifier);
+/// ```
 #[derive(Debug, Clone)]
 pub struct SharedClassifier<C> {
     classifier: C,
