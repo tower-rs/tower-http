@@ -5,6 +5,9 @@ use tracing::{Level, Span};
 
 /// Trait used to tell [`Trace`] what to do when a request fails.
 ///
+/// See the [module docs](../trace/index.html#on_failure) for details on exactly when the
+/// `on_failure` callback is called.
+///
 /// [`Trace`]: super::Trace
 pub trait OnFailure<FailureClass> {
     /// Do the thing.
@@ -61,7 +64,7 @@ impl DefaultOnFailure {
 
     /// Set the [`Level`] used for [tracing events].
     ///
-    /// Defaults to [`Level::DEBUG`].
+    /// Defaults to [`Level::ERROR`].
     ///
     /// [tracing events]: https://docs.rs/tracing/latest/tracing/#events
     pub fn level(mut self, level: Level) -> Self {

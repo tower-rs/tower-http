@@ -94,6 +94,8 @@
 //! use tower_http::{
 //!     decompression::DecompressionLayer,
 //!     set_header::SetRequestHeaderLayer,
+//!     trace::TraceLayer,
+//!     classify::StatusInRangeAsFailures,
 //! };
 //! use tower::{ServiceBuilder, Service, ServiceExt};
 //! use hyper::Body;
@@ -102,7 +104,12 @@
 //! #[tokio::main]
 //! async fn main() {
 //!     let mut client = ServiceBuilder::new()
-//!         // Set a `User-Agent` header on all requests
+//!         // Add tracing and consider server errors and client
+//!         // errors as failures.
+//!         .layer(TraceLayer::new(
+//!             StatusInRangeAsFailures::new(400..=599).into_make_classifier()
+//!         ))
+//!         // Set a `User-Agent` header on all requests.
 //!         .layer(SetRequestHeaderLayer::<_, Body>::overriding(
 //!             USER_AGENT,
 //!             HeaderValue::from_static("tower-http demo")
