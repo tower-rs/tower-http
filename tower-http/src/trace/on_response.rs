@@ -7,6 +7,9 @@ use tracing::Span;
 
 /// Trait used to tell [`Trace`] what to do when a response has been produced.
 ///
+/// See the [module docs](../trace/index.html#on_response) for details on exactly when the
+/// `on_response` callback is called.
+///
 /// [`Trace`]: super::Trace
 pub trait OnResponse<B> {
     /// Do the thing.
