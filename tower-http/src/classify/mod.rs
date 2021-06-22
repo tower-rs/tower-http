@@ -3,12 +3,12 @@
 use http::{HeaderMap, Request, Response, StatusCode};
 use std::{convert::Infallible, fmt, marker::PhantomData, num::NonZeroI32};
 
-mod status_in_range_is_error;
 mod map_failure_class;
+mod status_in_range_is_error;
 
 pub use self::{
-    status_in_range_is_error::{StatusInRangeAsFailures, StatusInRangeFailureClass},
     map_failure_class::MapFailureClass,
+    status_in_range_is_error::{StatusInRangeAsFailures, StatusInRangeFailureClass},
 };
 
 /// Trait for producing response classifiers from a request.
