@@ -5,12 +5,12 @@ version = "0.1.0"
 authors = ["Tower Maintainers <team@tower-rs.com>"]
 edition = "2018"
 license = "MIT"
-readme = "README.md"
+readme = "../README.md"
 repository = "https://github.com/tower-rs/tower-http"
 homepage = "https://github.com/tower-rs/tower-http"
 documentation = "https://docs.rs/tower-http/0.1.0/tower_http/"
 categories = ["asynchronous", "network-programming", "web-programming"]
-keywords = ["io", "async", "non-blocking", "futures", "service", "http"]
+keywords = ["io", "async", "futures", "service", "http"]
 
 [dependencies]
 bytes = "1"
@@ -26,7 +26,7 @@ tower-service = "0.3"
 async-compression = { version = "0.3", optional = true, features = ["tokio"] }
 base64 = { version = "0.13", optional = true }
 hyper = { version = "0.14", optional = true, default_features = false, features = ["stream"] }
-iri-string = { version = "0.3", optional = true }
+iri-string = { version = "0.4", optional = true }
 mime = { version = "0.3", optional = true, default_features = false }
 mime_guess = { version = "2", optional = true, default_features = false }
 tokio = { version = "1", optional = true, default_features = false }
@@ -59,7 +59,7 @@ full = [
     "metrics",
     "propagate-header",
     "redirect",
-    "sensitive-header",
+    "sensitive-headers",
     "set-header",
     "trace",
 ]
@@ -73,7 +73,7 @@ map-response-body = []
 metrics = ["tokio/time"]
 propagate-header = []
 redirect = []
-sensitive-header = []
+sensitive-headers = []
 set-header = []
 trace = ["tracing"]
 

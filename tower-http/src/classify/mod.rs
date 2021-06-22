@@ -1,7 +1,15 @@
 //! Tools for classifying responses as either success or failure.
 
 use http::{HeaderMap, Request, Response, StatusCode};
-use std::{convert::Infallible, marker::PhantomData, num::NonZeroI32};
+use std::{convert::Infallible, fmt, marker::PhantomData, num::NonZeroI32};
+
+mod map_failure_class;
+mod status_in_range_is_error;
+
+pub use self::{
+    map_failure_class::MapFailureClass,
+    status_in_range_is_error::{StatusInRangeAsFailures, StatusInRangeFailureClass},
+};
 
 /// Trait for producing response classifiers from a request.
 ///
@@ -12,10 +20,9 @@ use std::{convert::Infallible, marker::PhantomData, num::NonZeroI32};
 /// This is necessary for [`ClassifyResponse::classify_error`].
 ///
 /// [`Error` type]: https://docs.rs/tower/latest/tower/trait.Service.html#associatedtype.Error
-pub trait MakeClassifier<E> {
+pub trait MakeClassifier {
     /// The response classifier produced.
     type Classifier: ClassifyResponse<
-        E,
         FailureClass = Self::FailureClass,
         ClassifyEos = Self::ClassifyEos,
     >;
@@ -28,7 +35,7 @@ pub trait MakeClassifier<E> {
     type FailureClass;
 
     /// The type used to classify the response end of stream (EOS).
-    type ClassifyEos: ClassifyEos<E, FailureClass = Self::FailureClass>;
+    type ClassifyEos: ClassifyEos<FailureClass = Self::FailureClass>;
 
     /// Returns a response classifier for this request
     fn make_classifier<B>(&self, req: &Request<B>) -> Self::Classifier;
@@ -39,6 +46,53 @@ pub trait MakeClassifier<E> {
 /// When a type implementing [`ClassifyResponse`] doesn't depend on information
 /// from the request, [`SharedClassifier`] can be used to turn an instance of that type
 /// into a [`MakeClassifier`].
+///
+/// # Example
+///
+/// ```
+/// use std::fmt;
+/// use tower_http::classify::{
+///     ClassifyResponse, ClassifiedResponse, NeverClassifyEos,
+///     SharedClassifier, MakeClassifier,
+/// };
+/// use http::Response;
+///
+/// // A response classifier that only considers errors to be failures.
+/// #[derive(Clone, Copy)]
+/// struct MyClassifier;
+///
+/// impl ClassifyResponse for MyClassifier {
+///     type FailureClass = String;
+///     type ClassifyEos = NeverClassifyEos<Self::FailureClass>;
+///
+///     fn classify_response<B>(
+///         self,
+///         _res: &Response<B>,
+///     ) -> ClassifiedResponse<Self::FailureClass, Self::ClassifyEos> {
+///         ClassifiedResponse::Ready(Ok(()))
+///     }
+///
+///     fn classify_error<E>(self, error: &E) -> Self::FailureClass
+///     where
+///         E: fmt::Display + 'static,
+///     {
+///         error.to_string()
+///     }
+/// }
+///
+/// // Some function that requires a `MakeClassifier`
+/// fn use_make_classifier<M: MakeClassifier>(make: M) {
+///     // ...
+/// }
+///
+/// // `MyClassifier` doesn't implement `MakeClassifier` but since it doesn't
+/// // care about the incoming request we can make `MyClassifier`s by cloning.
+/// // That is what `SharedClassifier` does.
+/// let make_classifier = SharedClassifier::new(MyClassifier);
+///
+/// // We now have a `MakeClassifier`!
+/// use_make_classifier(make_classifier);
+/// ```
 #[derive(Debug, Clone)]
 pub struct SharedClassifier<C> {
     classifier: C,
@@ -46,17 +100,17 @@ pub struct SharedClassifier<C> {
 
 impl<C> SharedClassifier<C> {
     /// Create a new `SharedClassifier` from the given classifier.
-    pub fn new<E>(classifier: C) -> Self
+    pub fn new(classifier: C) -> Self
     where
-        C: ClassifyResponse<E> + Clone,
+        C: ClassifyResponse + Clone,
     {
         Self { classifier }
     }
 }
 
-impl<C, E> MakeClassifier<E> for SharedClassifier<C>
+impl<C> MakeClassifier for SharedClassifier<C>
 where
-    C: ClassifyResponse<E> + Clone,
+    C: ClassifyResponse + Clone,
 {
     type FailureClass = C::FailureClass;
     type ClassifyEos = C::ClassifyEos;
@@ -81,7 +135,7 @@ where
 /// retryable.
 ///
 /// [retry policies]: https://docs.rs/tower/latest/tower/retry/trait.Policy.html
-pub trait ClassifyResponse<E> {
+pub trait ClassifyResponse {
     /// The type returned when a response is classified as a failure.
     ///
     /// Depending on the classifier, this may simply indicate that the
@@ -90,7 +144,7 @@ pub trait ClassifyResponse<E> {
     type FailureClass;
 
     /// The type used to classify the response end of stream (EOS).
-    type ClassifyEos: ClassifyEos<E, FailureClass = Self::FailureClass>;
+    type ClassifyEos: ClassifyEos<FailureClass = Self::FailureClass>;
 
     /// Attempt to classify the beginning of a response.
     ///
@@ -120,11 +174,67 @@ pub trait ClassifyResponse<E> {
     ///
     /// Errors are always errors (doh) but sometimes it might be useful to have multiple classes of
     /// errors. A retry policy might allow retrying some errors and not others.
-    fn classify_error(self, error: &E) -> Self::FailureClass;
+    fn classify_error<E>(self, error: &E) -> Self::FailureClass
+    where
+        E: fmt::Display + 'static;
+
+    /// Transform the failure classification using a function.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use tower_http::classify::{
+    ///     ServerErrorsAsFailures, ServerErrorsFailureClass,
+    ///     ClassifyResponse, ClassifiedResponse
+    /// };
+    /// use http::{Response, StatusCode};
+    /// use http_body::Empty;
+    /// use bytes::Bytes;
+    ///
+    /// fn transform_failure_class(class: ServerErrorsFailureClass) -> NewFailureClass {
+    ///     match class {
+    ///         // Convert status codes into u16
+    ///         ServerErrorsFailureClass::StatusCode(status) => {
+    ///             NewFailureClass::Status(status.as_u16())
+    ///         }
+    ///         // Don't change errors.
+    ///         ServerErrorsFailureClass::Error(error) => {
+    ///             NewFailureClass::Error(error)
+    ///         }
+    ///     }
+    /// }
+    ///
+    /// enum NewFailureClass {
+    ///     Status(u16),
+    ///     Error(String),
+    /// }
+    ///
+    /// // Create a classifier who's failure class will be transformed by `transform_failure_class`
+    /// let classifier = ServerErrorsAsFailures::new().map_failure_class(transform_failure_class);
+    ///
+    /// let response = Response::builder()
+    ///     .status(StatusCode::INTERNAL_SERVER_ERROR)
+    ///     .body(Empty::<Bytes>::new())
+    ///     .unwrap();
+    ///
+    /// let classification = classifier.classify_response(&response);
+    ///
+    /// assert!(matches!(
+    ///     classification,
+    ///     ClassifiedResponse::Ready(Err(NewFailureClass::Status(500)))
+    /// ));
+    /// ```
+    fn map_failure_class<F, NewClass>(self, f: F) -> MapFailureClass<Self, F>
+    where
+        Self: Sized,
+        F: FnOnce(Self::FailureClass) -> NewClass,
+    {
+        MapFailureClass::new(self, f)
+    }
 }
 
 /// Trait for classifying end of streams (EOS) as either success or failure.
-pub trait ClassifyEos<E> {
+pub trait ClassifyEos {
     /// The type of failure classifications.
     type FailureClass;
 
@@ -135,7 +245,20 @@ pub trait ClassifyEos<E> {
     ///
     /// Errors are always errors (doh) but sometimes it might be useful to have multiple classes of
     /// errors. A retry policy might allow retrying some errors and not others.
-    fn classify_error(self, error: &E) -> Self::FailureClass;
+    fn classify_error<E>(self, error: &E) -> Self::FailureClass
+    where
+        E: fmt::Display + 'static;
+
+    /// Transform the failure classification using a function.
+    ///
+    /// See [`ClassifyResponse::map_failure_class`] for more details.
+    fn map_failure_class<F, NewClass>(self, f: F) -> MapFailureClass<Self, F>
+    where
+        Self: Sized,
+        F: FnOnce(Self::FailureClass) -> NewClass,
+    {
+        MapFailureClass::new(self, f)
+    }
 }
 
 /// Result of doing a classification.
@@ -156,7 +279,7 @@ pub struct NeverClassifyEos<T> {
     _never: Infallible,
 }
 
-impl<T, E> ClassifyEos<E> for NeverClassifyEos<T> {
+impl<T> ClassifyEos for NeverClassifyEos<T> {
     type FailureClass = T;
 
     fn classify_eos(self, _trailers: Option<&HeaderMap>) -> Result<(), Self::FailureClass> {
@@ -164,9 +287,18 @@ impl<T, E> ClassifyEos<E> for NeverClassifyEos<T> {
         unreachable!()
     }
 
-    fn classify_error(self, _error: &E) -> Self::FailureClass {
+    fn classify_error<E>(self, _error: &E) -> Self::FailureClass
+    where
+        E: fmt::Display + 'static,
+    {
         // `NeverClassifyEos` contains an `Infallible` so it can never be constructed
         unreachable!()
+    }
+}
+
+impl<T> fmt::Debug for NeverClassifyEos<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NeverClassifyEos").finish()
     }
 }
 
@@ -188,28 +320,49 @@ impl ServerErrorsAsFailures {
     /// Returns a [`MakeClassifier`] that produces `ServerErrorsAsFailures`.
     ///
     /// This is a convenience function that simply calls `SharedClassifier::new`.
-    pub fn make_classifier<E>() -> SharedClassifier<Self> {
-        SharedClassifier::new::<E>(Self::new())
+    pub fn make_classifier() -> SharedClassifier<Self> {
+        SharedClassifier::new(Self::new())
     }
 }
 
-impl<E> ClassifyResponse<E> for ServerErrorsAsFailures {
-    type FailureClass = StatusCode;
-    type ClassifyEos = NeverClassifyEos<StatusCode>;
+impl ClassifyResponse for ServerErrorsAsFailures {
+    type FailureClass = ServerErrorsFailureClass;
+    type ClassifyEos = NeverClassifyEos<ServerErrorsFailureClass>;
 
     fn classify_response<B>(
         self,
         res: &Response<B>,
     ) -> ClassifiedResponse<Self::FailureClass, Self::ClassifyEos> {
         if res.status().is_server_error() {
-            ClassifiedResponse::Ready(Err(res.status()))
+            ClassifiedResponse::Ready(Err(ServerErrorsFailureClass::StatusCode(res.status())))
         } else {
             ClassifiedResponse::Ready(Ok(()))
         }
     }
 
-    fn classify_error(self, _error: &E) -> Self::FailureClass {
-        StatusCode::INTERNAL_SERVER_ERROR
+    fn classify_error<E>(self, error: &E) -> Self::FailureClass
+    where
+        E: fmt::Display + 'static,
+    {
+        ServerErrorsFailureClass::Error(error.to_string())
+    }
+}
+
+/// The failure class for [`ServerErrorsAsFailures`].
+#[derive(Debug)]
+pub enum ServerErrorsFailureClass {
+    /// A response was classified as a failure with the corresponding status.
+    StatusCode(StatusCode),
+    /// A response was classified as an error with the corresponding error description.
+    Error(String),
+}
+
+impl fmt::Display for ServerErrorsFailureClass {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::StatusCode(code) => write!(f, "Status code: {}", code),
+            Self::Error(error) => write!(f, "Error: {}", error),
+        }
     }
 }
 
@@ -240,13 +393,13 @@ impl GrpcErrorsAsFailures {
     /// Returns a [`MakeClassifier`] that produces `GrpcErrorsAsFailures`.
     ///
     /// This is a convenience function that simply calls `SharedClassifier::new`.
-    pub fn make_classifier<E>() -> SharedClassifier<Self> {
-        SharedClassifier::new::<E>(Self::new())
+    pub fn make_classifier() -> SharedClassifier<Self> {
+        SharedClassifier::new(Self::new())
     }
 }
 
-impl<E> ClassifyResponse<E> for GrpcErrorsAsFailures {
-    type FailureClass = i32;
+impl ClassifyResponse for GrpcErrorsAsFailures {
+    type FailureClass = GrpcFailureClass;
     type ClassifyEos = GrpcEosErrorsAsFailures;
 
     fn classify_response<B>(
@@ -257,16 +410,20 @@ impl<E> ClassifyResponse<E> for GrpcErrorsAsFailures {
             ParsedGrpcStatus::Success
             | ParsedGrpcStatus::HeaderNotString
             | ParsedGrpcStatus::HeaderNotInt => ClassifiedResponse::Ready(Ok(())),
-            ParsedGrpcStatus::NonSuccess(status) => ClassifiedResponse::Ready(Err(status.get())),
+            ParsedGrpcStatus::NonSuccess(status) => {
+                ClassifiedResponse::Ready(Err(GrpcFailureClass::Code(status)))
+            }
             ParsedGrpcStatus::GrpcStatusHeaderMissing => {
                 ClassifiedResponse::RequiresEos(GrpcEosErrorsAsFailures { _priv: () })
             }
         }
     }
 
-    fn classify_error(self, _error: &E) -> Self::FailureClass {
-        // https://grpc.github.io/grpc/core/md_doc_statuscodes.html
-        13
+    fn classify_error<E>(self, error: &E) -> Self::FailureClass
+    where
+        E: fmt::Display + 'static,
+    {
+        GrpcFailureClass::Error(error.to_string())
     }
 }
 
@@ -276,26 +433,46 @@ pub struct GrpcEosErrorsAsFailures {
     _priv: (),
 }
 
-impl<E> ClassifyEos<E> for GrpcEosErrorsAsFailures {
-    type FailureClass = i32;
+impl ClassifyEos for GrpcEosErrorsAsFailures {
+    type FailureClass = GrpcFailureClass;
 
-    fn classify_eos(self, trailers: Option<&HeaderMap>) -> Result<(), i32> {
+    fn classify_eos(self, trailers: Option<&HeaderMap>) -> Result<(), Self::FailureClass> {
         if let Some(trailers) = trailers {
             match classify_grpc_metadata(trailers) {
                 ParsedGrpcStatus::Success
                 | ParsedGrpcStatus::GrpcStatusHeaderMissing
                 | ParsedGrpcStatus::HeaderNotString
                 | ParsedGrpcStatus::HeaderNotInt => Ok(()),
-                ParsedGrpcStatus::NonSuccess(status) => Err(status.get()),
+                ParsedGrpcStatus::NonSuccess(status) => Err(GrpcFailureClass::Code(status)),
             }
         } else {
             Ok(())
         }
     }
 
-    fn classify_error(self, _error: &E) -> Self::FailureClass {
-        // https://grpc.github.io/grpc/core/md_doc_statuscodes.html
-        13
+    fn classify_error<E>(self, error: &E) -> Self::FailureClass
+    where
+        E: fmt::Display + 'static,
+    {
+        GrpcFailureClass::Error(error.to_string())
+    }
+}
+
+/// The failure class for [`GrpcErrorsAsFailures`].
+#[derive(Debug)]
+pub enum GrpcFailureClass {
+    /// A gRPC response was classified as a failure with the corresponding status.
+    Code(std::num::NonZeroI32),
+    /// A gRPC response was classified as an error with the corresponding error description.
+    Error(String),
+}
+
+impl fmt::Display for GrpcFailureClass {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Code(code) => write!(f, "Code: {}", code),
+            Self::Error(error) => write!(f, "Error: {}", error),
+        }
     }
 }
 
@@ -351,7 +528,8 @@ mod usable_for_retries {
 
     impl<ReqB, ResB, E, C> Policy<Request<ReqB>, Response<ResB>, E> for RetryBasedOnClassification<C>
     where
-        C: ClassifyResponse<E> + Clone,
+        C: ClassifyResponse + Clone,
+        E: fmt::Display + 'static,
         C::FailureClass: IsRetryable,
         ResB: http_body::Body,
         Request<ReqB>: Clone,

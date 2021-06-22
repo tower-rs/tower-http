@@ -5,6 +5,7 @@ use http::HeaderMap;
 use http_body::Body;
 use pin_project::pin_project;
 use std::{
+    fmt,
     pin::Pin,
     task::{Context, Poll},
     time::Instant,
@@ -30,7 +31,8 @@ impl<B, C, OnBodyChunkT, OnEosT, OnFailureT> Body
     for ResponseBody<B, C, OnBodyChunkT, OnEosT, OnFailureT>
 where
     B: Body,
-    C: ClassifyEos<B::Error>,
+    B::Error: fmt::Display + 'static,
+    C: ClassifyEos,
     OnEosT: OnEos,
     OnBodyChunkT: OnBodyChunk<B::Data>,
     OnFailureT: OnFailure<C::FailureClass>,
@@ -102,5 +104,13 @@ where
         }
 
         Poll::Ready(result)
+    }
+
+    fn is_end_stream(&self) -> bool {
+        self.inner.is_end_stream()
+    }
+
+    fn size_hint(&self) -> http_body::SizeHint {
+        self.inner.size_hint()
     }
 }

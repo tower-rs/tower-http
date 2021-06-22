@@ -103,7 +103,7 @@
 //! use hyper::Body;
 //! use bytes::Bytes;
 //! use tower::ServiceBuilder;
-//! use tower_http::trace::TraceLayer;
+//! use tower_http::{classify::ServerErrorsFailureClass, trace::TraceLayer};
 //! use std::time::Duration;
 //! use tracing::Span;
 //! # use tower::{ServiceExt, Service};
@@ -134,7 +134,7 @@
 //!             .on_eos(|trailers: Option<&HeaderMap>, stream_duration: Duration, _span: &Span| {
 //!                 tracing::debug!("stream closed after {:?}", stream_duration)
 //!             })
-//!             .on_failure(|error: StatusCode, latency: Duration, _span: &Span| {
+//!             .on_failure(|error: ServerErrorsFailureClass, latency: Duration, _span: &Span| {
 //!                 tracing::debug!("something went wrong")
 //!             })
 //!     )
@@ -156,7 +156,7 @@
 //! ```rust
 //! use http::StatusCode;
 //! use tower::ServiceBuilder;
-//! use tower_http::trace::TraceLayer;
+//! use tower_http::{classify::ServerErrorsFailureClass, trace::TraceLayer};
 //! use std::time::Duration;
 //! use tracing::Span;
 //! # use tower::{ServiceExt, Service};
@@ -179,7 +179,7 @@
 //!             .on_response(())
 //!             .on_body_chunk(())
 //!             .on_eos(())
-//!             .on_failure(|error: StatusCode, latency: Duration, _span: &Span| {
+//!             .on_failure(|error: ServerErrorsFailureClass, latency: Duration, _span: &Span| {
 //!                 tracing::debug!("something went wrong")
 //!             })
 //!     )
@@ -193,6 +193,49 @@
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! # When the callbacks are called
+//!
+//! ### `on_request`
+//!
+//! The `on_request` callback is called when the request arrives at the
+//! middleware in [`Service::call`] just prior to passing the request to the
+//! inner service.
+//!
+//! ### `on_response`
+//!
+//! The `on_response` callback is called when the inner service's response
+//! future completes with `Ok(response)` regardless if the response is
+//! classified as a success or a failure.
+//!
+//! For example if you're using [`ServerErrorsAsFailures`] as your classifier
+//! and the inner service responds with `500 Internal Server Error` then the
+//! `on_response` callback is still called. `on_failure` would _also_ be called
+//! in this case since the response was classified as a failure.
+//!
+//! ### `on_body_chunk`
+//!
+//! The `on_body_chunk` callback is called when the response body produces a new
+//! chunk, that is when [`Body::poll_data`] returns `Poll::Ready(Some(Ok(chunk)))`.
+//!
+//! `on_body_chunk` is called even if the chunk is empty.
+//!
+//! ### `on_eos`
+//!
+//! The `on_eos` callback is called when a streaming response body ends, that is
+//! when [`Body::poll_trailers`] returns `Poll::Ready(Ok(trailers))`.
+//!
+//! `on_eos` is called even if the trailers produced are `None`.
+//!
+//! ### `on_failure`
+//!
+//! The `on_failure` callback is called when:
+//!
+//! - The inner [`Service`]'s response future resolves to an error.
+//! - A response is classified as a failure.
+//! - [`Body::poll_data`] returns an error.
+//! - [`Body::poll_trailers`] returns an error.
+//! - An end-of-stream is classified as a failure.
 //!
 //! # Recording fields on the span
 //!
@@ -219,7 +262,7 @@
 //! #
 //! let service = ServiceBuilder::new()
 //!     .layer(
-//!         TraceLayer::<_, hyper::Error>::new_for_http()
+//!         TraceLayer::new_for_http()
 //!             .make_span_with(|request: &Request<Body>| {
 //!                 tracing::debug_span!(
 //!                     "http-request",
@@ -269,7 +312,7 @@
 //! #[derive(Copy, Clone)]
 //! struct MyMakeClassify;
 //!
-//! impl MakeClassifier<hyper::Error> for MyMakeClassify {
+//! impl MakeClassifier for MyMakeClassify {
 //!     type Classifier = MyClassifier;
 //!     type FailureClass = &'static str;
 //!     type ClassifyEos = NeverClassifyEos<&'static str>;
@@ -283,7 +326,7 @@
 //! #[derive(Copy, Clone)]
 //! struct MyClassifier;
 //!
-//! impl ClassifyResponse<hyper::Error> for MyClassifier {
+//! impl ClassifyResponse for MyClassifier {
 //!     type FailureClass = &'static str;
 //!     type ClassifyEos = NeverClassifyEos<&'static str>;
 //!
@@ -299,7 +342,10 @@
 //!         }
 //!     }
 //!
-//!     fn classify_error(self, error: &hyper::Error) -> Self::FailureClass {
+//!     fn classify_error<E>(self, error: &E) -> Self::FailureClass
+//!     where
+//!         E: std::fmt::Display + 'static,
+//!     {
 //!         "something went wrong..."
 //!     }
 //! }
@@ -327,11 +373,15 @@
 //!
 //! [tracing]: https://crates.io/crates/tracing
 //! [`Service`]: tower_service::Service
+//! [`Service::call`]: tower_service::Service::call
 //! [`MakeClassifier`]: crate::classify::MakeClassifier
 //! [`ClassifyResponse`]: crate::classify::ClassifyResponse
 //! [record]: https://docs.rs/tracing/latest/tracing/span/struct.Span.html#method.record
 //! [`TraceLayer::make_span_with`]: crate::trace::TraceLayer::make_span_with
 //! [`Span`]: tracing::Span
+//! [`ServerErrorsAsFailures`]: crate::classify::ServerErrorsAsFailures
+//! [`Body::poll_trailers`]: http_body::Body::poll_trailers
+//! [`Body::poll_data`]: http_body::Body::poll_data
 
 use tracing::Level;
 
@@ -365,8 +415,9 @@ const DEFAULT_ERROR_LEVEL: Level = Level::ERROR;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::classify::ServerErrorsFailureClass;
     use bytes::Bytes;
-    use http::{HeaderMap, Request, Response, StatusCode};
+    use http::{HeaderMap, Request, Response};
     use hyper::Body;
     use once_cell::sync::Lazy;
     use std::{
@@ -384,7 +435,7 @@ mod tests {
         static ON_EOS: Lazy<AtomicU32> = Lazy::new(|| AtomicU32::new(0));
         static ON_FAILURE: Lazy<AtomicU32> = Lazy::new(|| AtomicU32::new(0));
 
-        let trace_layer = TraceLayer::<_, BoxError>::new_for_http()
+        let trace_layer = TraceLayer::new_for_http()
             .make_span_with(|_req: &Request<Body>| {
                 tracing::info_span!("test-span", foo = tracing::field::Empty)
             })
@@ -403,9 +454,11 @@ mod tests {
                     ON_EOS.fetch_add(1, Ordering::SeqCst);
                 },
             )
-            .on_failure(|_err: StatusCode, _latency: Duration, _span: &Span| {
-                ON_FAILURE.fetch_add(1, Ordering::SeqCst);
-            });
+            .on_failure(
+                |_class: ServerErrorsFailureClass, _latency: Duration, _span: &Span| {
+                    ON_FAILURE.fetch_add(1, Ordering::SeqCst);
+                },
+            );
 
         let mut svc = ServiceBuilder::new().layer(trace_layer).service_fn(echo);
 
@@ -437,7 +490,7 @@ mod tests {
         static ON_EOS: Lazy<AtomicU32> = Lazy::new(|| AtomicU32::new(0));
         static ON_FAILURE: Lazy<AtomicU32> = Lazy::new(|| AtomicU32::new(0));
 
-        let trace_layer = TraceLayer::<_, BoxError>::new_for_http()
+        let trace_layer = TraceLayer::new_for_http()
             .on_request(|_req: &Request<Body>, _span: &Span| {
                 ON_REQUEST_COUNT.fetch_add(1, Ordering::SeqCst);
             })
@@ -452,9 +505,11 @@ mod tests {
                     ON_EOS.fetch_add(1, Ordering::SeqCst);
                 },
             )
-            .on_failure(|_err: StatusCode, _latency: Duration, _span: &Span| {
-                ON_FAILURE.fetch_add(1, Ordering::SeqCst);
-            });
+            .on_failure(
+                |_class: ServerErrorsFailureClass, _latency: Duration, _span: &Span| {
+                    ON_FAILURE.fetch_add(1, Ordering::SeqCst);
+                },
+            );
 
         let mut svc = ServiceBuilder::new()
             .layer(trace_layer)
