@@ -26,7 +26,7 @@ tower-service = "0.3"
 async-compression = { version = "0.3", optional = true, features = ["tokio"] }
 base64 = { version = "0.13", optional = true }
 hyper = { version = "0.14", optional = true, default_features = false, features = ["stream"] }
-iri-string = { version = "0.3", optional = true }
+iri-string = { version = "0.4", optional = true }
 mime = { version = "0.3", optional = true, default_features = false }
 mime_guess = { version = "2", optional = true, default_features = false }
 tokio = { version = "1", optional = true, default_features = false }

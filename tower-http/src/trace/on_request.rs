@@ -5,6 +5,9 @@ use tracing::Span;
 
 /// Trait used to tell [`Trace`] what to do when a request is received.
 ///
+/// See the [module docs](../trace/index.html#on_request) for details on exactly when the
+/// `on_request` callback is called.
+///
 /// [`Trace`]: super::Trace
 pub trait OnRequest<B> {
     /// Do the thing.
