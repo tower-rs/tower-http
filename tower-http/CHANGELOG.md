@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
+- Add `AddAuthorizationLayer` for setting the `Authorization` header on
+  requests.
 - Add example of using `SharedClassifier`.
 - Add `StatusInRangeAsFailures` which is a response classifier that considers
   responses with status code in a certain range as failures. Useful for HTTP
