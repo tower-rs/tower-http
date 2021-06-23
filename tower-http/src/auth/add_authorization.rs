@@ -38,7 +38,10 @@
 //! ```
 
 use http::{HeaderValue, Request};
-use std::task::{Context, Poll};
+use std::{
+    convert::TryFrom,
+    task::{Context, Poll},
+};
 use tower_layer::Layer;
 use tower_service::Service;
 
@@ -67,7 +70,7 @@ impl AddAuthorizationLayer {
     /// with this method. However use of HTTPS/TLS is not enforced by this middleware.
     pub fn basic(username: &str, password: &str) -> Self {
         let encoded = base64::encode(format!("{}:{}", username, password));
-        let value = HeaderValue::from_str(&format!("Basic {}", encoded)).unwrap();
+        let value = HeaderValue::try_from(format!("Basic {}", encoded)).unwrap();
         Self { value }
     }
 
@@ -80,7 +83,7 @@ impl AddAuthorizationLayer {
     /// Panics if the token is not a valid [`HeaderValue`](http::header::HeaderValue).
     pub fn bearer(token: &str) -> Self {
         let value =
-            HeaderValue::from_str(&format!("Bearer {}", token)).expect("token is not valid header");
+            HeaderValue::try_from(format!("Bearer {}", token)).expect("token is not valid header");
         Self { value }
     }
 
