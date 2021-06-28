@@ -166,22 +166,18 @@ mod tests {
         let req = Request::new(Body::empty());
 
         let res = svc.ready().await.unwrap().call(req).await.unwrap();
-        let mut body = res.into_body();
+        let body = res.into_body();
+        tokio::pin!(body);
 
-        let poll_data_err = futures::future::poll_fn(|cx| {
-            // Required since `Sleep` isn't `Unpin`.
-            unsafe { Pin::new_unchecked(&mut body) }.poll_data(cx)
-        })
-        .await
-        .expect("body was empty")
-        .unwrap_err();
+        let poll_data_err = futures::future::poll_fn(|cx| body.as_mut().poll_data(cx))
+            .await
+            .expect("body was empty")
+            .unwrap_err();
         assert!(poll_data_err.is::<tower::timeout::error::Elapsed>());
 
-        let poll_trailers_err = futures::future::poll_fn(|cx| {
-            unsafe { Pin::new_unchecked(&mut body) }.poll_trailers(cx)
-        })
-        .await
-        .unwrap_err();
+        let poll_trailers_err = futures::future::poll_fn(|cx| body.as_mut().poll_trailers(cx))
+            .await
+            .unwrap_err();
         assert!(poll_trailers_err.is::<tower::timeout::error::Elapsed>());
     }
 
