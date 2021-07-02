@@ -1,14 +1,14 @@
 [package]
 name = "tower-http"
 description = "Tower middleware and utilities for HTTP clients and servers"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Tower Maintainers <team@tower-rs.com>"]
 edition = "2018"
 license = "MIT"
 readme = "../README.md"
 repository = "https://github.com/tower-rs/tower-http"
 homepage = "https://github.com/tower-rs/tower-http"
-documentation = "https://docs.rs/tower-http/0.1.0/tower_http/"
+documentation = "https://docs.rs/tower-http/0.1.1/tower_http/"
 categories = ["asynchronous", "network-programming", "web-programming"]
 keywords = ["io", "async", "futures", "service", "http"]
 
