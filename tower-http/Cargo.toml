@@ -55,6 +55,7 @@ full = [
     "decompression-full",
     "follow-redirect",
     "fs",
+    "life-cycle-hooks",
     "map-request-body",
     "map-response-body",
     "metrics",
@@ -69,6 +70,7 @@ add-extension = []
 auth = ["base64"]
 follow-redirect = ["iri-string", "tower/util"]
 fs = ["tokio/fs", "tokio-util/io", "mime_guess", "mime"]
+life-cycle-hooks = []
 map-request-body = []
 map-response-body = []
 metrics = ["tokio/time"]

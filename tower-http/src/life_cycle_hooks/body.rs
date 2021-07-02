@@ -9,9 +9,9 @@ use std::{
     task::{Context, Poll},
 };
 
-/// Response body for [`Traffic`].
+/// Response body for [`LifeCycleHooks`].
 ///
-/// [`Traffic`]: crate::metrics::Traffic
+/// [`LifeCycleHooks`]: crate::life_cycle_hooks::LifeCycleHooks
 #[pin_project]
 pub struct ResponseBody<B, C, Callbacks, CallbacksData> {
     #[pin]

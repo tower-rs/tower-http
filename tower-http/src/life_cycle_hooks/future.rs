@@ -11,9 +11,9 @@ use std::{
     task::{Context, Poll},
 };
 
-/// Response future for [`Traffic`].
+/// Response future for [`LifeCycleHooks`].
 ///
-/// [`Traffic`]: crate::metrics::Traffic
+/// [`LifeCycleHooks`]: crate::life_cycle_hooks::LifeCycleHooks
 #[pin_project]
 pub struct ResponseFuture<F, C, Callbacks, CallbacksData> {
     #[pin]

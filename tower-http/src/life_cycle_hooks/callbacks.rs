@@ -3,14 +3,14 @@ use crate::classify::ClassifiedResponse;
 use bytes::Buf;
 use http::{HeaderMap, Request, Response};
 
-/// Trait that defines callbacks for [`Traffic`] to call.
+/// Trait that defines callbacks for [`LifeCycleHooks`] to call.
 ///
 /// The generic `FailureClass` parameter is the failure class of the classifier
-/// passed to [`Traffic::new`] or [`TrafficLayer::new`]).
+/// passed to [`LifeCycleHooks::new`] or [`LifeCycleHooksLayer::new`]).
 ///
-/// [`Traffic`]: crate::metrics::Traffic
-/// [`Traffic::new`]: crate::metrics::Traffic::new
-/// [`TrafficLayer::new`]: crate::metrics::TrafficLayer::new
+/// [`LifeCycleHooks`]: crate::life_cycle_hooks::LifeCycleHooks
+/// [`LifeCycleHooks::new`]: crate::life_cycle_hooks::LifeCycleHooks::new
+/// [`LifeCycleHooksLayer::new`]: crate::life_cycle_hooks::LifeCycleHooksLayer::new
 pub trait Callbacks<FailureClass>: Sized {
     /// Additional data required for creating metric events.
     ///
@@ -36,14 +36,14 @@ pub trait Callbacks<FailureClass>: Sized {
     /// as a success or a failure.
     ///
     /// If the response is the start of a stream (as determined by the
-    /// classifier passed to [`Traffic::new`] or [`TrafficLayer::new`]) then
+    /// classifier passed to [`LifeCycleHooks::new`] or [`LifeCycleHooksLayer::new`]) then
     /// `classification` will be [`ClassifiedResponse::RequiresEos(())`],
     /// otherwise it will be [`ClassifiedResponse::Ready`].
     ///
     /// The default implementation does nothing and returns immediately.
     ///
-    /// [`Traffic::new`]: crate::metrics::Traffic::new
-    /// [`TrafficLayer::new`]: crate::metrics::TrafficLayer::new
+    /// [`LifeCycleHooks::new`]: crate::life_cycle_hooks::LifeCycleHooks::new
+    /// [`LifeCycleHooksLayer::new`]: crate::life_cycle_hooks::LifeCycleHooksLayer::new
     /// [`ClassifiedResponse::RequiresEos(())`]: crate::classify::ClassifiedResponse::RequiresEos
     /// [`Service`]: tower::Service
     #[inline]

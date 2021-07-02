@@ -275,6 +275,10 @@ pub mod follow_redirect;
 #[cfg_attr(docsrs, doc(cfg(feature = "metrics")))]
 pub mod metrics;
 
+#[cfg(feature = "life-cycle-hooks")]
+#[cfg_attr(docsrs, doc(cfg(feature = "life-cycle-hooks")))]
+pub mod life_cycle_hooks;
+
 pub mod classify;
 pub mod services;
 

@@ -1,37 +1,37 @@
-use super::Traffic;
+use super::LifeCycleHooks;
 use tower_layer::Layer;
 
 /// [`Layer`] for adding high level traffic metrics to a [`Service`].
 ///
-/// See the [module docs](crate::metrics::traffic) for more details.
+/// See the [module docs](crate::life_cycle_hooks) for more details.
 ///
 /// [`Layer`]: tower_layer::Layer
 /// [`Service`]: tower_service::Service
 #[derive(Debug, Clone)]
-pub struct TrafficLayer<M, Callbacks> {
+pub struct LifeCycleHooksLayer<M, Callbacks> {
     make_classifier: M,
     callbacks: Callbacks,
 }
 
-impl<M, Callbacks> TrafficLayer<M, Callbacks> {
-    /// Create a new `TrafficLayer`.
+impl<M, Callbacks> LifeCycleHooksLayer<M, Callbacks> {
+    /// Create a new `LifeCycleHooksLayer`.
     pub fn new(make_classifier: M, callbacks: Callbacks) -> Self {
-        TrafficLayer {
+        LifeCycleHooksLayer {
             make_classifier,
             callbacks,
         }
     }
 }
 
-impl<S, M, Callbacks> Layer<S> for TrafficLayer<M, Callbacks>
+impl<S, M, Callbacks> Layer<S> for LifeCycleHooksLayer<M, Callbacks>
 where
     M: Clone,
     Callbacks: Clone,
 {
-    type Service = Traffic<S, M, Callbacks>;
+    type Service = LifeCycleHooks<S, M, Callbacks>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        Traffic {
+        LifeCycleHooks {
             inner,
             make_classifier: self.make_classifier.clone(),
             callbacks: self.callbacks.clone(),
