@@ -145,13 +145,13 @@
 //! your `Cargo.toml`:
 //!
 //! ```toml
-//! tower-http = { version = "0.1.0", features = ["trace"] }
+//! tower-http = { version = "0.1", features = ["trace"] }
 //! ```
 //!
 //! You can use `"full"` to enable everything:
 //!
 //! ```toml
-//! tower-http = { version = "0.1.0", features = ["full"] }
+//! tower-http = { version = "0.1", features = ["full"] }
 //! ```
 //!
 //! # Getting Help
@@ -175,7 +175,7 @@
 //! [`Trace`]: crate::trace::Trace
 //! [examples]: https://github.com/tower-rs/tower-http/tree/master/examples
 
-#![doc(html_root_url = "https://docs.rs/tower-http/0.1.0")]
+#![doc(html_root_url = "https://docs.rs/tower-http/0.1.1")]
 #![warn(
     clippy::all,
     clippy::dbg_macro,

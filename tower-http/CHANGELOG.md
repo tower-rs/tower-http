@@ -7,8 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
-- Add `AddAuthorizationLayer` for setting the `Authorization` header on
-  requests.
+None.
+
+## Breaking changes
+
+None.
+
+# 0.1.1 (July 2, 2021)
+
 - Add example of using `SharedClassifier`.
 - Add `StatusInRangeAsFailures` which is a response classifier that considers
   responses with status code in a certain range as failures. Useful for HTTP
@@ -19,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add `ClassifyResponse::map_failure_class` and `ClassifyEos::map_failure_class`
   for transforming the failure classification using a function.
 - Clarify exactly when each `Trace` callback is called.
+- Add `AddAuthorizationLayer` for setting the `Authorization` header on
+  requests.
 
 ## Breaking changes
 
