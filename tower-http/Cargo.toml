@@ -62,6 +62,7 @@ full = [
     "sensitive-headers",
     "set-header",
     "trace",
+    "util",
 ]
 
 add-extension = []
@@ -76,6 +77,7 @@ redirect = []
 sensitive-headers = []
 set-header = []
 trace = ["tracing"]
+util = ["tower"]
 
 compression = ["tokio-util", "tokio"]
 compression-br = ["async-compression/brotli", "compression"]

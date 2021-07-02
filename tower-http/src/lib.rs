@@ -278,6 +278,14 @@ pub mod metrics;
 pub mod classify;
 pub mod services;
 
+#[cfg(feature = "util")]
+mod builder;
+
+#[cfg(feature = "util")]
+#[cfg_attr(docsrs, doc(cfg(feature = "util")))]
+#[doc(inline)]
+pub use self::builder::ServiceBuilderExt;
+
 /// Error type containing either a body error or an IO error.
 ///
 /// This type is used to combine errors produced by response bodies with compression or
@@ -334,4 +342,9 @@ pub enum LatencyUnit {
     Micros,
     /// Use nanoseconds.
     Nanos,
+}
+
+mod sealed {
+    #[allow(unreachable_pub)]
+    pub trait Sealed<T> {}
 }

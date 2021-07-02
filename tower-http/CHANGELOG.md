@@ -7,7 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
-None.
+- Add `ServiceBuilderExt` which adds methods to `tower::ServiceBuilder` for
+  adding middleware from tower-http.
 
 ## Breaking changes
 
