@@ -8,7 +8,7 @@ use std::{
 };
 use tower_service::Service;
 
-/// Middleware for adding high level traffic metrics to a [`Service`].
+/// Middleware for adding callbacks to the life cycle of request.
 ///
 /// See the [module docs](crate::life_cycle_hooks) for more details.
 ///

@@ -12,10 +12,7 @@ use http::{HeaderMap, Request, Response};
 /// [`LifeCycleHooks::new`]: crate::life_cycle_hooks::LifeCycleHooks::new
 /// [`LifeCycleHooksLayer::new`]: crate::life_cycle_hooks::LifeCycleHooksLayer::new
 pub trait Callbacks<FailureClass>: Sized {
-    /// Additional data required for creating metric events.
-    ///
-    /// This could for example be a struct that contains the request path and
-    /// HTTP method so they can be included in events.
+    /// Additional data required for callbacks.
     type Data;
 
     /// Create an instance of `Self::Data` from the request.
@@ -47,12 +44,11 @@ pub trait Callbacks<FailureClass>: Sized {
     /// [`ClassifiedResponse::RequiresEos(())`]: crate::classify::ClassifiedResponse::RequiresEos
     /// [`Service`]: tower::Service
     #[inline]
-    #[allow(unused_variables)]
     fn on_response<B>(
         &mut self,
-        response: &Response<B>,
-        classification: ClassifiedResponse<FailureClass, ()>,
-        data: &mut Self::Data,
+        _response: &Response<B>,
+        _classification: ClassifiedResponse<FailureClass, ()>,
+        _data: &mut Self::Data,
     ) {
     }
 
@@ -65,8 +61,7 @@ pub trait Callbacks<FailureClass>: Sized {
     ///
     /// [`Body::poll_data`]: http_body::Body::poll_data
     #[inline]
-    #[allow(unused_variables)]
-    fn on_body_chunk<B>(&self, chunk: &B, data: &Self::Data)
+    fn on_body_chunk<B>(&self, _chunk: &B, _data: &Self::Data)
     where
         B: Buf,
     {
@@ -91,12 +86,11 @@ pub trait Callbacks<FailureClass>: Sized {
     /// [`on_eos`]: Callbacks::on_eos
     /// [`Body::poll_trailers`]: http_body::Body::poll_trailers
     #[inline]
-    #[allow(unused_variables)]
     fn on_eos(
         self,
-        trailers: Option<&HeaderMap>,
-        classification: Result<(), FailureClass>,
-        data: Self::Data,
+        _trailers: Option<&HeaderMap>,
+        _classification: Result<(), FailureClass>,
+        _data: Self::Data,
     ) {
     }
 
@@ -123,12 +117,11 @@ pub trait Callbacks<FailureClass>: Sized {
     /// [`Body::poll_data`]: http_body::Body::poll_data
     /// [`Body::poll_trailers`]: http_body::Body::poll_trailers
     #[inline]
-    #[allow(unused_variables)]
     fn on_failure(
         self,
-        failed_at: FailedAt,
-        failure_classification: FailureClass,
-        data: Self::Data,
+        _failed_at: FailedAt,
+        _failure_classification: FailureClass,
+        _data: Self::Data,
     ) {
     }
 }

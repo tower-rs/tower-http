@@ -1,7 +1,7 @@
 use super::LifeCycleHooks;
 use tower_layer::Layer;
 
-/// [`Layer`] for adding high level traffic metrics to a [`Service`].
+/// [`Layer`] for adding callbacks to the life cycle of request.
 ///
 /// See the [module docs](crate::life_cycle_hooks) for more details.
 ///

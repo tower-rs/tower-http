@@ -1,5 +1,6 @@
 //! Types used by compression and decompression middleware.
 
+use crate::BodyOrIoError;
 use bytes::{Bytes, BytesMut};
 use futures_core::Stream;
 use futures_util::ready;
@@ -14,8 +15,6 @@ use std::{
 use tokio::io::AsyncRead;
 use tokio_util::io::{poll_read_buf, StreamReader};
 
-use crate::BodyOrIoError;
-
 pub(crate) type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
 #[derive(Debug, Clone, Copy)]
@@ -27,7 +26,7 @@ pub(crate) struct AcceptEncoding {
 
 impl AcceptEncoding {
     #[allow(dead_code)]
-    pub(crate) fn to_header_value(&self) -> Option<HeaderValue> {
+    pub(crate) fn to_header_value(self) -> Option<HeaderValue> {
         let accept = match (self.gzip(), self.deflate(), self.br()) {
             (true, true, true) => "gzip,deflate,br",
             (true, true, false) => "gzip,deflate",
@@ -309,7 +308,7 @@ where
 
 pub(crate) const SENTINEL_ERROR_CODE: i32 = -837459418;
 
-#[allow(clippy::clippy::needless_bool)]
+#[allow(clippy::needless_bool)]
 pub(crate) fn supports_transparent_compression(headers: &HeaderMap) -> bool {
     let content_type = if let Some(content_type) = content_type(headers) {
         content_type
