@@ -1,5 +1,6 @@
 //! Types used by compression and decompression middleware.
 
+use crate::BoxError;
 use bytes::{Bytes, BytesMut};
 use futures_core::Stream;
 use futures_util::ready;
@@ -13,10 +14,6 @@ use std::{
 };
 use tokio::io::AsyncRead;
 use tokio_util::io::{poll_read_buf, StreamReader};
-
-use crate::BodyOrIoError;
-
-pub(crate) type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct AcceptEncoding {
@@ -158,10 +155,11 @@ impl<M: DecorateAsyncRead> WrapBody<M> {
 impl<B, M> Body for WrapBody<M>
 where
     B: Body,
+    B::Error: Into<BoxError>,
     M: DecorateAsyncRead<Input = AsyncReadBody<B>>,
 {
     type Data = Bytes;
-    type Error = BodyOrIoError<B::Error>;
+    type Error = BoxError;
 
     fn poll_data(
         self: Pin<&mut Self>,
@@ -180,12 +178,12 @@ where
                     .take();
 
                 if let Some(body_error) = body_error {
-                    return Poll::Ready(Some(Err(BodyOrIoError::Body(body_error))));
+                    return Poll::Ready(Some(Err(body_error.into())));
                 } else if err.raw_os_error() == Some(SENTINEL_ERROR_CODE) {
                     // SENTINEL_ERROR_CODE only gets used when storing an underlying body error
                     unreachable!()
                 } else {
-                    return Poll::Ready(Some(Err(BodyOrIoError::Io(err))));
+                    return Poll::Ready(Some(Err(err.into())));
                 }
             }
         };
@@ -206,7 +204,7 @@ where
             .get_pin_mut()
             .get_pin_mut()
             .get_pin_mut();
-        body.poll_trailers(cx).map_err(BodyOrIoError::Body)
+        body.poll_trailers(cx).map_err(Into::into)
     }
 }
 

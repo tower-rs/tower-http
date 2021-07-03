@@ -12,7 +12,7 @@
 //! use tower_http::{compression::Compression, decompression::DecompressionLayer};
 //! #
 //! # #[tokio::main]
-//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn main() -> Result<(), tower::BoxError> {
 //! # async fn handle(req: Request<Body>) -> Result<Response<Body>, Infallible> {
 //! #     let body = Body::from("Hello, World!");
 //! #     Ok(Response::new(body))

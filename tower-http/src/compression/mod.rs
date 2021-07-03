@@ -16,7 +16,7 @@
 //! use tower_http::compression::CompressionLayer;
 //!
 //! # #[tokio::main]
-//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn main() -> Result<(), tower::BoxError> {
 //! async fn handle(req: Request<Body>) -> Result<Response<Body>, Infallible> {
 //!     // Open the file.
 //!     let file = File::open("Cargo.toml").await.expect("file missing");
@@ -224,5 +224,31 @@ mod tests {
 
     async fn handle(_req: Request<Body>) -> Result<Response<Body>, Error> {
         Ok(Response::new(Body::from("Hello, World!")))
+    }
+
+    #[allow(dead_code)]
+    async fn works_with_box_error_body_errors() {
+        use crate::map_response_body::MapResponseBodyLayer;
+        use http_body::{combinators::BoxBody, Body as _};
+        use tower::BoxError;
+
+        fn box_response_body_error<B>(body: B) -> BoxBody<B::Data, BoxError>
+        where
+            B: http_body::Body + Send + Sync + 'static,
+            B::Error: Into<BoxError>,
+        {
+            body.map_err(Into::into).boxed()
+        }
+
+        let svc = tower::ServiceBuilder::new()
+            .layer(CompressionLayer::new())
+            .layer(MapResponseBodyLayer::new(box_response_body_error))
+            .service_fn(handle);
+
+        let make_service = Shared::new(svc);
+
+        let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+        let server = Server::bind(&addr).serve(make_service);
+        server.await.unwrap();
     }
 }

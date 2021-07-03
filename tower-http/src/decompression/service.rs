@@ -1,5 +1,8 @@
 use super::{DecompressionBody, DecompressionLayer, ResponseFuture};
-use crate::compression_utils::{supports_transparent_compression, AcceptEncoding, BoxError};
+use crate::{
+    compression_utils::{supports_transparent_compression, AcceptEncoding},
+    BoxError,
+};
 use http::{
     header::{self, ACCEPT_ENCODING, RANGE},
     Request, Response,
