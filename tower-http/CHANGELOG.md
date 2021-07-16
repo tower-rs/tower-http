@@ -11,7 +11,7 @@ None.
 
 ## Breaking changes
 
-None.
+- Add `Cors` for setting [CORS] headers.
 
 # 0.1.1 (July 2, 2021)
 
@@ -35,3 +35,5 @@ None.
 # 0.1.0 (May 27, 2021)
 
 - Initial release.
+
+[CORS]: https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS

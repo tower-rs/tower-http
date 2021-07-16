@@ -275,6 +275,10 @@ pub mod follow_redirect;
 #[cfg_attr(docsrs, doc(cfg(feature = "metrics")))]
 pub mod metrics;
 
+#[cfg(feature = "cors")]
+#[cfg_attr(docsrs, doc(cfg(feature = "cors")))]
+pub mod cors;
+
 pub mod classify;
 pub mod services;
 
