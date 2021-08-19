@@ -86,8 +86,12 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
                         HeaderValue::from_str(&append_slash_on_path(uri).to_string()).unwrap();
                     return Ok(Output::Redirect(location));
                 }
-            } else if append_index_html_on_directories && is_dir(&full_path).await {
-                full_path.push("index.html");
+            } else if is_dir(&full_path).await {
+                if append_index_html_on_directories {
+                    full_path.push("index.html");
+                } else {
+                    return Ok(Output::NotFound);
+                }
             }
 
             let guess = mime_guess::from_path(&full_path);
@@ -146,6 +150,7 @@ fn append_slash_on_path(uri: Uri) -> Uri {
 enum Output {
     File(File, HeaderValue),
     Redirect(HeaderValue),
+    NotFound,
 }
 
 type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + Sync + 'static>>;
@@ -175,6 +180,15 @@ impl Future for ResponseFuture {
                             .status(StatusCode::PERMANENT_REDIRECT)
                             .body(empty_body())
                             .unwrap();
+                        return Poll::Ready(Ok(res));
+                    }
+
+                    Ok(Output::NotFound) => {
+                        let res = Response::builder()
+                            .status(StatusCode::NOT_FOUND)
+                            .body(empty_body())
+                            .unwrap();
+
                         return Poll::Ready(Ok(res));
                     }
 
@@ -289,6 +303,20 @@ mod tests {
 
         let location = &res.headers()[http::header::LOCATION];
         assert_eq!(location, "/src/");
+    }
+
+    #[tokio::test]
+    async fn empty_directory_without_index() {
+        let svc = ServeDir::new(".").append_index_html_on_directories(false);
+
+        let req = Request::new(Body::empty());
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
+        assert!(res.headers().get(header::CONTENT_TYPE).is_none());
+
+        let body = body_into_text(res.into_body()).await;
+        assert!(body.is_empty());
     }
 
     async fn body_into_text<B>(body: B) -> String
