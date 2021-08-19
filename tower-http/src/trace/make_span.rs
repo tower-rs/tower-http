@@ -30,7 +30,7 @@ where
 ///
 /// [`Span`]: tracing::Span
 /// [`Trace`]: super::Trace
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct DefaultMakeSpan {
     include_headers: bool,
 }
@@ -51,6 +51,12 @@ impl DefaultMakeSpan {
     pub fn include_headers(mut self, include_headers: bool) -> Self {
         self.include_headers = include_headers;
         self
+    }
+}
+
+impl Default for DefaultMakeSpan {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
