@@ -71,7 +71,6 @@ impl DefaultOnResponse {
     /// Defaults to [`Level::DEBUG`].
     ///
     /// [tracing events]: https://docs.rs/tracing/latest/tracing/#events
-    /// [`Level::DEBUG`]: https://docs.rs/tracing/latest/tracing/struct.Level.html#associatedconstant.DEBUG
     pub fn level(mut self, level: Level) -> Self {
         self.level = level;
         self
