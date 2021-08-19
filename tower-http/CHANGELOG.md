@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
-None.
+- Fix a bug which happens when `append_index_html_on_directories` is set to `false` in `ServeDir`.
 
 ## Breaking changes
 
