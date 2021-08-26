@@ -4,3 +4,7 @@ members = [
   "examples/warp-key-value-store",
   "examples/tonic-key-value-store",
 ]
+
+[patch.crates-io]
+tokio = { git = "https://github.com/tokio-rs/tokio.git", branch = "master"}
+tokio-util = { git = "https://github.com/tokio-rs/tokio.git", branch = "master" }

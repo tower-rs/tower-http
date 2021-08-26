@@ -1,7 +1,6 @@
 //! File system related services.
 
-use bytes::{Bytes, BytesMut};
-use futures_core::ready;
+use bytes::Bytes;
 use http::{HeaderMap, Response, StatusCode};
 use http_body::{combinators::BoxBody, Body, Empty};
 use pin_project::pin_project;
@@ -11,10 +10,15 @@ use std::{
     task::{Context, Poll},
 };
 use tokio::io::AsyncRead;
-use tokio_util::io::poll_read_buf;
+
+use futures_util::Stream;
+use tokio_util::io::ReaderStream;
 
 mod serve_dir;
 mod serve_file;
+
+// default capacity 64KiB
+const DEFAULT_CAPACITY: usize = 65536;
 
 pub use self::{
     serve_dir::{
@@ -31,13 +35,26 @@ pub use self::{
 #[derive(Debug)]
 pub struct AsyncReadBody<T> {
     #[pin]
-    inner: T,
+    reader: ReaderStream<T>,
 }
 
-impl<T> AsyncReadBody<T> {
+impl<T> AsyncReadBody<T>
+where
+    T: AsyncRead,
+{
     /// Create a new [`AsyncReadBody`] wrapping the given reader.
     fn new(read: T) -> Self {
-        Self { inner: read }
+        Self {
+            reader: ReaderStream::with_capacity(read, DEFAULT_CAPACITY),
+        }
+    }
+
+    /// Create a new [`AsyncReadBody`] wrapping the given reader,
+    /// with a specific read buffer capacity
+    fn with_capacity(read: T, capacity: usize) -> Self {
+        Self {
+            reader: ReaderStream::with_capacity(read, capacity),
+        }
     }
 }
 
@@ -52,14 +69,7 @@ where
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
-        let mut buf = BytesMut::new();
-        let read = ready!(poll_read_buf(self.project().inner, cx, &mut buf)?);
-
-        if read == 0 {
-            Poll::Ready(None)
-        } else {
-            Poll::Ready(Some(Ok(buf.freeze())))
-        }
+        self.project().reader.poll_next(cx)
     }
 
     fn poll_trailers(
