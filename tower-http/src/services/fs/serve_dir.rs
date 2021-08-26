@@ -177,7 +177,7 @@ impl Future for ResponseFuture {
                     Ok(Output::Redirect(location)) => {
                         let res = Response::builder()
                             .header(http::header::LOCATION, location)
-                            .status(StatusCode::PERMANENT_REDIRECT)
+                            .status(StatusCode::TEMPORARY_REDIRECT)
                             .body(empty_body())
                             .unwrap();
                         return Poll::Ready(Ok(res));
@@ -299,7 +299,7 @@ mod tests {
         let req = Request::builder().uri("/src").body(Body::empty()).unwrap();
         let res = svc.oneshot(req).await.unwrap();
 
-        assert_eq!(res.status(), StatusCode::PERMANENT_REDIRECT);
+        assert_eq!(res.status(), StatusCode::TEMPORARY_REDIRECT);
 
         let location = &res.headers()[http::header::LOCATION];
         assert_eq!(location, "/src/");
