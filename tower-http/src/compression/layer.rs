@@ -19,7 +19,6 @@ impl<S> Layer<S> for CompressionLayer {
 
     fn layer(&self, inner: S) -> Self::Service {
         let mut outer = Compression::new(inner);
-        println!("layer's accept: {:?}", self.accept);
         outer.accept = self.accept;
         outer
     }
@@ -107,7 +106,6 @@ mod tests {
     #[tokio::test]
     async fn accept_encoding_configuration_works() -> Result<(), Box<dyn std::error::Error>> {
         let deflate_only_layer = CompressionLayer::new().no_br().no_gzip();
-        println!("layer's accept right after setting: {:?}", deflate_only_layer.accept);
 
         let mut service = ServiceBuilder::new()
             // Compress responses based on the `Accept-Encoding` header.

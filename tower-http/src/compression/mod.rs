@@ -138,7 +138,6 @@ impl Encoding {
 
 // based on https://github.com/http-rs/accept-encoding
 fn encodings(headers: &HeaderMap, accept: AcceptEncoding) -> Vec<(Encoding, f32)> {
-    println!("{:?}", accept);
     let ret = headers
         .get_all(header::ACCEPT_ENCODING)
         .iter()
@@ -169,7 +168,6 @@ fn encodings(headers: &HeaderMap, accept: AcceptEncoding) -> Vec<(Encoding, f32)
         })
         .collect::<Vec<(Encoding, f32)>>();
 
-    println!("{:?}", ret);
 
     ret
 }
