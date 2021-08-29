@@ -38,7 +38,7 @@ impl<S> Compression<S> {
     /// Sets whether to enable the gzip encoding.
     #[cfg(feature = "compression-gzip")]
     #[cfg_attr(docsrs, doc(cfg(feature = "compression-gzip")))]
-    pub fn gzip(self, enable: bool) -> Self {
+    pub fn gzip(mut self, enable: bool) -> Self {
         self.accept.set_gzip(enable);
         self
     }
@@ -46,7 +46,7 @@ impl<S> Compression<S> {
     /// Sets whether to enable the Deflate encoding.
     #[cfg(feature = "compression-deflate")]
     #[cfg_attr(docsrs, doc(cfg(feature = "compression-deflate")))]
-    pub fn deflate(self, enable: bool) -> Self {
+    pub fn deflate(mut self, enable: bool) -> Self {
         self.accept.set_deflate(enable);
         self
     }
@@ -54,7 +54,7 @@ impl<S> Compression<S> {
     /// Sets whether to enable the Brotli encoding.
     #[cfg(feature = "compression-br")]
     #[cfg_attr(docsrs, doc(cfg(feature = "compression-br")))]
-    pub fn br(self, enable: bool) -> Self {
+    pub fn br(mut self, enable: bool) -> Self {
         self.accept.set_br(enable);
         self
     }
@@ -62,7 +62,7 @@ impl<S> Compression<S> {
     /// Disables the gzip encoding.
     ///
     /// This method is available even if the `gzip` crate feature is disabled.
-    pub fn no_gzip(self) -> Self {
+    pub fn no_gzip(mut self) -> Self {
         self.accept.set_gzip(false);
         self
     }
@@ -70,7 +70,7 @@ impl<S> Compression<S> {
     /// Disables the Deflate encoding.
     ///
     /// This method is available even if the `deflate` crate feature is disabled.
-    pub fn no_deflate(self) -> Self {
+    pub fn no_deflate(mut self) -> Self {
         self.accept.set_deflate(false);
         self
     }
@@ -78,7 +78,7 @@ impl<S> Compression<S> {
     /// Disables the Brotli encoding.
     ///
     /// This method is available even if the `br` crate feature is disabled.
-    pub fn no_br(self) -> Self {
+    pub fn no_br(mut self) -> Self {
         self.accept.set_br(false);
         self
     }

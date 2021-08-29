@@ -138,7 +138,8 @@ impl Encoding {
 
 // based on https://github.com/http-rs/accept-encoding
 fn encodings(headers: &HeaderMap, accept: AcceptEncoding) -> Vec<(Encoding, f32)> {
-    headers
+    println!("{:?}", accept);
+    let ret = headers
         .get_all(header::ACCEPT_ENCODING)
         .iter()
         .filter_map(|hval| hval.to_str().ok())
@@ -166,7 +167,11 @@ fn encodings(headers: &HeaderMap, accept: AcceptEncoding) -> Vec<(Encoding, f32)
 
             Some((encoding, qval))
         })
-        .collect::<Vec<(Encoding, f32)>>()
+        .collect::<Vec<(Encoding, f32)>>();
+
+    println!("{:?}", ret);
+
+    ret
 }
 
 #[cfg(test)]
