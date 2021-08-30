@@ -16,9 +16,10 @@
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let cors = CorsLayer::new()
-//!     .allow_methods(vec![Method::GET, Method::POST, Method::OPTIONS])
-//!     .allow_origin(Any)
-//!     .allow_credentials(false);
+//!     // allow `GET` and `POST` when accessing the resource
+//!     .allow_methods(vec![Method::GET, Method::POST])
+//!     // allow requests from any origin
+//!     .allow_origin(Any);
 //!
 //! let mut service = ServiceBuilder::new()
 //!     .layer(cors)
@@ -458,6 +459,10 @@ impl<S> Cors<S> {
         }
     }
 
+    fn is_valid_request_method(&self, method: &HeaderValue) -> bool {
+        self.layer.allow_methods == method
+    }
+
     fn build_preflight_response<B>(&self, origin: HeaderValue) -> Response<B>
     where
         B: Default,
@@ -578,6 +583,32 @@ where
 
         // Return results immediately upon preflight request
         if req.method() == Method::OPTIONS {
+            // the method the real request will be made with
+            match req.headers().get(header::ACCESS_CONTROL_REQUEST_METHOD) {
+                Some(request_method) => {
+                    if !self.is_valid_request_method(request_method) {
+                        return ResponseFuture {
+                            inner: Kind::Error(Some(
+                                Response::builder()
+                                    .status(StatusCode::METHOD_NOT_ALLOWED)
+                                    .body(ResBody::default())
+                                    .unwrap(),
+                            )),
+                        };
+                    }
+                }
+                None => {
+                    return ResponseFuture {
+                        inner: Kind::Error(Some(
+                            Response::builder()
+                                .status(StatusCode::UNAUTHORIZED)
+                                .body(ResBody::default())
+                                .unwrap(),
+                        )),
+                    };
+                }
+            }
+
             return ResponseFuture {
                 inner: Kind::Error(Some(self.build_preflight_response(origin))),
             };
