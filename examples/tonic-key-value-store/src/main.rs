@@ -1,10 +1,7 @@
 use bytes::Bytes;
 use futures::StreamExt;
 use hyper::body::HttpBody;
-use hyper::{
-    header::{self, HeaderValue},
-    Server,
-};
+use hyper::header::{self, HeaderValue};
 use proto::{
     key_value_store_client::KeyValueStoreClient, key_value_store_server, GetReply, GetRequest,
     SetReply, SetRequest, SubscribeReply, SubscribeRequest,
@@ -23,7 +20,7 @@ use tokio::io::AsyncReadExt;
 use tokio::sync::broadcast::{self, Sender};
 use tokio_stream::{wrappers::BroadcastStream, Stream};
 use tonic::{async_trait, body::BoxBody, transport::Channel, Code, Request, Response, Status};
-use tower::{make::Shared, ServiceBuilder};
+use tower::ServiceBuilder;
 use tower::{BoxError, Service};
 use tower_http::{
     compression::CompressionLayer,
@@ -162,8 +159,8 @@ async fn serve_forever(listener: TcpListener) -> Result<(), Box<dyn std::error::
     // Build our tonic `Service`
     let service = key_value_store_server::KeyValueStoreServer::new(ServerImpl { db, tx });
 
-    // Apply middleware to our service
-    let service = ServiceBuilder::new()
+    // Build our middleware stack
+    let layer = ServiceBuilder::new()
         // Set a timeout
         .timeout(Duration::from_secs(10))
         // Compress responses
@@ -174,20 +171,15 @@ async fn serve_forever(listener: TcpListener) -> Result<(), Box<dyn std::error::
         .layer(
             TraceLayer::new_for_grpc().make_span_with(DefaultMakeSpan::new().include_headers(true)),
         )
-        // Build our final `Service`
-        .service(service);
+        .into_inner();
 
-    // Run the service using hyper
+    // Build and run the server
     let addr = listener.local_addr()?;
-
     tracing::info!("Listening on {}", addr);
-
-    // We cannot use `tonic::transport::Server` directly as it requires services to implement
-    // `tonic::transport::NamedService` which tower-http middleware don't
-    Server::from_tcp(listener)?
-        // Required for gRPC
-        .http2_only(true)
-        .serve(Shared::new(service))
+    tonic::transport::Server::builder()
+        .layer(layer)
+        .add_service(service)
+        .serve(addr)
         .await?;
 
     Ok(())
