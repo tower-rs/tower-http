@@ -1,7 +1,9 @@
 use bytes::Bytes;
 use futures::StreamExt;
-use hyper::body::HttpBody;
-use hyper::header::{self, HeaderValue};
+use hyper::{
+    body::HttpBody,
+    header::{self, HeaderValue},
+};
 use proto::{
     key_value_store_client::KeyValueStoreClient, key_value_store_server, GetReply, GetRequest,
     SetReply, SetRequest, SubscribeReply, SubscribeRequest,
@@ -10,18 +12,22 @@ use std::{
     collections::HashMap,
     iter::once,
     net::SocketAddr,
-    net::TcpListener,
     pin::Pin,
     sync::{Arc, RwLock},
     time::Duration,
 };
 use structopt::StructOpt;
-use tokio::io::AsyncReadExt;
-use tokio::sync::broadcast::{self, Sender};
-use tokio_stream::{wrappers::BroadcastStream, Stream};
+use tokio::{
+    io::AsyncReadExt,
+    net::TcpListener,
+    sync::broadcast::{self, Sender},
+};
+use tokio_stream::{
+    wrappers::{BroadcastStream, TcpListenerStream},
+    Stream,
+};
 use tonic::{async_trait, body::BoxBody, transport::Channel, Code, Request, Response, Status};
-use tower::ServiceBuilder;
-use tower::{BoxError, Service};
+use tower::{BoxError, Service, ServiceBuilder};
 use tower_http::{
     compression::CompressionLayer,
     decompression::DecompressionLayer,
@@ -79,7 +85,7 @@ async fn main() {
     match config.command {
         Command::Server => {
             // Create a `TcpListener`
-            let listener = TcpListener::bind(addr).unwrap();
+            let listener = TcpListener::bind(addr).await.unwrap();
 
             // Run our service
             serve_forever(listener).await.expect("server error");
@@ -179,7 +185,7 @@ async fn serve_forever(listener: TcpListener) -> Result<(), Box<dyn std::error::
     tonic::transport::Server::builder()
         .layer(layer)
         .add_service(service)
-        .serve(addr)
+        .serve_with_incoming(TcpListenerStream::new(listener))
         .await?;
 
     Ok(())
@@ -295,7 +301,7 @@ mod tests {
 
     #[tokio::test]
     async fn get_and_set_value() {
-        let addr = run_in_background();
+        let addr = run_in_background().await;
 
         let mut client = make_client(addr).await.unwrap();
 
@@ -340,8 +346,10 @@ mod tests {
     }
 
     // Run our service in a background task.
-    fn run_in_background() -> SocketAddr {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("Could not bind ephemeral socket");
+    async fn run_in_background() -> SocketAddr {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("Could not bind ephemeral socket");
         let addr = listener.local_addr().unwrap();
 
         // just for debugging
