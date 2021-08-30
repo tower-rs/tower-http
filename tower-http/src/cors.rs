@@ -48,10 +48,12 @@
 use futures_core::ready;
 use http::{
     header::{self, HeaderName, HeaderValue},
+    request::Parts,
     Method, Request, Response, StatusCode,
 };
 use pin_project::pin_project;
 use std::{
+    fmt,
     future::Future,
     pin::Pin,
     sync::Arc,
@@ -201,6 +203,17 @@ impl CorsLayer {
     /// let layer = CorsLayer::new().allow_origin(Any);
     /// ```
     ///
+    /// You can also use a closure
+    ///
+    /// ```
+    /// use tower_http::cors::{CorsLayer, Any};
+    /// use http::{HeaderValue, request::Parts};
+    ///
+    /// let layer = CorsLayer::new().allow_origin(|origin: &HeaderValue, _request_head: &Parts| {
+    ///     origin.as_bytes().ends_with(b".rust-lang.org")
+    /// });
+    /// ```
+    ///
     /// By default the header will be set to `*`.
     ///
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Origin
@@ -264,6 +277,16 @@ enum AnyOrInner<T> {
 impl From<Origin> for AnyOr<Origin> {
     fn from(origin: Origin) -> Self {
         AnyOr(AnyOrInner::Value(origin))
+    }
+}
+
+impl<F> From<F> for AnyOr<Origin>
+where
+    F: Fn(&HeaderValue, &Parts) -> bool + Send + Sync + 'static,
+{
+    fn from(f: F) -> Self {
+        let inner = OriginInner::Closure(Arc::new(f));
+        AnyOr(AnyOrInner::Value(Origin(inner)))
     }
 }
 
@@ -356,7 +379,7 @@ impl<S> Cors<S> {
     ///
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Credentials
     pub fn allow_credentials(self, allow_credentials: bool) -> Self {
-        self.update_layer(|layer| layer.allow_credentials(allow_credentials))
+        self.map_layer(|layer| layer.allow_credentials(allow_credentials))
     }
 
     /// Set the value of the [`Access-Control-Allow-Headers`][mdn] header.
@@ -368,7 +391,7 @@ impl<S> Cors<S> {
     where
         I: IntoIterator<Item = HeaderValue>,
     {
-        self.update_layer(|layer| layer.allow_headers(headers))
+        self.map_layer(|layer| layer.allow_headers(headers))
     }
 
     /// Set the value of the [`Access-Control-Max-Age`][mdn] header.
@@ -377,7 +400,7 @@ impl<S> Cors<S> {
     ///
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Max-Age
     pub fn max_age(self, max_age: Duration) -> Self {
-        self.update_layer(|layer| layer.max_age(max_age))
+        self.map_layer(|layer| layer.max_age(max_age))
     }
 
     /// Set the value of the [`Access-Control-Allow-Methods`][mdn] header.
@@ -389,7 +412,7 @@ impl<S> Cors<S> {
     where
         T: Into<AnyOr<Vec<Method>>>,
     {
-        self.update_layer(|layer| layer.allow_methods(methods))
+        self.map_layer(|layer| layer.allow_methods(methods))
     }
 
     /// Set the value of the [`Access-Control-Allow-Origin`][mdn] header.
@@ -401,7 +424,7 @@ impl<S> Cors<S> {
     where
         T: Into<AnyOr<Origin>>,
     {
-        self.update_layer(|layer| layer.allow_origin(origin))
+        self.map_layer(|layer| layer.allow_origin(origin))
     }
 
     /// Set the value of the [`Access-Control-Expose-Headers`][mdn] header.
@@ -413,10 +436,10 @@ impl<S> Cors<S> {
     where
         I: Into<AnyOr<Vec<HeaderName>>>,
     {
-        self.update_layer(|layer| layer.expose_headers(headers))
+        self.map_layer(|layer| layer.expose_headers(headers))
     }
 
-    fn update_layer<F>(mut self, f: F) -> Self
+    fn map_layer<F>(mut self, f: F) -> Self
     where
         F: FnOnce(CorsLayer) -> CorsLayer,
     {
@@ -424,12 +447,13 @@ impl<S> Cors<S> {
         self
     }
 
-    fn is_valid_origin(&self, origin: &HeaderValue) -> bool {
+    fn is_valid_origin(&self, origin: &HeaderValue, parts: &Parts) -> bool {
         match &self.layer.allow_origin.0 {
             AnyOrInner::Any => true,
             AnyOrInner::Value(allow_origin) => match &allow_origin.0 {
                 OriginInner::Exact(s) => s == origin,
                 OriginInner::List(list) => list.contains(origin),
+                OriginInner::Closure(f) => f(origin, parts),
             },
         }
     }
@@ -495,10 +519,21 @@ impl Origin {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 enum OriginInner {
     Exact(HeaderValue),
     List(Arc<[HeaderValue]>),
+    Closure(Arc<dyn for<'a> Fn(&'a HeaderValue, &'a Parts) -> bool + Send + Sync + 'static>),
+}
+
+impl fmt::Debug for OriginInner {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Exact(inner) => f.debug_tuple("Exact").field(inner).finish(),
+            Self::List(inner) => f.debug_tuple("List").field(inner).finish(),
+            Self::Closure(_) => f.debug_tuple("Closure").finish(),
+        }
+    }
 }
 
 impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for Cors<S>
@@ -526,7 +561,9 @@ where
             };
         };
 
-        if !self.is_valid_origin(&origin) {
+        let (parts, body) = req.into_parts();
+
+        if !self.is_valid_origin(&origin, &parts) {
             return ResponseFuture {
                 inner: Kind::Error(Some(
                     Response::builder()
@@ -536,6 +573,8 @@ where
                 )),
             };
         }
+
+        let req = Request::from_parts(parts, body);
 
         // Return results immediately upon preflight request
         if req.method() == Method::OPTIONS {
