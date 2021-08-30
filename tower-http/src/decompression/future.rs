@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 
 use super::{body::BodyInner, DecompressionBody};
-use crate::compression_utils::{AcceptEncoding, BoxError, WrapBody};
+use crate::compression_utils::{AcceptEncoding, WrapBody};
 use futures_util::ready;
 use http::{header, Response};
 use http_body::Body;
@@ -27,7 +27,6 @@ impl<F, B, E> Future for ResponseFuture<F>
 where
     F: Future<Output = Result<Response<B>, E>>,
     B: Body,
-    B::Error: Into<BoxError>,
 {
     type Output = Result<Response<DecompressionBody<B>>, E>;
 
