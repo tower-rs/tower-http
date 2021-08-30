@@ -314,7 +314,10 @@ impl<S> Layer<S> for CorsLayer {
     type Service = Cors<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        Cors::new(inner)
+        Cors {
+            inner,
+            layer: self.clone(),
+        }
     }
 }
 
