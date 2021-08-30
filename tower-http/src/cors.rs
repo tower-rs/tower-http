@@ -199,6 +199,19 @@ impl CorsLayer {
     /// ));
     /// ```
     ///
+    /// Multiple origins can be allowed with
+    ///
+    /// ```
+    /// use tower_http::cors::{CorsLayer, Origin};
+    ///
+    /// let origins = vec![
+    ///     "http://example.com".parse().unwrap(),
+    ///     "http://api.example.com".parse().unwrap(),
+    /// ];
+    ///
+    /// let layer = CorsLayer::new().allow_origin(Origin::list(origins));
+    /// ```
+    ///
     /// All origins can be allowed with
     ///
     /// ```
