@@ -76,10 +76,9 @@ pub struct CorsLayer {
     allow_methods: HeaderValue,
     allow_origin: AnyOr<Origin>,
     expose_headers: Option<HeaderValue>,
-    max_age: HeaderValue,
+    max_age: Option<HeaderValue>,
 }
 
-const DEFAULT_MAX_AGE: &str = "86400"; // 24 hours
 const DEFAULT_METHODS: &str = "GET, POST, OPTIONS";
 const WILDCARD: &str = "*";
 
@@ -92,7 +91,7 @@ impl CorsLayer {
             allow_methods: DEFAULT_METHODS.parse().unwrap(),
             allow_origin: AnyOr(AnyOrInner::Any),
             expose_headers: None,
-            max_age: DEFAULT_MAX_AGE.parse().unwrap(),
+            max_age: None,
         }
     }
 
@@ -147,11 +146,15 @@ impl CorsLayer {
     /// let layer = CorsLayer::new().max_age(Duration::from_secs(60) * 10);
     /// ```
     ///
-    /// By default the header will be set to 24 hours.
+    /// By default the header will not be set will disables caching and will require a preflight
+    /// call for all requests.
+    ///
+    /// Note that each browser has a maximum internal value that takes precedence when the
+    /// Access-Control-Max-Age is greater. For more details see [mdn].
     ///
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Max-Age
     pub fn max_age(mut self, max_age: Duration) -> Self {
-        self.max_age = max_age.as_secs().into();
+        self.max_age = Some(max_age.as_secs().into());
         self
     }
 
@@ -482,9 +485,11 @@ impl<S> Cors<S> {
             self.layer.allow_headers.clone(),
         );
 
-        response
-            .headers_mut()
-            .insert(header::ACCESS_CONTROL_MAX_AGE, self.layer.max_age.clone());
+        if let Some(max_age) = self.layer.max_age.clone() {
+            response
+                .headers_mut()
+                .insert(header::ACCESS_CONTROL_MAX_AGE, max_age);
+        }
 
         if let Some(allow_credentials) = self.layer.allow_credentials.clone() {
             response
