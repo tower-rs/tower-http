@@ -476,6 +476,10 @@ impl<S> Cors<S> {
     }
 
     fn is_valid_request_method(&self, method: &HeaderValue) -> bool {
+        if self.layer.allow_methods.as_bytes() == b"*" {
+            return true;
+        }
+
         self.layer
             .allow_methods
             .as_bytes()
@@ -727,12 +731,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_is_valid_origin() {
+    fn test_is_valid_request_method() {
         let cors = Cors::new(()).allow_methods(vec![Method::GET, Method::POST]);
         assert!(cors.is_valid_request_method(&HeaderValue::from_static("GET")));
         assert!(cors.is_valid_request_method(&HeaderValue::from_static("POST")));
 
         let cors = Cors::new(());
+        assert!(cors.is_valid_request_method(&HeaderValue::from_static("GET")));
+        assert!(cors.is_valid_request_method(&HeaderValue::from_static("POST")));
+        assert!(cors.is_valid_request_method(&HeaderValue::from_static("OPTIONS")));
+
+        let cors = Cors::new(()).allow_methods(Any);
         assert!(cors.is_valid_request_method(&HeaderValue::from_static("GET")));
         assert!(cors.is_valid_request_method(&HeaderValue::from_static("POST")));
         assert!(cors.is_valid_request_method(&HeaderValue::from_static("OPTIONS")));
