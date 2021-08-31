@@ -79,7 +79,7 @@ pub struct CorsLayer {
     max_age: Option<HeaderValue>,
 }
 
-const DEFAULT_METHODS: &str = "GET, POST, OPTIONS";
+const DEFAULT_METHODS: &str = "GET,POST,OPTIONS";
 const WILDCARD: &str = "*";
 
 impl CorsLayer {
@@ -476,7 +476,11 @@ impl<S> Cors<S> {
     }
 
     fn is_valid_request_method(&self, method: &HeaderValue) -> bool {
-        self.layer.allow_methods == method
+        self.layer
+            .allow_methods
+            .as_bytes()
+            .split(|&byte| byte == b',')
+            .any(|bytes| bytes == method.as_bytes())
     }
 
     fn build_preflight_response<B>(&self, origin: HeaderValue) -> Response<B>
@@ -714,5 +718,23 @@ fn response_origin(allow_origin: AnyOr<Origin>, origin: &HeaderValue) -> HeaderV
         WILDCARD.parse().unwrap()
     } else {
         origin.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[allow(unused_imports)]
+    use super::*;
+
+    #[test]
+    fn test_is_valid_origin() {
+        let cors = Cors::new(()).allow_methods(vec![Method::GET, Method::POST]);
+        assert!(cors.is_valid_request_method(&HeaderValue::from_static("GET")));
+        assert!(cors.is_valid_request_method(&HeaderValue::from_static("POST")));
+
+        let cors = Cors::new(());
+        assert!(cors.is_valid_request_method(&HeaderValue::from_static("GET")));
+        assert!(cors.is_valid_request_method(&HeaderValue::from_static("POST")));
+        assert!(cors.is_valid_request_method(&HeaderValue::from_static("OPTIONS")));
     }
 }
