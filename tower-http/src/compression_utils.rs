@@ -76,17 +76,17 @@ impl AcceptEncoding {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn set_gzip(& mut self, enable: bool) {
+    pub(crate) fn set_gzip(&mut self, enable: bool) {
         self.gzip = enable;
     }
 
     #[allow(dead_code)]
-    pub(crate) fn set_deflate(& mut self, enable: bool) {
+    pub(crate) fn set_deflate(&mut self, enable: bool) {
         self.deflate = enable;
     }
 
     #[allow(dead_code)]
-    pub(crate) fn set_br(& mut self, enable: bool) {
+    pub(crate) fn set_br(&mut self, enable: bool) {
         self.br = enable;
     }
 }

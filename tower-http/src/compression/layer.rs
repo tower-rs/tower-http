@@ -18,7 +18,10 @@ impl<S> Layer<S> for CompressionLayer {
     type Service = Compression<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        Compression { inner, accept: self.accept }
+        Compression {
+            inner,
+            accept: self.accept,
+        }
     }
 }
 
@@ -80,15 +83,15 @@ impl CompressionLayer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::fs::File;
-    use http::{Request, Response, header::ACCEPT_ENCODING};
-    use hyper::Body;
+    use http::{header::ACCEPT_ENCODING, Request, Response};
     use http_body::Body as _;
+    use hyper::Body;
+    use tokio::fs::File;
     // for Body::data
+    use bytes::{Bytes, BytesMut};
     use std::convert::Infallible;
     use tokio_util::io::ReaderStream;
-    use tower::{Service, ServiceExt, ServiceBuilder};
-    use bytes::{Bytes, BytesMut};
+    use tower::{Service, ServiceBuilder, ServiceExt};
 
     async fn handle(_req: Request<Body>) -> Result<Response<Body>, Infallible> {
         // Open the file.
@@ -115,11 +118,7 @@ mod tests {
             .header(ACCEPT_ENCODING, "gzip, deflate, br")
             .body(Body::empty())?;
 
-        let response = service
-            .ready()
-            .await?
-            .call(request)
-            .await?;
+        let response = service.ready().await?.call(request).await?;
 
         assert_eq!(response.headers()["content-encoding"], "deflate");
 
@@ -134,7 +133,6 @@ mod tests {
 
         let deflate_bytes_len = bytes.len();
 
-
         let br_only_layer = CompressionLayer::new().no_gzip().no_deflate();
 
         let mut service = ServiceBuilder::new()
@@ -147,11 +145,7 @@ mod tests {
             .header(ACCEPT_ENCODING, "gzip, deflate, br")
             .body(Body::empty())?;
 
-        let response = service
-            .ready()
-            .await?
-            .call(request)
-            .await?;
+        let response = service.ready().await?.call(request).await?;
 
         assert_eq!(response.headers()["content-encoding"], "br");
 
