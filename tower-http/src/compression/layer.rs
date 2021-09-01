@@ -18,9 +18,7 @@ impl<S> Layer<S> for CompressionLayer {
     type Service = Compression<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        let mut outer = Compression::new(inner);
-        outer.accept = self.accept;
-        outer
+        Compression { inner, accept: self.accept }
     }
 }
 
