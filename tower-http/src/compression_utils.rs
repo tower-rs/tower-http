@@ -16,8 +16,6 @@ use tokio_util::io::{poll_read_buf, StreamReader};
 
 use crate::BodyOrIoError;
 
-pub(crate) type BoxError = Box<dyn std::error::Error + Send + Sync>;
-
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct AcceptEncoding {
     pub(crate) gzip: bool,

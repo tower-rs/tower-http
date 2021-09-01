@@ -1,9 +1,8 @@
 use bytes::Bytes;
 use futures::StreamExt;
-use hyper::body::HttpBody;
 use hyper::{
+    body::HttpBody,
     header::{self, HeaderValue},
-    Server,
 };
 use proto::{
     key_value_store_client::KeyValueStoreClient, key_value_store_server, GetReply, GetRequest,
@@ -13,18 +12,22 @@ use std::{
     collections::HashMap,
     iter::once,
     net::SocketAddr,
-    net::TcpListener,
     pin::Pin,
     sync::{Arc, RwLock},
     time::Duration,
 };
 use structopt::StructOpt;
-use tokio::io::AsyncReadExt;
-use tokio::sync::broadcast::{self, Sender};
-use tokio_stream::{wrappers::BroadcastStream, Stream};
+use tokio::{
+    io::AsyncReadExt,
+    net::TcpListener,
+    sync::broadcast::{self, Sender},
+};
+use tokio_stream::{
+    wrappers::{BroadcastStream, TcpListenerStream},
+    Stream,
+};
 use tonic::{async_trait, body::BoxBody, transport::Channel, Code, Request, Response, Status};
-use tower::{make::Shared, ServiceBuilder};
-use tower::{BoxError, Service};
+use tower::{BoxError, Service, ServiceBuilder};
 use tower_http::{
     compression::CompressionLayer,
     decompression::DecompressionLayer,
@@ -82,7 +85,7 @@ async fn main() {
     match config.command {
         Command::Server => {
             // Create a `TcpListener`
-            let listener = TcpListener::bind(addr).unwrap();
+            let listener = TcpListener::bind(addr).await.unwrap();
 
             // Run our service
             serve_forever(listener).await.expect("server error");
@@ -162,8 +165,8 @@ async fn serve_forever(listener: TcpListener) -> Result<(), Box<dyn std::error::
     // Build our tonic `Service`
     let service = key_value_store_server::KeyValueStoreServer::new(ServerImpl { db, tx });
 
-    // Apply middleware to our service
-    let service = ServiceBuilder::new()
+    // Build our middleware stack
+    let layer = ServiceBuilder::new()
         // Set a timeout
         .timeout(Duration::from_secs(10))
         // Compress responses
@@ -174,20 +177,15 @@ async fn serve_forever(listener: TcpListener) -> Result<(), Box<dyn std::error::
         .layer(
             TraceLayer::new_for_grpc().make_span_with(DefaultMakeSpan::new().include_headers(true)),
         )
-        // Build our final `Service`
-        .service(service);
+        .into_inner();
 
-    // Run the service using hyper
+    // Build and run the server
     let addr = listener.local_addr()?;
-
     tracing::info!("Listening on {}", addr);
-
-    // We cannot use `tonic::transport::Server` directly as it requires services to implement
-    // `tonic::transport::NamedService` which tower-http middleware don't
-    Server::from_tcp(listener)?
-        // Required for gRPC
-        .http2_only(true)
-        .serve(Shared::new(service))
+    tonic::transport::Server::builder()
+        .layer(layer)
+        .add_service(service)
+        .serve_with_incoming(TcpListenerStream::new(listener))
         .await?;
 
     Ok(())
@@ -303,7 +301,7 @@ mod tests {
 
     #[tokio::test]
     async fn get_and_set_value() {
-        let addr = run_in_background();
+        let addr = run_in_background().await;
 
         let mut client = make_client(addr).await.unwrap();
 
@@ -348,8 +346,10 @@ mod tests {
     }
 
     // Run our service in a background task.
-    fn run_in_background() -> SocketAddr {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("Could not bind ephemeral socket");
+    async fn run_in_background() -> SocketAddr {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("Could not bind ephemeral socket");
         let addr = listener.local_addr().unwrap();
 
         // just for debugging
