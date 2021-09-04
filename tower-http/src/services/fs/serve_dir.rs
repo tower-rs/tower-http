@@ -1,4 +1,5 @@
 use super::AsyncReadBody;
+use crate::services::fs::DEFAULT_CAPACITY;
 use bytes::Bytes;
 use futures_util::ready;
 use http::{header, HeaderValue, Request, Response, StatusCode, Uri};
@@ -28,6 +29,7 @@ use tower_service::Service;
 pub struct ServeDir {
     base: PathBuf,
     append_index_html_on_directories: bool,
+    buf_chunk_size: usize,
 }
 
 impl ServeDir {
@@ -39,6 +41,7 @@ impl ServeDir {
         Self {
             base,
             append_index_html_on_directories: true,
+            buf_chunk_size: DEFAULT_CAPACITY,
         }
     }
 
@@ -49,6 +52,12 @@ impl ServeDir {
     /// Defaults to `true`.
     pub fn append_index_html_on_directories(mut self, append: bool) -> Self {
         self.append_index_html_on_directories = append;
+        self
+    }
+
+    /// set custom buffer chunk size.
+    pub fn with_buf_chunk_size(mut self, chunk_size: usize) -> Self {
+        self.buf_chunk_size = chunk_size;
         self
     }
 }
@@ -87,6 +96,7 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
         }
 
         let append_index_html_on_directories = self.append_index_html_on_directories;
+        let buf_chunk_size = self.buf_chunk_size;
         let uri = req.uri().clone();
 
         let open_file_future = Box::pin(async move {
@@ -113,7 +123,7 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
                 });
 
             let file = File::open(full_path).await?;
-            Ok(Output::File(file, mime))
+            Ok(Output::File(file, mime, buf_chunk_size))
         });
 
         ResponseFuture {
@@ -158,7 +168,7 @@ fn append_slash_on_path(uri: Uri) -> Uri {
 }
 
 enum Output {
-    File(File, HeaderValue),
+    File(File, HeaderValue, usize),
     Redirect(HeaderValue),
     NotFound,
 }
@@ -181,8 +191,8 @@ impl Future for ResponseFuture {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match &mut self.inner {
             Inner::Valid(open_file_future) => {
-                let (file, mime) = match ready!(Pin::new(open_file_future).poll(cx)) {
-                    Ok(Output::File(file, mime)) => (file, mime),
+                let (file, mime, chunk_size) = match ready!(Pin::new(open_file_future).poll(cx)) {
+                    Ok(Output::File(file, mime, chunk_size)) => (file, mime, chunk_size),
 
                     Ok(Output::Redirect(location)) => {
                         let res = Response::builder()
@@ -208,7 +218,7 @@ impl Future for ResponseFuture {
                         )
                     }
                 };
-                let body = AsyncReadBody::new(file).boxed();
+                let body = AsyncReadBody::with_capacity(file, chunk_size).boxed();
                 let body = ResponseBody(body);
 
                 let mut res = Response::new(body);
