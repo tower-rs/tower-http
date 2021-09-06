@@ -75,6 +75,11 @@ pub use self::{
     body::CompressionBody, future::ResponseFuture, layer::CompressionLayer, service::Compression,
 };
 
+/// The default minimum size a body needs to have for us to compress it.
+///
+/// Used to stop the layer from compressing 0-sized responses.
+const MIN_SIZE_DEFAULT: u64 = 32;
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Encoding {
     #[cfg(feature = "compression-gzip")]
@@ -176,13 +181,13 @@ mod tests {
     use flate2::read::GzDecoder;
     use http_body::Body as _;
     use hyper::{Body, Error, Request, Response, Server};
-    use std::{io::Read, net::SocketAddr};
+    use std::{io::Read, net::SocketAddr, str};
     use tower::{make::Shared, service_fn, Service, ServiceExt};
 
     #[tokio::test]
     async fn works() {
         let svc = service_fn(handle);
-        let mut svc = Compression::new(svc);
+        let mut svc = Compression::new(svc).min_size(0);
 
         // call the service
         let req = Request::builder()
@@ -213,13 +218,39 @@ mod tests {
     #[allow(dead_code)]
     async fn is_compatible_with_hyper() {
         let svc = service_fn(handle);
-        let svc = Compression::new(svc);
+        let svc = Compression::new(svc).min_size(0);
 
         let make_service = Shared::new(svc);
 
         let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
         let server = Server::bind(&addr).serve(make_service);
         server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn min_size() {
+        let svc = service_fn(handle);
+        let mut svc = Compression::new(svc).min_size(1024);
+
+        // call the service
+        let req = Request::builder()
+            .header("accept-encoding", "gzip")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.ready().await.unwrap().call(req).await.unwrap();
+
+        // body should be uncompressed given it's too small
+        assert!(res.headers().get("content-encoding").is_none());
+
+        // read the body
+        let mut body = res.into_body();
+        let mut data = BytesMut::new();
+        while let Some(chunk) = body.data().await {
+            let chunk = chunk.unwrap();
+            data.extend_from_slice(&chunk[..]);
+        }
+
+        assert_eq!(str::from_utf8(&data).unwrap(), "Hello, World!");
     }
 
     async fn handle(_req: Request<Body>) -> Result<Response<Body>, Error> {

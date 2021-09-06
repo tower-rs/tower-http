@@ -21,6 +21,7 @@ pub struct ResponseFuture<F> {
     #[pin]
     pub(crate) inner: F,
     pub(crate) encoding: Encoding,
+    pub(crate) min_size: u64,
 }
 
 impl<F, B, E> Future for ResponseFuture<F>
@@ -36,12 +37,26 @@ where
 
         let (mut parts, body) = res.into_parts();
 
+        let content_size = body.size_hint().exact().or_else(|| {
+            parts
+                .headers
+                .get(header::CONTENT_LENGTH)
+                .and_then(|h| h.to_str().ok())
+                .and_then(|val| val.parse().ok())
+        });
+        let content_size_less_than_min = match content_size {
+            Some(size) if size < self.min_size => true,
+            _ => false,
+        };
+
         let body = match (
+            content_size_less_than_min,
             supports_transparent_compression(&parts.headers),
             self.encoding,
         ) {
-            // if compression is _not_ support or the client doesn't accept it
-            (false, _) | (_, Encoding::Identity) => {
+            // if the body is too small, compression is not supported or the client
+            // doesn't accept it
+            (true, _, _) | (_, false, _) | (_, _, Encoding::Identity) => {
                 return Poll::Ready(Ok(Response::from_parts(
                     parts,
                     CompressionBody(BodyInner::Identity(body)),
@@ -49,11 +64,11 @@ where
             }
 
             #[cfg(feature = "compression-gzip")]
-            (_, Encoding::Gzip) => CompressionBody(BodyInner::Gzip(WrapBody::new(body))),
+            (_, _, Encoding::Gzip) => CompressionBody(BodyInner::Gzip(WrapBody::new(body))),
             #[cfg(feature = "compression-deflate")]
-            (_, Encoding::Deflate) => CompressionBody(BodyInner::Deflate(WrapBody::new(body))),
+            (_, _, Encoding::Deflate) => CompressionBody(BodyInner::Deflate(WrapBody::new(body))),
             #[cfg(feature = "compression-br")]
-            (_, Encoding::Brotli) => CompressionBody(BodyInner::Brotli(WrapBody::new(body))),
+            (_, _, Encoding::Brotli) => CompressionBody(BodyInner::Brotli(WrapBody::new(body))),
         };
 
         parts.headers.remove(header::CONTENT_LENGTH);

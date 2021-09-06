@@ -1,4 +1,4 @@
-use super::Compression;
+use super::{Compression, MIN_SIZE_DEFAULT};
 use crate::compression_utils::AcceptEncoding;
 use tower_layer::Layer;
 
@@ -10,8 +10,8 @@ use tower_layer::Layer;
 /// See the [module docs](crate::compression) for more details.
 #[derive(Clone, Debug, Default)]
 pub struct CompressionLayer {
-    _priv: (),
     accept: AcceptEncoding,
+    min_size: u64,
 }
 
 impl<S> Layer<S> for CompressionLayer {
@@ -25,7 +25,10 @@ impl<S> Layer<S> for CompressionLayer {
 impl CompressionLayer {
     /// Create a new [`CompressionLayer`]
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            accept: Default::default(),
+            min_size: MIN_SIZE_DEFAULT,
+        }
     }
 
     /// Sets whether to enable the gzip encoding.
@@ -73,6 +76,21 @@ impl CompressionLayer {
     /// This method is available even if the `br` crate feature is disabled.
     pub fn no_br(self) -> Self {
         self.accept.set_br(false);
+        self
+    }
+
+    /// Configures the minimum size at which the layer starts compressing response
+    /// bodies.
+    ///
+    /// Any response smaller than `min` will not be compressed. The response size
+    /// is determined by inspecting [`Body::size_hint()`] and the `content-length`
+    /// header.
+    ///
+    /// Passing `0` makes the layer compress every response.
+    ///
+    /// The default is 32 bytes.
+    pub fn min_size(mut self, min: u64) -> Self {
+        self.min_size = min;
         self
     }
 }

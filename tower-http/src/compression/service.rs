@@ -1,4 +1,4 @@
-use super::{CompressionBody, CompressionLayer, Encoding, ResponseFuture};
+use super::{CompressionBody, CompressionLayer, Encoding, ResponseFuture, MIN_SIZE_DEFAULT};
 use crate::compression_utils::AcceptEncoding;
 use http::{Request, Response};
 use http_body::Body;
@@ -15,6 +15,7 @@ use tower_service::Service;
 pub struct Compression<S> {
     pub(crate) inner: S,
     pub(crate) accept: AcceptEncoding,
+    pub(crate) min_size: u64,
 }
 
 impl<S> Compression<S> {
@@ -23,6 +24,7 @@ impl<S> Compression<S> {
         Self {
             inner: service,
             accept: AcceptEncoding::default(),
+            min_size: MIN_SIZE_DEFAULT,
         }
     }
 
@@ -82,6 +84,21 @@ impl<S> Compression<S> {
         self.accept.set_br(false);
         self
     }
+
+    /// Configures the minimum size at which the service starts compressing response
+    /// bodies.
+    ///
+    /// Any response smaller than `min` will not be compressed. The response size
+    /// is determined by inspecting [`Body::size_hint()`] and the `content-length`
+    /// header.
+    ///
+    /// Passing `0` makes the service compress every response.
+    ///
+    /// The default is 32 bytes.
+    pub fn min_size(mut self, min: u64) -> Self {
+        self.min_size = min;
+        self
+    }
 }
 
 impl<ReqBody, ResBody, S> Service<Request<ReqBody>> for Compression<S>
@@ -104,6 +121,7 @@ where
         ResponseFuture {
             inner: self.inner.call(req),
             encoding,
+            min_size: self.min_size,
         }
     }
 }
