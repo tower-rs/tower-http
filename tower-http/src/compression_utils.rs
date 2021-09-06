@@ -3,7 +3,7 @@
 use bytes::{Bytes, BytesMut};
 use futures_core::Stream;
 use futures_util::ready;
-use http::{HeaderMap, HeaderValue};
+use http::{header, HeaderMap, HeaderValue};
 use http_body::Body;
 use pin_project::pin_project;
 use std::{
@@ -307,26 +307,25 @@ where
 
 pub(crate) const SENTINEL_ERROR_CODE: i32 = -837459418;
 
-#[allow(clippy::clippy::needless_bool)]
 pub(crate) fn supports_transparent_compression(headers: &HeaderMap) -> bool {
-    let content_type = if let Some(content_type) = content_type(headers) {
-        content_type
-    } else {
-        return true;
-    };
+    // don't recompress responses that are already compressed
+    if headers.contains_key(header::CONTENT_ENCODING) {
+        // Notice we're leaving it up to the inner layers to ensure that the
+        // content-encoding sent out matches the accept-encoding that came in.
 
-    if content_type.starts_with("application/grpc") {
-        // grpc doesn't support transparent compression and instead has its compression own
-        // algorithm that implementations can use
-        // https://grpc.github.io/grpc/core/md_doc_compression.html
-        false
-    } else {
-        // for now just say that all non-grpc requests support compression
-        true
+        return false;
     }
-}
 
-fn content_type(headers: &HeaderMap) -> Option<&str> {
-    let content_type = headers.get(http::header::CONTENT_TYPE)?;
-    content_type.to_str().ok()
+    // grpc doesn't support transparent compression and instead has its compression own
+    // algorithm that implementations can use
+    // https://grpc.github.io/grpc/core/md_doc_compression.html
+    let content_type = headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or_default();
+    if content_type.starts_with("application/grpc") {
+        return false;
+    }
+
+    true
 }
