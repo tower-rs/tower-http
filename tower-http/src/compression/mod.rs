@@ -1,5 +1,8 @@
 //! Middleware that compresses response bodies.
 //!
+//! The middleware will only compress response bodies above a certain size. By default,
+//! this lower limit is 32 bytes.
+//!
 //! # Example
 //!
 //! Example showing how to respond with the compressed contents of a file.
@@ -78,7 +81,7 @@ pub use self::{
 /// The default minimum size a body needs to have for us to compress it.
 ///
 /// Used to stop the layer from compressing 0-sized responses.
-const MIN_SIZE_DEFAULT: u64 = 32;
+const MIN_SIZE_DEFAULT: u16 = 32;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Encoding {

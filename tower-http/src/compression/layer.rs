@@ -11,7 +11,7 @@ use tower_layer::Layer;
 #[derive(Clone, Debug, Default)]
 pub struct CompressionLayer {
     accept: AcceptEncoding,
-    min_size: u64,
+    min_size: u16,
 }
 
 impl<S> Layer<S> for CompressionLayer {
@@ -89,7 +89,7 @@ impl CompressionLayer {
     /// Passing `0` makes the layer compress every response.
     ///
     /// The default is 32 bytes.
-    pub fn min_size(mut self, min: u64) -> Self {
+    pub fn min_size(mut self, min: u16) -> Self {
         self.min_size = min;
         self
     }

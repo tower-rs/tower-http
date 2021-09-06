@@ -15,7 +15,7 @@ use tower_service::Service;
 pub struct Compression<S> {
     pub(crate) inner: S,
     pub(crate) accept: AcceptEncoding,
-    pub(crate) min_size: u64,
+    pub(crate) min_size: u16,
 }
 
 impl<S> Compression<S> {
@@ -95,7 +95,7 @@ impl<S> Compression<S> {
     /// Passing `0` makes the service compress every response.
     ///
     /// The default is 32 bytes.
-    pub fn min_size(mut self, min: u64) -> Self {
+    pub fn min_size(mut self, min: u16) -> Self {
         self.min_size = min;
         self
     }

@@ -21,7 +21,7 @@ pub struct ResponseFuture<F> {
     #[pin]
     pub(crate) inner: F,
     pub(crate) encoding: Encoding,
-    pub(crate) min_size: u64,
+    pub(crate) min_size: u16,
 }
 
 impl<F, B, E> Future for ResponseFuture<F>
@@ -45,7 +45,7 @@ where
                 .and_then(|val| val.parse().ok())
         });
         let content_size_less_than_min = match content_size {
-            Some(size) if size < self.min_size => true,
+            Some(size) if size < (self.min_size as u64) => true,
             _ => false,
         };
 
