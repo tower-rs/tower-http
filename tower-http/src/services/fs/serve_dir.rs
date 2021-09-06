@@ -1,7 +1,7 @@
 use super::AsyncReadBody;
 use bytes::Bytes;
 use futures_util::ready;
-use http::{header, HeaderValue, Request, Response, StatusCode, Uri};
+use http::{header, HeaderMap, HeaderValue, Request, Response, StatusCode, Uri};
 use http_body::{combinators::BoxBody, Body, Empty};
 use percent_encoding::percent_decode;
 use std::{
@@ -28,6 +28,7 @@ use tower_service::Service;
 pub struct ServeDir {
     base: PathBuf,
     append_index_html_on_directories: bool,
+    max_age: u64,
 }
 
 impl ServeDir {
@@ -39,6 +40,7 @@ impl ServeDir {
         Self {
             base,
             append_index_html_on_directories: true,
+            max_age: 5 * 60,
         }
     }
 
@@ -49,6 +51,15 @@ impl ServeDir {
     /// Defaults to `true`.
     pub fn append_index_html_on_directories(mut self, append: bool) -> Self {
         self.append_index_html_on_directories = append;
+        self
+    }
+    /// Cache-Control:max-age=300.
+    ///
+    /// This speeds up user's feeling for static sites, especially large files.
+    ///
+    /// Defaults to 300 seconds.
+    pub fn max_age(mut self, seconds: u64) -> Self {
+        self.max_age = seconds;
         self
     }
 }
@@ -88,6 +99,7 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
 
         let append_index_html_on_directories = self.append_index_html_on_directories;
         let uri = req.uri().clone();
+        let max_age = self.max_age;
 
         let open_file_future = Box::pin(async move {
             if !uri.path().ends_with('/') {
@@ -113,7 +125,14 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
                 });
 
             let file = File::open(full_path).await?;
-            Ok(Output::File(file, mime))
+            let mut headers: HeaderMap<HeaderValue> = HeaderMap::new();
+            headers.insert(header::CONTENT_TYPE, mime);
+            headers.insert(
+                header::CACHE_CONTROL,
+                HeaderValue::from_str(&format!("max-age={}", max_age)).unwrap(),
+            );
+
+            Ok(Output::File(file, headers))
         });
 
         ResponseFuture {
@@ -158,7 +177,7 @@ fn append_slash_on_path(uri: Uri) -> Uri {
 }
 
 enum Output {
-    File(File, HeaderValue),
+    File(File, HeaderMap<HeaderValue>),
     Redirect(HeaderValue),
     NotFound,
 }
@@ -181,8 +200,8 @@ impl Future for ResponseFuture {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match &mut self.inner {
             Inner::Valid(open_file_future) => {
-                let (file, mime) = match ready!(Pin::new(open_file_future).poll(cx)) {
-                    Ok(Output::File(file, mime)) => (file, mime),
+                let (file, headers) = match ready!(Pin::new(open_file_future).poll(cx)) {
+                    Ok(Output::File(file, headers)) => (file, headers),
 
                     Ok(Output::Redirect(location)) => {
                         let res = Response::builder()
@@ -212,7 +231,8 @@ impl Future for ResponseFuture {
                 let body = ResponseBody(body);
 
                 let mut res = Response::new(body);
-                res.headers_mut().insert(header::CONTENT_TYPE, mime);
+                //res.headers_mut().insert(header::CONTENT_TYPE, headers);
+                *res.headers_mut() = headers;
 
                 Poll::Ready(Ok(res))
             }
