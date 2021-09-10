@@ -133,20 +133,25 @@ impl<M, T> SetResponseHeaderLayer<M, T>
 where
     M: MakeHeaderValue<T>,
 {
-    /// Create a new [`SetResponseHeaderLayer`]. If a previous value exists for the same header, it
-    /// is removed and replaced with the new header value.
+    /// Create a new [`SetResponseHeaderLayer`].
+    ///
+    /// If a previous value exists for the same header, it is removed and replaced with the new
+    /// header value.
     pub fn overriding(header_name: HeaderName, make: M) -> Self {
         Self::new(header_name, make, InsertHeaderMode::Override)
     }
 
-    /// Create a new [`SetResponseHeaderLayer`]. The new header is always added, preserving any
-    /// existing values. If previous values exist, the header will have multiple values.
+    /// Create a new [`SetResponseHeaderLayer`].
+    ///
+    /// The new header is always added, preserving any existing values. If previous values exist,
+    /// the header will have multiple values.
     pub fn appending(header_name: HeaderName, make: M) -> Self {
         Self::new(header_name, make, InsertHeaderMode::Append)
     }
 
-    /// Create a new [`SetResponseHeaderLayer`]. If a previous value exists for the header, the new
-    /// value is not inserted.
+    /// Create a new [`SetResponseHeaderLayer`].
+    ///
+    /// If a previous value exists for the header, the new value is not inserted.
     pub fn if_not_present(header_name: HeaderName, make: M) -> Self {
         Self::new(header_name, make, InsertHeaderMode::IfNotPresent)
     }
@@ -204,20 +209,25 @@ pub struct SetResponseHeader<S, M> {
 }
 
 impl<S, M> SetResponseHeader<S, M> {
-    /// Create a new [`SetResponseHeader`]. If a previous value exists for the same header, it is
-    /// removed and replaced with the new header value.
+    /// Create a new [`SetResponseHeader`].
+    ///
+    /// If a previous value exists for the same header, it is removed and replaced with the new
+    /// header value.
     pub fn overriding(inner: S, header_name: HeaderName, make: M) -> Self {
         Self::new(inner, header_name, make, InsertHeaderMode::Override)
     }
 
-    /// Create a new [`SetResponseHeader`]. The new header is always added, preserving any existing
-    /// values. If previous values exist, the header will have multiple values.
+    /// Create a new [`SetResponseHeader`].
+    ///
+    /// The new header is always added, preserving any existing values. If previous values exist,
+    /// the header will have multiple values.
     pub fn appending(inner: S, header_name: HeaderName, make: M) -> Self {
         Self::new(inner, header_name, make, InsertHeaderMode::Append)
     }
 
-    /// Create a new [`SetResponseHeader`]. If a previous value exists for the header, the new
-    /// value is not inserted.
+    /// Create a new [`SetResponseHeader`].
+    ///
+    /// If a previous value exists for the header, the new value is not inserted.
     pub fn if_not_present(inner: S, header_name: HeaderName, make: M) -> Self {
         Self::new(inner, header_name, make, InsertHeaderMode::IfNotPresent)
     }
