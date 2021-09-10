@@ -156,10 +156,7 @@ where
         Self::new(header_name, make, InsertHeaderMode::IfNotPresent)
     }
 
-    fn new(header_name: HeaderName, make: M, mode: InsertHeaderMode) -> Self
-    where
-        M: MakeHeaderValue<T>,
-    {
+    fn new(header_name: HeaderName, make: M, mode: InsertHeaderMode) -> Self {
         Self {
             make,
             header_name,
@@ -171,7 +168,7 @@ where
 
 impl<T, S, M> Layer<S> for SetResponseHeaderLayer<M, T>
 where
-    M: MakeHeaderValue<T> + Clone,
+    M: Clone,
 {
     type Service = SetResponseHeader<S, M>;
 
