@@ -118,7 +118,7 @@ impl<M, T> fmt::Debug for SetRequestHeaderLayer<M, T> {
 
 impl<M, T> SetRequestHeaderLayer<M, T>
 where
-    M: MakeHeaderValue<T>,
+    M: MakeHeaderValue<Request<T>> + Clone,
 {
     /// Create a new [`SetRequestHeaderLayer`].
     ///
