@@ -99,7 +99,7 @@
 //! };
 //! use tower::{ServiceBuilder, Service, ServiceExt};
 //! use hyper::Body;
-//! use http::{Request, Response, HeaderValue, header::USER_AGENT};
+//! use http::{Request, HeaderValue, header::USER_AGENT};
 //!
 //! #[tokio::main]
 //! async fn main() {
