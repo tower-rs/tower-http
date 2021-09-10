@@ -115,6 +115,7 @@ pub struct SetResponseHeaderLayer<M, T> {
     header_name: HeaderName,
     make: M,
     mode: InsertHeaderMode,
+    // Covariant over T, no dropping of T
     _marker: PhantomData<fn() -> T>,
 }
 
