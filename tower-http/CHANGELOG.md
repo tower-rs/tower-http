@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix the bug that `ServeDir` can not handle percent encoded uri path correctly.
 - Enhancement: avoid using permanent redirection when redirect directory path without a trailing slash to the one has
 - Fix a [bug](https://github.com/tower-rs/tower-http/issues/121) which happens when `append_index_html_on_directories` is set to `false` in `ServeDir`.
+- Add `DefaultMakeSpan::level` to make log level for tracing spans configurable.
 
 ## Breaking changes
 
