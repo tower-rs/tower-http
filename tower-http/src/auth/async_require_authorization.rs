@@ -20,7 +20,7 @@
 //!     type ResponseBody = Body;
 //!
 //!     fn authorize<B>(&mut self, request: &Request<B>) -> Self::Future {
-//!         # Box::pin(async {
+//!         Box::pin(async {
 //!             // ...
 //!             # None
 //!         })
@@ -243,7 +243,7 @@ pub trait AsyncAuthorizeRequest {
 
     /// Authorize the request.
     ///
-    /// If `Some(_)` is returned then the request is allowed through, otherwise not.
+    /// If the future resolves to `Some(_)` then the request is allowed through, otherwise not.
     fn authorize<B>(&mut self, request: &Request<B>) -> Self::Future;
 
     /// Callback for when a request has been successfully authorized.
