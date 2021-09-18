@@ -157,7 +157,7 @@ impl CorsLayer {
         I: Into<AnyOr<Vec<HeaderName>>>,
     {
         self.allow_headers = match headers.into().0 {
-            AnyOrInner::Any => Some("*".parse().unwrap()),
+            AnyOrInner::Any => Some(WILDCARD.parse().unwrap()),
             AnyOrInner::Value(headers) => Some(separated_by_commas(headers)),
         };
         self
@@ -211,7 +211,7 @@ impl CorsLayer {
         T: Into<AnyOr<Vec<Method>>>,
     {
         self.allow_methods = match methods.into().0 {
-            AnyOrInner::Any => Some("*".parse().unwrap()),
+            AnyOrInner::Any => Some(WILDCARD.parse().unwrap()),
             AnyOrInner::Value(methods) => Some(separated_by_commas(methods)),
         };
         self
@@ -299,7 +299,7 @@ impl CorsLayer {
         I: Into<AnyOr<Vec<HeaderName>>>,
     {
         self.expose_headers = Some(match headers.into().0 {
-            AnyOrInner::Any => "*".parse().unwrap(),
+            AnyOrInner::Any => WILDCARD.parse().unwrap(),
             AnyOrInner::Value(headers) => separated_by_commas(headers),
         });
         self
@@ -516,7 +516,7 @@ impl<S> Cors<S> {
 
     fn is_valid_request_method(&self, method: &HeaderValue) -> bool {
         if let Some(allow_methods) = &self.layer.allow_methods {
-            if allow_methods.as_bytes() == b"*" {
+            if allow_methods.as_bytes() == WILDCARD.as_bytes() {
                 return true;
             }
 
