@@ -72,27 +72,49 @@ use tower_service::Service;
 #[derive(Debug, Clone)]
 pub struct CorsLayer {
     allow_credentials: Option<HeaderValue>,
-    allow_headers: HeaderValue,
-    allow_methods: HeaderValue,
-    allow_origin: AnyOr<Origin>,
+    allow_headers: Option<HeaderValue>,
+    allow_methods: Option<HeaderValue>,
+    allow_origin: Option<AnyOr<Origin>>,
     expose_headers: Option<HeaderValue>,
     max_age: Option<HeaderValue>,
 }
 
-const DEFAULT_METHODS: &str = "GET,POST,OPTIONS";
 const WILDCARD: &str = "*";
 
 impl CorsLayer {
     /// Create a new `CorsLayer`.
+    ///
+    /// This creates a restrictive configuration. Use the builder methods to
+    /// customize the behavior.
     pub fn new() -> Self {
         Self {
             allow_credentials: None,
-            allow_headers: WILDCARD.parse().unwrap(),
-            allow_methods: DEFAULT_METHODS.parse().unwrap(),
-            allow_origin: AnyOr(AnyOrInner::Any),
+            allow_headers: None,
+            allow_methods: None,
+            allow_origin: None,
             expose_headers: None,
             max_age: None,
         }
+    }
+
+    /// A very permissive configuration suitable for development:
+    ///
+    /// - Credentials allowed.
+    /// - All request headers allowed.
+    /// - All methods allowed.
+    /// - All origins allowed.
+    /// - All headers exposed.
+    /// - Max age set to 1 hour.
+    ///
+    /// Note this is not recommended for production use
+    pub fn permissive() -> Self {
+        Self::new()
+            .allow_credentials(true)
+            .allow_headers(Any)
+            .allow_methods(Any)
+            .allow_origin(Any)
+            .expose_headers(Any)
+            .max_age(Duration::from_secs(60 * 60))
     }
 
     /// Set the value of the [`Access-Control-Allow-Credentials`][mdn] header.
@@ -102,8 +124,6 @@ impl CorsLayer {
     ///
     /// let layer = CorsLayer::new().allow_credentials(true);
     /// ```
-    ///
-    /// By default the header will not be set.
     ///
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Credentials
     pub fn allow_credentials(mut self, allow_credentials: bool) -> Self {
@@ -115,25 +135,31 @@ impl CorsLayer {
     ///
     /// ```
     /// use tower_http::cors::CorsLayer;
-    /// use http::header::HeaderValue;
+    /// use http::header::{AUTHORIZATION, ACCEPT};
     ///
-    /// let layer = CorsLayer::new().allow_headers(vec![
-    ///     "*".parse().unwrap(),
-    /// ]);
+    /// let layer = CorsLayer::new().allow_headers(vec![AUTHORIZATION, ACCEPT]);
     /// ```
     ///
-    /// By default the header will be set to `*`.
+    /// All headers can be allowed with
+    ///
+    /// ```
+    /// use tower_http::cors::{CorsLayer, Any};
+    ///
+    /// let layer = CorsLayer::new().allow_headers(Any);
+    /// ```
+    ///
+    /// Note that multiple calls to this method will override any previous
+    /// calls.
     ///
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Headers
     pub fn allow_headers<I>(mut self, headers: I) -> Self
     where
-        I: IntoIterator<Item = HeaderValue>,
+        I: Into<AnyOr<Vec<HeaderName>>>,
     {
-        self.allow_headers = separated_by_commas(
-            headers
-                .into_iter()
-                .map(|value| value.to_str().unwrap().to_string()),
-        );
+        self.allow_headers = match headers.into().0 {
+            AnyOrInner::Any => Some("*".parse().unwrap()),
+            AnyOrInner::Value(headers) => Some(separated_by_commas(headers)),
+        };
         self
     }
 
@@ -146,11 +172,12 @@ impl CorsLayer {
     /// let layer = CorsLayer::new().max_age(Duration::from_secs(60) * 10);
     /// ```
     ///
-    /// By default the header will not be set will disables caching and will require a preflight
-    /// call for all requests.
+    /// By default the header will not be set which disables caching and will
+    /// require a preflight call for all requests.
     ///
-    /// Note that each browser has a maximum internal value that takes precedence when the
-    /// Access-Control-Max-Age is greater. For more details see [mdn].
+    /// Note that each browser has a maximum internal value that takes
+    /// precedence when the Access-Control-Max-Age is greater. For more details
+    /// see [mdn].
     ///
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Max-Age
     pub fn max_age(mut self, max_age: Duration) -> Self {
@@ -175,7 +202,8 @@ impl CorsLayer {
     /// let layer = CorsLayer::new().allow_methods(Any);
     /// ```
     ///
-    /// By default the header will be set to `GET, POST, OPTIONS`.
+    /// Note that multiple calls to this method will override any previous
+    /// calls.
     ///
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Methods
     pub fn allow_methods<T>(mut self, methods: T) -> Self
@@ -183,8 +211,8 @@ impl CorsLayer {
         T: Into<AnyOr<Vec<Method>>>,
     {
         self.allow_methods = match methods.into().0 {
-            AnyOrInner::Any => "*".parse().unwrap(),
-            AnyOrInner::Value(methods) => separated_by_commas(methods),
+            AnyOrInner::Any => Some("*".parse().unwrap()),
+            AnyOrInner::Value(methods) => Some(separated_by_commas(methods)),
         };
         self
     }
@@ -231,14 +259,15 @@ impl CorsLayer {
     /// });
     /// ```
     ///
-    /// By default the header will be set to `*`.
+    /// Note that multiple calls to this method will override any previous
+    /// calls.
     ///
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Origin
     pub fn allow_origin<T>(mut self, origin: T) -> Self
     where
         T: Into<AnyOr<Origin>>,
     {
-        self.allow_origin = origin.into();
+        self.allow_origin = Some(origin.into());
         self
     }
 
@@ -259,7 +288,8 @@ impl CorsLayer {
     /// let layer = CorsLayer::new().expose_headers(Any);
     /// ```
     ///
-    /// By default the header will not be set.
+    /// Note that multiple calls to this method will override any previous
+    /// calls.
     ///
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Expose-Headers
     pub fn expose_headers<I>(mut self, headers: I) -> Self
@@ -374,10 +404,30 @@ pub struct Cors<S> {
 
 impl<S> Cors<S> {
     /// Create a new `Cors`.
+    ///
+    /// This creates a restrictive configuration. Use the builder methods to
+    /// customize the behavior.
     pub fn new(inner: S) -> Self {
         Self {
             inner,
             layer: CorsLayer::new(),
+        }
+    }
+
+    /// A very permissive configuration suitable for development:
+    ///
+    /// - Credentials allowed.
+    /// - All request headers allowed.
+    /// - All methods allowed.
+    /// - All origins allowed.
+    /// - All headers exposed.
+    /// - Max age set to 1 hour.
+    ///
+    /// Note this is not recommended for production use
+    pub fn permissive(inner: S) -> Self {
+        Self {
+            inner,
+            layer: CorsLayer::permissive(),
         }
     }
 
@@ -406,7 +456,7 @@ impl<S> Cors<S> {
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Headers
     pub fn allow_headers<I>(self, headers: I) -> Self
     where
-        I: IntoIterator<Item = HeaderValue>,
+        I: Into<AnyOr<Vec<HeaderName>>>,
     {
         self.map_layer(|layer| layer.allow_headers(headers))
     }
@@ -465,26 +515,33 @@ impl<S> Cors<S> {
     }
 
     fn is_valid_origin(&self, origin: &HeaderValue, parts: &Parts) -> bool {
-        match &self.layer.allow_origin.0 {
-            AnyOrInner::Any => true,
-            AnyOrInner::Value(allow_origin) => match &allow_origin.0 {
-                OriginInner::Exact(s) => s == origin,
-                OriginInner::List(list) => list.contains(origin),
-                OriginInner::Closure(f) => f(origin, parts),
-            },
+        if let Some(allow_origin) = &self.layer.allow_origin {
+            match &allow_origin.0 {
+                AnyOrInner::Any => true,
+                AnyOrInner::Value(allow_origin) => match &allow_origin.0 {
+                    OriginInner::Exact(s) => s == origin,
+                    OriginInner::List(list) => list.contains(origin),
+                    OriginInner::Closure(f) => f(origin, parts),
+                },
+            }
+        } else {
+            false
         }
     }
 
     fn is_valid_request_method(&self, method: &HeaderValue) -> bool {
-        if self.layer.allow_methods.as_bytes() == b"*" {
-            return true;
-        }
+        if let Some(allow_methods) = &self.layer.allow_methods {
+            if allow_methods.as_bytes() == b"*" {
+                return true;
+            }
 
-        self.layer
-            .allow_methods
-            .as_bytes()
-            .split(|&byte| byte == b',')
-            .any(|bytes| bytes == method.as_bytes())
+            allow_methods
+                .as_bytes()
+                .split(|&byte| byte == b',')
+                .any(|bytes| bytes == method.as_bytes())
+        } else {
+            false
+        }
     }
 
     fn build_preflight_response<B>(&self, origin: HeaderValue) -> Response<B>
@@ -492,19 +549,22 @@ impl<S> Cors<S> {
         B: Default,
     {
         let mut response = Response::new(B::default());
+
         response
             .headers_mut()
             .insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
 
-        response.headers_mut().insert(
-            header::ACCESS_CONTROL_ALLOW_METHODS,
-            self.layer.allow_methods.clone(),
-        );
+        if let Some(allow_methods) = &self.layer.allow_methods {
+            response
+                .headers_mut()
+                .insert(header::ACCESS_CONTROL_ALLOW_METHODS, allow_methods.clone());
+        }
 
-        response.headers_mut().insert(
-            header::ACCESS_CONTROL_ALLOW_HEADERS,
-            self.layer.allow_headers.clone(),
-        );
+        if let Some(allow_headers) = &self.layer.allow_headers {
+            response
+                .headers_mut()
+                .insert(header::ACCESS_CONTROL_ALLOW_HEADERS, allow_headers.clone());
+        }
 
         if let Some(max_age) = self.layer.max_age.clone() {
             response
@@ -594,7 +654,9 @@ where
 
         let (parts, body) = req.into_parts();
 
-        if !self.is_valid_origin(&origin, &parts) {
+        let origin = if self.is_valid_origin(&origin, &parts) {
+            origin
+        } else {
             return ResponseFuture {
                 inner: Kind::Error(Some(
                     Response::builder()
@@ -603,7 +665,7 @@ where
                         .unwrap(),
                 )),
             };
-        }
+        };
 
         let req = Request::from_parts(parts, body);
 
@@ -643,7 +705,7 @@ where
         ResponseFuture {
             inner: Kind::CorsCall {
                 future: self.inner.call(req),
-                allow_origin: Some(self.layer.allow_origin.clone()),
+                allow_origin: self.layer.allow_origin.clone(),
                 origin,
                 allow_credentials: self.layer.allow_credentials.clone(),
                 expose_headers: self.layer.expose_headers.clone(),
@@ -737,6 +799,11 @@ mod tests {
         assert!(cors.is_valid_request_method(&HeaderValue::from_static("POST")));
 
         let cors = Cors::new(());
+        assert!(!cors.is_valid_request_method(&HeaderValue::from_static("GET")));
+        assert!(!cors.is_valid_request_method(&HeaderValue::from_static("POST")));
+        assert!(!cors.is_valid_request_method(&HeaderValue::from_static("OPTIONS")));
+
+        let cors = Cors::new(()).allow_methods(Any);
         assert!(cors.is_valid_request_method(&HeaderValue::from_static("GET")));
         assert!(cors.is_valid_request_method(&HeaderValue::from_static("POST")));
         assert!(cors.is_valid_request_method(&HeaderValue::from_static("OPTIONS")));
