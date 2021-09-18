@@ -151,6 +151,9 @@ impl CorsLayer {
     /// Note that multiple calls to this method will override any previous
     /// calls.
     ///
+    /// Also note that `Access-Control-Allow-Headers` is required for requests that have
+    /// `Access-Control-Request-Headers`.
+    ///
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Headers
     pub fn allow_headers<I>(mut self, headers: I) -> Self
     where
