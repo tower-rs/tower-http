@@ -112,7 +112,7 @@ where
 
 /// Middleware that authorizes all requests using the [`Authorization`] header.
 ///
-/// See the [module docs](crate::auth::require_authorization_async) for an example.
+/// See the [module docs](crate::auth::async_require_authorization) for an example.
 ///
 /// [`Authorization`]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Authorization
 #[derive(Clone, Debug)]
@@ -254,7 +254,7 @@ pub trait AsyncAuthorizeRequest {
     ///
     /// Defaults to doing nothing.
     ///
-    /// See the [module docs](crate::auth::require_authorization_async) for an example.
+    /// See the [module docs](crate::auth::async_require_authorization) for an example.
     ///
     /// [request extension]: https://docs.rs/http/latest/http/struct.Extensions.html
     /// [JWT]: https://jwt.io
