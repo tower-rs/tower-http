@@ -678,7 +678,7 @@ where
                         return ResponseFuture {
                             inner: Kind::Error(Some(
                                 Response::builder()
-                                    .status(StatusCode::METHOD_NOT_ALLOWED)
+                                    .status(StatusCode::OK)
                                     .body(ResBody::default())
                                     .unwrap(),
                             )),
@@ -689,7 +689,7 @@ where
                     return ResponseFuture {
                         inner: Kind::Error(Some(
                             Response::builder()
-                                .status(StatusCode::UNAUTHORIZED)
+                                .status(StatusCode::OK)
                                 .body(ResBody::default())
                                 .unwrap(),
                         )),
