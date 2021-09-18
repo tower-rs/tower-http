@@ -666,19 +666,8 @@ where
         if req.method() == Method::OPTIONS {
             // the method the real request will be made with
             match req.headers().get(header::ACCESS_CONTROL_REQUEST_METHOD) {
-                Some(request_method) => {
-                    if !self.is_valid_request_method(request_method) {
-                        return ResponseFuture {
-                            inner: Kind::Error(Some(
-                                Response::builder()
-                                    .status(StatusCode::OK)
-                                    .body(ResBody::default())
-                                    .unwrap(),
-                            )),
-                        };
-                    }
-                }
-                None => {
+                Some(request_method) if self.is_valid_request_method(request_method) => {}
+                _ => {
                     return ResponseFuture {
                         inner: Kind::Error(Some(
                             Response::builder()
