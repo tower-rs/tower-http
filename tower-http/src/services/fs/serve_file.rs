@@ -65,7 +65,9 @@ impl ServeFile {
         }
     }
 
-    /// set custom buffer chunk size.
+    /// Set a specific read buffer chunk size.
+    ///
+    /// The default capacity is 64kb.
     pub fn with_buf_chunk_size(mut self, chunk_size: usize) -> Self {
         self.buf_chunk_size = chunk_size;
         self
