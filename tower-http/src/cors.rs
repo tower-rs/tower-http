@@ -117,7 +117,7 @@ impl CorsLayer {
             .max_age(Duration::from_secs(60 * 60))
     }
 
-    /// Set the value of the [`Access-Control-Allow-Credentials`][mdn] header.
+    /// Set the [`Access-Control-Allow-Credentials`][mdn] header.
     ///
     /// ```
     /// use tower_http::cors::CorsLayer;
@@ -127,7 +127,7 @@ impl CorsLayer {
     ///
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Credentials
     pub fn allow_credentials(mut self, allow_credentials: bool) -> Self {
-        self.allow_credentials = Some(allow_credentials.to_string().parse().unwrap());
+        self.allow_credentials = allow_credentials.then(|| HeaderValue::from_static("true"));
         self
     }
 
@@ -425,7 +425,7 @@ impl<S> Cors<S> {
         CorsLayer::new()
     }
 
-    /// Set the value of the [`Access-Control-Allow-Credentials`][mdn] header.
+    /// Set the [`Access-Control-Allow-Credentials`][mdn] header.
     ///
     /// See [`CorsLayer::allow_credentials`] for more details.
     ///
