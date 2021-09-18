@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["MapRequestBody","Apply a transformation to the request body."],["MapRequestBodyLayer","Apply a transformation to the request body."]]});

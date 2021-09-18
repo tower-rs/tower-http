@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["Decompression","Decompresses response bodies of the underlying service."],["DecompressionBody","Response body of `Decompression`."],["DecompressionLayer","Decompresses response bodies of the underlying service."],["ResponseFuture","Response future of `Decompression`."]]});

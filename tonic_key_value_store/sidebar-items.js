@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["Command",""]],"fn":[["main",""],["make_client",""],["serve_forever",""]],"mod":[["proto",""]],"struct":[["Config","Simple key/value store with an HTTP API"],["ServerImpl",""]]});

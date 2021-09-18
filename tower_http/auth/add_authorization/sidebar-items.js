@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["AddAuthorization","Middleware that adds authorization all requests using the `Authorization` header."],["AddAuthorizationLayer","Layer that applies [`AddAuthorization`] which adds authorization to all requests using the `Authorization` header."]]});

@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["Redirect","Service that redirects all requests."],["ResponseFuture","Response future of [`Redirect`]."]]});

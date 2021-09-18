@@ -1,0 +1,1 @@
+initSidebarItems({"mod":[["fs","File system related services."],["redirect","Service that redirects all requests."]],"struct":[["Redirect","Service that redirects all requests."],["ServeDir","Service that serves files from a given directory and all its sub directories."],["ServeFile","Service that serves a file."]]});

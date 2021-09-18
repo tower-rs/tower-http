@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["PropagateHeader","Middleware that propagates headers from requests to responses."],["PropagateHeaderLayer","Layer that applies [`PropagateHeader`] which propagates headers from requests to responses."],["ResponseFuture","Response future for [`PropagateHeader`]."]]});

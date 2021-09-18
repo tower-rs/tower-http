@@ -1,0 +1,66 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Set a header on the request."><meta name="keywords" content="rust, rustlang, rust-lang, request"><title>tower_http::set_header::request - Rust</title><link rel="stylesheet" type="text/css" href="../../../normalize.css"><link rel="stylesheet" type="text/css" href="../../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../../../light.css"  id="themeStyle"><link rel="stylesheet" type="text/css" href="../../../dark.css" disabled ><link rel="stylesheet" type="text/css" href="../../../ayu.css" disabled ><script id="default-settings" ></script><script src="../../../storage.js"></script><script src="../../../crates.js"></script><noscript><link rel="stylesheet" href="../../../noscript.css"></noscript><link rel="alternate icon" type="image/png" href="../../../favicon-16x16.png"><link rel="alternate icon" type="image/png" href="../../../favicon-32x32.png"><link rel="icon" type="image/svg+xml" href="../../../favicon.svg"><style type="text/css">#crate-search{background-image:url("../../../down-arrow.svg");}</style></head><body class="rustdoc mod"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu" role="button">&#9776;</div><a href='../../../tower_http/index.html'><div class='logo-container rust-logo'><img src='../../../rust-logo.png' alt='logo'></div></a><h2 class="location">Module request</h2><div class="sidebar-elems"><div class="block items"><ul><li><a href="#structs">Structs</a></li></ul></div><div id="sidebar-vars" data-name="request" data-ty="mod" data-relpath="./"></div><script defer src="./sidebar-items.js"></script></div></nav><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!" aria-haspopup="menu" title="themes"><img width="18" height="18" alt="Pick another theme!" src="../../../brush.svg"></button><div id="theme-choices" role="menu"></div></div><nav class="sub"><form class="search-form"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input" name="search" disabled autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><button type="button" id="help-button" title="help">?</button><a id="settings-menu" href="../../../settings.html" title="settings"><img width="18" height="18" alt="Change settings" src="../../../wheel.svg"></a></div></form></nav><section id="main" class="content"><h1 class="fqn"><span class="in-band">Module <a href="../../index.html">tower_http</a>::<wbr><a href="../index.html">set_header</a>::<wbr><a class="mod" href="#">request</a><button id="copy-path" onclick="copy_path(this)" title="Copy item path to clipboard"><img src="../../../clipboard.svg" width="19" height="18" alt="Copy item path"></button></span><span class="out-of-band"><span id="render-detail"><a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">[<span class="inner">&#x2212;</span>]</a></span><a class="srclink" href="../../../src/tower_http/set_header/request.rs.html#1-255" title="goto source code">[src]</a></span></h1><div class="item-info"><div class="stab portability">This is supported on <strong>crate feature <code>set-header</code></strong> only.</div></div><details class="rustdoc-toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Set a header on the request.</p>
+<p>The header value to be set may be provided as a fixed value when the
+middleware is constructed, or determined dynamically based on the request
+by a closure. See the <a href="../trait.MakeHeaderValue.html" title="MakeHeaderValue"><code>MakeHeaderValue</code></a> trait for details.</p>
+<h1 id="example" class="section-header"><a href="#example">Example</a></h1>
+<p>Setting a header from a fixed value provided when the middleware is constructed:</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use</span> <span class="ident">http</span>::{<span class="ident">Request</span>, <span class="ident">Response</span>, <span class="ident">header</span>::{<span class="self">self</span>, <span class="ident">HeaderValue</span>}};
+<span class="kw">use</span> <span class="ident">tower</span>::{<span class="ident">Service</span>, <span class="ident">ServiceExt</span>, <span class="ident">ServiceBuilder</span>};
+<span class="kw">use</span> <span class="ident">tower_http::set_header::SetRequestHeaderLayer</span>;
+<span class="kw">use</span> <span class="ident">hyper::Body</span>;
+
+<span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">svc</span> <span class="op">=</span> <span class="ident">ServiceBuilder::new</span>()
+    .<span class="ident">layer</span>(
+        <span class="comment">// Layer that sets `User-Agent: my very cool app` on requests.</span>
+        <span class="comment">//</span>
+        <span class="comment">// We have to add `::&lt;_, Body&gt;` since Rust cannot infer the body type when</span>
+        <span class="comment">// we don&#39;t use a closure to produce the header value.</span>
+        <span class="comment">//</span>
+        <span class="comment">// `if_not_present` will only insert the header if it does not already</span>
+        <span class="comment">// have a value.</span>
+        <span class="ident">SetRequestHeaderLayer</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Body</span><span class="op">&gt;</span><span class="ident">::if_not_present</span>(
+            <span class="ident">header::USER_AGENT</span>,
+            <span class="ident">HeaderValue::from_static</span>(<span class="string">&quot;my very cool app&quot;</span>),
+        )
+    )
+    .<span class="ident">service</span>(<span class="ident">http_client</span>);
+
+<span class="kw">let</span> <span class="ident">request</span> <span class="op">=</span> <span class="ident">Request::new</span>(<span class="ident">Body::empty</span>());
+
+<span class="kw">let</span> <span class="ident">response</span> <span class="op">=</span> <span class="ident">svc</span>.<span class="ident">ready</span>().<span class="kw">await</span><span class="question-mark">?</span>.<span class="ident">call</span>(<span class="ident">request</span>).<span class="kw">await</span><span class="question-mark">?</span>;</code></pre></div>
+<p>Setting a header based on a value determined dynamically from the request:</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use</span> <span class="ident">http</span>::{<span class="ident">Request</span>, <span class="ident">Response</span>, <span class="ident">header</span>::{<span class="self">self</span>, <span class="ident">HeaderValue</span>}};
+<span class="kw">use</span> <span class="ident">tower</span>::{<span class="ident">Service</span>, <span class="ident">ServiceExt</span>, <span class="ident">ServiceBuilder</span>};
+<span class="kw">use</span> <span class="ident">tower_http::set_header::SetRequestHeaderLayer</span>;
+<span class="kw">use</span> <span class="ident">hyper::Body</span>;
+
+<span class="kw">fn</span> <span class="ident">date_header_value</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="ident">HeaderValue</span> {
+    <span class="comment">// ...</span>
+}
+
+<span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">svc</span> <span class="op">=</span> <span class="ident">ServiceBuilder::new</span>()
+    .<span class="ident">layer</span>(
+        <span class="comment">// Layer that sets `Date` to the current date and time.</span>
+        <span class="comment">//</span>
+        <span class="comment">// `overriding` will insert the header and override any previous values it</span>
+        <span class="comment">// may have.</span>
+        <span class="ident">SetRequestHeaderLayer::overriding</span>(
+            <span class="ident">header::DATE</span>,
+            <span class="op">|</span><span class="ident">request</span>: <span class="kw-2">&amp;</span><span class="ident">Request</span><span class="op">&lt;</span><span class="ident">Body</span><span class="op">&gt;</span><span class="op">|</span> {
+                <span class="prelude-val">Some</span>(<span class="ident">date_header_value</span>())
+            }
+        )
+    )
+    .<span class="ident">service</span>(<span class="ident">http_client</span>);
+
+<span class="kw">let</span> <span class="ident">request</span> <span class="op">=</span> <span class="ident">Request::new</span>(<span class="ident">Body::empty</span>());
+
+<span class="kw">let</span> <span class="ident">response</span> <span class="op">=</span> <span class="ident">svc</span>.<span class="ident">ready</span>().<span class="kw">await</span><span class="question-mark">?</span>.<span class="ident">call</span>(<span class="ident">request</span>).<span class="kw">await</span><span class="question-mark">?</span>;</code></pre></div>
+</div></details><h2 id="structs" class="section-header"><a href="#structs">Structs</a></h2>
+<div class="item-table"><div class="item-left module-item"><a class="struct" href="struct.SetRequestHeader.html" title="tower_http::set_header::request::SetRequestHeader struct">SetRequestHeader</a></div><div class="item-right docblock-short"><p>Middleware that sets a header on the request.</p>
+</div><div class="item-left module-item"><a class="struct" href="struct.SetRequestHeaderLayer.html" title="tower_http::set_header::request::SetRequestHeaderLayer struct">SetRequestHeaderLayer</a></div><div class="item-right docblock-short"><p>Layer that applies <a href="../struct.SetRequestHeader.html" title="SetRequestHeader"><code>SetRequestHeader</code></a> which adds a request header.</p>
+</div></div></section><section id="search" class="content hidden"></section><div id="rustdoc-vars" data-root-path="../../../" data-current-crate="tower_http" data-search-index-js="../../../search-index.js" data-search-js="../../../search.js"></div>
+    <script src="../../../main.js"></script>
+</body></html>

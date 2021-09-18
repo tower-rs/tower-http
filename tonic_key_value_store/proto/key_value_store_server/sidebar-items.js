@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["KeyValueStoreServer",""],["_Inner",""]],"trait":[["KeyValueStore","Generated trait containing gRPC methods that should be implemented for use with KeyValueStoreServer."]]});
