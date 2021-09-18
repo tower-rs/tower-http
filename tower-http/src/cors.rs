@@ -594,7 +594,7 @@ impl Origin {
         Self(OriginInner::List(origins))
     }
 
-    /// Set a allowed origins from a predicate
+    /// Set the allowed origins from a predicate
     pub fn predicate<F>(f: F) -> Self
     where
         F: Fn(&HeaderValue, &Parts) -> bool + Send + Sync + 'static,
