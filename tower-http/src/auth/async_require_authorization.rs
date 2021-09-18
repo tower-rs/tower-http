@@ -5,7 +5,7 @@
 //! # Example
 //!
 //! ```
-//! use tower_http::auth::{RequireAuthorizationAsyncLayer, AuthorizeRequestAsync};
+//! use tower_http::auth::{AsyncRequireAuthorizationLayer, AsyncAuthorizeRequest};
 //! use hyper::{Request, Response, Body, Error};
 //! use http::{StatusCode, header::AUTHORIZATION};
 //! use tower::{Service, ServiceExt, ServiceBuilder, service_fn};
@@ -14,7 +14,7 @@
 //! #[derive(Clone, Copy)]
 //! struct MyAuth;
 //!
-//! impl AuthorizeRequestAsync for MyAuth {
+//! impl AsyncAuthorizeRequest for MyAuth {
 //!     type Output = UserId;
 //!     type Future = BoxFuture<'static, Option<UserId>>;
 //!     type ResponseBody = Body;
@@ -60,7 +60,7 @@
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let service = ServiceBuilder::new()
 //!     // Authorize requests using `MyAuth`
-//!     .layer(RequireAuthorizationAsyncLayer::custom(MyAuth))
+//!     .layer(AsyncRequireAuthorizationLayer::new(MyAuth))
 //!     .service_fn(handle);
 //! # Ok(())
 //! # }
@@ -78,35 +78,35 @@ use std::{
 use tower_layer::Layer;
 use tower_service::Service;
 
-/// Layer that applies [`RequireAuthorizationAsync`] which authorizes all requests using the
+/// Layer that applies [`AsyncRequireAuthorization`] which authorizes all requests using the
 /// [`Authorization`] header.
 ///
-/// See the [module docs](crate::auth::require_authorization_async) for an example.
+/// See the [module docs](crate::auth::async_require_authorization) for an example.
 ///
 /// [`Authorization`]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Authorization
 #[derive(Debug, Clone)]
-pub struct RequireAuthorizationAsyncLayer<T> {
+pub struct AsyncRequireAuthorizationLayer<T> {
     auth: T,
 }
 
-impl<T> RequireAuthorizationAsyncLayer<T>
+impl<T> AsyncRequireAuthorizationLayer<T>
 where
-    T: AuthorizeRequestAsync,
+    T: AsyncAuthorizeRequest,
 {
     /// Authorize requests using a custom scheme.
-    pub fn custom(auth: T) -> RequireAuthorizationAsyncLayer<T> {
+    pub fn new(auth: T) -> AsyncRequireAuthorizationLayer<T> {
         Self { auth }
     }
 }
 
-impl<S, T> Layer<S> for RequireAuthorizationAsyncLayer<T>
+impl<S, T> Layer<S> for AsyncRequireAuthorizationLayer<T>
 where
-    T: Clone,
+    T: Clone + AsyncAuthorizeRequest,
 {
-    type Service = RequireAuthorizationAsync<S, T>;
+    type Service = AsyncRequireAuthorization<S, T>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        RequireAuthorizationAsync::new(inner, self.auth.clone())
+        AsyncRequireAuthorization::new(inner, self.auth.clone())
     }
 }
 
@@ -116,36 +116,32 @@ where
 ///
 /// [`Authorization`]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Authorization
 #[derive(Clone, Debug)]
-pub struct RequireAuthorizationAsync<S, T> {
+pub struct AsyncRequireAuthorization<S, T> {
     inner: S,
     auth: T,
 }
 
-impl<S, T> RequireAuthorizationAsync<S, T> {
-    fn new(inner: S, auth: T) -> Self {
-        Self { inner, auth }
-    }
-
+impl<S, T> AsyncRequireAuthorization<S, T> {
     define_inner_service_accessors!();
 }
 
-impl<S, T> RequireAuthorizationAsync<S, T>
+impl<S, T> AsyncRequireAuthorization<S, T>
 where
-    T: AuthorizeRequestAsync,
+    T: AsyncAuthorizeRequest,
 {
     /// Authorize requests using a custom scheme.
     ///
     /// The `Authorization` header is required to have the value provided.
-    pub fn custom(inner: S, auth: T) -> RequireAuthorizationAsync<S, T> {
+    pub fn new(inner: S, auth: T) -> AsyncRequireAuthorization<S, T> {
         Self { inner, auth }
     }
 }
 
-impl<ReqBody, ResBody, S, T> Service<Request<ReqBody>> for RequireAuthorizationAsync<S, T>
+impl<ReqBody, ResBody, S, T> Service<Request<ReqBody>> for AsyncRequireAuthorization<S, T>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>> + Clone,
     ResBody: Default,
-    T: AuthorizeRequestAsync<ResponseBody = ResBody> + Clone,
+    T: AsyncAuthorizeRequest<ResponseBody = ResBody> + Clone,
 {
     type Response = Response<ResBody>;
     type Error = S::Error;
@@ -184,11 +180,11 @@ enum State<A, ReqBody, SFut> {
     },
 }
 
-/// Response future for [`RequireAuthorizationAsync`].
+/// Response future for [`AsyncRequireAuthorization`].
 #[pin_project]
 pub struct ResponseFuture<Auth, S, ReqBody>
 where
-    Auth: AuthorizeRequestAsync,
+    Auth: AsyncAuthorizeRequest,
     S: Service<Request<ReqBody>>,
 {
     auth: Auth,
@@ -199,7 +195,7 @@ where
 
 impl<Auth, S, ReqBody, B> Future for ResponseFuture<Auth, S, ReqBody>
 where
-    Auth: AuthorizeRequestAsync<ResponseBody = B>,
+    Auth: AsyncAuthorizeRequest<ResponseBody = B>,
     S: Service<Request<ReqBody>, Response = Response<B>>,
 {
     type Output = Result<Response<B>, S::Error>;
@@ -233,7 +229,7 @@ where
 }
 
 /// Trait for authorizing requests.
-pub trait AuthorizeRequestAsync {
+pub trait AsyncAuthorizeRequest {
     /// The output type of doing the authorization.
     ///
     /// Use `()` if authorization doesn't produce any meaningful output.
@@ -281,7 +277,7 @@ mod tests {
     #[derive(Clone, Copy)]
     struct MyAuth;
 
-    impl AuthorizeRequestAsync for MyAuth {
+    impl AsyncAuthorizeRequest for MyAuth {
         type Output = UserId;
         type Future = BoxFuture<'static, Option<UserId>>;
         type ResponseBody = Body;
@@ -322,7 +318,7 @@ mod tests {
     #[tokio::test]
     async fn require_async_auth_works() {
         let mut service = ServiceBuilder::new()
-            .layer(RequireAuthorizationAsyncLayer::custom(MyAuth))
+            .layer(AsyncRequireAuthorizationLayer::new(MyAuth))
             .service_fn(echo);
 
         let request = Request::get("/")
@@ -338,7 +334,7 @@ mod tests {
     #[tokio::test]
     async fn require_async_auth_401() {
         let mut service = ServiceBuilder::new()
-            .layer(RequireAuthorizationAsyncLayer::custom(MyAuth))
+            .layer(AsyncRequireAuthorizationLayer::new(MyAuth))
             .service_fn(echo);
 
         let request = Request::get("/")
