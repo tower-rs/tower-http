@@ -1,6 +1,7 @@
 //! Service that serves a file.
 
 use super::AsyncReadBody;
+use crate::services::fs::DEFAULT_CAPACITY;
 use bytes::Bytes;
 use futures_util::ready;
 use http::{header, HeaderValue, Response};
@@ -21,6 +22,7 @@ use tower_service::Service;
 pub struct ServeFile {
     path: PathBuf,
     mime: HeaderValue,
+    buf_chunk_size: usize,
 }
 
 impl ServeFile {
@@ -38,7 +40,11 @@ impl ServeFile {
 
         let path = path.as_ref().to_owned();
 
-        Self { path, mime }
+        Self {
+            path,
+            mime,
+            buf_chunk_size: DEFAULT_CAPACITY,
+        }
     }
 
     /// Create a new [`ServeFile`] with a specific mime type.
@@ -52,7 +58,19 @@ impl ServeFile {
         let mime = HeaderValue::from_str(mime.as_ref()).expect("mime isn't a valid header value");
         let path = path.as_ref().to_owned();
 
-        Self { path, mime }
+        Self {
+            path,
+            mime,
+            buf_chunk_size: DEFAULT_CAPACITY,
+        }
+    }
+
+    /// Set a specific read buffer chunk size.
+    ///
+    /// The default capacity is 64kb.
+    pub fn with_buf_chunk_size(mut self, chunk_size: usize) -> Self {
+        self.buf_chunk_size = chunk_size;
+        self
     }
 }
 
@@ -72,6 +90,7 @@ impl<R> Service<R> for ServeFile {
         ResponseFuture {
             open_file_future,
             mime: Some(self.mime.clone()),
+            buf_chunk_size: self.buf_chunk_size,
         }
     }
 }
@@ -80,6 +99,7 @@ impl<R> Service<R> for ServeFile {
 pub struct ResponseFuture {
     open_file_future: Pin<Box<dyn Future<Output = io::Result<File>> + Send + Sync + 'static>>,
     mime: Option<HeaderValue>,
+    buf_chunk_size: usize,
 }
 
 impl Future for ResponseFuture {
@@ -97,7 +117,8 @@ impl Future for ResponseFuture {
             }
         };
 
-        let body = AsyncReadBody::new(file).boxed();
+        let chunk_size = self.buf_chunk_size;
+        let body = AsyncReadBody::with_capacity(file, chunk_size).boxed();
         let body = ResponseBody(body);
 
         let mut res = Response::new(body);
@@ -125,6 +146,20 @@ mod tests {
     #[tokio::test]
     async fn basic() {
         let svc = ServeFile::new("../README.md");
+
+        let res = svc.oneshot(Request::new(Body::empty())).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/markdown");
+
+        let body = res.into_body().data().await.unwrap().unwrap();
+        let body = String::from_utf8(body.to_vec()).unwrap();
+
+        assert!(body.starts_with("# Tower HTTP"));
+    }
+
+    #[tokio::test]
+    async fn with_custom_chunk_size() {
+        let svc = ServeFile::new("../README.md").with_buf_chunk_size(1024 * 32);
 
         let res = svc.oneshot(Request::new(Body::empty())).await.unwrap();
 
