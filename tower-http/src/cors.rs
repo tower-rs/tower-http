@@ -251,12 +251,14 @@ impl CorsLayer {
     /// You can also use a closure
     ///
     /// ```
-    /// use tower_http::cors::{CorsLayer, Any};
+    /// use tower_http::cors::{CorsLayer, Origin};
     /// use http::{HeaderValue, request::Parts};
     ///
-    /// let layer = CorsLayer::new().allow_origin(|origin: &HeaderValue, _request_head: &Parts| {
-    ///     origin.as_bytes().ends_with(b".rust-lang.org")
-    /// });
+    /// let layer = CorsLayer::new().allow_origin(
+    ///     Origin::predicate(|origin: &HeaderValue, _request_head: &Parts| {
+    ///         origin.as_bytes().ends_with(b".rust-lang.org")
+    ///     })
+    /// );
     /// ```
     ///
     /// Note that multiple calls to this method will override any previous
@@ -324,16 +326,6 @@ enum AnyOrInner<T> {
 impl From<Origin> for AnyOr<Origin> {
     fn from(origin: Origin) -> Self {
         AnyOr(AnyOrInner::Value(origin))
-    }
-}
-
-impl<F> From<F> for AnyOr<Origin>
-where
-    F: Fn(&HeaderValue, &Parts) -> bool + Send + Sync + 'static,
-{
-    fn from(f: F) -> Self {
-        let inner = OriginInner::Closure(Arc::new(f));
-        AnyOr(AnyOrInner::Value(Origin(inner)))
     }
 }
 
@@ -414,16 +406,9 @@ impl<S> Cors<S> {
         }
     }
 
-    /// A very permissive configuration suitable for development:
+    /// A very permissive configuration suitable for development.
     ///
-    /// - Credentials allowed.
-    /// - All request headers allowed.
-    /// - All methods allowed.
-    /// - All origins allowed.
-    /// - All headers exposed.
-    /// - Max age set to 1 hour.
-    ///
-    /// Note this is not recommended for production use
+    /// See [`CorsLayer::permissive`] for more details.
     pub fn permissive(inner: S) -> Self {
         Self {
             inner,
@@ -607,6 +592,14 @@ impl Origin {
     {
         let origins = origins.into_iter().collect::<Vec<_>>().into();
         Self(OriginInner::List(origins))
+    }
+
+    /// Set a allowed origins from a predicate
+    pub fn predicate<F>(f: F) -> Self
+    where
+        F: Fn(&HeaderValue, &Parts) -> bool + Send + Sync + 'static,
+    {
+        Self(OriginInner::Closure(Arc::new(f)))
     }
 }
 
