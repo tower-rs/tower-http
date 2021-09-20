@@ -8,10 +8,16 @@ use tower_layer::Layer;
 /// `Content-Encoding` header to responses.
 ///
 /// See the [module docs](crate::compression) for more details.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct CompressionLayer {
     accept: AcceptEncoding,
     min_size: u16,
+}
+
+impl Default for CompressionLayer {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<S> Layer<S> for CompressionLayer {
