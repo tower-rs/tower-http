@@ -47,6 +47,7 @@ use tower_service::Service;
 pub struct Redirect<ResBody> {
     status_code: StatusCode,
     location: HeaderValue,
+    // Covariant over ResBody, no dropping of ResBody
     _marker: PhantomData<fn() -> ResBody>,
 }
 
@@ -134,6 +135,7 @@ impl<ResBody> Clone for Redirect<ResBody> {
 pub struct ResponseFuture<ResBody> {
     location: Option<HeaderValue>,
     status_code: StatusCode,
+    // Covariant over ResBody, no dropping of ResBody
     _marker: PhantomData<fn() -> ResBody>,
 }
 

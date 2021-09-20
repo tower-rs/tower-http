@@ -180,11 +180,13 @@ fn encodings(headers: &HeaderMap, accept: AcceptEncoding) -> Vec<(Encoding, f32)
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_compression::tokio::write::{BrotliDecoder, BrotliEncoder};
     use bytes::BytesMut;
     use flate2::read::GzDecoder;
     use http_body::Body as _;
     use hyper::{Body, Error, Request, Response, Server};
     use std::{io::Read, net::SocketAddr, str};
+    use tokio::io::AsyncWriteExt;
     use tower::{make::Shared, service_fn, Service, ServiceExt};
 
     #[tokio::test]
@@ -254,6 +256,70 @@ mod tests {
         }
 
         assert_eq!(str::from_utf8(&data).unwrap(), "Hello, World!");
+    }
+
+    #[tokio::test]
+    async fn no_recompress() {
+        const DATA: &str = "Hello, World! I'm already compressed with br!";
+
+        let svc = service_fn(|_| async {
+            let buf = {
+                let mut buf = Vec::new();
+
+                let mut enc = BrotliEncoder::new(&mut buf);
+                enc.write_all(DATA.as_bytes()).await?;
+                enc.flush().await?;
+                buf
+            };
+
+            let resp = Response::builder()
+                .header("content-encoding", "br")
+                .body(Body::from(buf))
+                .unwrap();
+            Ok::<_, std::io::Error>(resp)
+        });
+        let mut svc = Compression::new(svc);
+
+        // call the service
+        //
+        // note: the accept-encoding doesn't match the content-encoding above, so that
+        // we're able to see if the compression layer triggered or not
+        let req = Request::builder()
+            .header("accept-encoding", "gzip")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.ready().await.unwrap().call(req).await.unwrap();
+
+        // check we didn't recompress
+        assert_eq!(
+            res.headers()
+                .get("content-encoding")
+                .and_then(|h| h.to_str().ok())
+                .unwrap_or_default(),
+            "br",
+        );
+
+        // read the compressed body
+        let mut body = res.into_body();
+        let mut data = BytesMut::new();
+        while let Some(chunk) = body.data().await {
+            let chunk = chunk.unwrap();
+            data.extend_from_slice(&chunk[..]);
+        }
+
+        // decompress the body
+        let data = {
+            let mut output_buf = Vec::new();
+            let mut decoder = BrotliDecoder::new(&mut output_buf);
+            decoder
+                .write_all(&data)
+                .await
+                .expect("couldn't brotli-decode");
+            decoder.flush().await.expect("couldn't flush");
+            output_buf
+        };
+
+        assert_eq!(data, DATA.as_bytes());
     }
 
     async fn handle(_req: Request<Body>) -> Result<Response<Body>, Error> {
