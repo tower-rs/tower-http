@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   be used instead. ([#170])
 - Add `ServiceBuilderExt` which adds methods to `tower::ServiceBuilder` for
   adding middleware from tower-http.
+- Add `SetRequestId` middleware.
 
 [#124]: https://github.com/tower-rs/tower-http/pull/124
 [#156]: https://github.com/tower-rs/tower-http/pull/156
