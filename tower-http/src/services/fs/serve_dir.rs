@@ -354,12 +354,13 @@ impl Future for ResponseFuture {
 
                         Err(err) => {
                             return Poll::Ready(
-                                super::response_from_io_error(err).map(|res| res.map(ResponseBody)),
+                                super::response_from_io_error(err)
+                                    .map(|res| res.map(ResponseBody::new)),
                             )
                         }
                     };
                 let body = AsyncReadBody::with_capacity(file, chunk_size).boxed();
-                let body = ResponseBody(body);
+                let body = ResponseBody::new(body);
 
                 let mut res = Response::new(body);
                 res.headers_mut().insert(header::CONTENT_TYPE, mime);
@@ -385,7 +386,7 @@ impl Future for ResponseFuture {
 
 fn empty_body() -> ResponseBody {
     let body = Empty::new().map_err(|err| match err {}).boxed();
-    ResponseBody(body)
+    ResponseBody::new(body)
 }
 
 opaque_body! {

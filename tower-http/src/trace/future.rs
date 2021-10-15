@@ -2,7 +2,7 @@ use super::{OnBodyChunk, OnEos, OnFailure, OnResponse, ResponseBody};
 use crate::classify::{ClassifiedResponse, ClassifyResponse};
 use http::Response;
 use http_body::Body;
-use pin_project::pin_project;
+use pin_project_lite::pin_project;
 use std::{
     future::Future,
     pin::Pin,
@@ -11,20 +11,21 @@ use std::{
 };
 use tracing::Span;
 
-/// Response future for [`Trace`].
-///
-/// [`Trace`]: super::Trace
-#[pin_project]
-pub struct ResponseFuture<F, C, OnResponse, OnBodyChunk, OnEos, OnFailure> {
-    #[pin]
-    pub(crate) inner: F,
-    pub(crate) span: Span,
-    pub(crate) classifier: Option<C>,
-    pub(crate) on_response: Option<OnResponse>,
-    pub(crate) on_body_chunk: Option<OnBodyChunk>,
-    pub(crate) on_eos: Option<OnEos>,
-    pub(crate) on_failure: Option<OnFailure>,
-    pub(crate) start: Instant,
+pin_project! {
+    /// Response future for [`Trace`].
+    ///
+    /// [`Trace`]: super::Trace
+    pub struct ResponseFuture<F, C, OnResponse, OnBodyChunk, OnEos, OnFailure> {
+        #[pin]
+        pub(crate) inner: F,
+        pub(crate) span: Span,
+        pub(crate) classifier: Option<C>,
+        pub(crate) on_response: Option<OnResponse>,
+        pub(crate) on_body_chunk: Option<OnBodyChunk>,
+        pub(crate) on_eos: Option<OnEos>,
+        pub(crate) on_failure: Option<OnFailure>,
+        pub(crate) start: Instant,
+    }
 }
 
 impl<Fut, ResBody, E, C, OnResponseT, OnBodyChunkT, OnEosT, OnFailureT> Future

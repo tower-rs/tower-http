@@ -3,7 +3,7 @@
 use bytes::Bytes;
 use http::{HeaderMap, Response, StatusCode};
 use http_body::{combinators::BoxBody, Body, Empty};
-use pin_project::pin_project;
+use pin_project_lite::pin_project;
 use std::{
     io,
     pin::Pin,
@@ -62,13 +62,14 @@ impl SupportedEncodings for PrecompressedVariants {
     }
 }
 
-// NOTE: This could potentially be upstreamed to `http-body`.
-/// Adapter that turns an `impl AsyncRead` to an `impl Body`.
-#[pin_project]
-#[derive(Debug)]
-pub struct AsyncReadBody<T> {
-    #[pin]
-    reader: ReaderStream<T>,
+pin_project! {
+    // NOTE: This could potentially be upstreamed to `http-body`.
+    /// Adapter that turns an `impl AsyncRead` to an `impl Body`.
+    #[derive(Debug)]
+    pub struct AsyncReadBody<T> {
+        #[pin]
+        reader: ReaderStream<T>,
+    }
 }
 
 impl<T> AsyncReadBody<T>

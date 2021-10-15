@@ -14,57 +14,82 @@ use bytes::{Buf, Bytes};
 use futures_util::ready;
 use http::HeaderMap;
 use http_body::Body;
-use pin_project::pin_project;
+use pin_project_lite::pin_project;
 use std::{
     io,
+    marker::PhantomData,
     pin::Pin,
     task::{Context, Poll},
 };
 use tokio_util::io::StreamReader;
 
-/// Response body of [`Compression`].
-///
-/// [`Compression`]: super::Compression
-#[pin_project]
-pub struct CompressionBody<B>(#[pin] pub(crate) BodyInner<B>)
-where
-    B: Body;
+pin_project! {
+    /// Response body of [`Compression`].
+    ///
+    /// [`Compression`]: super::Compression
+    pub struct CompressionBody<B>
+    where
+        B: Body,
+    {
+        #[pin]
+        pub(crate) inner: BodyInner<B>,
+    }
+}
 
 impl<B> CompressionBody<B>
 where
     B: Body,
 {
+    pub(crate) fn new(inner: BodyInner<B>) -> Self {
+        Self { inner }
+    }
+
     /// Get a reference to the inner body
     pub fn get_ref(&self) -> &B {
-        match &self.0 {
+        match &self.inner {
             #[cfg(feature = "compression-gzip")]
-            BodyInner::Gzip(inner) => inner.read.get_ref().get_ref().get_ref().get_ref(),
+            BodyInner::Gzip { inner } => inner.read.get_ref().get_ref().get_ref().get_ref(),
             #[cfg(feature = "compression-deflate")]
-            BodyInner::Deflate(inner) => inner.read.get_ref().get_ref().get_ref().get_ref(),
+            BodyInner::Deflate { inner } => inner.read.get_ref().get_ref().get_ref().get_ref(),
             #[cfg(feature = "compression-br")]
-            BodyInner::Brotli(inner) => inner.read.get_ref().get_ref().get_ref().get_ref(),
-            BodyInner::Identity(inner) => inner,
+            BodyInner::Brotli { inner } => inner.read.get_ref().get_ref().get_ref().get_ref(),
+            BodyInner::Identity { inner } => inner,
+
+            // FIXME: Remove once possible; see https://github.com/rust-lang/rust/issues/51085
+            #[cfg(not(feature = "compression-gzip"))]
+            BodyInner::Gzip { inner } => match inner.0 {},
+            #[cfg(not(feature = "compression-deflate"))]
+            BodyInner::Deflate { inner } => match inner.0 {},
+            #[cfg(not(feature = "compression-br"))]
+            BodyInner::Brotli { inner } => match inner.0 {},
         }
     }
 
     /// Get a mutable reference to the inner body
     pub fn get_mut(&mut self) -> &mut B {
-        match &mut self.0 {
+        match &mut self.inner {
             #[cfg(feature = "compression-gzip")]
-            BodyInner::Gzip(inner) => inner.read.get_mut().get_mut().get_mut().get_mut(),
+            BodyInner::Gzip { inner } => inner.read.get_mut().get_mut().get_mut().get_mut(),
             #[cfg(feature = "compression-deflate")]
-            BodyInner::Deflate(inner) => inner.read.get_mut().get_mut().get_mut().get_mut(),
+            BodyInner::Deflate { inner } => inner.read.get_mut().get_mut().get_mut().get_mut(),
             #[cfg(feature = "compression-br")]
-            BodyInner::Brotli(inner) => inner.read.get_mut().get_mut().get_mut().get_mut(),
-            BodyInner::Identity(inner) => inner,
+            BodyInner::Brotli { inner } => inner.read.get_mut().get_mut().get_mut().get_mut(),
+            BodyInner::Identity { inner } => inner,
+
+            #[cfg(not(feature = "compression-gzip"))]
+            BodyInner::Gzip { inner } => match inner.0 {},
+            #[cfg(not(feature = "compression-deflate"))]
+            BodyInner::Deflate { inner } => match inner.0 {},
+            #[cfg(not(feature = "compression-br"))]
+            BodyInner::Brotli { inner } => match inner.0 {},
         }
     }
 
     /// Get a pinned mutable reference to the inner body
     pub fn get_pin_mut(self: Pin<&mut Self>) -> Pin<&mut B> {
-        match self.project().0.project() {
+        match self.project().inner.project() {
             #[cfg(feature = "compression-gzip")]
-            BodyInnerProj::Gzip(inner) => inner
+            BodyInnerProj::Gzip { inner } => inner
                 .project()
                 .read
                 .get_pin_mut()
@@ -72,7 +97,7 @@ where
                 .get_pin_mut()
                 .get_pin_mut(),
             #[cfg(feature = "compression-deflate")]
-            BodyInnerProj::Deflate(inner) => inner
+            BodyInnerProj::Deflate { inner } => inner
                 .project()
                 .read
                 .get_pin_mut()
@@ -80,58 +105,126 @@ where
                 .get_pin_mut()
                 .get_pin_mut(),
             #[cfg(feature = "compression-br")]
-            BodyInnerProj::Brotli(inner) => inner
+            BodyInnerProj::Brotli { inner } => inner
                 .project()
                 .read
                 .get_pin_mut()
                 .get_pin_mut()
                 .get_pin_mut()
                 .get_pin_mut(),
-            BodyInnerProj::Identity(inner) => inner,
+            BodyInnerProj::Identity { inner } => inner,
+
+            #[cfg(not(feature = "compression-gzip"))]
+            BodyInnerProj::Gzip { inner } => match inner.0 {},
+            #[cfg(not(feature = "compression-deflate"))]
+            BodyInnerProj::Deflate { inner } => match inner.0 {},
+            #[cfg(not(feature = "compression-br"))]
+            BodyInnerProj::Brotli { inner } => match inner.0 {},
         }
     }
 
     /// Consume `self`, returning the inner body
     pub fn into_inner(self) -> B {
-        match self.0 {
+        match self.inner {
             #[cfg(feature = "compression-gzip")]
-            BodyInner::Gzip(inner) => inner
+            BodyInner::Gzip { inner } => inner
                 .read
                 .into_inner()
                 .into_inner()
                 .into_inner()
                 .into_inner(),
             #[cfg(feature = "compression-deflate")]
-            BodyInner::Deflate(inner) => inner
+            BodyInner::Deflate { inner } => inner
                 .read
                 .into_inner()
                 .into_inner()
                 .into_inner()
                 .into_inner(),
             #[cfg(feature = "compression-br")]
-            BodyInner::Brotli(inner) => inner
+            BodyInner::Brotli { inner } => inner
                 .read
                 .into_inner()
                 .into_inner()
                 .into_inner()
                 .into_inner(),
-            BodyInner::Identity(inner) => inner,
+            BodyInner::Identity { inner } => inner,
+
+            #[cfg(not(feature = "compression-gzip"))]
+            BodyInner::Gzip { inner } => match inner.0 {},
+            #[cfg(not(feature = "compression-deflate"))]
+            BodyInner::Deflate { inner } => match inner.0 {},
+            #[cfg(not(feature = "compression-br"))]
+            BodyInner::Brotli { inner } => match inner.0 {},
         }
     }
 }
 
-#[pin_project(project = BodyInnerProj)]
-pub(crate) enum BodyInner<B>
-where
-    B: Body,
-{
+#[cfg(any(
+    not(feature = "compression-gzip"),
+    not(feature = "compression-deflate"),
+    not(feature = "compression-br")
+))]
+pub(crate) enum Never {}
+
+#[cfg(feature = "compression-gzip")]
+type GzipBody<B> = WrapBody<GzipEncoder<B>>;
+#[cfg(not(feature = "compression-gzip"))]
+type GzipBody<B> = (Never, PhantomData<B>);
+
+#[cfg(feature = "compression-deflate")]
+type DeflateBody<B> = WrapBody<ZlibEncoder<B>>;
+#[cfg(not(feature = "compression-deflate"))]
+type DeflateBody<B> = (Never, PhantomData<B>);
+
+#[cfg(feature = "compression-br")]
+type BrotliBody<B> = WrapBody<BrotliEncoder<B>>;
+#[cfg(not(feature = "compression-br"))]
+type BrotliBody<B> = (Never, PhantomData<B>);
+
+pin_project! {
+    #[project = BodyInnerProj]
+    pub(crate) enum BodyInner<B>
+    where
+        B: Body,
+    {
+        Gzip {
+            #[pin]
+            inner: GzipBody<B>,
+        },
+        Deflate {
+            #[pin]
+            inner: DeflateBody<B>,
+        },
+        Brotli {
+            #[pin]
+            inner: BrotliBody<B>,
+        },
+        Identity {
+            #[pin]
+            inner: B,
+        },
+    }
+}
+
+impl<B: Body> BodyInner<B> {
     #[cfg(feature = "compression-gzip")]
-    Gzip(#[pin] WrapBody<GzipEncoder<B>>),
+    pub(crate) fn gzip(inner: WrapBody<GzipEncoder<B>>) -> Self {
+        Self::Gzip { inner }
+    }
+
     #[cfg(feature = "compression-deflate")]
-    Deflate(#[pin] WrapBody<ZlibEncoder<B>>),
+    pub(crate) fn deflate(inner: WrapBody<ZlibEncoder<B>>) -> Self {
+        Self::Deflate { inner }
+    }
+
     #[cfg(feature = "compression-br")]
-    Brotli(#[pin] WrapBody<BrotliEncoder<B>>),
-    Identity(#[pin] B),
+    pub(crate) fn brotli(inner: WrapBody<BrotliEncoder<B>>) -> Self {
+        Self::Brotli { inner }
+    }
+
+    pub(crate) fn identity(inner: B) -> Self {
+        Self::Identity { inner }
+    }
 }
 
 impl<B> Body for CompressionBody<B>
@@ -146,14 +239,14 @@ where
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
-        match self.project().0.project() {
+        match self.project().inner.project() {
             #[cfg(feature = "compression-gzip")]
-            BodyInnerProj::Gzip(inner) => inner.poll_data(cx),
+            BodyInnerProj::Gzip { inner } => inner.poll_data(cx),
             #[cfg(feature = "compression-deflate")]
-            BodyInnerProj::Deflate(inner) => inner.poll_data(cx),
+            BodyInnerProj::Deflate { inner } => inner.poll_data(cx),
             #[cfg(feature = "compression-br")]
-            BodyInnerProj::Brotli(inner) => inner.poll_data(cx),
-            BodyInnerProj::Identity(body) => match ready!(body.poll_data(cx)) {
+            BodyInnerProj::Brotli { inner } => inner.poll_data(cx),
+            BodyInnerProj::Identity { inner } => match ready!(inner.poll_data(cx)) {
                 Some(Ok(mut buf)) => {
                     let bytes = buf.copy_to_bytes(buf.remaining());
                     Poll::Ready(Some(Ok(bytes)))
@@ -161,6 +254,13 @@ where
                 Some(Err(err)) => Poll::Ready(Some(Err(err.into()))),
                 None => Poll::Ready(None),
             },
+
+            #[cfg(not(feature = "compression-gzip"))]
+            BodyInnerProj::Gzip { inner } => match inner.0 {},
+            #[cfg(not(feature = "compression-deflate"))]
+            BodyInnerProj::Deflate { inner } => match inner.0 {},
+            #[cfg(not(feature = "compression-br"))]
+            BodyInnerProj::Brotli { inner } => match inner.0 {},
         }
     }
 
@@ -168,14 +268,21 @@ where
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Result<Option<HeaderMap>, Self::Error>> {
-        match self.project().0.project() {
+        match self.project().inner.project() {
             #[cfg(feature = "compression-gzip")]
-            BodyInnerProj::Gzip(inner) => inner.poll_trailers(cx),
+            BodyInnerProj::Gzip { inner } => inner.poll_trailers(cx),
             #[cfg(feature = "compression-deflate")]
-            BodyInnerProj::Deflate(inner) => inner.poll_trailers(cx),
+            BodyInnerProj::Deflate { inner } => inner.poll_trailers(cx),
             #[cfg(feature = "compression-br")]
-            BodyInnerProj::Brotli(inner) => inner.poll_trailers(cx),
-            BodyInnerProj::Identity(body) => body.poll_trailers(cx).map_err(Into::into),
+            BodyInnerProj::Brotli { inner } => inner.poll_trailers(cx),
+            BodyInnerProj::Identity { inner } => inner.poll_trailers(cx).map_err(Into::into),
+
+            #[cfg(not(feature = "compression-gzip"))]
+            BodyInnerProj::Gzip { inner } => match inner.0 {},
+            #[cfg(not(feature = "compression-deflate"))]
+            BodyInnerProj::Deflate { inner } => match inner.0 {},
+            #[cfg(not(feature = "compression-br"))]
+            BodyInnerProj::Brotli { inner } => match inner.0 {},
         }
     }
 }

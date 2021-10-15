@@ -6,7 +6,7 @@ use futures_core::Stream;
 use futures_util::ready;
 use http::{header, HeaderMap, HeaderValue};
 use http_body::Body;
-use pin_project::pin_project;
+use pin_project_lite::pin_project;
 use std::{
     io,
     pin::Pin,
@@ -120,11 +120,12 @@ pub(crate) trait DecorateAsyncRead {
     fn get_pin_mut(pinned: Pin<&mut Self::Output>) -> Pin<&mut Self::Input>;
 }
 
-/// `Body` that has been decorated by an `AsyncRead`
-#[pin_project]
-pub(crate) struct WrapBody<M: DecorateAsyncRead> {
-    #[pin]
-    pub(crate) read: M::Output,
+pin_project! {
+    /// `Body` that has been decorated by an `AsyncRead`
+    pub(crate) struct WrapBody<M: DecorateAsyncRead> {
+        #[pin]
+        pub(crate) read: M::Output,
+    }
 }
 
 impl<M: DecorateAsyncRead> WrapBody<M> {
@@ -207,11 +208,12 @@ where
     }
 }
 
-// When https://github.com/hyperium/http-body/pull/36 is merged we can remove this
-#[pin_project]
-pub(crate) struct BodyIntoStream<B> {
-    #[pin]
-    body: B,
+pin_project! {
+    // When https://github.com/hyperium/http-body/pull/36 is merged we can remove this
+    pub(crate) struct BodyIntoStream<B> {
+        #[pin]
+        body: B,
+    }
 }
 
 #[allow(dead_code)]
@@ -252,11 +254,12 @@ where
     }
 }
 
-#[pin_project]
-pub(crate) struct StreamErrorIntoIoError<S, E> {
-    #[pin]
-    inner: S,
-    error: Option<E>,
+pin_project! {
+    pub(crate) struct StreamErrorIntoIoError<S, E> {
+        #[pin]
+        inner: S,
+        error: Option<E>,
+    }
 }
 
 impl<S, E> StreamErrorIntoIoError<S, E> {
