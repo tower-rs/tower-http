@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 
 use super::{body::BodyInner, CompressionBody};
-use crate::compression_utils::{supports_transparent_compression, WrapBody};
+use crate::compression_utils::WrapBody;
 use crate::content_encoding::Encoding;
 use futures_util::ready;
 use http::{header, HeaderMap, HeaderValue, Response};
@@ -12,23 +12,26 @@ use std::{
     pin::Pin,
     task::{Context, Poll},
 };
+use crate::compression::compression_filter::CompressionFilter;
 
 pin_project! {
     /// Response future of [`Compression`].
     ///
     /// [`Compression`]: super::Compression
     #[derive(Debug)]
-    pub struct ResponseFuture<F> {
+    pub struct ResponseFuture<F, P> {
         #[pin]
         pub(crate) inner: F,
         pub(crate) encoding: Encoding,
+        pub(crate) compression_filter: P
     }
 }
 
-impl<F, B, E> Future for ResponseFuture<F>
+impl<F, B, E, P> Future for ResponseFuture<F, P>
 where
     F: Future<Output = Result<Response<B>, E>>,
     B: Body,
+    P: CompressionFilter,
 {
     type Output = Result<Response<CompressionBody<B>>, E>;
 
@@ -39,7 +42,7 @@ where
         let (mut parts, body) = res.into_parts();
 
         let body = match (
-            supports_transparent_compression(&parts.headers),
+            self.compression_filter.filter_response(&parts),
             self.encoding,
         ) {
             // if compression is _not_ support or the client doesn't accept it

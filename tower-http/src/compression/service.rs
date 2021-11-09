@@ -4,6 +4,7 @@ use http::{Request, Response};
 use http_body::Body;
 use std::task::{Context, Poll};
 use tower_service::Service;
+use crate::compression::compression_filter::{CompressionFilter, DefaultCompressionFilter};
 
 /// Compress response bodies of the underlying service.
 ///
@@ -12,19 +13,24 @@ use tower_service::Service;
 ///
 /// See the [module docs](crate::compression) for more details.
 #[derive(Clone, Copy)]
-pub struct Compression<S> {
+pub struct Compression<S, P = DefaultCompressionFilter> {
     pub(crate) inner: S,
     pub(crate) accept: AcceptEncoding,
+    pub(crate) compression_filter: P,
 }
 
-impl<S> Compression<S> {
+impl<S> Compression<S, DefaultCompressionFilter> {
     /// Creates a new `Compression` wrapping the `service`.
-    pub fn new(service: S) -> Self {
+    pub fn new(service: S) -> Compression<S> {
         Self {
             inner: service,
             accept: AcceptEncoding::default(),
+            compression_filter: DefaultCompressionFilter{}
         }
     }
+}
+
+impl<S, P: CompressionFilter> Compression<S, P> {
 
     define_inner_service_accessors!();
 
@@ -82,16 +88,26 @@ impl<S> Compression<S> {
         self.accept.set_br(false);
         self
     }
+
+    /// Replaces the current compression filter, `DefaultCompressionFilter` being the default
+    pub fn with_compression_filter<CF: CompressionFilter>(self, compression_filter: CF) -> Compression<S, CF> {
+        Compression {
+            inner: self.inner,
+            accept: self.accept,
+            compression_filter
+        }
+    }
 }
 
-impl<ReqBody, ResBody, S> Service<Request<ReqBody>> for Compression<S>
+impl<ReqBody, ResBody, S, P> Service<Request<ReqBody>> for Compression<S, P>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
     ResBody: Body,
+    P: CompressionFilter + Copy,
 {
     type Response = Response<CompressionBody<ResBody>>;
     type Error = S::Error;
-    type Future = ResponseFuture<S::Future>;
+    type Future = ResponseFuture<S::Future, P>;
 
     #[inline]
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -104,6 +120,7 @@ where
         ResponseFuture {
             inner: self.inner.call(req),
             encoding,
+            compression_filter: self.compression_filter
         }
     }
 }
