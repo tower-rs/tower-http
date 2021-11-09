@@ -322,7 +322,8 @@ pub(crate) fn supports_transparent_compression(headers: &HeaderMap) -> bool {
         .get(header::CONTENT_TYPE)
         .and_then(|h| h.to_str().ok())
         .unwrap_or_default();
-    if content_type.starts_with("application/grpc") {
+    // We also don't want to compress images
+    if content_type.starts_with("application/grpc") || content_type.starts_with("image/") {
         return false;
     }
 
