@@ -42,7 +42,7 @@ where
         let (mut parts, body) = res.into_parts();
 
         let body = match (
-            self.compression_filter.filter_response(&parts),
+            self.compression_filter.should_compress(&parts),
             self.encoding,
         ) {
             // if compression is _not_ support or the client doesn't accept it

@@ -19,7 +19,7 @@ pub struct Compression<S, P = DefaultCompressionFilter> {
     pub(crate) compression_filter: P,
 }
 
-impl<S> Compression<S, DefaultCompressionFilter> {
+impl<S> Compression<S> {
     /// Creates a new `Compression` wrapping the `service`.
     pub fn new(service: S) -> Compression<S> {
         Self {
@@ -103,7 +103,7 @@ impl<ReqBody, ResBody, S, P> Service<Request<ReqBody>> for Compression<S, P>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
     ResBody: Body,
-    P: CompressionFilter + Copy,
+    P: CompressionFilter,
 {
     type Response = Response<CompressionBody<ResBody>>;
     type Error = S::Error;
