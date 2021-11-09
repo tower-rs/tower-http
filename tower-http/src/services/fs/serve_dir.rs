@@ -2,8 +2,8 @@ use super::AsyncReadBody;
 use crate::services::fs::DEFAULT_CAPACITY;
 use bytes::Bytes;
 use futures_util::ready;
-use http::{header, HeaderValue, Request, Response, StatusCode, Uri};
-use http_body::{combinators::BoxBody, Body, Empty};
+use http::{header, HeaderValue, Request, Response, StatusCode, Uri, HeaderMap};
+use http_body::{combinators::BoxBody, Body, Empty, Full};
 use percent_encoding::percent_decode;
 use std::{
     future::Future,
@@ -14,6 +14,7 @@ use std::{
 };
 use tokio::fs::File;
 use tower_service::Service;
+use tokio::io::AsyncReadExt;
 
 /// Service that serves files from a given directory and all its sub directories.
 ///
@@ -158,6 +159,7 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
         let append_index_html_on_directories = self.append_index_html_on_directories;
         let buf_chunk_size = self.buf_chunk_size;
         let uri = req.uri().clone();
+        let range_request = parse_range(req.headers());
 
         let open_file_future = Box::pin(async move {
             if !uri.path().ends_with('/') {
@@ -173,7 +175,7 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
                     return Ok(Output::NotFound);
                 }
             }
-
+            let mut file = File::open(&full_path).await?;
             let guess = mime_guess::from_path(&full_path);
             let mime = guess
                 .first_raw()
@@ -181,8 +183,21 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
                 .unwrap_or_else(|| {
                     HeaderValue::from_str(mime::APPLICATION_OCTET_STREAM.as_ref()).unwrap()
                 });
+            if let Some((start_inclusive, end_inclusive)) = range_request {
+                let total_length = file.metadata().await.unwrap().len() as usize;
+                let mut buf = vec![0 as u8; total_length];
+                file.read(&mut buf).await.unwrap();
+                let end = if end_inclusive > total_length - 1 { total_length - 1 } else { end_inclusive };
+                let bytes = Bytes::from(buf[start_inclusive..=end].to_vec());
+                return Ok(Output::Range(ContentRange {
+                    start_inclusive,
+                    end_inclusive: end,
+                    total_length,
+                    bytes,
+                    mime_header_value: mime
+                }))
+            }
 
-            let file = File::open(full_path).await?;
             Ok(Output::File(file, mime, buf_chunk_size))
         });
 
@@ -190,6 +205,29 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
             inner: Inner::Valid(open_file_future),
         }
     }
+}
+
+fn parse_range(headers: &HeaderMap) -> Option<(usize, usize)> {
+    // ex:  `Range: bytes=0-1023`
+    headers.get(header::RANGE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|raw| {
+            raw.split("=")
+                .skip(1)
+                .next()
+        })
+        .and_then(|range| {
+            let mut start_end = range.split("-");
+            if let Some(start) = start_end.next().and_then(|s| usize::from_str_radix(s, 10).ok()) {
+                if let Some(end) = start_end.next().and_then(|s| usize::from_str_radix(s, 10).ok()) {
+                    Some((start, end))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
 }
 
 async fn is_dir(full_path: &Path) -> bool {
@@ -229,8 +267,17 @@ fn append_slash_on_path(uri: Uri) -> Uri {
 
 enum Output {
     File(File, HeaderValue, usize),
+    Range(ContentRange),
     Redirect(HeaderValue),
     NotFound,
+}
+
+struct ContentRange {
+    start_inclusive: usize,
+    end_inclusive: usize,
+    total_length: usize,
+    bytes: Bytes,
+    mime_header_value: HeaderValue,
 }
 
 type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + Sync + 'static>>;
@@ -272,6 +319,18 @@ impl Future for ResponseFuture {
                         return Poll::Ready(Ok(res));
                     }
 
+                    Ok(Output::Range(content)) => {
+                        let res = Response::builder()
+                            .status(StatusCode::PARTIAL_CONTENT)
+                            .header(header::CONTENT_RANGE, format!("bytes {}-{}/{}", content.start_inclusive, content.end_inclusive, content.total_length))
+                            .header(header::CONTENT_LENGTH, content.bytes.len())
+                            .header(header::CONTENT_TYPE, content.mime_header_value)
+                            .body(body_from_bytes(content.bytes))
+                            .unwrap();
+
+                        return Poll::Ready(Ok(res));
+                    }
+
                     Err(err) => {
                         return Poll::Ready(
                             super::response_from_io_error(err).map(|res| res.map(ResponseBody)),
@@ -300,6 +359,12 @@ impl Future for ResponseFuture {
 
 fn empty_body() -> ResponseBody {
     let body = Empty::new().map_err(|err| match err {}).boxed();
+    ResponseBody(body)
+}
+
+fn body_from_bytes(bytes: Bytes) -> ResponseBody {
+    let body = BoxBody::new(Full::from(bytes))
+        .map_err(|err| match err { }).boxed();
     ResponseBody(body)
 }
 
@@ -471,5 +536,55 @@ mod tests {
         assert_eq!(res.status(), StatusCode::OK);
         assert_eq!(res.headers()["content-type"], "text/plain");
         let _ = tokio::fs::remove_file(&tmp_filename).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn read_partial_in_bounds() {
+        let svc = ServeDir::new("..");
+        let bytes_start_incl = 9;
+        let bytes_end_incl = 1023;
+        let requested_len = bytes_end_incl - bytes_start_incl + 1;
+
+        let req = Request::builder()
+            .uri("/README.md")
+            .header("Range", format!("bytes={}-{}", bytes_start_incl, bytes_end_incl))
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+
+        let file_contents = std::fs::read("../README.md").unwrap();
+        assert_eq!(res.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(res.headers()["content-length"], requested_len.to_string());
+        assert!(res.headers()["content-range"].to_str().unwrap().starts_with(&format!("bytes {}-{}/{}", bytes_start_incl, bytes_end_incl, file_contents.len())));
+        assert_eq!(res.headers()["content-type"], "text/markdown");
+
+        let body = hyper::body::to_bytes(res.into_body()).await.ok().unwrap();
+        let source = Bytes::from(file_contents[bytes_start_incl..=bytes_end_incl].to_vec());
+        assert_eq!(body, source);
+    }
+
+    #[tokio::test]
+    async fn read_partial_handles_file_out_of_bounds() {
+        let svc = ServeDir::new("..");
+        let bytes_start_incl = 0;
+        let bytes_end_excl = 9999999;
+        let requested_len = bytes_end_excl - bytes_start_incl;
+        let file_contents = std::fs::read("../README.md").unwrap();
+
+        let req = Request::builder()
+            .uri("/README.md")
+            .header("Range", format!("bytes={}-{}", bytes_start_incl, requested_len - 1))
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(res.headers()["content-length"], file_contents.len().to_string());
+        assert!(res.headers()["content-range"].to_str().unwrap().starts_with(&format!("bytes {}-{}/{}", bytes_start_incl, file_contents.len() - 1, file_contents.len())));
+        assert_eq!(res.headers()["content-type"], "text/markdown");
+
+        let body = hyper::body::to_bytes(res.into_body()).await.ok().unwrap();
+        let source = Bytes::from(file_contents);
+        assert_eq!(body, source);
     }
 }
