@@ -67,9 +67,10 @@ mod body;
 mod future;
 mod layer;
 mod service;
+mod compression_filter;
 
 pub use self::{
-    body::CompressionBody, future::ResponseFuture, layer::CompressionLayer, service::Compression,
+    body::CompressionBody, future::ResponseFuture, layer::CompressionLayer, service::Compression, compression_filter::{CompressionFilter, DefaultCompressionFilter}
 };
 
 #[cfg(test)]
@@ -193,5 +194,55 @@ mod tests {
 
     async fn handle(_req: Request<Body>) -> Result<Response<Body>, Error> {
         Ok(Response::new(Body::from("Hello, World!")))
+    }
+
+    #[tokio::test]
+    async fn will_not_compress_if_filtered_out() {
+        const DATA: &str = "Hello world uncompressed";
+
+        let svc_fn = service_fn(|_| async {
+            let resp = Response::builder()
+                .header("content-encoding", "br")
+                .body(Body::from(DATA.as_bytes()))
+                .unwrap();
+            Ok::<_, std::io::Error>(resp)
+        });
+
+        // Compression filter allows nothing to be compressed
+        let mut svc = Compression::new(svc_fn)
+            .with_compression_filter(|_p: &http::response::Parts| false);
+        let req = Request::builder()
+            .header("accept-encoding", "br")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.ready().await.unwrap().call(req).await.unwrap();
+
+        // read the uncompressed body
+        let mut body = res.into_body();
+        let mut data = BytesMut::new();
+        while let Some(chunk) = body.data().await {
+            let chunk = chunk.unwrap();
+            data.extend_from_slice(&chunk[..]);
+        }
+        let still_uncompressed = String::from_utf8(data.to_vec()).unwrap();
+        assert_eq!(DATA, &still_uncompressed);
+
+        // Compression filter allows anything to be compressed
+        let mut svc = Compression::new(svc_fn)
+            .with_compression_filter(|_p: &http::response::Parts| true);
+        let req = Request::builder()
+            .header("accept-encoding", "br")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.ready().await.unwrap().call(req).await.unwrap();
+
+        // read the compressed body
+        let mut body = res.into_body();
+        let mut data = BytesMut::new();
+        while let Some(chunk) = body.data().await {
+            let chunk = chunk.unwrap();
+            data.extend_from_slice(&chunk[..]);
+        }
+        assert!(String::from_utf8(data.to_vec()).is_err());
     }
 }
