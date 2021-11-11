@@ -1,10 +1,11 @@
 //! Service that serves a file.
 
-use super::AsyncReadBody;
+use super::{AsyncReadBody, PrecompressedVariants};
+use crate::content_encoding::Encoding;
 use crate::services::fs::DEFAULT_CAPACITY;
 use bytes::Bytes;
 use futures_util::ready;
-use http::{header, HeaderValue, Response};
+use http::{header, HeaderValue, Request, Response};
 use http_body::{combinators::BoxBody, Body};
 use mime::Mime;
 use std::{
@@ -23,6 +24,7 @@ pub struct ServeFile {
     path: PathBuf,
     mime: HeaderValue,
     buf_chunk_size: usize,
+    precompressed_variants: Option<PrecompressedVariants>,
 }
 
 impl ServeFile {
@@ -44,6 +46,7 @@ impl ServeFile {
             path,
             mime,
             buf_chunk_size: DEFAULT_CAPACITY,
+            precompressed_variants: None,
         }
     }
 
@@ -62,7 +65,47 @@ impl ServeFile {
             path,
             mime,
             buf_chunk_size: DEFAULT_CAPACITY,
+            precompressed_variants: None,
         }
+    }
+
+    /// Informs the service that it should look for a precompressed (by the gzip algorithm)
+    /// version of the file with the correct file extension (i.e `foo.txt.gz` when the served file is `foo.txt`)
+    /// that can be served if the client have the correct corresponding `Accept-Encoding`.
+    /// If not the uncompressed version will be served instead. Note that this means
+    /// that both the precompressed version(s) and the uncompressed file is expected
+    /// to be present in the same directory.
+    pub fn precompressed_gzip(mut self) -> Self {
+        self.precompressed_variants
+            .get_or_insert(Default::default())
+            .gzip = true;
+        self
+    }
+
+    /// Informs the service that it should look for a precompressed (by the brotli algorithm)
+    /// version of the file with the correct file extension (i.e `foo.txt.br` when the served file is `foo.txt`)
+    /// that can be served if the client have the correct corresponding `Accept-Encoding`.
+    /// If not the uncompressed version will be served instead. Note that this means
+    /// that both the precompressed version(s) and the uncompressed file is expected
+    /// to be present in the same directory.
+    pub fn precompressed_br(mut self) -> Self {
+        self.precompressed_variants
+            .get_or_insert(Default::default())
+            .br = true;
+        self
+    }
+
+    /// Informs the service that it should look for a precompressed (by the deflate algorithm)
+    /// version of the file with the correct file extension (i.e `foo.txt.zz` when the served file is `foo.txt`)
+    /// that can be served if the client have the correct corresponding `Accept-Encoding`.
+    /// If not the uncompressed version will be served instead. Note that this means
+    /// that both the precompressed version(s) and the uncompressed file is expected
+    /// to be present in the same directory.
+    pub fn precompressed_deflate(mut self) -> Self {
+        self.precompressed_variants
+            .get_or_insert(Default::default())
+            .deflate = true;
+        self
     }
 
     /// Set a specific read buffer chunk size.
@@ -74,7 +117,7 @@ impl ServeFile {
     }
 }
 
-impl<R> Service<R> for ServeFile {
+impl<ReqBody> Service<Request<ReqBody>> for ServeFile {
     type Response = Response<ResponseBody>;
     type Error = io::Error;
     type Future = ResponseFuture;
@@ -84,13 +127,35 @@ impl<R> Service<R> for ServeFile {
         Poll::Ready(Ok(()))
     }
 
-    fn call(&mut self, _req: R) -> Self::Future {
-        let open_file_future = Box::pin(File::open(self.path.clone()));
+    fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
+        let mut path = self.path.clone();
+
+        let negotiated_encoding = self
+            .precompressed_variants
+            .map(|precompressed| Encoding::from_headers(req.headers(), precompressed))
+            .filter(|encoding| *encoding != Encoding::Identity);
+
+        if let Some(file_extension) =
+            negotiated_encoding.and_then(|encoding| encoding.to_file_extention())
+        {
+            let new_extension = path
+                .extension()
+                .map(|extension| {
+                    let mut os_string = extension.to_os_string();
+                    os_string.push(file_extension);
+                    os_string
+                })
+                .unwrap_or_else(|| file_extension.to_os_string());
+            path.set_extension(new_extension);
+        }
+
+        let open_file_future = Box::pin(File::open(path));
 
         ResponseFuture {
             open_file_future,
             mime: Some(self.mime.clone()),
             buf_chunk_size: self.buf_chunk_size,
+            encoding: negotiated_encoding,
         }
     }
 }
@@ -99,6 +164,7 @@ impl<R> Service<R> for ServeFile {
 pub struct ResponseFuture {
     open_file_future: Pin<Box<dyn Future<Output = io::Result<File>> + Send + Sync + 'static>>,
     mime: Option<HeaderValue>,
+    encoding: Option<Encoding>,
     buf_chunk_size: usize,
 }
 
@@ -125,6 +191,10 @@ impl Future for ResponseFuture {
         res.headers_mut()
             .insert(header::CONTENT_TYPE, self.mime.take().unwrap());
 
+        if let Some(encoding) = self.encoding {
+            res.headers_mut()
+                .insert(header::CONTENT_ENCODING, encoding.into_header_value());
+        }
         Poll::Ready(Ok(res))
     }
 }
@@ -136,8 +206,13 @@ opaque_body! {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Read;
+
     #[allow(unused_imports)]
     use super::*;
+    use brotli::BrotliDecompress;
+    use flate2::bufread::DeflateDecoder;
+    use flate2::bufread::GzDecoder;
     use http::{Request, StatusCode};
     use http_body::Body as _;
     use hyper::Body;
@@ -155,6 +230,109 @@ mod tests {
         let body = String::from_utf8(body.to_vec()).unwrap();
 
         assert!(body.starts_with("# Tower HTTP"));
+    }
+
+    #[tokio::test]
+    async fn precompressed_gzip() {
+        let svc = ServeFile::new("../test-files/precompressed.txt").precompressed_gzip();
+
+        let request = Request::builder()
+            .header("Accept-Encoding", "gzip")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(request).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/plain");
+        assert_eq!(res.headers()["content-encoding"], "gzip");
+
+        let body = res.into_body().data().await.unwrap().unwrap();
+        let mut decoder = GzDecoder::new(&body[..]);
+        let mut decompressed = String::new();
+        decoder.read_to_string(&mut decompressed).unwrap();
+        assert!(decompressed.starts_with("\"This is a test file!\""));
+    }
+
+    #[tokio::test]
+    async fn unsupported_precompression_alogrithm_fallbacks_to_uncompressed() {
+        let svc = ServeFile::new("../test-files/precompressed.txt").precompressed_gzip();
+
+        let request = Request::builder()
+            .header("Accept-Encoding", "br")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(request).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/plain");
+        assert!(res.headers().get("content-encoding").is_none());
+
+        let body = res.into_body().data().await.unwrap().unwrap();
+        let body = String::from_utf8(body.to_vec()).unwrap();
+        assert!(body.starts_with("\"This is a test file!\""));
+    }
+
+    #[tokio::test]
+    async fn only_precompressed_variant_existing() {
+        let svc = ServeFile::new("../test-files/only_gzipped.txt").precompressed_gzip();
+
+        let request = Request::builder().body(Body::empty()).unwrap();
+        let res = svc.clone().oneshot(request).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
+
+        // Should reply with gzipped file if client supports it
+        let request = Request::builder()
+            .header("Accept-Encoding", "gzip")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(request).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/plain");
+        assert_eq!(res.headers()["content-encoding"], "gzip");
+
+        let body = res.into_body().data().await.unwrap().unwrap();
+        let mut decoder = GzDecoder::new(&body[..]);
+        let mut decompressed = String::new();
+        decoder.read_to_string(&mut decompressed).unwrap();
+        assert!(decompressed.starts_with("\"This is a test file\""));
+    }
+
+    #[tokio::test]
+    async fn precompressed_br() {
+        let svc = ServeFile::new("../test-files/precompressed.txt").precompressed_br();
+
+        let request = Request::builder()
+            .header("Accept-Encoding", "gzip,br")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(request).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/plain");
+        assert_eq!(res.headers()["content-encoding"], "br");
+
+        let body = res.into_body().data().await.unwrap().unwrap();
+        let mut decompressed = Vec::new();
+        BrotliDecompress(&mut &body[..], &mut decompressed).unwrap();
+        let decompressed = String::from_utf8(decompressed.to_vec()).unwrap();
+        assert!(decompressed.starts_with("\"This is a test file!\""));
+    }
+
+    #[tokio::test]
+    async fn precompressed_deflate() {
+        let svc = ServeFile::new("../test-files/precompressed.txt").precompressed_deflate();
+        let request = Request::builder()
+            .header("Accept-Encoding", "deflate,br")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(request).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/plain");
+        assert_eq!(res.headers()["content-encoding"], "deflate");
+
+        let body = res.into_body().data().await.unwrap().unwrap();
+        let mut decoder = DeflateDecoder::new(&body[..]);
+        let mut decompressed = String::new();
+        decoder.read_to_string(&mut decompressed).unwrap();
+        assert!(decompressed.starts_with("\"This is a test file!\""));
     }
 
     #[tokio::test]
