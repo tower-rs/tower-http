@@ -251,6 +251,10 @@ pub mod sensitive_headers;
 #[cfg_attr(docsrs, doc(cfg(feature = "decompression")))]
 pub mod decompression;
 
+// Used for serving precompressed static files as well
+#[cfg(any(feature = "compression", feature = "decompression", feature = "fs"))]
+mod content_encoding;
+
 #[cfg(any(feature = "compression", feature = "decompression"))]
 mod compression_utils;
 
