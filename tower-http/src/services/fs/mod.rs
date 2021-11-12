@@ -42,13 +42,6 @@ impl<T> AsyncReadBody<T>
 where
     T: AsyncRead,
 {
-    /// Create a new [`AsyncReadBody`] wrapping the given reader.
-    fn new(read: T) -> Self {
-        Self {
-            reader: ReaderStream::with_capacity(read, DEFAULT_CAPACITY),
-        }
-    }
-
     /// Create a new [`AsyncReadBody`] wrapping the given reader,
     /// with a specific read buffer capacity
     fn with_capacity(read: T, capacity: usize) -> Self {

@@ -210,7 +210,7 @@
     nonstandard_style,
     missing_docs
 )]
-#![deny(unreachable_pub, rustdoc::broken_intra_doc_links, private_in_public)]
+#![deny(unreachable_pub, private_in_public)]
 #![allow(
     elided_lifetimes_in_paths,
     // TODO: Remove this once the MSRV bumps to 1.42.0 or above.
