@@ -336,6 +336,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn multi_precompressed() {
+        let svc = ServeFile::new("../test-files/precompressed.txt")
+            .precompressed_gzip()
+            .precompressed_br();
+
+        let request = Request::builder()
+            .header("Accept-Encoding", "gzip")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.clone().oneshot(request).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/plain");
+        assert_eq!(res.headers()["content-encoding"], "gzip");
+
+        let body = res.into_body().data().await.unwrap().unwrap();
+        let mut decoder = GzDecoder::new(&body[..]);
+        let mut decompressed = String::new();
+        decoder.read_to_string(&mut decompressed).unwrap();
+        assert!(decompressed.starts_with("\"This is a test file!\""));
+
+        let request = Request::builder()
+            .header("Accept-Encoding", "br")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.clone().oneshot(request).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/plain");
+        assert_eq!(res.headers()["content-encoding"], "br");
+
+        let body = res.into_body().data().await.unwrap().unwrap();
+        let mut decompressed = Vec::new();
+        BrotliDecompress(&mut &body[..], &mut decompressed).unwrap();
+        let decompressed = String::from_utf8(decompressed.to_vec()).unwrap();
+        assert!(decompressed.starts_with("\"This is a test file!\""));
+    }
+
+    #[tokio::test]
     async fn with_custom_chunk_size() {
         let svc = ServeFile::new("../README.md").with_buf_chunk_size(1024 * 32);
 
