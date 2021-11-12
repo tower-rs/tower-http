@@ -2,7 +2,12 @@
 vulnerability = "deny"
 unmaintained = "warn"
 notice = "warn"
-ignore = []
+ignore = [
+  # Potential Unix segfault with time crate, used by chrono.
+  # if setting env vars in threaded context, we are unlikely affected
+  # https://github.com/time-rs/time/issues/293
+  "RUSTSEC-2020-0159",
+]
 
 [licenses]
 unlicensed = "deny"
@@ -11,23 +16,28 @@ deny = []
 copyleft = "warn"
 allow-osi-fsf-free = "either"
 confidence-threshold = 0.8
+exceptions = [
+]
+
+[[licenses.clarify]]
+name = "ring"
+# SPDX considers OpenSSL to encompass both the OpenSSL and SSLeay licenses
+# https://spdx.org/licenses/OpenSSL.html
+# ISC - Both BoringSSL and ring use this for their new files
+# MIT - "Files in third_party/ have their own licenses, as described therein. The MIT
+# license, for third_party/fiat, which, unlike other third_party directories, is
+# compiled into non-test libraries, is included below."
+# OpenSSL - Obviously
+expression = "ISC AND MIT AND OpenSSL"
+license-files = [
+    { path = "LICENSE", hash = 0xbd0eed23 },
+]
 
 [bans]
 multiple-versions = "deny"
 highlight = "all"
-skip-tree = [
-    { name = "tower", version = ">=0.3, <=0.4" },
-    # we're using warp in the examples so just ignore errors from it
-    { name = "warp" },
-]
+skip-tree = [{ name = "tower", version = ">=0.3, <=0.4" }]
 skip = [
-    # `quickcheck` and `tracing-subscriber` depend on incompatible versions of
-    # `wasi` via their dependencies on `rand` and `chrono`, respectively; we
-    # can't really fix this.
-    { name = "wasi" },
-
-    # clap uses old version
-    { name = "ansi_term", version = "=0.11.0" },
 ]
 
 [sources]
