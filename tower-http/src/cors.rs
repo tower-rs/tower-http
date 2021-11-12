@@ -64,7 +64,7 @@ use std::{
 use tower_layer::Layer;
 use tower_service::Service;
 
-/// Layer that applies [`Cors`] which adds headers for [CORS][mdn].
+/// Layer that applies the [`Cors`] middleware which adds headers for [CORS][mdn].
 ///
 /// See the [module docs](crate::cors) for an example.
 ///
@@ -106,7 +106,7 @@ impl CorsLayer {
     /// - All headers exposed.
     /// - Max age set to 1 hour.
     ///
-    /// Note this is not recommended for production use
+    /// Note this is not recommended for production use.
     pub fn permissive() -> Self {
         Self::new()
             .allow_credentials(true)
@@ -578,17 +578,23 @@ impl<S> Cors<S> {
 
 /// Represents a [`Access-Control-Allow-Origin`][mdn] header.
 ///
+/// See [`CorsLayer::allow_origin`] for more details.
+///
 /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Origin
 #[derive(Clone, Debug)]
 pub struct Origin(OriginInner);
 
 impl Origin {
     /// Set a single allow origin target
+    ///
+    /// See [`CorsLayer::allow_origin`] for more details.
     pub fn exact(origin: HeaderValue) -> Self {
         Self(OriginInner::Exact(origin))
     }
 
     /// Set multiple allow origin targets
+    ///
+    /// See [`CorsLayer::allow_origin`] for more details.
     pub fn list<I>(origins: I) -> Self
     where
         I: IntoIterator<Item = HeaderValue>,
@@ -598,6 +604,8 @@ impl Origin {
     }
 
     /// Set the allowed origins from a predicate
+    ///
+    /// See [`CorsLayer::allow_origin`] for more details.
     pub fn predicate<F>(f: F) -> Self
     where
         F: Fn(&HeaderValue, &Parts) -> bool + Send + Sync + 'static,
