@@ -123,13 +123,16 @@ impl ServeDir {
         self
     }
 
-    /// Informs the service that it should look for a precompressed (by the gzip algorithm)
-    /// version of _any_ file in the directory with the correct file extension  that can be
-    /// served if the client have the correct corresponding `Accept-Encoding`.
-    /// (i.e `dir/foo.txt.gz` when the served directory is `dir` and the requested file is `foo.txt`)
-    /// If not the uncompressed version will be served instead. Note that this means
-    /// that both the precompressed version(s) and the uncompressed file is expected
-    /// to be present in the same directory.
+    /// Informs the service that it should also look for a precompressed gzip
+    /// version of _any_ file in the directory.
+    ///
+    /// Assuming the `dir` directory is being served and `dir/foo.txt` is requested,
+    /// a client with an `Accept-Encoding` header that allows the gzip encoding
+    /// will receive the file `dir/foo.txt.gz` instead of `dir/foo.txt`.
+    /// If the precompressed file is not available, or the client doesn't support it,
+    /// the uncompressed version will be served instead.
+    /// Both the precompressed version and the uncompressed version are expected
+    /// to be present in the directory. Different precompressed variants can be combined.
     pub fn precompressed_gzip(mut self) -> Self {
         self.precompressed_variants
             .get_or_insert(Default::default())
@@ -137,13 +140,16 @@ impl ServeDir {
         self
     }
 
-    /// Informs the service that it should look for a precompressed (by the brotli algorithm)
-    /// version of _any_ file in the directory with the correct file extension  that can be
-    /// served if the client have the correct corresponding `Accept-Encoding`.
-    /// (i.e `dir/foo.txt.br` when the served directory is `dir` and the requested file is `foo.txt`)
-    /// If not the uncompressed version will be served instead. Note that this means
-    /// that both the precompressed version(s) and the uncompressed file is expected
-    /// to be present in the same directory.
+    /// Informs the service that it should also look for a precompressed brotli
+    /// version of _any_ file in the directory.
+    ///
+    /// Assuming the `dir` directory is being served and `dir/foo.txt` is requested,
+    /// a client with an `Accept-Encoding` header that allows the brotli encoding
+    /// will receive the file `dir/foo.txt.br` instead of `dir/foo.txt`.
+    /// If the precompressed file is not available, or the client doesn't support it,
+    /// the uncompressed version will be served instead.
+    /// Both the precompressed version and the uncompressed version are expected
+    /// to be present in the directory. Different precompressed variants can be combined.
     pub fn precompressed_br(mut self) -> Self {
         self.precompressed_variants
             .get_or_insert(Default::default())
@@ -151,13 +157,16 @@ impl ServeDir {
         self
     }
 
-    /// Informs the service that it should look for a precompressed (by the deflate algorithm)
-    /// version of _any_ file in the directory with the correct file extension  that can be
-    /// served if the client have the correct corresponding `Accept-Encoding`.
-    /// (i.e `dir/foo.txt.zz` when the served directory is `dir` and the requested file is `foo.txt`)
-    /// If not the uncompressed version will be served instead. Note that this means
-    /// that both the precompressed version(s) and the uncompressed file is expected
-    /// to be present in the same directory.
+    /// Informs the service that it should also look for a precompressed deflate
+    /// version of _any_ file in the directory.
+    ///
+    /// Assuming the `dir` directory is being served and `dir/foo.txt` is requested,
+    /// a client with an `Accept-Encoding` header that allows the deflate encoding
+    /// will receive the file `dir/foo.txt.zz` instead of `dir/foo.txt`.
+    /// If the precompressed file is not available, or the client doesn't support it,
+    /// the uncompressed version will be served instead.
+    /// Both the precompressed version and the uncompressed version are expected
+    /// to be present in the directory. Different precompressed variants can be combined.
     pub fn precompressed_deflate(mut self) -> Self {
         self.precompressed_variants
             .get_or_insert(Default::default())
@@ -232,7 +241,7 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
                 });
 
             if let Some(file_extension) =
-                negotiated_encoding.and_then(|encoding| encoding.to_file_extention())
+                negotiated_encoding.and_then(|encoding| encoding.to_file_extension())
             {
                 let new_extension = full_path
                     .extension()
@@ -520,7 +529,10 @@ mod tests {
     async fn only_precompressed_variant_existing() {
         let svc = ServeDir::new("../test-files").precompressed_gzip();
 
-        let request = Request::builder().body(Body::empty()).unwrap();
+        let request = Request::builder()
+            .uri("/only_gzipped.txt")
+            .body(Body::empty())
+            .unwrap();
         let res = svc.clone().oneshot(request).await.unwrap();
 
         assert_eq!(res.status(), StatusCode::NOT_FOUND);

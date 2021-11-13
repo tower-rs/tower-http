@@ -26,7 +26,7 @@ impl Encoding {
         }
     }
 
-    pub(crate) fn to_file_extention(self) -> Option<&'static OsStr> {
+    pub(crate) fn to_file_extension(self) -> Option<&'static OsStr> {
         match self {
             Encoding::Gzip => Some(OsStr::new(".gz")),
             Encoding::Deflate => Some(OsStr::new(".zz")),

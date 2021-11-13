@@ -69,12 +69,16 @@ impl ServeFile {
         }
     }
 
-    /// Informs the service that it should look for a precompressed (by the gzip algorithm)
-    /// version of the file with the correct file extension (i.e `foo.txt.gz` when the served file is `foo.txt`)
-    /// that can be served if the client have the correct corresponding `Accept-Encoding`.
-    /// If not the uncompressed version will be served instead. Note that this means
-    /// that both the precompressed version(s) and the uncompressed file is expected
-    /// to be present in the same directory.
+    /// Informs the service that it should also look for a precompressed gzip
+    /// version of the file.
+    ///
+    /// If the client has an `Accept-Encoding` header that allows the gzip encoding,
+    /// the file `foo.txt.gz` will be served instead of `foo.txt`.
+    /// If the precompressed file is not available, or the client doesn't support it,
+    /// the uncompressed version will be served instead.
+    /// Both the precompressed version and the uncompressed version are expected
+    /// to be present in the same directory. Different precompressed
+    /// variants can be combined.
     pub fn precompressed_gzip(mut self) -> Self {
         self.precompressed_variants
             .get_or_insert(Default::default())
@@ -82,12 +86,16 @@ impl ServeFile {
         self
     }
 
-    /// Informs the service that it should look for a precompressed (by the brotli algorithm)
-    /// version of the file with the correct file extension (i.e `foo.txt.br` when the served file is `foo.txt`)
-    /// that can be served if the client have the correct corresponding `Accept-Encoding`.
-    /// If not the uncompressed version will be served instead. Note that this means
-    /// that both the precompressed version(s) and the uncompressed file is expected
-    /// to be present in the same directory.
+    /// Informs the service that it should also look for a precompressed brotli
+    /// version of the file.
+    ///
+    /// If the client has an `Accept-Encoding` header that allows the brotli encoding,
+    /// the file `foo.txt.br` will be served instead of `foo.txt`.
+    /// If the precompressed file is not available, or the client doesn't support it,
+    /// the uncompressed version will be served instead.
+    /// Both the precompressed version and the uncompressed version are expected
+    /// to be present in the same directory. Different precompressed
+    /// variants can be combined.
     pub fn precompressed_br(mut self) -> Self {
         self.precompressed_variants
             .get_or_insert(Default::default())
@@ -95,12 +103,16 @@ impl ServeFile {
         self
     }
 
-    /// Informs the service that it should look for a precompressed (by the deflate algorithm)
-    /// version of the file with the correct file extension (i.e `foo.txt.zz` when the served file is `foo.txt`)
-    /// that can be served if the client have the correct corresponding `Accept-Encoding`.
-    /// If not the uncompressed version will be served instead. Note that this means
-    /// that both the precompressed version(s) and the uncompressed file is expected
-    /// to be present in the same directory.
+    /// Informs the service that it should also look for a precompressed deflate
+    /// version of the file.
+    ///
+    /// If the client has an `Accept-Encoding` header that allows the deflate encoding,
+    /// the file `foo.txt.zz` will be served instead of `foo.txt`.
+    /// If the precompressed file is not available, or the client doesn't support it,
+    /// the uncompressed version will be served instead.
+    /// Both the precompressed version and the uncompressed version are expected
+    /// to be present in the same directory. Different precompressed
+    /// variants can be combined.
     pub fn precompressed_deflate(mut self) -> Self {
         self.precompressed_variants
             .get_or_insert(Default::default())
@@ -136,7 +148,7 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeFile {
             .filter(|encoding| *encoding != Encoding::Identity);
 
         if let Some(file_extension) =
-            negotiated_encoding.and_then(|encoding| encoding.to_file_extention())
+            negotiated_encoding.and_then(|encoding| encoding.to_file_extension())
         {
             let new_extension = path
                 .extension()
