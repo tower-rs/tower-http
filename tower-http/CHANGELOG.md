@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
+- None.
+
+# 0.1.2 (November 13, 2021)
+
 - New middleware: Add `Cors` for setting [CORS] headers ([#112])
 - New middleware: Add `AsyncRequireAuthorization` ([#118])
 - `Compression`: Don't recompress HTTP responses ([#140])
@@ -28,10 +32,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#130]: https://github.com/tower-rs/tower-http/pull/130
 [#122]: https://github.com/tower-rs/tower-http/pull/122
 
-## Breaking changes
-
-None.
-
 # 0.1.1 (July 2, 2021)
 
 - Add example of using `SharedClassifier`.
@@ -46,10 +46,6 @@ None.
 - Clarify exactly when each `Trace` callback is called.
 - Add `AddAuthorizationLayer` for setting the `Authorization` header on
   requests.
-
-## Breaking changes
-
-None.
 
 # 0.1.0 (May 27, 2021)
 

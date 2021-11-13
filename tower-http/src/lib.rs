@@ -175,7 +175,6 @@
 //! [`Trace`]: crate::trace::Trace
 //! [examples]: https://github.com/tower-rs/tower-http/tree/master/examples
 
-#![doc(html_root_url = "https://docs.rs/tower-http/0.1.1")]
 #![warn(
     clippy::all,
     clippy::dbg_macro,
