@@ -25,6 +25,64 @@ use tower_service::Service;
 /// - Any segment of the path contains `..`
 /// - Any segment of the path contains a backslash
 /// - We don't have necessary permissions to read the file
+///
+/// # Example
+///
+/// ```
+/// use tower_http::services::ServeDir;
+///
+/// // This will serve files in the "assets" directory and
+/// // its subdirectories
+/// let service = ServeDir::new("assets");
+///
+/// # async {
+/// // Run our service using `hyper`
+/// let addr = std::net::SocketAddr::from(([127, 0, 0, 1], 3000));
+/// hyper::Server::bind(&addr)
+///     .serve(tower::make::Shared::new(service))
+///     .await
+///     .expect("server error");
+/// # };
+/// ```
+///
+/// # Handling files not found
+///
+/// By default `ServeDir` will return an empty `404 Not Found` response if there
+/// is no file at the requested path. That can be customized by using
+/// [`and_then`](tower::ServiceBuilder::and_then) to change the response:
+///
+/// ```
+/// use tower_http::services::fs::{ServeDir, ServeDirResponseBody};
+/// use tower::ServiceBuilder;
+/// use http::{StatusCode, Response};
+/// use http_body::{Body as _, Full};
+/// use std::io;
+///
+/// let service = ServiceBuilder::new()
+///     .and_then(|response: Response<ServeDirResponseBody>| async move {
+///         let response = if response.status() == StatusCode::NOT_FOUND {
+///             let body = Full::from("Not Found")
+///                 .map_err(|err| match err {})
+///                 .boxed();
+///             Response::builder()
+///                 .status(StatusCode::NOT_FOUND)
+///                 .body(body)
+///                 .unwrap()
+///         } else {
+///             response.map(|body| body.boxed())
+///         };
+///
+///         Ok::<_, io::Error>(response)
+///     })
+///     .service(ServeDir::new("assets"));
+/// # async {
+/// # let addr = std::net::SocketAddr::from(([127, 0, 0, 1], 3000));
+/// # hyper::Server::bind(&addr)
+/// #     .serve(tower::make::Shared::new(service))
+/// #     .await
+/// #     .expect("server error");
+/// # };
+/// ```
 #[derive(Clone, Debug)]
 pub struct ServeDir {
     base: PathBuf,
