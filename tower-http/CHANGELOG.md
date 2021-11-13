@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
+- New middleware: Add `Cors` for setting [CORS] headers ([#112])
 - New middleware: Add `AsyncRequireAuthorization` ([#118])
 - `Compression`: Don't recompress HTTP responses ([#140])
 - `Compression` and `Decompression`: Pass configuration from layer into middleware ([#132])
@@ -17,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ServeDir`: Return `404 Not Found` on requests to directories if
   `append_index_html_on_directories` is set to `false` ([#122])
 
+[#112]: https://github.com/tower-rs/tower-http/pull/112
 [#118]: https://github.com/tower-rs/tower-http/pull/118
 [#140]: https://github.com/tower-rs/tower-http/pull/140
 [#132]: https://github.com/tower-rs/tower-http/pull/132
@@ -52,3 +54,5 @@ None.
 # 0.1.0 (May 27, 2021)
 
 - Initial release.
+
+[CORS]: https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS

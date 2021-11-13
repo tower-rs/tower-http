@@ -52,6 +52,7 @@ full = [
     "auth",
     "compression",
     "compression-full",
+    "cors",
     "decompression-full",
     "follow-redirect",
     "fs",
@@ -67,6 +68,7 @@ full = [
 
 add-extension = []
 auth = ["base64"]
+cors = []
 follow-redirect = ["iri-string", "tower/util"]
 fs = ["tokio/fs", "tokio-util/io", "mime_guess", "mime", "percent-encoding"]
 map-request-body = []
