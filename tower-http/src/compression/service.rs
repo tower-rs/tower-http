@@ -1,5 +1,5 @@
-use super::{CompressionBody, CompressionLayer, Encoding, ResponseFuture};
-use crate::compression_utils::AcceptEncoding;
+use super::{CompressionBody, CompressionLayer, ResponseFuture};
+use crate::{compression_utils::AcceptEncoding, content_encoding::Encoding};
 use http::{Request, Response};
 use http_body::Body;
 use std::task::{Context, Poll};

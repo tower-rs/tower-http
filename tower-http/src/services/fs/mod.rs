@@ -20,6 +20,8 @@ mod serve_file;
 // default capacity 64KiB
 const DEFAULT_CAPACITY: usize = 65536;
 
+use crate::content_encoding::SupportedEncodings;
+
 pub use self::{
     serve_dir::{
         ResponseBody as ServeDirResponseBody, ResponseFuture as ServeDirResponseFuture, ServeDir,
@@ -28,6 +30,37 @@ pub use self::{
         ResponseBody as ServeFileResponseBody, ResponseFuture as ServeFileResponseFuture, ServeFile,
     },
 };
+
+#[derive(Clone, Copy, Debug)]
+struct PrecompressedVariants {
+    gzip: bool,
+    deflate: bool,
+    br: bool,
+}
+
+impl Default for PrecompressedVariants {
+    fn default() -> Self {
+        Self {
+            gzip: false,
+            deflate: false,
+            br: false,
+        }
+    }
+}
+
+impl SupportedEncodings for PrecompressedVariants {
+    fn gzip(&self) -> bool {
+        self.gzip
+    }
+
+    fn deflate(&self) -> bool {
+        self.deflate
+    }
+
+    fn br(&self) -> bool {
+        self.br
+    }
+}
 
 // NOTE: This could potentially be upstreamed to `http-body`.
 /// Adapter that turns an `impl AsyncRead` to an `impl Body`.

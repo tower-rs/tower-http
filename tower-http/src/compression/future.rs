@@ -1,7 +1,8 @@
 #![allow(unused_imports)]
 
-use super::{body::BodyInner, CompressionBody, Encoding};
+use super::{body::BodyInner, CompressionBody};
 use crate::compression_utils::{supports_transparent_compression, WrapBody};
+use crate::content_encoding::Encoding;
 use futures_util::ready;
 use http::{header, HeaderMap, HeaderValue, Response};
 use http_body::Body;

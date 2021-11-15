@@ -2,6 +2,7 @@
 
 use super::{body::BodyInner, DecompressionBody};
 use crate::compression_utils::{AcceptEncoding, WrapBody};
+use crate::content_encoding::SupportedEncodings;
 use futures_util::ready;
 use http::{header, Response};
 use http_body::Body;
