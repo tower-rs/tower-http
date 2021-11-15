@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
-- None.
+- `ServeDir`: Add cache control feature: max-age default to 300 secs  
 
 # 0.1.2 (November 13, 2021)
 
