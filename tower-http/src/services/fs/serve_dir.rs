@@ -11,6 +11,7 @@ use std::{
     path::{Path, PathBuf},
     pin::Pin,
     task::{Context, Poll},
+    time::Duration,
 };
 use tokio::fs::File;
 use tower_service::Service;
@@ -83,11 +84,48 @@ use tower_service::Service;
 /// #     .expect("server error");
 /// # };
 /// ```
+/// # Axum Example
+/// ```
+/// use axum::{
+///     error_handling::HandleErrorExt,
+///     http::StatusCode,
+///     routing::{get, service_method_routing},
+///     Router,
+/// };
+/// use tower_http::services::ServeDir;
+/// 
+/// async fn hello() -> &'static str {
+///     "Hello world"
+/// }
+/// 
+/// #[tokio::main]
+/// async fn main() {
+///     // build our application with a single route
+///     let app = Router::new().route("/hello", get(hello)).fallback(
+///         service_method_routing::get(ServeDir::new("public")).handle_error(
+///             |error: std::io::Error| {
+///                 Ok::<_, std::convert::Infallible>((
+///                     StatusCode::INTERNAL_SERVER_ERROR,
+///                     format!("Unhandled internal error: {}", error),
+///                 ))
+///             },
+///         ),
+///     );
+/// 
+///     // run it with hyper on localhost:3000
+///     axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
+///         .serve(app.into_make_service())
+///         .await
+///         .unwrap();
+/// }
+/// ```
+
 #[derive(Clone, Debug)]
 pub struct ServeDir {
     base: PathBuf,
     append_index_html_on_directories: bool,
     buf_chunk_size: usize,
+    max_age: Duration,
 }
 
 impl ServeDir {
@@ -100,6 +138,7 @@ impl ServeDir {
             base,
             append_index_html_on_directories: true,
             buf_chunk_size: DEFAULT_CAPACITY,
+            max_age: Duration::from_secs(5*60),
         }
     }
 
@@ -118,6 +157,16 @@ impl ServeDir {
     /// The default capacity is 64kb.
     pub fn with_buf_chunk_size(mut self, chunk_size: usize) -> Self {
         self.buf_chunk_size = chunk_size;
+        self
+    }
+
+    /// Cache-Control:max-age=300.
+    ///
+    /// This speeds up user's feeling for static sites, especially large files.
+    ///
+    /// Defaults to 300 seconds.
+    pub fn max_age(mut self, dur: Duration) -> Self {
+        self.max_age = dur;
         self
     }
 }
@@ -158,6 +207,7 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
         let append_index_html_on_directories = self.append_index_html_on_directories;
         let buf_chunk_size = self.buf_chunk_size;
         let uri = req.uri().clone();
+        let max_age = self.max_age;
 
         let open_file_future = Box::pin(async move {
             if !uri.path().ends_with('/') {
@@ -183,7 +233,7 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
                 });
 
             let file = File::open(full_path).await?;
-            Ok(Output::File(file, mime, buf_chunk_size))
+            Ok(Output::File(file, mime, buf_chunk_size, max_age))
         });
 
         ResponseFuture {
@@ -228,7 +278,7 @@ fn append_slash_on_path(uri: Uri) -> Uri {
 }
 
 enum Output {
-    File(File, HeaderValue, usize),
+    File(File, HeaderValue, usize, Duration),
     Redirect(HeaderValue),
     NotFound,
 }
@@ -251,38 +301,45 @@ impl Future for ResponseFuture {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match &mut self.inner {
             Inner::Valid(open_file_future) => {
-                let (file, mime, chunk_size) = match ready!(Pin::new(open_file_future).poll(cx)) {
-                    Ok(Output::File(file, mime, chunk_size)) => (file, mime, chunk_size),
+                let (file, mime, chunk_size, max_age) =
+                    match ready!(Pin::new(open_file_future).poll(cx)) {
+                        Ok(Output::File(file, mime, chunk_size, max_age)) => {
+                            (file, mime, chunk_size, max_age)
+                        }
 
-                    Ok(Output::Redirect(location)) => {
-                        let res = Response::builder()
-                            .header(http::header::LOCATION, location)
-                            .status(StatusCode::TEMPORARY_REDIRECT)
-                            .body(empty_body())
-                            .unwrap();
-                        return Poll::Ready(Ok(res));
-                    }
+                        Ok(Output::Redirect(location)) => {
+                            let res = Response::builder()
+                                .header(http::header::LOCATION, location)
+                                .status(StatusCode::TEMPORARY_REDIRECT)
+                                .body(empty_body())
+                                .unwrap();
+                            return Poll::Ready(Ok(res));
+                        }
 
-                    Ok(Output::NotFound) => {
-                        let res = Response::builder()
-                            .status(StatusCode::NOT_FOUND)
-                            .body(empty_body())
-                            .unwrap();
+                        Ok(Output::NotFound) => {
+                            let res = Response::builder()
+                                .status(StatusCode::NOT_FOUND)
+                                .body(empty_body())
+                                .unwrap();
 
-                        return Poll::Ready(Ok(res));
-                    }
+                            return Poll::Ready(Ok(res));
+                        }
 
-                    Err(err) => {
-                        return Poll::Ready(
-                            super::response_from_io_error(err).map(|res| res.map(ResponseBody)),
-                        )
-                    }
-                };
+                        Err(err) => {
+                            return Poll::Ready(
+                                super::response_from_io_error(err).map(|res| res.map(ResponseBody)),
+                            )
+                        }
+                    };
                 let body = AsyncReadBody::with_capacity(file, chunk_size).boxed();
                 let body = ResponseBody(body);
 
                 let mut res = Response::new(body);
                 res.headers_mut().insert(header::CONTENT_TYPE, mime);
+                res.headers_mut().insert(
+                    header::CACHE_CONTROL,
+                    HeaderValue::from_str(&format!("max-age={}", max_age.as_secs())).unwrap(),
+                );
 
                 Poll::Ready(Ok(res))
             }
