@@ -280,7 +280,7 @@ async fn make_client(
         // Decompress response bodies
         .layer(DecompressionLayer::new())
         // Set a `User-Agent` header
-        .layer(SetRequestHeaderLayer::<_, Request<BoxBody>>::overriding(
+        .layer(SetRequestHeaderLayer::overriding(
             header::USER_AGENT,
             HeaderValue::from_static("tonic-key-value-store"),
         ))
