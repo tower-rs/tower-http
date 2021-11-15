@@ -309,7 +309,7 @@ where
 
 pub(crate) const SENTINEL_ERROR_CODE: i32 = -837459418;
 
-pub(crate) fn default_compression_filter_predicate(headers: &HeaderMap) -> bool {
+pub(crate) fn default_compression_predicate(headers: &HeaderMap) -> bool {
     // don't recompress responses that are already compressed
     if headers.contains_key(header::CONTENT_ENCODING) {
         // Notice we're leaving it up to the inner layers to ensure that the

@@ -67,10 +67,10 @@ mod body;
 mod future;
 mod layer;
 mod service;
-mod compression_filter;
+mod compression_predicate;
 
 pub use self::{
-    body::CompressionBody, future::ResponseFuture, layer::CompressionLayer, service::Compression, compression_filter::{CompressionPredicate, DefaultCompressionPredicate}
+    body::CompressionBody, future::ResponseFuture, layer::CompressionLayer, service::Compression, compression_predicate::{CompressionPredicate, DefaultCompressionPredicate}
 };
 
 #[cfg(test)]
@@ -84,6 +84,7 @@ mod tests {
     use std::{io::Read, net::SocketAddr};
     use tokio::io::AsyncWriteExt;
     use tower::{make::Shared, service_fn, Service, ServiceExt};
+    use std::sync::{Arc, RwLock};
 
     #[tokio::test]
     async fn works() {
@@ -208,9 +209,20 @@ mod tests {
             Ok::<_, std::io::Error>(resp)
         });
 
-        // Compression filter allows nothing to be compressed
+        // Compression filter allows every other request to be compressed
+        let counter = Arc::new(RwLock::new(0));
+        let compression_predicate = move |_: &http::response::Response<Body>| {
+            let mut guard = counter.write().unwrap();
+            let should_compress = if *guard % 2 == 0 {
+                false
+            } else {
+                true
+            };
+            *guard += 1;
+            should_compress
+        };
         let mut svc = Compression::new(svc_fn)
-            .with_compression_filter(|_p: &http::response::Parts| false);
+            .with_compression_predicate(compression_predicate);
         let req = Request::builder()
             .header("accept-encoding", "br")
             .body(Body::empty())
@@ -227,9 +239,7 @@ mod tests {
         let still_uncompressed = String::from_utf8(data.to_vec()).unwrap();
         assert_eq!(DATA, &still_uncompressed);
 
-        // Compression filter allows anything to be compressed
-        let mut svc = Compression::new(svc_fn)
-            .with_compression_filter(|_p: &http::response::Parts| true);
+        // Compression filter will compress the next body
         let req = Request::builder()
             .header("accept-encoding", "br")
             .body(Body::empty())
