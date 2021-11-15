@@ -108,9 +108,9 @@ impl<S, P> Compression<S, P> {
     /// // Placeholder service_fn
     /// let service = Compression::new(service_fn(|_: ()| async {
     ///     Ok::<_, std::io::Error>(http::Response::new(()))
-    /// })).with_compression_predicate(compression_predicate);
+    /// })).compress_when(compression_predicate);
     /// ```
-    pub fn with_compression_predicate<B, C>(self, compression_predicate: C) -> Compression<S, C>
+    pub fn compress_when<B, C>(self, compression_predicate: C) -> Compression<S, C>
     where
         C: CompressionPredicate<B>
     {
