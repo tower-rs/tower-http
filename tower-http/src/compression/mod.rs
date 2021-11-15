@@ -13,10 +13,10 @@
 //! use tokio::fs::{self, File};
 //! use tokio_util::io::ReaderStream;
 //! use tower::{Service, ServiceExt, ServiceBuilder, service_fn};
-//! use tower_http::compression::CompressionLayer;
+//! use tower_http::{compression::CompressionLayer, BoxError};
 //!
 //! # #[tokio::main]
-//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn main() -> Result<(), BoxError> {
 //! async fn handle(req: Request<Body>) -> Result<Response<Body>, Infallible> {
 //!     // Open the file.
 //!     let file = File::open("Cargo.toml").await.expect("file missing");
