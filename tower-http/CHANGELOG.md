@@ -12,12 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Change the response body error type of `Compression` and `Decompression` to
   `Box<dyn std::error::Error + Send + Sync>`. This makes them usable if the body
   they're wrapping uses `Box<dyn std::error::Error + Send + Sync>` as its error
-  type which they previously weren't
+  type which they previously weren't ([#166])
 - Remove `BodyOrIoError`. Its been replaced with `Box<dyn std::error::Error +
-  Send + Sync>`
+  Send + Sync>` ([#166])
 
 [#124]: https://github.com/tower-rs/tower-http/pull/124
 [#156]: https://github.com/tower-rs/tower-http/pull/156
+[#166]: https://github.com/tower-rs/tower-http/pull/166
 
 # 0.1.2 (November 13, 2021)
 
