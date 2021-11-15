@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 # Unreleased
 
 - `ServeDir` and `ServeFile`: Ability to serve precompressed files ([#156])
+- `Trace`: Add `DefaultMakeSpan::level` to make log level of tracing spans easily configurable ([#124])
+
+[#124]: https://github.com/tower-rs/tower-http/pull/124
+[#156]: https://github.com/tower-rs/tower-http/pull/156
 
 # 0.1.2 (November 13, 2021)
 
@@ -31,7 +35,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#129]: https://github.com/tower-rs/tower-http/pull/129
 [#130]: https://github.com/tower-rs/tower-http/pull/130
 [#122]: https://github.com/tower-rs/tower-http/pull/122
-[#156]: https://github.com/tower-rs/tower-http/pull/156
 
 # 0.1.1 (July 2, 2021)
 
