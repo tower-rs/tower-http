@@ -14,7 +14,8 @@ use std::{
 };
 use tokio::fs::File;
 use tower_service::Service;
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncSeekExt};
+use std::io::SeekFrom;
 
 /// Service that serves files from a given directory and all its sub directories.
 ///
@@ -142,6 +143,7 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
             decoded_utf8
         } else {
             return ResponseFuture {
+                method: req.method().clone(),
                 inner: Inner::Invalid,
             };
         };
@@ -150,6 +152,7 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
         for seg in path_decoded.split('/') {
             if seg.starts_with("..") || seg.contains('\\') {
                 return ResponseFuture {
+                    method: req.method().clone(),
                     inner: Inner::Invalid,
                 };
             }
@@ -176,6 +179,7 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
                 }
             }
             let mut file = File::open(&full_path).await?;
+            let file_size = file.metadata().await?.len();
             let guess = mime_guess::from_path(&full_path);
             let mime = guess
                 .first_raw()
@@ -185,16 +189,16 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
                 });
 
             if let Some(range) = range_request {
-                if let Ok((start_inclusive, end_inclusive)) = range {
-                    let total_length = file.metadata().await.unwrap().len() as usize;
-                    let mut buf = vec![0 as u8; total_length];
-                    file.read(&mut buf).await.unwrap();
-                    let end = if end_inclusive > total_length - 1 { total_length - 1 } else { end_inclusive };
-                    let bytes = Bytes::from(buf[start_inclusive..=end].to_vec());
+                if let Ok(mut content_range) = range {
+                    content_range.adjust_end_if_out_of_bounds(file_size);
+                    let mut buf = vec![0 as u8; content_range.range_size() as usize];
+                    file.seek(SeekFrom::Start(content_range.start_inclusive)).await.unwrap();
+                    file.read_exact(&mut buf).await.unwrap();
+                    let bytes = Bytes::from(buf);
                     Ok(Output::Range(ContentRange {
-                        start_inclusive,
-                        end_inclusive: end,
-                        total_length,
+                        start_inclusive: content_range.start_inclusive,
+                        end_inclusive: content_range.end_inclusive,
+                        total_size: file_size,
                         bytes,
                         mime_header_value: mime
                     }))
@@ -202,17 +206,23 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
                     Err(range.err().unwrap())
                 }
             } else {
-                Ok(Output::File(file, mime, buf_chunk_size))
+                Ok(Output::File(FileRequest {
+                    file,
+                    chunk_size: buf_chunk_size,
+                    total_size: file_size,
+                    mime_header_value: mime,
+                }))
             }
         });
 
         ResponseFuture {
+            method: req.method().clone(),
             inner: Inner::Valid(open_file_future),
         }
     }
 }
 
-fn parse_range(headers: &HeaderMap) -> Option<Result<(usize, usize), io::Error>> {
+fn parse_range(headers: &HeaderMap) -> Option<Result<CntRange, io::Error>> {
     // ex:  `Range: bytes=0-1023`
     let range_header = headers.get(header::RANGE)?;
     if let Ok(as_str) = range_header.to_str() {
@@ -222,7 +232,10 @@ fn parse_range(headers: &HeaderMap) -> Option<Result<(usize, usize), io::Error>>
             if let Some((start_incl, end_incl)) = range.split_once("-") {
                 if let Ok(start) = start_incl.parse() {
                     if let Ok(end) = end_incl.parse() {
-                        return Some(Ok((start, end)));
+                        return Some(Ok(CntRange {
+                            start_inclusive: start,
+                            end_inclusive: end
+                        }));
                     }
                 }
             }
@@ -276,18 +289,42 @@ fn append_slash_on_path(uri: Uri) -> Uri {
 }
 
 enum Output {
-    File(File, HeaderValue, usize),
+    File(FileRequest),
     Range(ContentRange),
     Redirect(HeaderValue),
     NotFound,
 }
 
+struct FileRequest {
+    file: File,
+    chunk_size: usize,
+    total_size: u64,
+    mime_header_value: HeaderValue,
+}
+
 struct ContentRange {
-    start_inclusive: usize,
-    end_inclusive: usize,
-    total_length: usize,
+    start_inclusive: u64,
+    end_inclusive: u64,
+    total_size: u64,
     bytes: Bytes,
     mime_header_value: HeaderValue,
+}
+
+struct CntRange {
+    start_inclusive: u64,
+    end_inclusive: u64,
+}
+
+impl CntRange {
+    fn range_size(&self) -> u64 {
+        self.end_inclusive - self.start_inclusive + 1
+    }
+
+    fn adjust_end_if_out_of_bounds(&mut self, file_size: u64) {
+        if self.end_inclusive >= file_size {
+            self.end_inclusive = file_size - 1
+        }
+    }
 }
 
 type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + Sync + 'static>>;
@@ -299,6 +336,7 @@ enum Inner {
 
 /// Response future of [`ServeDir`].
 pub struct ResponseFuture {
+    method: http::Method,
     inner: Inner,
 }
 
@@ -308,8 +346,14 @@ impl Future for ResponseFuture {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match &mut self.inner {
             Inner::Valid(open_file_future) => {
-                let (file, mime, chunk_size) = match ready!(Pin::new(open_file_future).poll(cx)) {
-                    Ok(Output::File(file, mime, chunk_size)) => (file, mime, chunk_size),
+                let (builder, body, length) = match ready!(Pin::new(open_file_future).poll(cx)) {
+                    Ok(Output::File(file_request)) => {
+                        let builder = Response::builder()
+                            .header(header::CONTENT_TYPE, file_request.mime_header_value);
+                        let body = AsyncReadBody::with_capacity(file_request.file, file_request.chunk_size).boxed();
+                        let body = ResponseBody(body);
+                        (builder, body, file_request.total_size)
+                    },
 
                     Ok(Output::Redirect(location)) => {
                         let res = Response::builder()
@@ -330,15 +374,13 @@ impl Future for ResponseFuture {
                     }
 
                     Ok(Output::Range(content)) => {
-                        let res = Response::builder()
+                        let builder = Response::builder()
                             .status(StatusCode::PARTIAL_CONTENT)
-                            .header(header::CONTENT_RANGE, format!("bytes {}-{}/{}", content.start_inclusive, content.end_inclusive, content.total_length))
+                            .header(header::CONTENT_RANGE, format!("bytes {}-{}/{}", content.start_inclusive, content.end_inclusive, content.total_size))
                             .header(header::CONTENT_LENGTH, content.bytes.len())
-                            .header(header::CONTENT_TYPE, content.mime_header_value)
-                            .body(body_from_bytes(content.bytes))
-                            .unwrap();
+                            .header(header::CONTENT_TYPE, content.mime_header_value);
 
-                        return Poll::Ready(Ok(res));
+                        (builder, body_from_bytes(content.bytes), content.total_size)
                     }
 
                     Err(err) => {
@@ -347,13 +389,17 @@ impl Future for ResponseFuture {
                         )
                     }
                 };
-                let body = AsyncReadBody::with_capacity(file, chunk_size).boxed();
-                let body = ResponseBody(body);
-
-                let mut res = Response::new(body);
-                res.headers_mut().insert(header::CONTENT_TYPE, mime);
-
-                Poll::Ready(Ok(res))
+                let builder = builder.header(header::ACCEPT_RANGES, "bytes")
+                    .header(header::CONTENT_LENGTH, length);
+                if self.method != http::Method::HEAD {
+                    Poll::Ready(Ok(builder
+                        .body(body)
+                        .unwrap()))
+                } else {
+                    Poll::Ready(Ok(builder
+                        .body(empty_body())
+                        .unwrap()))
+                }
             }
             Inner::Invalid => {
                 let res = Response::builder()
@@ -409,6 +455,27 @@ mod tests {
 
         let contents = std::fs::read_to_string("../README.md").unwrap();
         assert_eq!(body, contents);
+    }
+
+    #[tokio::test]
+    async fn basic_tolerates_head_requests() {
+        let svc = ServeDir::new("..");
+
+        let req = Request::builder()
+            .method(http::Method::HEAD)
+            .uri("/README.md")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+
+        let contents = std::fs::read("../README.md").unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(res.headers()["content-type"], "text/markdown");
+        assert_eq!(res.headers()[header::ACCEPT_RANGES], "bytes");
+        assert_eq!(res.headers()[header::CONTENT_LENGTH], contents.len().to_string());
+
+        let body = hyper::body::to_bytes(res.into_body()).await.unwrap().to_vec();
+        assert!(body.is_empty());
     }
 
     #[tokio::test]
