@@ -10,8 +10,11 @@ pub(crate) trait SupportedEncodings: Copy {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Encoding {
+    #[cfg(any(feature = "fs", feature = "compression-gzip"))]
     Gzip,
+    #[cfg(any(feature = "fs", feature = "compression-deflate"))]
     Deflate,
+    #[cfg(any(feature = "fs", feature = "compression-br"))]
     Brotli,
     Identity,
 }
@@ -19,13 +22,17 @@ pub(crate) enum Encoding {
 impl Encoding {
     fn to_str(self) -> &'static str {
         match self {
+            #[cfg(any(feature = "fs", feature = "compression-gzip"))]
             Encoding::Gzip => "gzip",
+            #[cfg(any(feature = "fs", feature = "compression-deflate"))]
             Encoding::Deflate => "deflate",
+            #[cfg(any(feature = "fs", feature = "compression-br"))]
             Encoding::Brotli => "br",
             Encoding::Identity => "identity",
         }
     }
 
+    #[cfg(feature = "fs")]
     pub(crate) fn to_file_extension(self) -> Option<&'static OsStr> {
         match self {
             Encoding::Gzip => Some(OsStr::new(".gz")),
@@ -42,8 +49,11 @@ impl Encoding {
     #[allow(unused_variables)]
     fn parse(s: &str, supported_encoding: impl SupportedEncodings) -> Option<Encoding> {
         match s {
+            #[cfg(any(feature = "fs", feature = "compression-gzip"))]
             "gzip" if supported_encoding.gzip() => Some(Encoding::Gzip),
+            #[cfg(any(feature = "fs", feature = "compression-deflate"))]
             "deflate" if supported_encoding.deflate() => Some(Encoding::Deflate),
+            #[cfg(any(feature = "fs", feature = "compression-br"))]
             "br" if supported_encoding.br() => Some(Encoding::Brotli),
             "identity" => Some(Encoding::Identity),
             _ => None,
