@@ -1,14 +1,13 @@
 [package]
 name = "tower-http"
 description = "Tower middleware and utilities for HTTP clients and servers"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Tower Maintainers <team@tower-rs.com>"]
 edition = "2018"
 license = "MIT"
 readme = "../README.md"
 repository = "https://github.com/tower-rs/tower-http"
 homepage = "https://github.com/tower-rs/tower-http"
-documentation = "https://docs.rs/tower-http/0.1.1/tower_http/"
 categories = ["asynchronous", "network-programming", "web-programming"]
 keywords = ["io", "async", "futures", "service", "http"]
 
@@ -25,7 +24,6 @@ tower-service = "0.3"
 # optional dependencies
 async-compression = { version = "0.3", optional = true, features = ["tokio"] }
 base64 = { version = "0.13", optional = true }
-hyper = { version = "0.14", optional = true, default_features = false, features = ["stream"] }
 iri-string = { version = "0.4", optional = true }
 mime = { version = "0.3", optional = true, default_features = false }
 mime_guess = { version = "2", optional = true, default_features = false }
@@ -42,7 +40,7 @@ futures = "0.3"
 hyper = { version = "0.14", features = ["full"] }
 once_cell = "1"
 tokio = { version = "1", features = ["full"] }
-tower = { version = "0.4.6", features = ["buffer", "util", "retry", "make"] }
+tower = { version = "0.4.10", features = ["buffer", "util", "retry", "make"] }
 tracing-subscriber = "0.2"
 
 [features]
@@ -52,6 +50,7 @@ full = [
     "auth",
     "compression",
     "compression-full",
+    "cors",
     "decompression-full",
     "follow-redirect",
     "fs",
@@ -67,6 +66,7 @@ full = [
 
 add-extension = []
 auth = ["base64"]
+cors = []
 follow-redirect = ["iri-string", "tower/util"]
 fs = ["tokio/fs", "tokio-util/io", "mime_guess", "mime", "percent-encoding"]
 map-request-body = []

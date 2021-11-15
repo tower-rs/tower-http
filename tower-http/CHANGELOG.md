@@ -7,14 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
-- Fix the bug that `ServeDir` can not handle percent encoded uri path correctly.
-- Enhancement: avoid using permanent redirection when redirect directory path without a trailing slash to the one has
-- Fix a [bug](https://github.com/tower-rs/tower-http/issues/121) which happens when `append_index_html_on_directories` is set to `false` in `ServeDir`.
-- Add `DefaultMakeSpan::level` to make log level for tracing spans configurable.
+- `Trace`: Add `DefaultMakeSpan::level` to make log level of tracing spans easily configurable ([#124])
 
-## Breaking changes
+[#124]: https://github.com/tower-rs/tower-http/pull/124
 
-None.
+# 0.1.2 (November 13, 2021)
+
+- New middleware: Add `Cors` for setting [CORS] headers ([#112])
+- New middleware: Add `AsyncRequireAuthorization` ([#118])
+- `Compression`: Don't recompress HTTP responses ([#140])
+- `Compression` and `Decompression`: Pass configuration from layer into middleware ([#132])
+- `ServeDir` and `ServeFile`: Improve performance ([#137])
+- `Compression`: Remove needless `ResBody::Error: Into<BoxError>` bounds ([#117])
+- `ServeDir`: Percent decode path segments ([#129])
+- `ServeDir`: Use correct redirection status ([#130])
+- `ServeDir`: Return `404 Not Found` on requests to directories if
+  `append_index_html_on_directories` is set to `false` ([#122])
+
+[#112]: https://github.com/tower-rs/tower-http/pull/112
+[#118]: https://github.com/tower-rs/tower-http/pull/118
+[#140]: https://github.com/tower-rs/tower-http/pull/140
+[#132]: https://github.com/tower-rs/tower-http/pull/132
+[#137]: https://github.com/tower-rs/tower-http/pull/137
+[#117]: https://github.com/tower-rs/tower-http/pull/117
+[#129]: https://github.com/tower-rs/tower-http/pull/129
+[#130]: https://github.com/tower-rs/tower-http/pull/130
+[#122]: https://github.com/tower-rs/tower-http/pull/122
 
 # 0.1.1 (July 2, 2021)
 
@@ -31,10 +49,8 @@ None.
 - Add `AddAuthorizationLayer` for setting the `Authorization` header on
   requests.
 
-## Breaking changes
-
-None.
-
 # 0.1.0 (May 27, 2021)
 
 - Initial release.
+
+[CORS]: https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS

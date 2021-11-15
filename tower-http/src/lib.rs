@@ -99,7 +99,7 @@
 //! };
 //! use tower::{ServiceBuilder, Service, ServiceExt};
 //! use hyper::Body;
-//! use http::{Request, Response, HeaderValue, header::USER_AGENT};
+//! use http::{Request, HeaderValue, header::USER_AGENT};
 //!
 //! #[tokio::main]
 //! async fn main() {
@@ -175,7 +175,6 @@
 //! [`Trace`]: crate::trace::Trace
 //! [examples]: https://github.com/tower-rs/tower-http/tree/master/examples
 
-#![doc(html_root_url = "https://docs.rs/tower-http/0.1.1")]
 #![warn(
     clippy::all,
     clippy::dbg_macro,
@@ -210,7 +209,7 @@
     nonstandard_style,
     missing_docs
 )]
-#![deny(unreachable_pub, broken_intra_doc_links, private_in_public)]
+#![deny(unreachable_pub, private_in_public)]
 #![allow(
     elided_lifetimes_in_paths,
     // TODO: Remove this once the MSRV bumps to 1.42.0 or above.
@@ -274,6 +273,10 @@ pub mod follow_redirect;
 #[cfg(feature = "metrics")]
 #[cfg_attr(docsrs, doc(cfg(feature = "metrics")))]
 pub mod metrics;
+
+#[cfg(feature = "cors")]
+#[cfg_attr(docsrs, doc(cfg(feature = "cors")))]
+pub mod cors;
 
 pub mod classify;
 pub mod services;
