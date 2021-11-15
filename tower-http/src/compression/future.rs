@@ -12,7 +12,7 @@ use std::{
     pin::Pin,
     task::{Context, Poll},
 };
-use crate::compression::compression_filter::CompressionFilter;
+use crate::compression::compression_filter::CompressionPredicate;
 
 /// Response future of [`Compression`].
 ///
@@ -30,7 +30,7 @@ impl<F, B, E, P> Future for ResponseFuture<F, P>
 where
     F: Future<Output = Result<Response<B>, E>>,
     B: Body,
-    P: CompressionFilter,
+    P: CompressionPredicate,
 {
     type Output = Result<Response<CompressionBody<B>>, E>;
 

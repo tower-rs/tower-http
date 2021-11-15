@@ -70,7 +70,7 @@ mod service;
 mod compression_filter;
 
 pub use self::{
-    body::CompressionBody, future::ResponseFuture, layer::CompressionLayer, service::Compression, compression_filter::{CompressionFilter, DefaultCompressionFilter}
+    body::CompressionBody, future::ResponseFuture, layer::CompressionLayer, service::Compression, compression_filter::{CompressionPredicate, DefaultCompressionPredicate}
 };
 
 #[cfg(test)]
