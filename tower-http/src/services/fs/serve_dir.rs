@@ -292,6 +292,7 @@ enum Output {
     File(FileRequest),
     Range(ContentRange),
     Redirect(HeaderValue),
+    InvalidRange(u64),
     NotFound,
 }
 
@@ -371,6 +372,9 @@ impl Future for ResponseFuture {
                             .unwrap();
 
                         return Poll::Ready(Ok(res));
+                    }
+
+                    Ok(Output::InvalidRange) => {
                     }
 
                     Ok(Output::Range(content)) => {
