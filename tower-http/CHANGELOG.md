@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
-- None.
+- `Trace`: Add `DefaultMakeSpan::level` to make log level of tracing spans easily configurable ([#124])
+
+[#124]: https://github.com/tower-rs/tower-http/pull/124
 
 # 0.1.2 (November 13, 2021)
 
