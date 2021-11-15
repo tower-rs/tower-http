@@ -285,52 +285,6 @@ pub mod cors;
 pub mod classify;
 pub mod services;
 
-/// Error type containing either a body error or an IO error.
-///
-/// This type is used to combine errors produced by response bodies with compression or
-/// decompression applied. The body itself can produce errors of type `E` whereas compression or
-/// decompression can produce [`io::Error`]s.
-///
-/// [`io::Error`]: std::io::Error
-#[cfg(any(feature = "compression", feature = "decompression"))]
-#[cfg_attr(
-    docsrs,
-    doc(cfg(any(feature = "compression", feature = "decompression")))
-)]
-#[derive(Debug)]
-pub enum BodyOrIoError<E> {
-    /// Errors produced by the body.
-    Body(E),
-    /// IO errors produced by compression or decompression.
-    Io(std::io::Error),
-}
-
-#[cfg(any(feature = "compression", feature = "decompression"))]
-impl<E> std::fmt::Display for BodyOrIoError<E>
-where
-    E: std::fmt::Display,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            BodyOrIoError::Io(inner) => inner.fmt(f),
-            BodyOrIoError::Body(inner) => inner.fmt(f),
-        }
-    }
-}
-
-#[cfg(any(feature = "compression", feature = "decompression"))]
-impl<E> std::error::Error for BodyOrIoError<E>
-where
-    E: std::error::Error,
-{
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            BodyOrIoError::Io(inner) => inner.source(),
-            BodyOrIoError::Body(inner) => inner.source(),
-        }
-    }
-}
-
 /// The latency unit used to report latencies by middleware.
 #[non_exhaustive]
 #[derive(Copy, Clone, Debug)]
@@ -342,3 +296,6 @@ pub enum LatencyUnit {
     /// Use nanoseconds.
     Nanos,
 }
+
+/// Alias for a type-erased error type.
+pub type BoxError = Box<dyn std::error::Error + Send + Sync>;

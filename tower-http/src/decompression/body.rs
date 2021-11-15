@@ -1,7 +1,9 @@
 #![allow(unused_imports)]
 
-use crate::compression_utils::{AsyncReadBody, BodyIntoStream, DecorateAsyncRead, WrapBody};
-use crate::BodyOrIoError;
+use crate::{
+    compression_utils::{AsyncReadBody, BodyIntoStream, DecorateAsyncRead, WrapBody},
+    BoxError,
+};
 #[cfg(feature = "decompression-br")]
 use async_compression::tokio::bufread::BrotliDecoder;
 #[cfg(feature = "decompression-gzip")]
@@ -132,9 +134,10 @@ where
 impl<B> Body for DecompressionBody<B>
 where
     B: Body,
+    B::Error: Into<BoxError>,
 {
     type Data = Bytes;
-    type Error = BodyOrIoError<B::Error>;
+    type Error = BoxError;
 
     fn poll_data(
         self: Pin<&mut Self>,
@@ -152,7 +155,7 @@ where
                     let bytes = buf.copy_to_bytes(buf.remaining());
                     Poll::Ready(Some(Ok(bytes)))
                 }
-                Some(Err(err)) => Poll::Ready(Some(Err(BodyOrIoError::Body(err)))),
+                Some(Err(err)) => Poll::Ready(Some(Err(err.into()))),
                 None => Poll::Ready(None),
             },
         }
@@ -169,7 +172,7 @@ where
             BodyInnerProj::Deflate(inner) => inner.poll_trailers(cx),
             #[cfg(feature = "decompression-br")]
             BodyInnerProj::Brotli(inner) => inner.poll_trailers(cx),
-            BodyInnerProj::Identity(body) => body.poll_trailers(cx).map_err(BodyOrIoError::Body),
+            BodyInnerProj::Identity(body) => body.poll_trailers(cx).map_err(Into::into),
         }
     }
 }
