@@ -222,7 +222,7 @@ mod tests {
             should_compress
         };
         let mut svc = Compression::new(svc_fn)
-            .with_compression_predicate(compression_predicate);
+            .compress_when(compression_predicate);
         let req = Request::builder()
             .header("accept-encoding", "br")
             .body(Body::empty())
