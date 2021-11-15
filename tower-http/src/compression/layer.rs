@@ -105,7 +105,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn accept_encoding_configuration_works() -> Result<(), Box<dyn std::error::Error>> {
+    async fn accept_encoding_configuration_works() -> Result<(), crate::BoxError> {
         let deflate_only_layer = CompressionLayer::new().no_br().no_gzip();
 
         let mut service = ServiceBuilder::new()
