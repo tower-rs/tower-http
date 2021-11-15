@@ -1,7 +1,7 @@
 use super::Compression;
 use crate::compression_utils::AcceptEncoding;
 use tower_layer::Layer;
-use crate::compression::compression_filter::DefaultCompressionPredicate;
+use crate::compression::compression_predicate::DefaultCompressionPredicate;
 
 /// Compress response bodies of the underlying service.
 ///

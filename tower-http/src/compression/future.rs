@@ -12,7 +12,7 @@ use std::{
     pin::Pin,
     task::{Context, Poll},
 };
-use crate::compression::compression_filter::CompressionPredicate;
+use crate::compression::compression_predicate::CompressionPredicate;
 
 /// Response future of [`Compression`].
 ///
@@ -23,14 +23,14 @@ pub struct ResponseFuture<F, P> {
     #[pin]
     pub(crate) inner: F,
     pub(crate) encoding: Encoding,
-    pub(crate) compression_filter: P
+    pub(crate) compression_predicate: P
 }
 
 impl<F, B, E, P> Future for ResponseFuture<F, P>
 where
     F: Future<Output = Result<Response<B>, E>>,
     B: Body,
-    P: CompressionPredicate,
+    P: CompressionPredicate<B>,
 {
     type Output = Result<Response<CompressionBody<B>>, E>;
 
@@ -38,10 +38,12 @@ where
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let res = ready!(self.as_mut().project().inner.poll(cx)?);
 
+        let should_compress = self.compression_predicate.should_compress(&res);
         let (mut parts, body) = res.into_parts();
 
+
         let body = match (
-            self.compression_filter.should_compress(&parts),
+            should_compress,
             self.encoding,
         ) {
             // if compression is _not_ support or the client doesn't accept it
