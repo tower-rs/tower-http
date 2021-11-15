@@ -183,22 +183,27 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
                 .unwrap_or_else(|| {
                     HeaderValue::from_str(mime::APPLICATION_OCTET_STREAM.as_ref()).unwrap()
                 });
-            if let Some((start_inclusive, end_inclusive)) = range_request {
-                let total_length = file.metadata().await.unwrap().len() as usize;
-                let mut buf = vec![0 as u8; total_length];
-                file.read(&mut buf).await.unwrap();
-                let end = if end_inclusive > total_length - 1 { total_length - 1 } else { end_inclusive };
-                let bytes = Bytes::from(buf[start_inclusive..=end].to_vec());
-                return Ok(Output::Range(ContentRange {
-                    start_inclusive,
-                    end_inclusive: end,
-                    total_length,
-                    bytes,
-                    mime_header_value: mime
-                }))
-            }
 
-            Ok(Output::File(file, mime, buf_chunk_size))
+            if let Some(range) = range_request {
+                if let Ok((start_inclusive, end_inclusive)) = range {
+                    let total_length = file.metadata().await.unwrap().len() as usize;
+                    let mut buf = vec![0 as u8; total_length];
+                    file.read(&mut buf).await.unwrap();
+                    let end = if end_inclusive > total_length - 1 { total_length - 1 } else { end_inclusive };
+                    let bytes = Bytes::from(buf[start_inclusive..=end].to_vec());
+                    Ok(Output::Range(ContentRange {
+                        start_inclusive,
+                        end_inclusive: end,
+                        total_length,
+                        bytes,
+                        mime_header_value: mime
+                    }))
+                } else {
+                    Err(range.err().unwrap())
+                }
+            } else {
+                Ok(Output::File(file, mime, buf_chunk_size))
+            }
         });
 
         ResponseFuture {
@@ -207,27 +212,32 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
     }
 }
 
-fn parse_range(headers: &HeaderMap) -> Option<(usize, usize)> {
+fn parse_range(headers: &HeaderMap) -> Option<Result<(usize, usize), io::Error>> {
     // ex:  `Range: bytes=0-1023`
-    headers.get(header::RANGE)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|raw| {
-            raw.split("=")
-                .skip(1)
-                .next()
-        })
-        .and_then(|range| {
-            let mut start_end = range.split("-");
-            if let Some(start) = start_end.next().and_then(|s| usize::from_str_radix(s, 10).ok()) {
-                if let Some(end) = start_end.next().and_then(|s| usize::from_str_radix(s, 10).ok()) {
-                    Some((start, end))
-                } else {
-                    None
+    let range_header = headers.get(header::RANGE)?;
+    if let Ok(as_str) = range_header.to_str() {
+        // produces ("bytes", "0-1023")
+        return if let Some((_, range)) = as_str.split_once("=") {
+            // produces ("0", "1023")
+            if let Some((start_incl, end_incl)) = range.split_once("-") {
+                if let Ok(start) = start_incl.parse() {
+                    if let Ok(end) = end_incl.parse() {
+                        return Some(Ok((start, end)));
+                    }
                 }
-            } else {
-                None
             }
-        })
+            Some(Err(to_invalid_input(&format!("Range header range not correctly formatted \
+            `bytes=<start_inclusive_index>-<end_inclusive_index>`, indices should be positive byte-indices \
+            value supplied was {}", range))))
+        } else {
+            Some(Err(to_invalid_input("Range header value not in format `bytes=<range>`, `=` missing")))
+        }
+    }
+    Some(Err(to_invalid_input( "Range not parseable as utf8")))
+}
+
+fn to_invalid_input(msg: &str) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidInput, msg)
 }
 
 async fn is_dir(full_path: &Path) -> bool {
@@ -586,5 +596,28 @@ mod tests {
         let body = hyper::body::to_bytes(res.into_body()).await.ok().unwrap();
         let source = Bytes::from(file_contents);
         assert_eq!(body, source);
+    }
+
+    #[tokio::test]
+    async fn read_partial_errs_on_garbage_header() {
+        let svc = ServeDir::new("..");
+        let req = Request::builder()
+            .uri("/README.md")
+            .header("Range", "bad_format")
+            .body(Body::empty())
+            .unwrap();
+        assert!(svc.oneshot(req).await.is_err());
+    }
+
+
+    #[tokio::test]
+    async fn read_partial_errs_on_bad_range() {
+        let svc = ServeDir::new("..");
+        let req = Request::builder()
+            .uri("/README.md")
+            .header("Range", "bytes=-1-15")
+            .body(Body::empty())
+            .unwrap();
+        assert!(svc.oneshot(req).await.is_err());
     }
 }
