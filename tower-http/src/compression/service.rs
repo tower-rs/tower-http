@@ -4,7 +4,7 @@ use http::{Request, Response};
 use http_body::Body;
 use std::task::{Context, Poll};
 use tower_service::Service;
-use crate::compression::compression_filter::{CompressionFilter, DefaultCompressionFilter};
+use crate::compression::compression_filter::{CompressionPredicate, DefaultCompressionPredicate};
 
 /// Compress response bodies of the underlying service.
 ///
@@ -13,10 +13,10 @@ use crate::compression::compression_filter::{CompressionFilter, DefaultCompressi
 ///
 /// See the [module docs](crate::compression) for more details.
 #[derive(Clone, Copy)]
-pub struct Compression<S, P = DefaultCompressionFilter> {
+pub struct Compression<S, P = DefaultCompressionPredicate> {
     pub(crate) inner: S,
     pub(crate) accept: AcceptEncoding,
-    pub(crate) compression_filter: P,
+    pub(crate) compression_predicate: P,
 }
 
 impl<S> Compression<S> {
@@ -25,12 +25,12 @@ impl<S> Compression<S> {
         Self {
             inner: service,
             accept: AcceptEncoding::default(),
-            compression_filter: DefaultCompressionFilter{}
+            compression_predicate: DefaultCompressionPredicate {}
         }
     }
 }
 
-impl<S, P: CompressionFilter> Compression<S, P> {
+impl<S, P> Compression<S, P> {
 
     define_inner_service_accessors!();
 
@@ -89,12 +89,12 @@ impl<S, P: CompressionFilter> Compression<S, P> {
         self
     }
 
-    /// Replaces the current compression filter, `DefaultCompressionFilter` being the default
-    pub fn with_compression_filter<CF: CompressionFilter>(self, compression_filter: CF) -> Compression<S, CF> {
+    /// Replaces the current compression predicate, `DefaultCompressionPredicate` being the default
+    pub fn with_compression_filter<C: CompressionPredicate>(self, compression_predicate: C) -> Compression<S, C> {
         Compression {
             inner: self.inner,
             accept: self.accept,
-            compression_filter
+            compression_predicate
         }
     }
 }
@@ -103,7 +103,7 @@ impl<ReqBody, ResBody, S, P> Service<Request<ReqBody>> for Compression<S, P>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
     ResBody: Body,
-    P: CompressionFilter,
+    P: CompressionPredicate,
 {
     type Response = Response<CompressionBody<ResBody>>;
     type Error = S::Error;
@@ -120,7 +120,7 @@ where
         ResponseFuture {
             inner: self.inner.call(req),
             encoding,
-            compression_filter: self.compression_filter
+            compression_filter: self.compression_predicate.clone()
         }
     }
 }

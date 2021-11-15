@@ -1,7 +1,7 @@
 use super::Compression;
 use crate::compression_utils::AcceptEncoding;
 use tower_layer::Layer;
-use crate::compression::compression_filter::DefaultCompressionFilter;
+use crate::compression::compression_filter::DefaultCompressionPredicate;
 
 /// Compress response bodies of the underlying service.
 ///
@@ -16,13 +16,13 @@ pub struct CompressionLayer {
 }
 
 impl<S> Layer<S> for CompressionLayer {
-    type Service = Compression<S, DefaultCompressionFilter>;
+    type Service = Compression<S, DefaultCompressionPredicate>;
 
     fn layer(&self, inner: S) -> Self::Service {
         Compression {
             inner,
             accept: self.accept,
-            compression_filter: DefaultCompressionFilter{}
+            compression_predicate: DefaultCompressionPredicate {}
         }
     }
 }
