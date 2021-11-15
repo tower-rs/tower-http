@@ -2,7 +2,7 @@ use bytes::Bytes;
 use hyper::{
     body::HttpBody,
     header::{self, HeaderValue},
-    Body, Request, Response, Server, StatusCode,
+    Body, Response, Server, StatusCode,
 };
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -89,7 +89,7 @@ async fn serve_forever(listener: TcpListener) -> Result<(), hyper::Error> {
             content_length_from_response,
         ))
         // Set a `Content-Type` if there isn't one already.
-        .layer(SetResponseHeaderLayer::<_, Request<Body>>::if_not_present(
+        .layer(SetResponseHeaderLayer::if_not_present(
             header::CONTENT_TYPE,
             HeaderValue::from_static("application/octet-stream"),
         ))

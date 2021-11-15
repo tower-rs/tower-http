@@ -110,7 +110,7 @@
 //!             StatusInRangeAsFailures::new(400..=599).into_make_classifier()
 //!         ))
 //!         // Set a `User-Agent` header on all requests.
-//!         .layer(SetRequestHeaderLayer::<_, Body>::overriding(
+//!         .layer(SetRequestHeaderLayer::overriding(
 //!             USER_AGENT,
 //!             HeaderValue::from_static("tower-http demo")
 //!         ))

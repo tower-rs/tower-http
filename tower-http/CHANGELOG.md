@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   type which they previously weren't ([#166])
 - Remove `BodyOrIoError`. Its been replaced with `Box<dyn std::error::Error +
   Send + Sync>` ([#166])
+- `SetRequestHeaderLayer`, `SetResponseHeaderLayer`: Remove unnecessary generic parameter ([#148])
+  This removes the need (and possibility) to specify a body type for these layers.
 
 [#124]: https://github.com/tower-rs/tower-http/pull/124
 [#156]: https://github.com/tower-rs/tower-http/pull/156
