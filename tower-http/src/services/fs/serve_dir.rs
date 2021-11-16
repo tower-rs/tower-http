@@ -213,10 +213,12 @@ fn parse_range(headers: &HeaderMap) -> Option<ParsedRangeHeader> {
             if let Some((start_incl, end_incl)) = range.split_once("-") {
                 if let Ok(start) = start_incl.parse() {
                     if let Ok(end) = end_incl.parse() {
-                        return Some(ParsedRangeHeader::Valid(ContentRange {
-                            start_inclusive: start,
-                            end_inclusive: end
-                        }));
+                        if start < end {
+                            return Some(ParsedRangeHeader::Valid(ContentRange {
+                                start_inclusive: start,
+                                end_inclusive: end
+                            }));
+                        }
                     }
                 }
             }
