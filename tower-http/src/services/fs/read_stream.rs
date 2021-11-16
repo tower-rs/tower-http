@@ -107,6 +107,10 @@ impl<R: AsyncRead> Stream for ReaderStream<R> {
             this.buf.reserve(*this.capacity);
         }
 
+        // Will always try to read buf-capacity
+        // If after reading, the buffer is filled with more than the amount of addition bytes we want
+        // to read we split the buffer to the bytes we want, and set the reader to none.
+        // Subsequent polls will return Poll::Ready(None) and we won't read any more.
         match poll_read_buf(reader, cx, &mut this.buf) {
             Poll::Pending => Poll::Pending,
             Poll::Ready(Err(err)) => {
@@ -118,15 +122,18 @@ impl<R: AsyncRead> Stream for ReaderStream<R> {
                 Poll::Ready(None)
             }
             Poll::Ready(Ok(_)) => {
+                // Check if we've over-read
                 if let Some(max_read) = this.max_read_bytes {
                     let bytes_left = *max_read - *this.read_bytes;
                     if this.buf.capacity() > bytes_left {
+                        // We've over-read and will return only the bytes we wanted
                         this.read_bytes = max_read;
                         let chunk = this.buf.split_to(bytes_left);
                         self.project().reader.set(None);
                         return Poll::Ready(Some(Ok(chunk.freeze())))
                     }
                 }
+                // No over-read, continue as normal
                 let chunk = this.buf.split();
                 *this.read_bytes += chunk.len();
                 Poll::Ready(Some(Ok(chunk.freeze())))
