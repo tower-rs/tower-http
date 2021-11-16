@@ -1,7 +1,7 @@
 use super::{DecompressionBody, DecompressionLayer, ResponseFuture};
-use crate::compression_utils::{AcceptEncoding, default_compression_predicate};
+use crate::compression_utils::AcceptEncoding;
 use http::{
-    header::{self, ACCEPT_ENCODING, RANGE},
+    header::{self, ACCEPT_ENCODING},
     Request, Response,
 };
 use http_body::Body;
@@ -101,11 +101,9 @@ where
     }
 
     fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
-        if default_compression_predicate(req.headers()) && !req.headers().contains_key(RANGE) {
-            if let header::Entry::Vacant(entry) = req.headers_mut().entry(ACCEPT_ENCODING) {
-                if let Some(accept) = self.accept.to_header_value() {
-                    entry.insert(accept);
-                }
+        if let header::Entry::Vacant(entry) = req.headers_mut().entry(ACCEPT_ENCODING) {
+            if let Some(accept) = self.accept.to_header_value() {
+                entry.insert(accept);
             }
         }
 

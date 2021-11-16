@@ -19,19 +19,18 @@ pub struct Compression<S, P = DefaultCompressionPredicate> {
     pub(crate) compression_predicate: P,
 }
 
-impl<S> Compression<S> {
+impl<S> Compression<S, DefaultCompressionPredicate> {
     /// Creates a new `Compression` wrapping the `service`.
-    pub fn new(service: S) -> Self {
+    pub fn new(service: S) -> Compression<S, DefaultCompressionPredicate> {
         Self {
             inner: service,
             accept: AcceptEncoding::default(),
-            compression_predicate: DefaultCompressionPredicate {}
+            compression_predicate: DefaultCompressionPredicate::default(),
         }
     }
 }
 
 impl<S, P> Compression<S, P> {
-
     define_inner_service_accessors!();
 
     /// Returns a new [`Layer`] that wraps services with a `Compression` middleware.
@@ -89,30 +88,30 @@ impl<S, P> Compression<S, P> {
         self
     }
 
-    /// Replace the current compression filter.
+    /// Replace the current compression predicate.
     ///
-    /// The default predicate is [`DefaultCompressionFilter`] which disables compression of gRPC
+    /// The default predicate is [`DefaultCompressionPredicate`] which disables compression of gRPC
     /// (gRPC has its own protocol specific compression system) and responses who's
     /// mime type starts with `image/`.
     ///
     /// # Example
-    /// For some reason compressing json is undesired
+    ///
+    /// For some reason compressing JSON is undesired
+    ///
     /// ```
-    /// use tower_http::compression::Compression;
+    /// use tower_http::compression::{Compression, compression_predicate::NotForContentType};
     /// use tower::util::service_fn;
-    /// let compression_predicate = |r: &http::Response<()>| r.headers()
-    ///         .get("content-type")
-    ///         .and_then(|header_value| header_value.to_str().ok())
-    ///         .filter(|content_type| *content_type == "application/json")
-    ///         .is_none();
+    ///
     /// // Placeholder service_fn
-    /// let service = Compression::new(service_fn(|_: ()| async {
+    /// let service = service_fn(|_: ()| async {
     ///     Ok::<_, std::io::Error>(http::Response::new(()))
-    /// })).compress_when(compression_predicate);
+    /// });
+    /// let service = Compression::new(service)
+    ///     .compress_when(NotForContentType::new("application/json"));
     /// ```
-    pub fn compress_when<B, C>(self, compression_predicate: C) -> Compression<S, C>
+    pub fn compress_when<C>(self, compression_predicate: C) -> Compression<S, C>
     where
-        C: CompressionPredicate<B>
+        C: CompressionPredicate,
     {
         Compression {
             inner: self.inner,
@@ -126,7 +125,7 @@ impl<ReqBody, ResBody, S, P> Service<Request<ReqBody>> for Compression<S, P>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
     ResBody: Body,
-    P: CompressionPredicate<ResBody>,
+    P: CompressionPredicate,
 {
     type Response = Response<CompressionBody<ResBody>>;
     type Error = S::Error;

@@ -62,15 +62,22 @@
 //! # Ok(())
 //! # }
 //! ```
+//!
+
+pub mod compression_predicate;
 
 mod body;
 mod future;
 mod layer;
 mod service;
-mod compression_predicate;
 
+#[doc(inline)]
 pub use self::{
-    body::CompressionBody, future::ResponseFuture, layer::CompressionLayer, service::Compression, compression_predicate::{CompressionPredicate, DefaultCompressionPredicate}
+    body::CompressionBody,
+    compression_predicate::{CompressionPredicate, DefaultCompressionPredicate},
+    future::ResponseFuture,
+    layer::CompressionLayer,
+    service::Compression,
 };
 
 #[cfg(test)]
@@ -81,15 +88,28 @@ mod tests {
     use flate2::read::GzDecoder;
     use http_body::Body as _;
     use hyper::{Body, Error, Request, Response, Server};
+    use std::sync::{Arc, RwLock};
     use std::{io::Read, net::SocketAddr};
     use tokio::io::AsyncWriteExt;
     use tower::{make::Shared, service_fn, Service, ServiceExt};
-    use std::sync::{Arc, RwLock};
+
+    // Compression filter allows every other request to be compressed
+    #[derive(Clone)]
+    struct Always;
+
+    impl CompressionPredicate for Always {
+        fn should_compress<B>(&self, _: &http::Response<B>) -> bool
+        where
+            B: http_body::Body,
+        {
+            true
+        }
+    }
 
     #[tokio::test]
     async fn works() {
         let svc = service_fn(handle);
-        let mut svc = Compression::new(svc);
+        let mut svc = Compression::new(svc).compress_when(Always);
 
         // call the service
         let req = Request::builder()
@@ -199,30 +219,35 @@ mod tests {
 
     #[tokio::test]
     async fn will_not_compress_if_filtered_out() {
+        use compression_predicate::CompressionPredicate;
+
         const DATA: &str = "Hello world uncompressed";
 
         let svc_fn = service_fn(|_| async {
             let resp = Response::builder()
-                .header("content-encoding", "br")
+                // .header("content-encoding", "br")
                 .body(Body::from(DATA.as_bytes()))
                 .unwrap();
             Ok::<_, std::io::Error>(resp)
         });
 
         // Compression filter allows every other request to be compressed
-        let counter = Arc::new(RwLock::new(0));
-        let compression_predicate = move |_: &http::response::Response<Body>| {
-            let mut guard = counter.write().unwrap();
-            let should_compress = if *guard % 2 == 0 {
-                false
-            } else {
-                true
-            };
-            *guard += 1;
-            should_compress
-        };
-        let mut svc = Compression::new(svc_fn)
-            .compress_when(compression_predicate);
+        #[derive(Default, Clone)]
+        struct EveryOtherResponse(Arc<RwLock<u64>>);
+
+        impl CompressionPredicate for EveryOtherResponse {
+            fn should_compress<B>(&self, _: &http::Response<B>) -> bool
+            where
+                B: http_body::Body,
+            {
+                let mut guard = self.0.write().unwrap();
+                let should_compress = *guard % 2 != 0;
+                *guard += 1;
+                dbg!(should_compress)
+            }
+        }
+
+        let mut svc = Compression::new(svc_fn).compress_when(EveryOtherResponse::default());
         let req = Request::builder()
             .header("accept-encoding", "br")
             .body(Body::empty())

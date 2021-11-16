@@ -4,7 +4,7 @@ use crate::{content_encoding::SupportedEncodings, BoxError};
 use bytes::{Bytes, BytesMut};
 use futures_core::Stream;
 use futures_util::ready;
-use http::{header, HeaderMap, HeaderValue};
+use http::HeaderValue;
 use http_body::Body;
 use pin_project_lite::pin_project;
 use std::{
@@ -308,27 +308,3 @@ where
 }
 
 pub(crate) const SENTINEL_ERROR_CODE: i32 = -837459418;
-
-pub(crate) fn default_compression_predicate(headers: &HeaderMap) -> bool {
-    // don't recompress responses that are already compressed
-    if headers.contains_key(header::CONTENT_ENCODING) {
-        // Notice we're leaving it up to the inner layers to ensure that the
-        // content-encoding sent out matches the accept-encoding that came in.
-
-        return false;
-    }
-
-    // grpc doesn't support transparent compression and instead has its compression own
-    // algorithm that implementations can use
-    // https://grpc.github.io/grpc/core/md_doc_compression.html
-    let content_type = headers
-        .get(header::CONTENT_TYPE)
-        .and_then(|h| h.to_str().ok())
-        .unwrap_or_default();
-    // We also don't want to compress images
-    if content_type.starts_with("application/grpc") || content_type.starts_with("image/") {
-        return false;
-    }
-
-    true
-}
