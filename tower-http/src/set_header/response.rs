@@ -95,7 +95,7 @@
 use super::{InsertHeaderMode, MakeHeaderValue};
 use futures_util::ready;
 use http::{header::HeaderName, Response};
-use pin_project::pin_project;
+use pin_project_lite::pin_project;
 use std::{
     fmt,
     future::Future,
@@ -269,15 +269,16 @@ where
     }
 }
 
-/// Response future for [`SetResponseHeader`].
-#[pin_project]
-#[derive(Debug)]
-pub struct ResponseFuture<F, M> {
-    #[pin]
-    future: F,
-    header_name: HeaderName,
-    make: M,
-    mode: InsertHeaderMode,
+pin_project! {
+    /// Response future for [`SetResponseHeader`].
+    #[derive(Debug)]
+    pub struct ResponseFuture<F, M> {
+        #[pin]
+        future: F,
+        header_name: HeaderName,
+        make: M,
+        mode: InsertHeaderMode,
+    }
 }
 
 impl<F, ResBody, E, M> Future for ResponseFuture<F, M>

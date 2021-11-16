@@ -36,7 +36,7 @@
 
 use futures_util::ready;
 use http::{header::HeaderName, HeaderValue, Request, Response};
-use pin_project::pin_project;
+use pin_project_lite::pin_project;
 use std::future::Future;
 use std::{
     pin::Pin,
@@ -125,13 +125,14 @@ where
     }
 }
 
-/// Response future for [`PropagateHeader`].
-#[pin_project]
-#[derive(Debug)]
-pub struct ResponseFuture<F> {
-    #[pin]
-    future: F,
-    header_and_value: Option<(HeaderName, HeaderValue)>,
+pin_project! {
+    /// Response future for [`PropagateHeader`].
+    #[derive(Debug)]
+    pub struct ResponseFuture<F> {
+        #[pin]
+        future: F,
+        header_and_value: Option<(HeaderName, HeaderValue)>,
+    }
 }
 
 impl<F, ResBody, E> Future for ResponseFuture<F>

@@ -69,7 +69,7 @@
 use futures_core::ready;
 use http::{Request, Response};
 use http_body::Body;
-use pin_project::pin_project;
+use pin_project_lite::pin_project;
 use std::{
     future::Future,
     pin::Pin,
@@ -167,30 +167,33 @@ where
     }
 }
 
-#[pin_project(project = StateProj)]
-enum State<A, ReqBody, SFut> {
-    Authorize {
-        #[pin]
-        authorize: A,
-        req: Option<Request<ReqBody>>,
-    },
-    Authorized {
-        #[pin]
-        fut: SFut,
-    },
+pin_project! {
+    #[project = StateProj]
+    enum State<A, ReqBody, SFut> {
+        Authorize {
+            #[pin]
+            authorize: A,
+            req: Option<Request<ReqBody>>,
+        },
+        Authorized {
+            #[pin]
+            fut: SFut,
+        },
+    }
 }
 
-/// Response future for [`AsyncRequireAuthorization`].
-#[pin_project]
-pub struct ResponseFuture<Auth, S, ReqBody>
-where
-    Auth: AsyncAuthorizeRequest,
-    S: Service<Request<ReqBody>>,
-{
-    auth: Auth,
-    #[pin]
-    state: State<Auth::Future, ReqBody, S::Future>,
-    service: S,
+pin_project! {
+    /// Response future for [`AsyncRequireAuthorization`].
+    pub struct ResponseFuture<Auth, S, ReqBody>
+    where
+        Auth: AsyncAuthorizeRequest,
+        S: Service<Request<ReqBody>>,
+    {
+        auth: Auth,
+        #[pin]
+        state: State<Auth::Future, ReqBody, S::Future>,
+        service: S,
+    }
 }
 
 impl<Auth, S, ReqBody, B> Future for ResponseFuture<Auth, S, ReqBody>

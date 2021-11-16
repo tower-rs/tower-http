@@ -77,7 +77,7 @@
 
 use futures_core::ready;
 use http::Response;
-use pin_project::pin_project;
+use pin_project_lite::pin_project;
 use std::future::Future;
 use std::{
     fmt,
@@ -183,12 +183,13 @@ where
     }
 }
 
-/// Response future for [`MapResponseBody`].
-#[pin_project]
-pub struct ResponseFuture<Fut, F> {
-    #[pin]
-    inner: Fut,
-    f: F,
+pin_project! {
+    /// Response future for [`MapResponseBody`].
+    pub struct ResponseFuture<Fut, F> {
+        #[pin]
+        inner: Fut,
+        f: F,
+    }
 }
 
 impl<Fut, F, ResBody, E, NewResBody> Future for ResponseFuture<Fut, F>

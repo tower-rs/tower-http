@@ -3,7 +3,7 @@ use crate::classify::ClassifyEos;
 use futures_core::ready;
 use http::HeaderMap;
 use http_body::Body;
-use pin_project::pin_project;
+use pin_project_lite::pin_project;
 use std::{
     fmt,
     pin::Pin,
@@ -12,19 +12,20 @@ use std::{
 };
 use tracing::Span;
 
-/// Response body for [`Trace`].
-///
-/// [`Trace`]: super::Trace
-#[pin_project]
-pub struct ResponseBody<B, C, OnBodyChunk, OnEos, OnFailure> {
-    #[pin]
-    pub(crate) inner: B,
-    pub(crate) classify_eos: Option<C>,
-    pub(crate) on_eos: Option<(OnEos, Instant)>,
-    pub(crate) on_body_chunk: OnBodyChunk,
-    pub(crate) on_failure: Option<OnFailure>,
-    pub(crate) start: Instant,
-    pub(crate) span: Span,
+pin_project! {
+    /// Response body for [`Trace`].
+    ///
+    /// [`Trace`]: super::Trace
+    pub struct ResponseBody<B, C, OnBodyChunk, OnEos, OnFailure> {
+        #[pin]
+        pub(crate) inner: B,
+        pub(crate) classify_eos: Option<C>,
+        pub(crate) on_eos: Option<(OnEos, Instant)>,
+        pub(crate) on_body_chunk: OnBodyChunk,
+        pub(crate) on_failure: Option<OnFailure>,
+        pub(crate) start: Instant,
+        pub(crate) span: Span,
+    }
 }
 
 impl<B, C, OnBodyChunkT, OnEosT, OnFailureT> Body

@@ -6,22 +6,23 @@ use crate::content_encoding::Encoding;
 use futures_util::ready;
 use http::{header, HeaderMap, HeaderValue, Response};
 use http_body::Body;
-use pin_project::pin_project;
+use pin_project_lite::pin_project;
 use std::{
     future::Future,
     pin::Pin,
     task::{Context, Poll},
 };
 
-/// Response future of [`Compression`].
-///
-/// [`Compression`]: super::Compression
-#[pin_project]
-#[derive(Debug)]
-pub struct ResponseFuture<F> {
-    #[pin]
-    pub(crate) inner: F,
-    pub(crate) encoding: Encoding,
+pin_project! {
+    /// Response future of [`Compression`].
+    ///
+    /// [`Compression`]: super::Compression
+    #[derive(Debug)]
+    pub struct ResponseFuture<F> {
+        #[pin]
+        pub(crate) inner: F,
+        pub(crate) encoding: Encoding,
+    }
 }
 
 impl<F, B, E> Future for ResponseFuture<F>
@@ -45,16 +46,16 @@ where
             (false, _) | (_, Encoding::Identity) => {
                 return Poll::Ready(Ok(Response::from_parts(
                     parts,
-                    CompressionBody(BodyInner::Identity(body)),
+                    CompressionBody::new(BodyInner::identity(body)),
                 )))
             }
 
             #[cfg(feature = "compression-gzip")]
-            (_, Encoding::Gzip) => CompressionBody(BodyInner::Gzip(WrapBody::new(body))),
+            (_, Encoding::Gzip) => CompressionBody::new(BodyInner::gzip(WrapBody::new(body))),
             #[cfg(feature = "compression-deflate")]
-            (_, Encoding::Deflate) => CompressionBody(BodyInner::Deflate(WrapBody::new(body))),
+            (_, Encoding::Deflate) => CompressionBody::new(BodyInner::deflate(WrapBody::new(body))),
             #[cfg(feature = "compression-br")]
-            (_, Encoding::Brotli) => CompressionBody(BodyInner::Brotli(WrapBody::new(body))),
+            (_, Encoding::Brotli) => CompressionBody::new(BodyInner::brotli(WrapBody::new(body))),
         };
 
         parts.headers.remove(header::CONTENT_LENGTH);
