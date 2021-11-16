@@ -1,5 +1,3 @@
-#![allow(missing_docs)]
-
 use http::{header, Extensions, HeaderMap, StatusCode, Version};
 use http_body::Body;
 use std::borrow::Cow;
