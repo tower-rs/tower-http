@@ -1,19 +1,26 @@
 //! Service that serves a file.
 
-use super::{open_file_with_fallback, AsyncReadBody, FileFuture, PrecompressedVariants};
-use crate::{content_encoding::encodings, services::fs::DEFAULT_CAPACITY};
+use super::{
+    file_metadata_with_fallback, open_file_with_fallback, AsyncReadBody, FileFuture,
+    PrecompressedVariants,
+};
+use crate::{
+    content_encoding::{encodings, Encoding},
+    services::fs::DEFAULT_CAPACITY,
+};
 use bytes::Bytes;
-use futures_util::ready;
-use http::{header, HeaderValue, Request, Response};
+use http::{header, method::Method, HeaderValue, Request, Response};
 use http_body::{combinators::BoxBody, Body};
 use mime::Mime;
 use std::{
+    fs::Metadata,
     future::Future,
     io,
     path::{Path, PathBuf},
     pin::Pin,
     task::{Context, Poll},
 };
+use tokio::fs::File;
 use tower_service::Service;
 
 /// Service that serves a file.
@@ -127,9 +134,14 @@ impl ServeFile {
     }
 }
 
+enum FileReadFuture {
+    Open(FileFuture),
+    Metadata(Pin<Box<dyn Future<Output = io::Result<(Metadata, Option<Encoding>)>>>>),
+}
+
 impl<ReqBody> Service<Request<ReqBody>> for ServeFile {
-    type Response = Response<ResponseBody>;
     type Error = io::Error;
+    type Response = Response<ResponseBody>;
     type Future = ResponseFuture;
 
     #[inline]
@@ -145,10 +157,19 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeFile {
             req.headers(),
             self.precompressed_variants.unwrap_or_default(),
         );
+        let file_future = match *req.method() {
+            Method::HEAD => FileReadFuture::Metadata(Box::pin(file_metadata_with_fallback(
+                path,
+                negotiated_encodings,
+            ))),
+            _ => FileReadFuture::Open(Box::pin(open_file_with_fallback(
+                path,
+                negotiated_encodings,
+            ))),
+        };
 
-        let open_file_future = Box::pin(open_file_with_fallback(path, negotiated_encodings));
         ResponseFuture {
-            open_file_future,
+            file_future,
             mime: Some(self.mime.clone()),
             buf_chunk_size: self.buf_chunk_size,
         }
@@ -157,7 +178,7 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeFile {
 
 /// Response future of [`ServeFile`].
 pub struct ResponseFuture {
-    open_file_future: FileFuture,
+    file_future: FileReadFuture,
     mime: Option<HeaderValue>,
     buf_chunk_size: usize,
 }
@@ -166,30 +187,60 @@ impl Future for ResponseFuture {
     type Output = io::Result<Response<ResponseBody>>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let result = ready!(Pin::new(&mut self.open_file_future).poll(cx));
+        match &mut self.file_future {
+            FileReadFuture::Open(open_file_future) => {
+                let (file, maybe_encoding) = match open_file_future.as_mut().poll(cx) {
+                    Poll::Ready(Ok((file, maybe_encoding))) => (file, maybe_encoding),
+                    Poll::Ready(Err(err)) => {
+                        return Poll::Ready(
+                            super::response_from_io_error(err)
+                                .map(|res| res.map(|body| ResponseBody { inner: body })),
+                        )
+                    }
+                    Poll::Pending => return Poll::Pending,
+                };
+                let chunk_size = self.buf_chunk_size;
+                let body = AsyncReadBody::with_capacity(file, chunk_size).boxed();
+                let body = ResponseBody { inner: body };
+                let mut res = Response::new(body);
 
-        let (file, encoding) = match result {
-            Ok(file_with_encoding) => file_with_encoding,
-            Err(err) => {
-                return Poll::Ready(
-                    super::response_from_io_error(err).map(|res| res.map(ResponseBody::new)),
-                )
+                res.headers_mut()
+                    .insert(header::CONTENT_TYPE, self.mime.take().unwrap());
+
+                if let Some(encoding) = maybe_encoding {
+                    res.headers_mut()
+                        .insert(header::CONTENT_ENCODING, encoding.into_header_value());
+                }
+                Poll::Ready(Ok(res))
             }
-        };
+            FileReadFuture::Metadata(metadata_future) => {
+                let (metadata, maybe_encoding) = match metadata_future.as_mut().poll(cx) {
+                    Poll::Ready(Ok((metadata, maybe_encoding))) => (metadata, maybe_encoding),
+                    Poll::Ready(Err(err)) => {
+                        return Poll::Ready(
+                            super::response_from_io_error(err)
+                                .map(|res| res.map(|body| ResponseBody { inner: body })),
+                        )
+                    }
+                    Poll::Pending => return Poll::Pending,
+                };
 
-        let chunk_size = self.buf_chunk_size;
-        let body = AsyncReadBody::with_capacity(file, chunk_size).boxed();
-        let body = ResponseBody::new(body);
+                let mut res = Response::new(ResponseBody {
+                    inner: BoxBody::default(),
+                });
 
-        let mut res = Response::new(body);
-        res.headers_mut()
-            .insert(header::CONTENT_TYPE, self.mime.take().unwrap());
+                res.headers_mut()
+                    .insert(header::CONTENT_LENGTH, metadata.len().into());
+                res.headers_mut()
+                    .insert(header::CONTENT_TYPE, self.mime.take().unwrap());
 
-        if let Some(encoding) = encoding {
-            res.headers_mut()
-                .insert(header::CONTENT_ENCODING, encoding.into_header_value());
+                if let Some(encoding) = maybe_encoding {
+                    res.headers_mut()
+                        .insert(header::CONTENT_ENCODING, encoding.into_header_value());
+                }
+                Poll::Ready(Ok(res))
+            }
         }
-        Poll::Ready(Ok(res))
     }
 }
 
@@ -207,6 +258,7 @@ mod tests {
     use brotli::BrotliDecompress;
     use flate2::bufread::DeflateDecoder;
     use flate2::bufread::GzDecoder;
+    use http::Method;
     use http::{Request, StatusCode};
     use http_body::Body as _;
     use hyper::Body;
@@ -224,6 +276,40 @@ mod tests {
         let body = String::from_utf8(body.to_vec()).unwrap();
 
         assert!(body.starts_with("# Tower HTTP"));
+    }
+
+    #[tokio::test]
+    async fn head_request() {
+        let svc = ServeFile::new("../README.md");
+
+        let mut request = Request::new(Body::empty());
+        *request.method_mut() = Method::HEAD;
+        let res = svc.oneshot(request).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/markdown");
+        assert_eq!(res.headers()["content-length"], "3015");
+
+        let body = res.into_body().data().await;
+        assert!(body.is_none());
+    }
+
+    #[tokio::test]
+    async fn precompresed_head_request() {
+        let svc = ServeFile::new("../test-files/precompressed.txt").precompressed_gzip();
+
+        let request = Request::builder()
+            .header("Accept-Encoding", "gzip")
+            .method(Method::HEAD)
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(request).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/plain");
+        assert_eq!(res.headers()["content-encoding"], "gzip");
+        assert_eq!(res.headers()["content-length"], "59");
+
+        let body = res.into_body().data().await;
+        assert!(body.is_none());
     }
 
     #[tokio::test]
