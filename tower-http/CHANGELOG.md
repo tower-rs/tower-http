@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
-- PR: `ServeDir`: Add cache control feature: max-age default to 300 secs, from [c5soft](https://github.com/c5soft/tower-http)
+- `ServeDir`: Support setting `Cache-Control: max-age` directive ([#168])
+
+[#168]: https://github.com/tower-rs/tower-http/pull/168
 - PR: `ServeDir`: [lookup_compressed_file](https://github.com/tower-rs/tower-http/pull/170)
 
 # 0.1.2 (November 13, 2021)
