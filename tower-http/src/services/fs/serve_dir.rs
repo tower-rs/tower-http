@@ -1,14 +1,17 @@
-use super::{open_file_with_fallback, AsyncReadBody, PrecompressedVariants};
+use super::{
+    file_metadata_with_fallback, open_file_with_fallback, AsyncReadBody, PrecompressedVariants,
+};
 use crate::{
     content_encoding::{encodings, Encoding},
     services::fs::DEFAULT_CAPACITY,
 };
 use bytes::Bytes;
 use futures_util::ready;
-use http::{header, HeaderValue, Request, Response, StatusCode, Uri};
-use http_body::{combinators::BoxBody, Body, Empty};
+use http::{header, HeaderValue, Method, Request, Response, StatusCode, Uri};
+use http_body::{Body, Empty, combinators::BoxBody};
 use percent_encoding::percent_decode;
 use std::{
+    fs::Metadata,
     future::Future,
     io,
     path::{Path, PathBuf},
@@ -222,6 +225,8 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
             self.precompressed_variants.unwrap_or_default(),
         );
 
+        let request_method = req.method().clone();
+
         let open_file_future = Box::pin(async move {
             if !uri.path().ends_with('/') {
                 if is_dir(&full_path).await {
@@ -245,9 +250,18 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
                     HeaderValue::from_str(mime::APPLICATION_OCTET_STREAM.as_ref()).unwrap()
                 });
 
-            let (file, maybe_encoding) =
-                open_file_with_fallback(full_path, negotiated_encodings).await?;
-            Ok(Output::File(file, mime, buf_chunk_size, maybe_encoding))
+            match request_method {
+                Method::HEAD => {
+                    let (metadata, maybe_encoding) =
+                        file_metadata_with_fallback(full_path, negotiated_encodings).await?;
+                    Ok(Output::FileMetadata(metadata, mime, maybe_encoding))
+                }
+                _ => {
+                    let (file, maybe_encoding) =
+                        open_file_with_fallback(full_path, negotiated_encodings).await?;
+                    Ok(Output::File(file, mime, buf_chunk_size, maybe_encoding))
+                }
+            }
         });
 
         ResponseFuture {
@@ -293,6 +307,7 @@ fn append_slash_on_path(uri: Uri) -> Uri {
 
 enum Output {
     File(File, HeaderValue, usize, Option<Encoding>),
+    FileMetadata(Metadata, HeaderValue, Option<Encoding>),
     Redirect(HeaderValue),
     NotFound,
 }
@@ -314,51 +329,58 @@ impl Future for ResponseFuture {
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match &mut self.inner {
-            Inner::Valid(open_file_future) => {
-                let (file, mime, chunk_size, maybe_encoding) =
-                    match ready!(Pin::new(open_file_future).poll(cx)) {
-                        Ok(Output::File(file, mime, chunk_size, maybe_encoding)) => {
-                            (file, mime, chunk_size, maybe_encoding)
-                        }
+            Inner::Valid(open_file_future) => match ready!(Pin::new(open_file_future).poll(cx)) {
+                Ok(Output::File(file, mime, chunk_size, maybe_encoding)) => {
+                    let body = AsyncReadBody::with_capacity(file, chunk_size).boxed();
+                    let body = ResponseBody::new(body);
 
-                        Ok(Output::Redirect(location)) => {
-                            let res = Response::builder()
-                                .header(http::header::LOCATION, location)
-                                .status(StatusCode::TEMPORARY_REDIRECT)
-                                .body(empty_body())
-                                .unwrap();
-                            return Poll::Ready(Ok(res));
-                        }
+                    let mut res = Response::new(body);
+                    res.headers_mut().insert(header::CONTENT_TYPE, mime);
 
-                        Ok(Output::NotFound) => {
-                            let res = Response::builder()
-                                .status(StatusCode::NOT_FOUND)
-                                .body(empty_body())
-                                .unwrap();
+                    if let Some(encoding) = maybe_encoding {
+                        res.headers_mut()
+                            .insert(header::CONTENT_ENCODING, encoding.into_header_value());
+                    }
 
-                            return Poll::Ready(Ok(res));
-                        }
-
-                        Err(err) => {
-                            return Poll::Ready(
-                                super::response_from_io_error(err)
-                                    .map(|res| res.map(ResponseBody::new)),
-                            )
-                        }
-                    };
-                let body = AsyncReadBody::with_capacity(file, chunk_size).boxed();
-                let body = ResponseBody::new(body);
-
-                let mut res = Response::new(body);
-                res.headers_mut().insert(header::CONTENT_TYPE, mime);
-
-                if let Some(encoding) = maybe_encoding {
-                    res.headers_mut()
-                        .insert(header::CONTENT_ENCODING, encoding.into_header_value());
+                    Poll::Ready(Ok(res))
                 }
 
-                Poll::Ready(Ok(res))
-            }
+                Ok(Output::FileMetadata(metadata, mime, maybe_encoding)) => {
+                    let mut res = Response::new(empty_body());
+                    res.headers_mut().insert(header::CONTENT_TYPE, mime);
+                    res.headers_mut()
+                        .insert(header::CONTENT_LENGTH, metadata.len().into());
+
+                    if let Some(encoding) = maybe_encoding {
+                        res.headers_mut()
+                            .insert(header::CONTENT_ENCODING, encoding.into_header_value());
+                    }
+
+                    Poll::Ready(Ok(res))
+                }
+
+                Ok(Output::Redirect(location)) => {
+                    let res = Response::builder()
+                        .header(http::header::LOCATION, location)
+                        .status(StatusCode::TEMPORARY_REDIRECT)
+                        .body(empty_body())
+                        .unwrap();
+                    Poll::Ready(Ok(res))
+                }
+
+                Ok(Output::NotFound) => {
+                    let res = Response::builder()
+                        .status(StatusCode::NOT_FOUND)
+                        .body(empty_body())
+                        .unwrap();
+
+                    Poll::Ready(Ok(res))
+                }
+
+                Err(err) => {
+                    Poll::Ready(super::response_from_io_error(err).map(|res| res.map(ResponseBody::new)))
+                }
+            },
             Inner::Invalid => {
                 let res = Response::builder()
                     .status(StatusCode::NOT_FOUND)
@@ -411,6 +433,45 @@ mod tests {
 
         let contents = std::fs::read_to_string("../README.md").unwrap();
         assert_eq!(body, contents);
+    }
+
+    #[tokio::test]
+    async fn head_request() {
+        let svc = ServeDir::new("..");
+
+        let req = Request::builder()
+            .uri("/README.md")
+            .method(Method::HEAD)
+            .body(Body::empty())
+            .unwrap();
+
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/markdown");
+        assert_eq!(res.headers()["content-length"], "3015");
+
+        let body = res.into_body().data().await;
+        assert!(body.is_none());
+    }
+
+    #[tokio::test]
+    async fn precompresed_head_request() {
+        let svc = ServeDir::new("../test-files").precompressed_gzip();
+
+        let req = Request::builder()
+            .uri("/precompressed.txt")
+            .header("Accept-Encoding", "gzip")
+            .method(Method::HEAD)
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/plain");
+        assert_eq!(res.headers()["content-encoding"], "gzip");
+        assert_eq!(res.headers()["content-length"], "59");
+
+        let body = res.into_body().data().await;
+        assert!(body.is_none());
     }
 
     #[tokio::test]

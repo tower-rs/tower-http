@@ -20,7 +20,6 @@ use std::{
     pin::Pin,
     task::{Context, Poll},
 };
-use tokio::fs::File;
 use tower_service::Service;
 
 /// Service that serves a file.
@@ -194,14 +193,14 @@ impl Future for ResponseFuture {
                     Poll::Ready(Err(err)) => {
                         return Poll::Ready(
                             super::response_from_io_error(err)
-                                .map(|res| res.map(|body| ResponseBody { inner: body })),
+                                .map(|res| res.map(ResponseBody::new)),
                         )
                     }
                     Poll::Pending => return Poll::Pending,
                 };
                 let chunk_size = self.buf_chunk_size;
                 let body = AsyncReadBody::with_capacity(file, chunk_size).boxed();
-                let body = ResponseBody { inner: body };
+                let body = ResponseBody::new(body);
                 let mut res = Response::new(body);
 
                 res.headers_mut()
@@ -219,15 +218,13 @@ impl Future for ResponseFuture {
                     Poll::Ready(Err(err)) => {
                         return Poll::Ready(
                             super::response_from_io_error(err)
-                                .map(|res| res.map(|body| ResponseBody { inner: body })),
+                                .map(|res| res.map(ResponseBody::new)),
                         )
                     }
                     Poll::Pending => return Poll::Pending,
                 };
 
-                let mut res = Response::new(ResponseBody {
-                    inner: BoxBody::default(),
-                });
+                let mut res = Response::new(ResponseBody::new(BoxBody::default()));
 
                 res.headers_mut()
                     .insert(header::CONTENT_LENGTH, metadata.len().into());
