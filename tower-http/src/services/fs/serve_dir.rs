@@ -14,7 +14,7 @@ use std::{
 };
 use tokio::fs::File;
 use tower_service::Service;
-use tokio::io::{AsyncReadExt, AsyncSeekExt};
+use tokio::io::{AsyncSeekExt};
 use std::io::SeekFrom;
 
 /// Service that serves files from a given directory and all its sub directories.
@@ -143,7 +143,6 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
             decoded_utf8
         } else {
             return ResponseFuture {
-                method: req.method().clone(),
                 inner: Inner::Invalid,
             };
         };
@@ -152,7 +151,6 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
         for seg in path_decoded.split('/') {
             if seg.starts_with("..") || seg.contains('\\') {
                 return ResponseFuture {
-                    method: req.method().clone(),
                     inner: Inner::Invalid,
                 };
             }
@@ -187,42 +185,25 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
                 .unwrap_or_else(|| {
                     HeaderValue::from_str(mime::APPLICATION_OCTET_STREAM.as_ref()).unwrap()
                 });
-
-            if let Some(range) = range_request {
-                if let Ok(mut content_range) = range {
-                    content_range.adjust_end_if_out_of_bounds(file_size);
-                    let mut buf = vec![0 as u8; content_range.range_size() as usize];
-                    file.seek(SeekFrom::Start(content_range.start_inclusive)).await.unwrap();
-                    file.read_exact(&mut buf).await.unwrap();
-                    let bytes = Bytes::from(buf);
-                    Ok(Output::Range(ContentRange {
-                        start_inclusive: content_range.start_inclusive,
-                        end_inclusive: content_range.end_inclusive,
-                        total_size: file_size,
-                        bytes,
-                        mime_header_value: mime
-                    }))
-                } else {
-                    Err(range.err().unwrap())
-                }
-            } else {
-                Ok(Output::File(FileRequest {
-                    file,
-                    chunk_size: buf_chunk_size,
-                    total_size: file_size,
-                    mime_header_value: mime,
-                }))
+            if let Some(ParsedRangeHeader::Valid(range)) = &range_request {
+                let _ = file.seek(SeekFrom::Start(range.start_inclusive)).await.unwrap();
             }
+            Ok(Output::File(FileRequest{
+                file,
+                total_size: file_size,
+                chunk_size: buf_chunk_size,
+                mime_header_value: mime,
+                range: range_request
+            }))
         });
 
         ResponseFuture {
-            method: req.method().clone(),
             inner: Inner::Valid(open_file_future),
         }
     }
 }
 
-fn parse_range(headers: &HeaderMap) -> Option<Result<CntRange, io::Error>> {
+fn parse_range(headers: &HeaderMap) -> Option<ParsedRangeHeader> {
     // ex:  `Range: bytes=0-1023`
     let range_header = headers.get(header::RANGE)?;
     if let Ok(as_str) = range_header.to_str() {
@@ -232,25 +213,20 @@ fn parse_range(headers: &HeaderMap) -> Option<Result<CntRange, io::Error>> {
             if let Some((start_incl, end_incl)) = range.split_once("-") {
                 if let Ok(start) = start_incl.parse() {
                     if let Ok(end) = end_incl.parse() {
-                        return Some(Ok(CntRange {
+                        return Some(ParsedRangeHeader::Valid(ContentRange {
                             start_inclusive: start,
                             end_inclusive: end
                         }));
                     }
                 }
             }
-            Some(Err(to_invalid_input(&format!("Range header range not correctly formatted \
-            `bytes=<start_inclusive_index>-<end_inclusive_index>`, indices should be positive byte-indices \
-            value supplied was {}", range))))
+            // Range header at least on form bytes=<some_range> should produce a 416
+            Some(ParsedRangeHeader::Unsatisfiable)
         } else {
-            Some(Err(to_invalid_input("Range header value not in format `bytes=<range>`, `=` missing")))
+            Some(ParsedRangeHeader::Malformed("Range header value not in format `bytes=<range>`, `=` missing".to_owned()))
         }
     }
-    Some(Err(to_invalid_input( "Range not parseable as utf8")))
-}
-
-fn to_invalid_input(msg: &str) -> io::Error {
-    io::Error::new(io::ErrorKind::InvalidInput, msg)
+    Some(ParsedRangeHeader::Malformed("Range not parseable as utf8".to_owned()))
 }
 
 async fn is_dir(full_path: &Path) -> bool {
@@ -290,41 +266,33 @@ fn append_slash_on_path(uri: Uri) -> Uri {
 
 enum Output {
     File(FileRequest),
-    Range(ContentRange),
     Redirect(HeaderValue),
-    InvalidRange(u64),
     NotFound,
 }
 
 struct FileRequest {
     file: File,
-    chunk_size: usize,
     total_size: u64,
+    chunk_size: usize,
     mime_header_value: HeaderValue,
+    range: Option<ParsedRangeHeader>,
+}
+
+
+enum ParsedRangeHeader {
+    Valid(ContentRange),
+    Unsatisfiable,
+    Malformed(String)
 }
 
 struct ContentRange {
     start_inclusive: u64,
     end_inclusive: u64,
-    total_size: u64,
-    bytes: Bytes,
-    mime_header_value: HeaderValue,
 }
 
-struct CntRange {
-    start_inclusive: u64,
-    end_inclusive: u64,
-}
-
-impl CntRange {
+impl ContentRange {
     fn range_size(&self) -> u64 {
         self.end_inclusive - self.start_inclusive + 1
-    }
-
-    fn adjust_end_if_out_of_bounds(&mut self, file_size: u64) {
-        if self.end_inclusive >= file_size {
-            self.end_inclusive = file_size - 1
-        }
     }
 }
 
@@ -337,7 +305,6 @@ enum Inner {
 
 /// Response future of [`ServeDir`].
 pub struct ResponseFuture {
-    method: http::Method,
     inner: Inner,
 }
 
@@ -347,13 +314,43 @@ impl Future for ResponseFuture {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match &mut self.inner {
             Inner::Valid(open_file_future) => {
-                let (builder, body, length) = match ready!(Pin::new(open_file_future).poll(cx)) {
+                let response = match ready!(Pin::new(open_file_future).poll(cx)) {
                     Ok(Output::File(file_request)) => {
                         let builder = Response::builder()
-                            .header(header::CONTENT_TYPE, file_request.mime_header_value);
-                        let body = AsyncReadBody::with_capacity(file_request.file, file_request.chunk_size).boxed();
-                        let body = ResponseBody(body);
-                        (builder, body, file_request.total_size)
+                            .header(header::CONTENT_TYPE, file_request.mime_header_value)
+                            .header(header::ACCEPT_RANGES, "bytes")
+                            .header(header::CONTENT_LENGTH, file_request.total_size.to_string());
+                        if let Some(range) = file_request.range {
+                            match range {
+                                ParsedRangeHeader::Valid(content) => {
+                                    if content.end_inclusive >= file_request.total_size {
+                                        builder.header(header::CONTENT_RANGE, format!("bytes */{}", file_request.total_size))
+                                            .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                                            .body(empty_body())
+                                    } else {
+                                        let body = AsyncReadBody::with_capacity_limited(file_request.file, file_request.chunk_size, content.range_size() as usize).boxed();
+                                        builder.header(header::CONTENT_RANGE, format!("bytes {}-{}/{}", content.start_inclusive, content.end_inclusive, file_request.total_size))
+                                            .status(StatusCode::PARTIAL_CONTENT)
+                                            .body(ResponseBody(body))
+                                    }
+
+                                }
+                                ParsedRangeHeader::Unsatisfiable => {
+                                    builder.header(header::CONTENT_RANGE, format!("bytes */{}", file_request.total_size))
+                                        .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                                        .body(empty_body())
+                                }
+                                ParsedRangeHeader::Malformed(reason) => {
+                                    builder.header(header::CONTENT_RANGE, format!("bytes */{}", file_request.total_size))
+                                        .status(StatusCode::BAD_REQUEST)
+                                        .body(body_from_bytes(Bytes::from(reason)))
+                                }
+                            }
+                        } else {
+                            let body = AsyncReadBody::with_capacity(file_request.file, file_request.chunk_size).boxed();
+                            let body = ResponseBody(body);
+                            builder.body(body)
+                        }
                     },
 
                     Ok(Output::Redirect(location)) => {
@@ -374,36 +371,13 @@ impl Future for ResponseFuture {
                         return Poll::Ready(Ok(res));
                     }
 
-                    Ok(Output::InvalidRange) => {
-                    }
-
-                    Ok(Output::Range(content)) => {
-                        let builder = Response::builder()
-                            .status(StatusCode::PARTIAL_CONTENT)
-                            .header(header::CONTENT_RANGE, format!("bytes {}-{}/{}", content.start_inclusive, content.end_inclusive, content.total_size))
-                            .header(header::CONTENT_LENGTH, content.bytes.len())
-                            .header(header::CONTENT_TYPE, content.mime_header_value);
-
-                        (builder, body_from_bytes(content.bytes), content.total_size)
-                    }
-
                     Err(err) => {
                         return Poll::Ready(
                             super::response_from_io_error(err).map(|res| res.map(ResponseBody)),
                         )
                     }
                 };
-                let builder = builder.header(header::ACCEPT_RANGES, "bytes")
-                    .header(header::CONTENT_LENGTH, length);
-                if self.method != http::Method::HEAD {
-                    Poll::Ready(Ok(builder
-                        .body(body)
-                        .unwrap()))
-                } else {
-                    Poll::Ready(Ok(builder
-                        .body(empty_body())
-                        .unwrap()))
-                }
+                Poll::Ready(Ok(response.unwrap()))
             }
             Inner::Invalid => {
                 let res = Response::builder()
@@ -459,27 +433,6 @@ mod tests {
 
         let contents = std::fs::read_to_string("../README.md").unwrap();
         assert_eq!(body, contents);
-    }
-
-    #[tokio::test]
-    async fn basic_tolerates_head_requests() {
-        let svc = ServeDir::new("..");
-
-        let req = Request::builder()
-            .method(http::Method::HEAD)
-            .uri("/README.md")
-            .body(Body::empty())
-            .unwrap();
-        let res = svc.oneshot(req).await.unwrap();
-
-        let contents = std::fs::read("../README.md").unwrap();
-        assert_eq!(res.status(), StatusCode::OK);
-        assert_eq!(res.headers()["content-type"], "text/markdown");
-        assert_eq!(res.headers()[header::ACCEPT_RANGES], "bytes");
-        assert_eq!(res.headers()[header::CONTENT_LENGTH], contents.len().to_string());
-
-        let body = hyper::body::to_bytes(res.into_body()).await.unwrap().to_vec();
-        assert!(body.is_empty());
     }
 
     #[tokio::test]
@@ -624,7 +577,6 @@ mod tests {
         let svc = ServeDir::new("..");
         let bytes_start_incl = 9;
         let bytes_end_incl = 1023;
-        let requested_len = bytes_end_incl - bytes_start_incl + 1;
 
         let req = Request::builder()
             .uri("/README.md")
@@ -635,7 +587,7 @@ mod tests {
 
         let file_contents = std::fs::read("../README.md").unwrap();
         assert_eq!(res.status(), StatusCode::PARTIAL_CONTENT);
-        assert_eq!(res.headers()["content-length"], requested_len.to_string());
+        assert_eq!(res.headers()["content-length"], file_contents.len().to_string());
         assert!(res.headers()["content-range"].to_str().unwrap().starts_with(&format!("bytes {}-{}/{}", bytes_start_incl, bytes_end_incl, file_contents.len())));
         assert_eq!(res.headers()["content-type"], "text/markdown");
 
@@ -645,12 +597,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn read_partial_handles_file_out_of_bounds() {
+    async fn read_partial_rejects_out_of_bounds_range() {
         let svc = ServeDir::new("..");
         let bytes_start_incl = 0;
         let bytes_end_excl = 9999999;
         let requested_len = bytes_end_excl - bytes_start_incl;
-        let file_contents = std::fs::read("../README.md").unwrap();
 
         let req = Request::builder()
             .uri("/README.md")
@@ -659,14 +610,7 @@ mod tests {
             .unwrap();
         let res = svc.oneshot(req).await.unwrap();
 
-        assert_eq!(res.status(), StatusCode::PARTIAL_CONTENT);
-        assert_eq!(res.headers()["content-length"], file_contents.len().to_string());
-        assert!(res.headers()["content-range"].to_str().unwrap().starts_with(&format!("bytes {}-{}/{}", bytes_start_incl, file_contents.len() - 1, file_contents.len())));
-        assert_eq!(res.headers()["content-type"], "text/markdown");
-
-        let body = hyper::body::to_bytes(res.into_body()).await.ok().unwrap();
-        let source = Bytes::from(file_contents);
-        assert_eq!(body, source);
+        assert_eq!(res.status(), StatusCode::RANGE_NOT_SATISFIABLE);
     }
 
     #[tokio::test]
@@ -677,7 +621,8 @@ mod tests {
             .header("Range", "bad_format")
             .body(Body::empty())
             .unwrap();
-        assert!(svc.oneshot(req).await.is_err());
+        let res = svc.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::BAD_REQUEST);
     }
 
 
@@ -689,6 +634,7 @@ mod tests {
             .header("Range", "bytes=-1-15")
             .body(Body::empty())
             .unwrap();
-        assert!(svc.oneshot(req).await.is_err());
+        let res = svc.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::RANGE_NOT_SATISFIABLE);
     }
 }

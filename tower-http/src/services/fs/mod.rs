@@ -12,10 +12,10 @@ use std::{
 use tokio::io::AsyncRead;
 
 use futures_util::Stream;
-use tokio_util::io::ReaderStream;
 
 mod serve_dir;
 mod serve_file;
+mod read_stream;
 
 // default capacity 64KiB
 const DEFAULT_CAPACITY: usize = 65536;
@@ -28,6 +28,7 @@ pub use self::{
         ResponseBody as ServeFileResponseBody, ResponseFuture as ServeFileResponseFuture, ServeFile,
     },
 };
+use crate::services::fs::read_stream::ReaderStream;
 
 // NOTE: This could potentially be upstreamed to `http-body`.
 /// Adapter that turns an `impl AsyncRead` to an `impl Body`.
@@ -47,6 +48,12 @@ where
     fn with_capacity(read: T, capacity: usize) -> Self {
         Self {
             reader: ReaderStream::with_capacity(read, capacity),
+        }
+    }
+
+    fn with_capacity_limited(read: T, capacity: usize, max_read_bytes: usize) -> Self {
+        Self {
+            reader: ReaderStream::with_capacity_limited(read, capacity, max_read_bytes)
         }
     }
 }
