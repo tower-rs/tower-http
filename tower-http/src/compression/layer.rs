@@ -92,8 +92,8 @@ impl CompressionLayer {
     /// For some reason compressing JSON is undesired
     ///
     /// ```
-    /// use tower_http::compression::{Compression, compression_predicate::NotForContentType};
-    /// use tower::util::service_fn;
+    /// use tower_http::compression::{CompressionLayer, compression_predicate::NotForContentType};
+    /// use tower::{service_fn, ServiceBuilder};
     ///
     /// let service = ServiceBuilder::new()
     ///     .layer(CompressionLayer::new().compress_when(NotForContentType::new("application/json")))
