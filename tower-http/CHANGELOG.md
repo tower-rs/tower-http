@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
-- `ServeDir`: Add cache control feature: max-age default to 300 secs  
+- PR: `ServeDir`: Add cache control feature: max-age default to 300 secs, from [c5soft](https://github.com/c5soft/tower-http)
 
 # 0.1.2 (November 13, 2021)
 

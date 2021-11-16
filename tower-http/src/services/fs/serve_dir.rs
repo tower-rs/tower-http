@@ -84,48 +84,13 @@ use tower_service::Service;
 /// #     .expect("server error");
 /// # };
 /// ```
-/// # Axum Example
-/// ```
-/// use axum::{
-///     error_handling::HandleErrorExt,
-///     http::StatusCode,
-///     routing::{get, service_method_routing},
-///     Router,
-/// };
-/// use tower_http::services::ServeDir;
-/// 
-/// async fn hello() -> &'static str {
-///     "Hello world"
-/// }
-/// 
-/// #[tokio::main]
-/// async fn main() {
-///     // build our application with a single route
-///     let app = Router::new().route("/hello", get(hello)).fallback(
-///         service_method_routing::get(ServeDir::new("public")).handle_error(
-///             |error: std::io::Error| {
-///                 Ok::<_, std::convert::Infallible>((
-///                     StatusCode::INTERNAL_SERVER_ERROR,
-///                     format!("Unhandled internal error: {}", error),
-///                 ))
-///             },
-///         ),
-///     );
-/// 
-///     // run it with hyper on localhost:3000
-///     axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
-///         .serve(app.into_make_service())
-///         .await
-///         .unwrap();
-/// }
-/// ```
 
 #[derive(Clone, Debug)]
 pub struct ServeDir {
     base: PathBuf,
     append_index_html_on_directories: bool,
     buf_chunk_size: usize,
-    max_age: Duration,
+    max_age: Option<Duration>,
 }
 
 impl ServeDir {
@@ -138,7 +103,7 @@ impl ServeDir {
             base,
             append_index_html_on_directories: true,
             buf_chunk_size: DEFAULT_CAPACITY,
-            max_age: Duration::from_secs(5*60),
+            max_age: Some(Duration::from_secs(5 * 60)),
         }
     }
 
@@ -165,7 +130,7 @@ impl ServeDir {
     /// This speeds up user's feeling for static sites, especially large files.
     ///
     /// Defaults to 300 seconds.
-    pub fn max_age(mut self, dur: Duration) -> Self {
+    pub fn max_age(mut self, dur: Option<Duration>) -> Self {
         self.max_age = dur;
         self
     }
@@ -233,7 +198,17 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
                 });
 
             let file = File::open(full_path).await?;
-            Ok(Output::File(file, mime, buf_chunk_size, max_age))
+            let cache_control = if let Some(max_age) = max_age {
+                Some(HeaderValue::from_str(&format!("max-age={}", max_age.as_secs())).unwrap())
+            } else {
+                None
+            };
+            Ok(Output::File {
+                file,
+                mime,
+                buf_chunk_size,
+                cache_control,
+            })
         });
 
         ResponseFuture {
@@ -278,7 +253,12 @@ fn append_slash_on_path(uri: Uri) -> Uri {
 }
 
 enum Output {
-    File(File, HeaderValue, usize, Duration),
+    File {
+        file: File,
+        mime: HeaderValue,
+        buf_chunk_size: usize,
+        cache_control: Option<HeaderValue>,
+    },
     Redirect(HeaderValue),
     NotFound,
 }
@@ -301,11 +281,14 @@ impl Future for ResponseFuture {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match &mut self.inner {
             Inner::Valid(open_file_future) => {
-                let (file, mime, chunk_size, max_age) =
+                let (file, mime, buf_chunk_size, cache_control) =
                     match ready!(Pin::new(open_file_future).poll(cx)) {
-                        Ok(Output::File(file, mime, chunk_size, max_age)) => {
-                            (file, mime, chunk_size, max_age)
-                        }
+                        Ok(Output::File {
+                            file,
+                            mime,
+                            buf_chunk_size,
+                            cache_control,
+                        }) => (file, mime, buf_chunk_size, cache_control),
 
                         Ok(Output::Redirect(location)) => {
                             let res = Response::builder()
@@ -331,15 +314,15 @@ impl Future for ResponseFuture {
                             )
                         }
                     };
-                let body = AsyncReadBody::with_capacity(file, chunk_size).boxed();
+                let body = AsyncReadBody::with_capacity(file, buf_chunk_size).boxed();
                 let body = ResponseBody(body);
 
                 let mut res = Response::new(body);
                 res.headers_mut().insert(header::CONTENT_TYPE, mime);
-                res.headers_mut().insert(
-                    header::CACHE_CONTROL,
-                    HeaderValue::from_str(&format!("max-age={}", max_age.as_secs())).unwrap(),
-                );
+                if let Some(cache_control) = cache_control {
+                    res.headers_mut()
+                        .insert(header::CACHE_CONTROL, cache_control);
+                }
 
                 Poll::Ready(Ok(res))
             }
@@ -377,6 +360,7 @@ mod tests {
     #[tokio::test]
     async fn basic() {
         let svc = ServeDir::new("..");
+        
 
         let req = Request::builder()
             .uri("/README.md")
@@ -528,5 +512,32 @@ mod tests {
         assert_eq!(res.status(), StatusCode::OK);
         assert_eq!(res.headers()["content-type"], "text/plain");
         let _ = tokio::fs::remove_file(&tmp_filename).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_cache_control_max_age_default() {
+        let svc = ServeDir::new("..");
+        let req = Request::builder()
+            .uri("/README.md")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(res.headers()["cache-control"], "max-age=300");
+    }
+
+    #[tokio::test]
+    async fn test_cache_control_none() {
+        let svc = ServeDir::new("..");
+        let svc=svc.max_age(None);
+        let req = Request::builder()
+            .uri("/README.md")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::OK);
+        assert!(res.headers().get("cache-control").is_none());
     }
 }
