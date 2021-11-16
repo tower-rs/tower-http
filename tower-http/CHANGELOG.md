@@ -17,11 +17,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Send + Sync>` ([#166])
 - `SetRequestHeaderLayer`, `SetResponseHeaderLayer`: Remove unnecessary generic parameter ([#148])
   This removes the need (and possibility) to specify a body type for these layers.
+- Remove the `compression` and `decompression` feature. They were unnecessary
+  and `compression-full`/`decompression-full` can be used to get full
+  compression/decompression support. For more granular control `[compression|decompression]-gzip`, 
+  `[compression|decompression]-br` and `[compression|decompression]-deflate` may
+  be used instead. ([#170])
 
 [#124]: https://github.com/tower-rs/tower-http/pull/124
 [#156]: https://github.com/tower-rs/tower-http/pull/156
 [#166]: https://github.com/tower-rs/tower-http/pull/166
 [#148]: https://github.com/tower-rs/tower-http/pull/148
+[#170]: https://github.com/tower-rs/tower-http/pull/170
 
 # 0.1.2 (November 13, 2021)
 

@@ -235,8 +235,19 @@ pub mod set_header;
 #[cfg_attr(docsrs, doc(cfg(feature = "propagate-header")))]
 pub mod propagate_header;
 
-#[cfg(feature = "compression")]
-#[cfg_attr(docsrs, doc(cfg(feature = "compression")))]
+#[cfg(any(
+    feature = "compression-br",
+    feature = "compression-deflate",
+    feature = "compression-gzip"
+))]
+#[cfg_attr(
+    docsrs,
+    doc(cfg(any(
+        feature = "compression-br",
+        feature = "compression-deflate",
+        feature = "compression-gzip"
+    )))
+)]
 pub mod compression;
 
 #[cfg(feature = "add-extension")]
@@ -247,15 +258,40 @@ pub mod add_extension;
 #[cfg_attr(docsrs, doc(cfg(feature = "sensitive-headers")))]
 pub mod sensitive_headers;
 
-#[cfg(feature = "decompression")]
-#[cfg_attr(docsrs, doc(cfg(feature = "decompression")))]
+#[cfg(any(
+    feature = "decompression-br",
+    feature = "decompression-deflate",
+    feature = "decompression-gzip"
+))]
+#[cfg_attr(
+    docsrs,
+    doc(cfg(any(
+        feature = "decompression-br",
+        feature = "decompression-deflate",
+        feature = "decompression-gzip"
+    )))
+)]
 pub mod decompression;
 
-// Used for serving precompressed static files as well
-#[cfg(any(feature = "compression", feature = "decompression", feature = "fs"))]
+#[cfg(any(
+    feature = "compression-br",
+    feature = "compression-deflate",
+    feature = "compression-gzip",
+    feature = "decompression-br",
+    feature = "decompression-deflate",
+    feature = "decompression-gzip",
+    feature = "fs" // Used for serving precompressed static files as well
+))]
 mod content_encoding;
 
-#[cfg(any(feature = "compression", feature = "decompression"))]
+#[cfg(any(
+    feature = "compression-br",
+    feature = "compression-deflate",
+    feature = "compression-gzip",
+    feature = "decompression-br",
+    feature = "decompression-deflate",
+    feature = "decompression-gzip",
+))]
 mod compression_utils;
 
 #[cfg(feature = "map-response-body")]

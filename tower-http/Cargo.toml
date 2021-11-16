@@ -49,7 +49,6 @@ default = []
 full = [
     "add-extension",
     "auth",
-    "compression",
     "compression-full",
     "cors",
     "decompression-full",
@@ -79,17 +78,15 @@ sensitive-headers = []
 set-header = []
 trace = ["tracing"]
 
-compression = ["tokio-util", "tokio"]
-compression-br = ["async-compression/brotli", "compression"]
-compression-deflate = ["async-compression/zlib", "compression"]
+compression-br = ["async-compression/brotli", "tokio-util", "tokio"]
+compression-deflate = ["async-compression/zlib", "tokio-util", "tokio"]
 compression-full = ["compression-br", "compression-deflate", "compression-gzip"]
-compression-gzip = ["async-compression/gzip", "compression"]
+compression-gzip = ["async-compression/gzip", "tokio-util", "tokio"]
 
-decompression = ["tokio-util", "tokio"]
-decompression-br = ["async-compression/brotli", "decompression"]
-decompression-deflate = ["async-compression/zlib", "decompression"]
+decompression-br = ["async-compression/brotli", "tokio-util", "tokio"]
+decompression-deflate = ["async-compression/zlib", "tokio-util", "tokio"]
 decompression-full = ["decompression-br", "decompression-deflate", "decompression-gzip"]
-decompression-gzip = ["async-compression/gzip", "decompression"]
+decompression-gzip = ["async-compression/gzip", "tokio-util", "tokio"]
 
 [package.metadata.docs.rs]
 all-features = true
