@@ -428,7 +428,11 @@ mod tests {
     async fn returns_404_if_file_doesnt_exist_when_precompression_is_used() {
         let svc = ServeFile::new("../this-doesnt-exist.md").precompressed_deflate();
 
-        let res = svc.oneshot(Request::new(Body::empty())).await.unwrap();
+        let request = Request::builder()
+            .header("Accept-Encoding", "deflate")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(request).await.unwrap();
 
         assert_eq!(res.status(), StatusCode::NOT_FOUND);
         assert!(res.headers().get(header::CONTENT_TYPE).is_none());
