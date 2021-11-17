@@ -64,7 +64,7 @@
 //! ```
 //!
 
-pub mod compression_predicate;
+pub mod predicate;
 
 mod body;
 mod future;
@@ -74,7 +74,7 @@ mod service;
 #[doc(inline)]
 pub use self::{
     body::CompressionBody,
-    compression_predicate::{CompressionPredicate, DefaultCompressionPredicate},
+    predicate::{Predicate, DefaultPredicate},
     future::ResponseFuture,
     layer::CompressionLayer,
     service::Compression,
@@ -97,7 +97,7 @@ mod tests {
     #[derive(Clone)]
     struct Always;
 
-    impl CompressionPredicate for Always {
+    impl Predicate for Always {
         fn should_compress<B>(&self, _: &http::Response<B>) -> bool
         where
             B: http_body::Body,
@@ -219,7 +219,7 @@ mod tests {
 
     #[tokio::test]
     async fn will_not_compress_if_filtered_out() {
-        use compression_predicate::CompressionPredicate;
+        use predicate::Predicate;
 
         const DATA: &str = "Hello world uncompressed";
 
@@ -235,7 +235,7 @@ mod tests {
         #[derive(Default, Clone)]
         struct EveryOtherResponse(Arc<RwLock<u64>>);
 
-        impl CompressionPredicate for EveryOtherResponse {
+        impl Predicate for EveryOtherResponse {
             fn should_compress<B>(&self, _: &http::Response<B>) -> bool
             where
                 B: http_body::Body,

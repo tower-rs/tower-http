@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Send + Sync>` ([#166])
 - `SetRequestHeaderLayer`, `SetResponseHeaderLayer`: Remove unnecessary generic parameter ([#148])
   This removes the need (and possibility) to specify a body type for these layers.
+- `Compression`: Support specifying predicates to choose when responses should
+  be compressed. This can be used to disable compression of small responses, or
+  responses with a certain `content-type`, or something user defined.
 - Remove the `compression` and `decompression` feature. They were unnecessary
   and `compression-full`/`decompression-full` can be used to get full
   compression/decompression support. For more granular control `[compression|decompression]-gzip`, 

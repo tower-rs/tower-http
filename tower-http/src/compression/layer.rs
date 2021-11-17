@@ -1,7 +1,7 @@
-use super::{Compression, CompressionPredicate};
+use super::{Compression, Predicate};
 use crate::compression_utils::AcceptEncoding;
 use tower_layer::Layer;
-use crate::compression::compression_predicate::DefaultCompressionPredicate;
+use crate::compression::predicate::DefaultPredicate;
 
 /// Compress response bodies of the underlying service.
 ///
@@ -10,19 +10,19 @@ use crate::compression::compression_predicate::DefaultCompressionPredicate;
 ///
 /// See the [module docs](crate::compression) for more details.
 #[derive(Clone, Debug, Default)]
-pub struct CompressionLayer<P = DefaultCompressionPredicate> {
+pub struct CompressionLayer<P = DefaultPredicate> {
     accept: AcceptEncoding,
-    compression_predicate: P,
+    predicate: P,
 }
 
-impl<S, P> Layer<S> for CompressionLayer<P> where P: CompressionPredicate {
+impl<S, P> Layer<S> for CompressionLayer<P> where P: Predicate {
     type Service = Compression<S, P>;
 
     fn layer(&self, inner: S) -> Self::Service {
         Compression {
             inner,
             accept: self.accept,
-            compression_predicate: self.compression_predicate.clone(),
+            predicate: self.predicate.clone(),
         }
     }
 }
@@ -83,31 +83,14 @@ impl CompressionLayer {
 
     /// Replace the current compression predicate.
     ///
-    /// The default predicate is [`DefaultCompressionPredicate`] which disables compression of gRPC
-    /// (gRPC has its own protocol specific compression system) and responses who's
-    /// mime type starts with `image/`.
-    ///
-    /// # Example
-    ///
-    /// For some reason compressing JSON is undesired
-    ///
-    /// ```
-    /// use tower_http::compression::{CompressionLayer, compression_predicate::NotForContentType};
-    /// use tower::{service_fn, ServiceBuilder};
-    ///
-    /// let service = ServiceBuilder::new()
-    ///     .layer(CompressionLayer::new().compress_when(NotForContentType::new("application/json")))
-    ///     .service_fn(|_: ()| async {
-    ///         Ok::<_, std::io::Error>(http::Response::new(()))
-    ///     });
-    /// ```
-    pub fn compress_when<C>(self, compression_predicate: C) -> CompressionLayer<C>
+    /// See [`Compression::predicate`] for more details.
+    pub fn compress_when<C>(self, predicate: C) -> CompressionLayer<C>
     where
-        C: CompressionPredicate,
+        C: Predicate,
     {
         CompressionLayer {
             accept: self.accept,
-            compression_predicate
+            predicate
         }
     }
 }

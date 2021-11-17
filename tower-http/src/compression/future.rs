@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 
 use super::{body::BodyInner, CompressionBody};
-use crate::compression::compression_predicate::CompressionPredicate;
+use crate::compression::predicate::Predicate;
 use crate::compression_utils::WrapBody;
 use crate::content_encoding::Encoding;
 use futures_util::ready;
@@ -23,7 +23,7 @@ pin_project! {
         #[pin]
         pub(crate) inner: F,
         pub(crate) encoding: Encoding,
-        pub(crate) compression_predicate: P
+        pub(crate) predicate: P
     }
 }
 
@@ -31,7 +31,7 @@ impl<F, B, E, P> Future for ResponseFuture<F, P>
 where
     F: Future<Output = Result<Response<B>, E>>,
     B: Body,
-    P: CompressionPredicate,
+    P: Predicate,
 {
     type Output = Result<Response<CompressionBody<B>>, E>;
 
@@ -41,7 +41,7 @@ where
 
         // never recompress responses that are already compressed
         let should_compress = !res.headers().contains_key(header::CONTENT_ENCODING)
-            && self.compression_predicate.should_compress(&res);
+            && self.predicate.should_compress(&res);
 
         let (mut parts, body) = res.into_parts();
 

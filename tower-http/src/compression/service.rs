@@ -4,7 +4,7 @@ use http::{Request, Response};
 use http_body::Body;
 use std::task::{Context, Poll};
 use tower_service::Service;
-use crate::compression::compression_predicate::{CompressionPredicate, DefaultCompressionPredicate};
+use crate::compression::predicate::{Predicate, DefaultPredicate};
 
 /// Compress response bodies of the underlying service.
 ///
@@ -13,19 +13,19 @@ use crate::compression::compression_predicate::{CompressionPredicate, DefaultCom
 ///
 /// See the [module docs](crate::compression) for more details.
 #[derive(Clone, Copy)]
-pub struct Compression<S, P = DefaultCompressionPredicate> {
+pub struct Compression<S, P = DefaultPredicate> {
     pub(crate) inner: S,
     pub(crate) accept: AcceptEncoding,
-    pub(crate) compression_predicate: P,
+    pub(crate) predicate: P,
 }
 
-impl<S> Compression<S, DefaultCompressionPredicate> {
+impl<S> Compression<S, DefaultPredicate> {
     /// Creates a new `Compression` wrapping the `service`.
-    pub fn new(service: S) -> Compression<S, DefaultCompressionPredicate> {
+    pub fn new(service: S) -> Compression<S, DefaultPredicate> {
         Self {
             inner: service,
             accept: AcceptEncoding::default(),
-            compression_predicate: DefaultCompressionPredicate::default(),
+            predicate: DefaultPredicate::default(),
         }
     }
 }
@@ -90,33 +90,47 @@ impl<S, P> Compression<S, P> {
 
     /// Replace the current compression predicate.
     ///
-    /// The default predicate is [`DefaultCompressionPredicate`] which disables compression of gRPC
-    /// (gRPC has its own protocol specific compression system) and responses who's
-    /// mime type starts with `image/`.
+    /// Predicates are used to determine whether a response should be compressed or not.
     ///
-    /// # Example
+    /// The default predicate is [`DefaultPredicate`]. See its documentation for more
+    /// details on which responses it wont compress.
     ///
-    /// For some reason compressing JSON is undesired
+    /// # Changing the compression predicate
     ///
     /// ```
-    /// use tower_http::compression::{Compression, compression_predicate::NotForContentType};
+    /// use tower_http::compression::{
+    ///     Compression,
+    ///     predicate::{Predicate, NotForContentType, DefaultPredicate},
+    /// };
     /// use tower::util::service_fn;
     ///
     /// // Placeholder service_fn
     /// let service = service_fn(|_: ()| async {
     ///     Ok::<_, std::io::Error>(http::Response::new(()))
     /// });
-    /// let service = Compression::new(service)
-    ///     .compress_when(NotForContentType::new("application/json"));
+    ///
+    /// // build our custom compression predicate
+    /// // its recommended to still include `DefaultPredicate` as part of
+    /// // custom predicates
+    /// let predicate = DefaultPredicate::new()
+    ///     // don't compress responses who's `content-type` starts with `application/json`
+    ///     .and(NotForContentType::new("application/json"));
+    ///
+    /// let service = Compression::new(service).compress_when(predicate);
     /// ```
-    pub fn compress_when<C>(self, compression_predicate: C) -> Compression<S, C>
+    ///
+    /// See [`predicate`](super::predicate) for more utilities for building compression predicates.
+    ///
+    /// Responses that are already compressed (ie have a `content-encoding` header) will _never_ be
+    /// recompressed, regardless what they predicate says.
+    pub fn compress_when<C>(self, predicate: C) -> Compression<S, C>
     where
-        C: CompressionPredicate,
+        C: Predicate,
     {
         Compression {
             inner: self.inner,
             accept: self.accept,
-            compression_predicate
+            predicate
         }
     }
 }
@@ -125,7 +139,7 @@ impl<ReqBody, ResBody, S, P> Service<Request<ReqBody>> for Compression<S, P>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
     ResBody: Body,
-    P: CompressionPredicate,
+    P: Predicate,
 {
     type Response = Response<CompressionBody<ResBody>>;
     type Error = S::Error;
@@ -142,7 +156,7 @@ where
         ResponseFuture {
             inner: self.inner.call(req),
             encoding,
-            compression_predicate: self.compression_predicate.clone()
+            predicate: self.predicate.clone()
         }
     }
 }
