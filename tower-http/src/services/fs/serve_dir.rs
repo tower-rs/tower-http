@@ -1,4 +1,4 @@
-use super::{AsyncReadBody, PrecompressedVariants};
+use super::{open_file_with_fallback, AsyncReadBody, PrecompressedVariants};
 use crate::{content_encoding::Encoding, services::fs::DEFAULT_CAPACITY};
 use bytes::Bytes;
 use futures_util::ready;
@@ -254,13 +254,9 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
                 full_path.set_extension(new_extension);
             }
 
-            let file = File::open(full_path).await?;
-            Ok(Output::File(
-                file,
-                mime,
-                buf_chunk_size,
-                negotiated_encoding,
-            ))
+            let (file, maybe_encoding) =
+                open_file_with_fallback(full_path, negotiated_encoding).await?;
+            Ok(Output::File(file, mime, buf_chunk_size, maybe_encoding))
         });
 
         ResponseFuture {
@@ -557,6 +553,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn missing_precompressed_variant_fallbacks_to_uncompressed() {
+        let svc = ServeDir::new("../test-files").precompressed_gzip();
+
+        let request = Request::builder()
+            .uri("/missing_precompressed.txt")
+            .header("Accept-Encoding", "gzip")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(request).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/plain");
+        // Uncompressed file is served because compressed version is missing
+        assert!(res.headers().get("content-encoding").is_none());
+
+        let body = res.into_body().data().await.unwrap().unwrap();
+        let body = String::from_utf8(body.to_vec()).unwrap();
+        assert!(body.starts_with("Test file!"));
+    }
+
+    #[tokio::test]
     async fn access_to_sub_dirs() {
         let svc = ServeDir::new("..");
 
@@ -578,6 +594,23 @@ mod tests {
     #[tokio::test]
     async fn not_found() {
         let svc = ServeDir::new("..");
+
+        let req = Request::builder()
+            .uri("/not-found")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
+        assert!(res.headers().get(header::CONTENT_TYPE).is_none());
+
+        let body = body_into_text(res.into_body()).await;
+        assert!(body.is_empty());
+    }
+
+    #[tokio::test]
+    async fn not_found_precompressed() {
+        let svc = ServeDir::new("../test-files");
 
         let req = Request::builder()
             .uri("/not-found")

@@ -4,11 +4,13 @@ use bytes::Bytes;
 use http::{HeaderMap, Response, StatusCode};
 use http_body::{combinators::BoxBody, Body, Empty};
 use pin_project_lite::pin_project;
+use std::{ffi::OsStr, future::Future, path::PathBuf};
 use std::{
     io,
     pin::Pin,
     task::{Context, Poll},
 };
+use tokio::fs::File;
 use tokio::io::AsyncRead;
 
 use futures_util::Stream;
@@ -20,7 +22,7 @@ mod serve_file;
 // default capacity 64KiB
 const DEFAULT_CAPACITY: usize = 65536;
 
-use crate::content_encoding::SupportedEncodings;
+use crate::content_encoding::{Encoding, SupportedEncodings};
 
 pub use self::{
     serve_dir::{
@@ -60,6 +62,34 @@ impl SupportedEncodings for PrecompressedVariants {
     fn br(&self) -> bool {
         self.br
     }
+}
+
+type FileFuture =
+    Pin<Box<dyn Future<Output = io::Result<(File, Option<Encoding>)>> + Send + Sync + 'static>>;
+
+// Attempts to open the file with corresponding encoding but
+// fallbacks to the uncompressed variant if it can't be found
+async fn open_file_with_fallback(
+    mut path: PathBuf,
+    mut precompressed_encoding: Option<Encoding>,
+) -> io::Result<(File, Option<Encoding>)> {
+    let file = loop {
+        match File::open(&path).await {
+            Ok(file) => break file,
+            Err(err)
+                if err.kind() == io::ErrorKind::NotFound && precompressed_encoding.is_some() =>
+            {
+                // Remove the extension corresponding to a precompressed file (.gz, .br, .zz)
+                // to fallback to the uncompressed version
+                path.set_extension(OsStr::new(""));
+                // Remove the encoding to make sure the correct content encoding header is set
+                precompressed_encoding.take();
+                continue;
+            }
+            Err(err) => return Err(err),
+        };
+    };
+    Ok((file, precompressed_encoding))
 }
 
 pin_project! {

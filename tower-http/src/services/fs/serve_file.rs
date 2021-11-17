@@ -1,6 +1,6 @@
 //! Service that serves a file.
 
-use super::{AsyncReadBody, PrecompressedVariants};
+use super::{open_file_with_fallback, AsyncReadBody, FileFuture, PrecompressedVariants};
 use crate::content_encoding::Encoding;
 use crate::services::fs::DEFAULT_CAPACITY;
 use bytes::Bytes;
@@ -15,7 +15,6 @@ use std::{
     pin::Pin,
     task::{Context, Poll},
 };
-use tokio::fs::File;
 use tower_service::Service;
 
 /// Service that serves a file.
@@ -161,22 +160,20 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeFile {
             path.set_extension(new_extension);
         }
 
-        let open_file_future = Box::pin(File::open(path));
+        let open_file_future = Box::pin(open_file_with_fallback(path, negotiated_encoding));
 
         ResponseFuture {
             open_file_future,
             mime: Some(self.mime.clone()),
             buf_chunk_size: self.buf_chunk_size,
-            encoding: negotiated_encoding,
         }
     }
 }
 
 /// Response future of [`ServeFile`].
 pub struct ResponseFuture {
-    open_file_future: Pin<Box<dyn Future<Output = io::Result<File>> + Send + Sync + 'static>>,
+    open_file_future: FileFuture,
     mime: Option<HeaderValue>,
-    encoding: Option<Encoding>,
     buf_chunk_size: usize,
 }
 
@@ -186,8 +183,8 @@ impl Future for ResponseFuture {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let result = ready!(Pin::new(&mut self.open_file_future).poll(cx));
 
-        let file = match result {
-            Ok(file) => file,
+        let (file, encoding) = match result {
+            Ok(file_with_encoding) => file_with_encoding,
             Err(err) => {
                 return Poll::Ready(
                     super::response_from_io_error(err).map(|res| res.map(ResponseBody::new)),
@@ -203,7 +200,7 @@ impl Future for ResponseFuture {
         res.headers_mut()
             .insert(header::CONTENT_TYPE, self.mime.take().unwrap());
 
-        if let Some(encoding) = self.encoding {
+        if let Some(encoding) = encoding {
             res.headers_mut()
                 .insert(header::CONTENT_ENCODING, encoding.into_header_value());
         }
@@ -280,6 +277,25 @@ mod tests {
         let body = res.into_body().data().await.unwrap().unwrap();
         let body = String::from_utf8(body.to_vec()).unwrap();
         assert!(body.starts_with("\"This is a test file!\""));
+    }
+
+    #[tokio::test]
+    async fn missing_precompressed_variant_fallbacks_to_uncompressed() {
+        let svc = ServeFile::new("../test-files/missing_precompressed.txt").precompressed_gzip();
+
+        let request = Request::builder()
+            .header("Accept-Encoding", "gzip")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(request).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/plain");
+        // Uncompressed file is served because compressed version is missing
+        assert!(res.headers().get("content-encoding").is_none());
+
+        let body = res.into_body().data().await.unwrap().unwrap();
+        let body = String::from_utf8(body.to_vec()).unwrap();
+        assert!(body.starts_with("Test file!"));
     }
 
     #[tokio::test]
@@ -401,6 +417,16 @@ mod tests {
     #[tokio::test]
     async fn returns_404_if_file_doesnt_exist() {
         let svc = ServeFile::new("../this-doesnt-exist.md");
+
+        let res = svc.oneshot(Request::new(Body::empty())).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
+        assert!(res.headers().get(header::CONTENT_TYPE).is_none());
+    }
+
+    #[tokio::test]
+    async fn returns_404_if_file_doesnt_exist_when_precompression_is_used() {
+        let svc = ServeFile::new("../this-doesnt-exist.md").precompressed_deflate();
 
         let res = svc.oneshot(Request::new(Body::empty())).await.unwrap();
 
