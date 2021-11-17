@@ -610,10 +610,11 @@ mod tests {
 
     #[tokio::test]
     async fn not_found_precompressed() {
-        let svc = ServeDir::new("../test-files");
+        let svc = ServeDir::new("../test-files").precompressed_gzip();
 
         let req = Request::builder()
             .uri("/not-found")
+            .header("Accept-Encoding", "gzip")
             .body(Body::empty())
             .unwrap();
         let res = svc.oneshot(req).await.unwrap();
