@@ -19,10 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   This removes the need (and possibility) to specify a body type for these layers.
 - `Compression`: Support specifying predicates to choose when responses should
   be compressed. This can be used to disable compression of small responses, or
-  responses with a certain `content-type`, or something user defined.
+  responses with a certain `content-type`, or something user defined ([#172])
 - Remove the `compression` and `decompression` feature. They were unnecessary
   and `compression-full`/`decompression-full` can be used to get full
-  compression/decompression support. For more granular control `[compression|decompression]-gzip`, 
+  compression/decompression support. For more granular control `[compression|decompression]-gzip`,
   `[compression|decompression]-br` and `[compression|decompression]-deflate` may
   be used instead. ([#170])
 
@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#166]: https://github.com/tower-rs/tower-http/pull/166
 [#148]: https://github.com/tower-rs/tower-http/pull/148
 [#170]: https://github.com/tower-rs/tower-http/pull/170
+[#172]: https://github.com/tower-rs/tower-http/pull/172
 
 # 0.1.2 (November 13, 2021)
 
