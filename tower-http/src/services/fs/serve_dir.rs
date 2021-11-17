@@ -1,4 +1,4 @@
-use super::{AsyncReadBody, PrecompressedVariants};
+use super::{check_precompressed_file, AsyncReadBody, PrecompressedVariants};
 use crate::{content_encoding::Encoding, services::fs::DEFAULT_CAPACITY};
 use bytes::Bytes;
 use futures_util::ready;
@@ -212,9 +212,15 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
         let buf_chunk_size = self.buf_chunk_size;
         let uri = req.uri().clone();
 
+        //let precompressed_variants = check_compressed_file(self.precompressed_variants, &full_path);
         let negotiated_encoding = self
             .precompressed_variants
-            .map(|precompressed| Encoding::from_headers(req.headers(), precompressed))
+            .map(|precompressed| {
+                Encoding::from_headers(
+                    req.headers(),
+                    check_precompressed_file(precompressed, &full_path),
+                )
+            })
             .filter(|encoding| *encoding != Encoding::Identity);
 
         let open_file_future = Box::pin(async move {
@@ -554,6 +560,34 @@ mod tests {
         let mut decompressed = String::new();
         decoder.read_to_string(&mut decompressed).unwrap();
         assert!(decompressed.starts_with("\"This is a test file\""));
+    }
+
+    #[tokio::test]
+    async fn only_uncompressed_variant_existing() {
+        let svc = ServeDir::new("../test-files").precompressed_gzip();
+
+        let request = Request::builder()
+            .uri("/only_uncompressed.txt")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.clone().oneshot(request).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::OK);
+
+        // Should reply with gzipped file if client supports it
+        let request = Request::builder()
+            .uri("/only_uncompressed.txt")
+            .header("Accept-Encoding", "gzip")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(request).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/plain");
+        assert!(res.headers().get("content-encoding").is_none());
+
+        let body = res.into_body().data().await.unwrap().unwrap();
+        let body=String::from_utf8(body.to_vec()).unwrap();
+        assert!(body.starts_with("\"This is a test file!\""));
     }
 
     #[tokio::test]

@@ -1,6 +1,6 @@
 //! Service that serves a file.
 
-use super::{AsyncReadBody, PrecompressedVariants};
+use super::{check_precompressed_file, AsyncReadBody, PrecompressedVariants};
 use crate::content_encoding::Encoding;
 use crate::services::fs::DEFAULT_CAPACITY;
 use bytes::Bytes;
@@ -144,7 +144,12 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeFile {
 
         let negotiated_encoding = self
             .precompressed_variants
-            .map(|precompressed| Encoding::from_headers(req.headers(), precompressed))
+            .map(|precompressed| {
+                Encoding::from_headers(
+                    req.headers(),
+                    check_precompressed_file(precompressed, &path),
+                )
+            })
             .filter(|encoding| *encoding != Encoding::Identity);
 
         if let Some(file_extension) =
@@ -307,6 +312,31 @@ mod tests {
         decoder.read_to_string(&mut decompressed).unwrap();
         assert!(decompressed.starts_with("\"This is a test file\""));
     }
+
+    #[tokio::test]
+    async fn only_uncompressed_variant_existing() {
+        let svc = ServeFile::new("../test-files/only_uncompressed.txt").precompressed_gzip();
+
+        let request = Request::builder().body(Body::empty()).unwrap();
+        let res = svc.clone().oneshot(request).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::OK);
+
+        // Should reply with gzipped file if client supports it
+        let request = Request::builder()
+            .header("Accept-Encoding", "gzip")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(request).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/plain");
+        assert!(res.headers().get("content-encoding").is_none());
+
+        let body = res.into_body().data().await.unwrap().unwrap();
+        let body=String::from_utf8(body.to_vec()).unwrap();
+        assert!(body.starts_with("\"This is a test file!\""));
+    }
+
 
     #[tokio::test]
     async fn precompressed_br() {

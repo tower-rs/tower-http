@@ -6,6 +6,7 @@ use http_body::{combinators::BoxBody, Body, Empty};
 use pin_project_lite::pin_project;
 use std::{
     io,
+    path::PathBuf,
     pin::Pin,
     task::{Context, Poll},
 };
@@ -20,7 +21,7 @@ mod serve_file;
 // default capacity 64KiB
 const DEFAULT_CAPACITY: usize = 65536;
 
-use crate::content_encoding::SupportedEncodings;
+use crate::content_encoding::{Encoding, SupportedEncodings};
 
 pub use self::{
     serve_dir::{
@@ -30,6 +31,41 @@ pub use self::{
         ResponseBody as ServeFileResponseBody, ResponseFuture as ServeFileResponseFuture, ServeFile,
     },
 };
+
+fn check_precompressed_file(
+    precompressed_variants: PrecompressedVariants,
+    uncompressed_file_path: &PathBuf,
+) -> PrecompressedVariants {
+    fn check_file_exists(uncompressed_file_path: &PathBuf, encoding: Encoding) -> bool {
+        let mut file_path: PathBuf = PathBuf::from(uncompressed_file_path);
+        let compressed_ext = encoding.to_file_extension().unwrap();
+        let mut ext = file_path.extension().unwrap_or_default().to_owned();
+        let ext = if ext.is_empty() {
+            compressed_ext.to_owned()
+        } else {
+            ext.push(compressed_ext);
+            ext
+        };
+        file_path.set_extension(ext);
+        file_path.exists()
+    }
+    let gzip = if precompressed_variants.gzip {
+        check_file_exists(uncompressed_file_path, Encoding::Gzip)
+    } else {
+        false
+    };
+    let deflate = if precompressed_variants.deflate {
+        check_file_exists(uncompressed_file_path, Encoding::Deflate)
+    } else {
+        false
+    };
+    let br = if precompressed_variants.br {
+        check_file_exists(uncompressed_file_path, Encoding::Brotli)
+    } else {
+        false
+    };
+    PrecompressedVariants { gzip, deflate, br }
+}
 
 #[derive(Clone, Copy, Debug)]
 struct PrecompressedVariants {
