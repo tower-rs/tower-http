@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::classify::{GrpcErrorsAsFailures, ServerErrorsAsFailures, SharedClassifier};
 use http::header::HeaderName;
 use tower::ServiceBuilder;
@@ -90,8 +92,19 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> {
     /// See [`tower_http::compression`] for more details.
     ///
     /// [`tower_http::compression`]: crate::compression
-    #[cfg(feature = "compression")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "compression")))]
+    #[cfg(any(
+        feature = "compression-br",
+        feature = "compression-deflate",
+        feature = "compression-gzip"
+    ))]
+    #[cfg_attr(
+        docsrs,
+        doc(cfg(any(
+            feature = "compression-br",
+            feature = "compression-deflate",
+            feature = "compression-gzip"
+        )))
+    )]
     fn compression(self) -> ServiceBuilder<Stack<crate::compression::CompressionLayer, L>>;
 
     /// Decompress response bodies.
@@ -99,8 +112,19 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> {
     /// See [`tower_http::decompression`] for more details.
     ///
     /// [`tower_http::decompression`]: crate::decompression
-    #[cfg(feature = "decompression")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "decompression")))]
+    #[cfg(any(
+        feature = "decompression-br",
+        feature = "decompression-deflate",
+        feature = "decompression-gzip"
+    ))]
+    #[cfg_attr(
+        docsrs,
+        doc(cfg(any(
+            feature = "decompression-br",
+            feature = "decompression-deflate",
+            feature = "decompression-gzip"
+        )))
+    )]
     fn decompression(self) -> ServiceBuilder<Stack<crate::decompression::DecompressionLayer, L>>;
 
     /// High level tracing that classifies responses using HTTP status codes.
@@ -132,6 +156,152 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> {
     fn trace_for_grpc(
         self,
     ) -> ServiceBuilder<Stack<crate::trace::TraceLayer<SharedClassifier<GrpcErrorsAsFailures>>, L>>;
+
+    /// Follow redirect resposes using the [`Standard`] policy.
+    ///
+    /// See [`tower_http::follow_redirect`] for more details.
+    ///
+    /// [`tower_http::follow_redirect`]: crate::follow_redirect
+    /// [`Standard`]: crate::follow_redirect::policy::Standard
+    #[cfg(feature = "follow-redirect")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "follow-redirect")))]
+    fn follow_redirects(
+        self,
+    ) -> ServiceBuilder<
+        Stack<
+            crate::follow_redirect::FollowRedirectLayer<crate::follow_redirect::policy::Standard>,
+            L,
+        >,
+    >;
+
+    /// Mark headers as [sensitive] on both requests and responses.
+    ///
+    /// See [`tower_http::sensitive_headers`] for more details.
+    ///
+    /// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
+    /// [`tower_http::sensitive_headers`]: crate::sensitive_headers
+    #[cfg(feature = "sensitive-headers")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "sensitive-headers")))]
+    fn sensitive_headers<I>(
+        self,
+        headers: I,
+    ) -> ServiceBuilder<Stack<crate::sensitive_headers::SetSensitiveHeadersLayer, L>>
+    where
+        I: IntoIterator<Item = HeaderName>;
+
+    /// Mark headers as [sensitive] on both requests.
+    ///
+    /// See [`tower_http::sensitive_headers`] for more details.
+    ///
+    /// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
+    /// [`tower_http::sensitive_headers`]: crate::sensitive_headers
+    #[cfg(feature = "sensitive-headers")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "sensitive-headers")))]
+    fn sensitive_request_headers(
+        self,
+        headers: Arc<[HeaderName]>,
+    ) -> ServiceBuilder<Stack<crate::sensitive_headers::SetSensitiveRequestHeadersLayer, L>>;
+
+    /// Mark headers as [sensitive] on both responses.
+    ///
+    /// See [`tower_http::sensitive_headers`] for more details.
+    ///
+    /// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
+    /// [`tower_http::sensitive_headers`]: crate::sensitive_headers
+    #[cfg(feature = "sensitive-headers")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "sensitive-headers")))]
+    fn sensitive_response_headers(
+        self,
+        headers: Arc<[HeaderName]>,
+    ) -> ServiceBuilder<Stack<crate::sensitive_headers::SetSensitiveResponseHeadersLayer, L>>;
+
+    /// Insert a header into the request.
+    ///
+    /// If a previous value exists for the same header, it is removed and replaced with the new
+    /// header value.
+    ///
+    /// See [`tower_http::set_header`] for more details.
+    ///
+    /// [`tower_http::set_header`]: crate::set_header
+    #[cfg(feature = "set-header")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "set-header")))]
+    fn override_request_header<M>(
+        self,
+        header_name: HeaderName,
+        make: M,
+    ) -> ServiceBuilder<Stack<crate::set_header::SetRequestHeaderLayer<M>, L>>;
+
+    /// Append a header into the request.
+    ///
+    /// If previous values exist, the header will have multiple values.
+    ///
+    /// See [`tower_http::set_header`] for more details.
+    ///
+    /// [`tower_http::set_header`]: crate::set_header
+    #[cfg(feature = "set-header")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "set-header")))]
+    fn append_request_header<M>(
+        self,
+        header_name: HeaderName,
+        make: M,
+    ) -> ServiceBuilder<Stack<crate::set_header::SetRequestHeaderLayer<M>, L>>;
+
+    /// Insert a header into the request, if the header is not already present.
+    ///
+    /// See [`tower_http::set_header`] for more details.
+    ///
+    /// [`tower_http::set_header`]: crate::set_header
+    #[cfg(feature = "set-header")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "set-header")))]
+    fn insert_request_header_if_not_present<M>(
+        self,
+        header_name: HeaderName,
+        make: M,
+    ) -> ServiceBuilder<Stack<crate::set_header::SetRequestHeaderLayer<M>, L>>;
+
+    /// Insert a header into the response.
+    ///
+    /// If a previous value exists for the same header, it is removed and replaced with the new
+    /// header value.
+    ///
+    /// See [`tower_http::set_header`] for more details.
+    ///
+    /// [`tower_http::set_header`]: crate::set_header
+    #[cfg(feature = "set-header")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "set-header")))]
+    fn override_response_header<M>(
+        self,
+        header_name: HeaderName,
+        make: M,
+    ) -> ServiceBuilder<Stack<crate::set_header::SetResponseHeaderLayer<M>, L>>;
+
+    /// Append a header into the response.
+    ///
+    /// If previous values exist, the header will have multiple values.
+    ///
+    /// See [`tower_http::set_header`] for more details.
+    ///
+    /// [`tower_http::set_header`]: crate::set_header
+    #[cfg(feature = "set-header")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "set-header")))]
+    fn append_response_header<M>(
+        self,
+        header_name: HeaderName,
+        make: M,
+    ) -> ServiceBuilder<Stack<crate::set_header::SetResponseHeaderLayer<M>, L>>;
+
+    /// Insert a header into the response, if the header is not already present.
+    ///
+    /// See [`tower_http::set_header`] for more details.
+    ///
+    /// [`tower_http::set_header`]: crate::set_header
+    #[cfg(feature = "set-header")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "set-header")))]
+    fn insert_response_header_if_not_present<M>(
+        self,
+        header_name: HeaderName,
+        make: M,
+    ) -> ServiceBuilder<Stack<crate::set_header::SetResponseHeaderLayer<M>, L>>;
 }
 
 impl<L> crate::sealed::Sealed<L> for ServiceBuilder<L> {}
@@ -169,12 +339,36 @@ impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
         self.layer(crate::map_response_body::MapResponseBodyLayer::new(f))
     }
 
-    #[cfg(feature = "compression")]
+    #[cfg(any(
+        feature = "compression-br",
+        feature = "compression-deflate",
+        feature = "compression-gzip"
+    ))]
+    #[cfg_attr(
+        docsrs,
+        doc(cfg(any(
+            feature = "compression-br",
+            feature = "compression-deflate",
+            feature = "compression-gzip"
+        )))
+    )]
     fn compression(self) -> ServiceBuilder<Stack<crate::compression::CompressionLayer, L>> {
         self.layer(crate::compression::CompressionLayer::new())
     }
 
-    #[cfg(feature = "decompression")]
+    #[cfg(any(
+        feature = "decompression-br",
+        feature = "decompression-deflate",
+        feature = "decompression-gzip"
+    ))]
+    #[cfg_attr(
+        docsrs,
+        doc(cfg(any(
+            feature = "decompression-br",
+            feature = "decompression-deflate",
+            feature = "decompression-gzip"
+        )))
+    )]
     fn decompression(self) -> ServiceBuilder<Stack<crate::decompression::DecompressionLayer, L>> {
         self.layer(crate::decompression::DecompressionLayer::new())
     }
@@ -193,5 +387,119 @@ impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
     ) -> ServiceBuilder<Stack<crate::trace::TraceLayer<SharedClassifier<GrpcErrorsAsFailures>>, L>>
     {
         self.layer(crate::trace::TraceLayer::new_for_grpc())
+    }
+
+    #[cfg(feature = "follow-redirect")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "follow-redirect")))]
+    fn follow_redirects(
+        self,
+    ) -> ServiceBuilder<
+        Stack<
+            crate::follow_redirect::FollowRedirectLayer<crate::follow_redirect::policy::Standard>,
+            L,
+        >,
+    > {
+        self.layer(crate::follow_redirect::FollowRedirectLayer::new())
+    }
+
+    #[cfg(feature = "sensitive-headers")]
+    fn sensitive_headers<I>(
+        self,
+        headers: I,
+    ) -> ServiceBuilder<Stack<crate::sensitive_headers::SetSensitiveHeadersLayer, L>>
+    where
+        I: IntoIterator<Item = HeaderName>,
+    {
+        self.layer(crate::sensitive_headers::SetSensitiveHeadersLayer::new(
+            headers,
+        ))
+    }
+
+    #[cfg(feature = "sensitive-headers")]
+    fn sensitive_request_headers(
+        self,
+        headers: Arc<[HeaderName]>,
+    ) -> ServiceBuilder<Stack<crate::sensitive_headers::SetSensitiveRequestHeadersLayer, L>> {
+        self.layer(crate::sensitive_headers::SetSensitiveRequestHeadersLayer::from_shared(headers))
+    }
+
+    #[cfg(feature = "sensitive-headers")]
+    fn sensitive_response_headers(
+        self,
+        headers: Arc<[HeaderName]>,
+    ) -> ServiceBuilder<Stack<crate::sensitive_headers::SetSensitiveResponseHeadersLayer, L>> {
+        self.layer(crate::sensitive_headers::SetSensitiveResponseHeadersLayer::from_shared(headers))
+    }
+
+    #[cfg(feature = "set-header")]
+    fn override_request_header<M>(
+        self,
+        header_name: HeaderName,
+        make: M,
+    ) -> ServiceBuilder<Stack<crate::set_header::SetRequestHeaderLayer<M>, L>> {
+        self.layer(crate::set_header::SetRequestHeaderLayer::overriding(
+            header_name,
+            make,
+        ))
+    }
+
+    #[cfg(feature = "set-header")]
+    fn append_request_header<M>(
+        self,
+        header_name: HeaderName,
+        make: M,
+    ) -> ServiceBuilder<Stack<crate::set_header::SetRequestHeaderLayer<M>, L>> {
+        self.layer(crate::set_header::SetRequestHeaderLayer::appending(
+            header_name,
+            make,
+        ))
+    }
+
+    #[cfg(feature = "set-header")]
+    fn insert_request_header_if_not_present<M>(
+        self,
+        header_name: HeaderName,
+        make: M,
+    ) -> ServiceBuilder<Stack<crate::set_header::SetRequestHeaderLayer<M>, L>> {
+        self.layer(crate::set_header::SetRequestHeaderLayer::if_not_present(
+            header_name,
+            make,
+        ))
+    }
+
+    #[cfg(feature = "set-header")]
+    fn override_response_header<M>(
+        self,
+        header_name: HeaderName,
+        make: M,
+    ) -> ServiceBuilder<Stack<crate::set_header::SetResponseHeaderLayer<M>, L>> {
+        self.layer(crate::set_header::SetResponseHeaderLayer::overriding(
+            header_name,
+            make,
+        ))
+    }
+
+    #[cfg(feature = "set-header")]
+    fn append_response_header<M>(
+        self,
+        header_name: HeaderName,
+        make: M,
+    ) -> ServiceBuilder<Stack<crate::set_header::SetResponseHeaderLayer<M>, L>> {
+        self.layer(crate::set_header::SetResponseHeaderLayer::appending(
+            header_name,
+            make,
+        ))
+    }
+
+    #[cfg(feature = "set-header")]
+    fn insert_response_header_if_not_present<M>(
+        self,
+        header_name: HeaderName,
+        make: M,
+    ) -> ServiceBuilder<Stack<crate::set_header::SetResponseHeaderLayer<M>, L>> {
+        self.layer(crate::set_header::SetResponseHeaderLayer::if_not_present(
+            header_name,
+            make,
+        ))
     }
 }
