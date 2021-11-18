@@ -98,7 +98,7 @@ where
 /// by combining types in this module:
 ///
 /// ```rust
-/// use tower_http::compression::predicate::{SizeAbove, NotForContentType};
+/// use tower_http::compression::predicate::{SizeAbove, NotForContentType, Predicate};
 ///
 /// // slightly large min size than the default 32
 /// let predicate = SizeAbove::new(256)
@@ -189,10 +189,10 @@ pub struct NotForContentType(Str);
 
 impl NotForContentType {
     /// Predicate that wont compress gRPC responses.
-    const GRPC: Self = Self::const_new("application/grpc");
+    pub const GRPC: Self = Self::const_new("application/grpc");
 
     /// Predicate that wont compress images.
-    const IMAGES: Self = Self::const_new("image/");
+    pub const IMAGES: Self = Self::const_new("image/");
 
     /// Create a new `NotForContentType`.
     pub fn new(content_type: &str) -> Self {
