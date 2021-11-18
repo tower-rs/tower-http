@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   compression/decompression support. For more granular control `[compression|decompression]-gzip`, 
   `[compression|decompression]-br` and `[compression|decompression]-deflate` may
   be used instead. ([#170])
+- Add `ServiceBuilderExt` which adds methods to `tower::ServiceBuilder` for
+  adding middleware from tower-http.
 
 [#124]: https://github.com/tower-rs/tower-http/pull/124
 [#156]: https://github.com/tower-rs/tower-http/pull/156
