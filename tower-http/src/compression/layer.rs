@@ -1,7 +1,7 @@
 use super::{Compression, Predicate};
+use crate::compression::predicate::DefaultPredicate;
 use crate::compression_utils::AcceptEncoding;
 use tower_layer::Layer;
-use crate::compression::predicate::DefaultPredicate;
 
 /// Compress response bodies of the underlying service.
 ///
@@ -15,7 +15,10 @@ pub struct CompressionLayer<P = DefaultPredicate> {
     predicate: P,
 }
 
-impl<S, P> Layer<S> for CompressionLayer<P> where P: Predicate {
+impl<S, P> Layer<S> for CompressionLayer<P>
+where
+    P: Predicate,
+{
     type Service = Compression<S, P>;
 
     fn layer(&self, inner: S) -> Self::Service {
@@ -90,7 +93,7 @@ impl CompressionLayer {
     {
         CompressionLayer {
             accept: self.accept,
-            predicate
+            predicate,
         }
     }
 }

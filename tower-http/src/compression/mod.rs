@@ -74,9 +74,9 @@ mod service;
 #[doc(inline)]
 pub use self::{
     body::CompressionBody,
-    predicate::{Predicate, DefaultPredicate},
     future::ResponseFuture,
     layer::CompressionLayer,
+    predicate::{DefaultPredicate, Predicate},
     service::Compression,
 };
 
