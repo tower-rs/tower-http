@@ -1,65 +1,63 @@
 use std::ops::{RangeInclusive, RangeBounds};
+use std::fmt::{Debug, Formatter, Write};
 
 /// Function that parses the content of a range-header
 /// If correctly formatted returns the requested ranges
 /// If syntactically correct but unsatisfiable due to file-constraints returns `Unsatisfiable`
 /// If un-parseable as a range returns `Malformed`
-/// Example:
-///
-fn parse_range(unit_token: &str, range: &str, target_file_length: u64) -> ParsedRangeHeader {
-    let start = range.split_once(format!("{}=", unit_token));
+pub(crate) fn parse_range(range: &str, file_size_bytes: u64) -> ParsedRangeHeader {
+    let start = range.split_once("bytes=");
     let mut ranges = Vec::new();
     if let Some((_, indicated_range)) = start {
         for range in indicated_range.split(",") {
             let range = range.trim();
             let sep_count = range.match_indices("-").count();
             if sep_count != 1 {
-                return ParsedRangeHeader::Malformed;
+                return ParsedRangeHeader::Malformed(format!("Range: {} is not acceptable, contains multiple dashes (-).", range));
             }
             if let Some((start, end)) = range.split_once("-") {
                 if start == "" {
                     if let Ok(end) = end.parse::<u64>() {
-                        if end >= target_file_length || end == 0{
-                            return ParsedRangeHeader::Unsatisfiable;
-                        } else {
-                            let start = target_file_length - 1 - end;
-                            ranges.push(RangeInclusive::new(start, target_file_length - 1));
-                            continue;
+                        if end >= file_size_bytes {
+                            return ParsedRangeHeader::Unsatisfiable(format!("Range: {} is not satisfiable, end of range exceeds file boundary.", range));
                         }
-                    } else {
-                        return ParsedRangeHeader::Malformed;
+                        if end == 0 {
+                            return ParsedRangeHeader::Unsatisfiable(format!("Range: {} is not satisfiable, suffixed number of bytes to retrieve is zero.", range));
+                        }
+                        let start = file_size_bytes - 1 - end;
+                        ranges.push(RangeInclusive::new(start, file_size_bytes - 1));
+                        continue;
                     }
-                } else if let Ok(start) = start.parse::<u64>() {
+                    return ParsedRangeHeader::Malformed(format!("Range: {} is not acceptable, end of range not parseable.", range));
+                }
+                if let Ok(start) = start.parse::<u64>() {
                     if end == "" {
-                        ranges.push(RangeInclusive::new(start, target_file_length - 1));
+                        ranges.push(RangeInclusive::new(start, file_size_bytes - 1));
                         continue;
                     }
                     if let Ok(end) = end.parse::<u64>() {
-                        if end >= target_file_length {
-                            return ParsedRangeHeader::Unsatisfiable;
-                        } else {
-                            ranges.push(RangeInclusive::new(start, end));
-                            continue;
+                        if end >= file_size_bytes {
+                            return ParsedRangeHeader::Unsatisfiable(format!("Range: {} is not satisfiable, end of range exceeds file boundary.", range));
                         }
-
-                    } else {
-                        return ParsedRangeHeader::Malformed;
+                        ranges.push(RangeInclusive::new(start, end));
+                        continue;
                     }
-                } else {
-                    return ParsedRangeHeader::Malformed;
+                    return ParsedRangeHeader::Malformed(format!("Range: {} is not acceptable, end of range not parseable.", range));
                 }
+                return ParsedRangeHeader::Malformed(format!("Range: {} is not acceptable, start of range not parseable.", range));
             }
+            return ParsedRangeHeader::Malformed(format!("Range: {} is not acceptable, range does not contain any dashes.", range));
         }
     }
     if ranges.is_empty() {
-        ParsedRangeHeader::Malformed
+        panic!("Programming error parsing range {}", range)
     } else {
         if ranges.len() == 1 {
             ParsedRangeHeader::Range(ranges)
         } else if !overlaps(&ranges) {
             ParsedRangeHeader::Range(ranges)
         } else {
-            ParsedRangeHeader::Unsatisfiable
+            return ParsedRangeHeader::Unsatisfiable(format!("Range header: {} is not satisfiable, ranges overlap", range));
         }
     }
 }
@@ -82,8 +80,8 @@ fn overlaps(ranges: &Vec<RangeInclusive<u64>>) -> bool {
 #[derive(Debug, PartialEq)]
 pub(crate) enum ParsedRangeHeader {
     Range(Vec<RangeInclusive<u64>>),
-    Unsatisfiable,
-    Malformed,
+    Unsatisfiable(String),
+    Malformed(String),
 }
 
 #[cfg(test)]

@@ -16,6 +16,8 @@ use tokio::fs::File;
 use tower_service::Service;
 use tokio::io::{AsyncSeekExt};
 use std::io::SeekFrom;
+use crate::services::fs::parse_range::{ParsedRangeHeader, parse_range};
+use std::ops::RangeBounds;
 
 /// Service that serves files from a given directory and all its sub directories.
 ///
@@ -160,7 +162,8 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
         let append_index_html_on_directories = self.append_index_html_on_directories;
         let buf_chunk_size = self.buf_chunk_size;
         let uri = req.uri().clone();
-        let range_request = parse_range(req.headers());
+        let range_header = req.headers().get(header::RANGE)
+            .and_then(|value| value.to_str().ok());
 
         let open_file_future = Box::pin(async move {
             if !uri.path().ends_with('/') {
@@ -185,8 +188,12 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
                 .unwrap_or_else(|| {
                     HeaderValue::from_str(mime::APPLICATION_OCTET_STREAM.as_ref()).unwrap()
                 });
-            if let Some(ParsedRangeHeader::Valid(range)) = &range_request {
-                let _ = file.seek(SeekFrom::Start(range.start_inclusive)).await.unwrap();
+            let range_request = range_header.map(|range| parse_range(range, file_size));
+            if let Some(ParsedRangeHeader::Range(ranges)) = range_request.as_ref() {
+                if ranges.len() != 1 {
+                    // do something smart
+                }
+                file.seek(SeekFrom::Start(*ranges[0].start())).await.unwrap();
             }
             Ok(Output::File(FileRequest{
                 file,
@@ -201,34 +208,6 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
             inner: Inner::Valid(open_file_future),
         }
     }
-}
-
-fn parse_range(headers: &HeaderMap) -> Option<ParsedRangeHeader> {
-    // ex:  `Range: bytes=0-1023`
-    let range_header = headers.get(header::RANGE)?;
-    if let Ok(as_str) = range_header.to_str() {
-        // produces ("bytes", "0-1023")
-        return if let Some((_, range)) = as_str.split_once("=") {
-            // produces ("0", "1023")
-            if let Some((start_incl, end_incl)) = range.split_once("-") {
-                if let Ok(start) = start_incl.parse() {
-                    if let Ok(end) = end_incl.parse() {
-                        if start < end {
-                            return Some(ParsedRangeHeader::Valid(ContentRange {
-                                start_inclusive: start,
-                                end_inclusive: end
-                            }));
-                        }
-                    }
-                }
-            }
-            // Range header at least on form bytes=<some_range> should produce a 416
-            Some(ParsedRangeHeader::Unsatisfiable)
-        } else {
-            Some(ParsedRangeHeader::Malformed("Range header value not in format `bytes=<range>`, `=` missing".to_owned()))
-        }
-    }
-    Some(ParsedRangeHeader::Malformed("Range not parseable as utf8".to_owned()))
 }
 
 async fn is_dir(full_path: &Path) -> bool {
@@ -280,24 +259,6 @@ struct FileRequest {
     range: Option<ParsedRangeHeader>,
 }
 
-
-enum ParsedRangeHeader {
-    Valid(ContentRange),
-    Unsatisfiable,
-    Malformed(String)
-}
-
-struct ContentRange {
-    start_inclusive: u64,
-    end_inclusive: u64,
-}
-
-impl ContentRange {
-    fn range_size(&self) -> u64 {
-        self.end_inclusive - self.start_inclusive + 1
-    }
-}
-
 type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + Sync + 'static>>;
 
 enum Inner {
@@ -324,23 +285,25 @@ impl Future for ResponseFuture {
                             .header(header::CONTENT_LENGTH, file_request.total_size.to_string());
                         if let Some(range) = file_request.range {
                             match range {
-                                ParsedRangeHeader::Valid(content) => {
-                                    if content.end_inclusive >= file_request.total_size {
+                                ParsedRangeHeader::Range(ranges) => {
+                                    let range = &ranges[0];
+                                    if *range.end() >= file_request.total_size {
                                         builder.header(header::CONTENT_RANGE, format!("bytes */{}", file_request.total_size))
                                             .status(StatusCode::RANGE_NOT_SATISFIABLE)
                                             .body(empty_body())
                                     } else {
-                                        let body = AsyncReadBody::with_capacity_limited(file_request.file, file_request.chunk_size, content.range_size() as usize).boxed();
-                                        builder.header(header::CONTENT_RANGE, format!("bytes {}-{}/{}", content.start_inclusive, content.end_inclusive, file_request.total_size))
+                                        let size = (range.end() - range.start() - 1) as usize;
+                                        let body = AsyncReadBody::with_capacity_limited(file_request.file, file_request.chunk_size, size).boxed();
+                                        builder.header(header::CONTENT_RANGE, format!("bytes {}-{}/{}", range.start(), range.end(), file_request.total_size))
                                             .status(StatusCode::PARTIAL_CONTENT)
                                             .body(ResponseBody(body))
                                     }
 
                                 }
-                                ParsedRangeHeader::Unsatisfiable => {
+                                ParsedRangeHeader::Unsatisfiable(reason) => {
                                     builder.header(header::CONTENT_RANGE, format!("bytes */{}", file_request.total_size))
                                         .status(StatusCode::RANGE_NOT_SATISFIABLE)
-                                        .body(empty_body())
+                                        .body(body_from_bytes(Bytes::from(reason)))
                                 }
                                 ParsedRangeHeader::Malformed(reason) => {
                                     builder.header(header::CONTENT_RANGE, format!("bytes */{}", file_request.total_size))
