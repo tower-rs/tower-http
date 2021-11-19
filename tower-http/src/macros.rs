@@ -27,9 +27,19 @@ macro_rules! opaque_body {
     };
 
     ($(#[$m:meta])* pub type $name:ident<$($param:ident),*> = $actual:ty;) => {
-        #[pin_project::pin_project]
-        $(#[$m])*
-        pub struct $name<$($param),*>(#[pin] pub(crate) $actual);
+        pin_project_lite::pin_project! {
+            $(#[$m])*
+            pub struct $name<$($param),*> {
+                #[pin]
+                pub(crate) inner: $actual
+            }
+        }
+
+        impl<$($param),*> $name<$($param),*> {
+            pub(crate) fn new(inner: $actual) -> Self {
+                Self { inner }
+            }
+        }
 
         impl<$($param),*> http_body::Body for $name<$($param),*> {
             type Data = <$actual as http_body::Body>::Data;
@@ -40,7 +50,7 @@ macro_rules! opaque_body {
                 self: std::pin::Pin<&mut Self>,
                 cx: &mut std::task::Context<'_>,
             ) -> std::task::Poll<Option<Result<Self::Data, Self::Error>>> {
-                self.project().0.poll_data(cx)
+                self.project().inner.poll_data(cx)
             }
 
             #[inline]
@@ -48,17 +58,17 @@ macro_rules! opaque_body {
                 self: std::pin::Pin<&mut Self>,
                 cx: &mut std::task::Context<'_>,
             ) -> std::task::Poll<Result<Option<http::HeaderMap>, Self::Error>> {
-                self.project().0.poll_trailers(cx)
+                self.project().inner.poll_trailers(cx)
             }
 
             #[inline]
             fn is_end_stream(&self) -> bool {
-                http_body::Body::is_end_stream(&self.0)
+                http_body::Body::is_end_stream(&self.inner)
             }
 
             #[inline]
             fn size_hint(&self) -> http_body::SizeHint {
-                http_body::Body::size_hint(&self.0)
+                http_body::Body::size_hint(&self.inner)
             }
         }
     };

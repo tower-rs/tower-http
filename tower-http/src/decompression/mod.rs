@@ -9,10 +9,10 @@
 //! use hyper::Body;
 //! use std::convert::Infallible;
 //! use tower::{Service, ServiceExt, ServiceBuilder, service_fn};
-//! use tower_http::{compression::Compression, decompression::DecompressionLayer};
+//! use tower_http::{compression::Compression, decompression::DecompressionLayer, BoxError};
 //! #
 //! # #[tokio::main]
-//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn main() -> Result<(), tower_http::BoxError> {
 //! # async fn handle(req: Request<Body>) -> Result<Response<Body>, Infallible> {
 //! #     let body = Body::from("Hello, World!");
 //! #     Ok(Response::new(body))
@@ -45,7 +45,7 @@
 //!     let chunk = chunk?;
 //!     bytes.extend_from_slice(&chunk[..]);
 //! }
-//! let body = String::from_utf8(bytes.to_vec())?;
+//! let body = String::from_utf8(bytes.to_vec()).map_err(Into::<BoxError>::into)?;
 //!
 //! assert_eq!(body, "Hello, World!");
 //! #

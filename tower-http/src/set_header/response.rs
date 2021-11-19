@@ -24,12 +24,9 @@
 //!     .layer(
 //!         // Layer that sets `Content-Type: text/html` on responses.
 //!         //
-//!         // We have to add `::<_, Body>` since Rust cannot infer the body type when
-//!         // we don't use a closure to produce the header value.
-//!         //
 //!         // `if_not_present` will only insert the header if it does not already
 //!         // have a value.
-//!         SetResponseHeaderLayer::<_, Body>::if_not_present(
+//!         SetResponseHeaderLayer::if_not_present(
 //!             header::CONTENT_TYPE,
 //!             HeaderValue::from_static("text/html"),
 //!         )
@@ -98,28 +95,26 @@
 use super::{InsertHeaderMode, MakeHeaderValue};
 use futures_util::ready;
 use http::{header::HeaderName, Response};
-use pin_project::pin_project;
+use pin_project_lite::pin_project;
 use std::{
     fmt,
+    future::Future,
     pin::Pin,
     task::{Context, Poll},
 };
-use std::{future::Future, marker::PhantomData};
 use tower_layer::Layer;
 use tower_service::Service;
 
 /// Layer that applies [`SetResponseHeader`] which adds a response header.
 ///
 /// See [`SetResponseHeader`] for more details.
-pub struct SetResponseHeaderLayer<M, T> {
+pub struct SetResponseHeaderLayer<M> {
     header_name: HeaderName,
     make: M,
     mode: InsertHeaderMode,
-    // Covariant over T, no dropping of T
-    _marker: PhantomData<fn() -> T>,
 }
 
-impl<M, T> fmt::Debug for SetResponseHeaderLayer<M, T> {
+impl<M> fmt::Debug for SetResponseHeaderLayer<M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SetResponseHeaderLayer")
             .field("header_name", &self.header_name)
@@ -129,10 +124,7 @@ impl<M, T> fmt::Debug for SetResponseHeaderLayer<M, T> {
     }
 }
 
-impl<M, T> SetResponseHeaderLayer<M, T>
-where
-    M: MakeHeaderValue<T>,
-{
+impl<M> SetResponseHeaderLayer<M> {
     /// Create a new [`SetResponseHeaderLayer`].
     ///
     /// If a previous value exists for the same header, it is removed and replaced with the new
@@ -161,12 +153,11 @@ where
             make,
             header_name,
             mode,
-            _marker: PhantomData,
         }
     }
 }
 
-impl<T, S, M> Layer<S> for SetResponseHeaderLayer<M, T>
+impl<S, M> Layer<S> for SetResponseHeaderLayer<M>
 where
     M: Clone,
 {
@@ -182,7 +173,7 @@ where
     }
 }
 
-impl<M, T> Clone for SetResponseHeaderLayer<M, T>
+impl<M> Clone for SetResponseHeaderLayer<M>
 where
     M: Clone,
 {
@@ -191,7 +182,6 @@ where
             make: self.make.clone(),
             header_name: self.header_name.clone(),
             mode: self.mode,
-            _marker: PhantomData,
         }
     }
 }
@@ -279,15 +269,16 @@ where
     }
 }
 
-/// Response future for [`SetResponseHeader`].
-#[pin_project]
-#[derive(Debug)]
-pub struct ResponseFuture<F, M> {
-    #[pin]
-    future: F,
-    header_name: HeaderName,
-    make: M,
-    mode: InsertHeaderMode,
+pin_project! {
+    /// Response future for [`SetResponseHeader`].
+    #[derive(Debug)]
+    pub struct ResponseFuture<F, M> {
+        #[pin]
+        future: F,
+        header_name: HeaderName,
+        make: M,
+        mode: InsertHeaderMode,
+    }
 }
 
 impl<F, ResBody, E, M> Future for ResponseFuture<F, M>

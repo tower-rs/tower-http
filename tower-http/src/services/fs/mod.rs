@@ -3,22 +3,27 @@
 use bytes::Bytes;
 use http::{HeaderMap, Response, StatusCode};
 use http_body::{combinators::BoxBody, Body, Empty};
-use pin_project::pin_project;
+use pin_project_lite::pin_project;
+use std::{ffi::OsStr, future::Future, path::PathBuf};
 use std::{
     io,
     pin::Pin,
     task::{Context, Poll},
 };
+use tokio::fs::File;
 use tokio::io::{AsyncRead, AsyncReadExt, Take};
+use tokio_util::io::ReaderStream;
 
 use futures_util::Stream;
 
+mod parse_range;
 mod serve_dir;
 mod serve_file;
-mod parse_range;
 
 // default capacity 64KiB
 const DEFAULT_CAPACITY: usize = 65536;
+
+use crate::content_encoding::{Encoding, SupportedEncodings};
 
 pub use self::{
     serve_dir::{
@@ -28,15 +33,74 @@ pub use self::{
         ResponseBody as ServeFileResponseBody, ResponseFuture as ServeFileResponseFuture, ServeFile,
     },
 };
-use tokio_util::io::ReaderStream;
 
-// NOTE: This could potentially be upstreamed to `http-body`.
-/// Adapter that turns an `impl AsyncRead` to an `impl Body`.
-#[pin_project]
-#[derive(Debug)]
-pub struct AsyncReadBody<T> {
-    #[pin]
-    reader: ReaderStream<T>,
+#[derive(Clone, Copy, Debug)]
+struct PrecompressedVariants {
+    gzip: bool,
+    deflate: bool,
+    br: bool,
+}
+
+impl Default for PrecompressedVariants {
+    fn default() -> Self {
+        Self {
+            gzip: false,
+            deflate: false,
+            br: false,
+        }
+    }
+}
+
+impl SupportedEncodings for PrecompressedVariants {
+    fn gzip(&self) -> bool {
+        self.gzip
+    }
+
+    fn deflate(&self) -> bool {
+        self.deflate
+    }
+
+    fn br(&self) -> bool {
+        self.br
+    }
+}
+
+type FileFuture =
+    Pin<Box<dyn Future<Output = io::Result<(File, Option<Encoding>)>> + Send + Sync + 'static>>;
+
+// Attempts to open the file with corresponding encoding but
+// fallbacks to the uncompressed variant if it can't be found
+async fn open_file_with_fallback(
+    mut path: PathBuf,
+    mut precompressed_encoding: Option<Encoding>,
+) -> io::Result<(File, Option<Encoding>)> {
+    let file = loop {
+        match File::open(&path).await {
+            Ok(file) => break file,
+            Err(err)
+                if err.kind() == io::ErrorKind::NotFound && precompressed_encoding.is_some() =>
+            {
+                // Remove the extension corresponding to a precompressed file (.gz, .br, .zz)
+                // to fallback to the uncompressed version
+                path.set_extension(OsStr::new(""));
+                // Remove the encoding to make sure the correct content encoding header is set
+                precompressed_encoding.take();
+                continue;
+            }
+            Err(err) => return Err(err),
+        };
+    };
+    Ok((file, precompressed_encoding))
+}
+
+pin_project! {
+    // NOTE: This could potentially be upstreamed to `http-body`.
+    /// Adapter that turns an `impl AsyncRead` to an `impl Body`.
+    #[derive(Debug)]
+    pub struct AsyncReadBody<T> {
+        #[pin]
+        reader: ReaderStream<T>,
+    }
 }
 
 impl<T> AsyncReadBody<T>
@@ -51,9 +115,13 @@ where
         }
     }
 
-    fn with_capacity_limited(read: T, capacity: usize, max_read_bytes: usize) -> AsyncReadBody<Take<T>> {
+    fn with_capacity_limited(
+        read: T,
+        capacity: usize,
+        max_read_bytes: usize,
+    ) -> AsyncReadBody<Take<T>> {
         AsyncReadBody {
-            reader: ReaderStream::with_capacity(read.take(max_read_bytes as u64), capacity)
+            reader: ReaderStream::with_capacity(read.take(max_read_bytes as u64), capacity),
         }
     }
 }

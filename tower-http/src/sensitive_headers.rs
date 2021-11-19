@@ -84,7 +84,7 @@
 
 use futures_util::ready;
 use http::{header::HeaderName, Request, Response};
-use pin_project::pin_project;
+use pin_project_lite::pin_project;
 use std::{
     future::Future,
     pin::Pin,
@@ -341,13 +341,14 @@ where
     }
 }
 
-/// Response future for [`SetSensitiveResponseHeaders`].
-#[pin_project]
-#[derive(Debug)]
-pub struct SetSensitiveResponseHeadersResponseFuture<F> {
-    #[pin]
-    future: F,
-    headers: Arc<[HeaderName]>,
+pin_project! {
+    /// Response future for [`SetSensitiveResponseHeaders`].
+    #[derive(Debug)]
+    pub struct SetSensitiveResponseHeadersResponseFuture<F> {
+        #[pin]
+        future: F,
+        headers: Arc<[HeaderName]>,
+    }
 }
 
 impl<F, ResBody, E> Future for SetSensitiveResponseHeadersResponseFuture<F>

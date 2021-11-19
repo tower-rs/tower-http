@@ -1,11 +1,12 @@
 //! Types used by compression and decompression middleware.
 
+use crate::{content_encoding::SupportedEncodings, BoxError};
 use bytes::{Bytes, BytesMut};
 use futures_core::Stream;
 use futures_util::ready;
-use http::{header, HeaderMap, HeaderValue};
+use http::HeaderValue;
 use http_body::Body;
-use pin_project::pin_project;
+use pin_project_lite::pin_project;
 use std::{
     io,
     pin::Pin,
@@ -13,8 +14,6 @@ use std::{
 };
 use tokio::io::AsyncRead;
 use tokio_util::io::{poll_read_buf, StreamReader};
-
-use crate::BodyOrIoError;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct AcceptEncoding {
@@ -25,7 +24,7 @@ pub(crate) struct AcceptEncoding {
 
 impl AcceptEncoding {
     #[allow(dead_code)]
-    pub(crate) fn to_header_value(&self) -> Option<HeaderValue> {
+    pub(crate) fn to_header_value(self) -> Option<HeaderValue> {
         let accept = match (self.gzip(), self.deflate(), self.br()) {
             (true, true, true) => "gzip,deflate,br",
             (true, true, false) => "gzip,deflate",
@@ -37,42 +36,6 @@ impl AcceptEncoding {
             (false, false, false) => return None,
         };
         Some(HeaderValue::from_static(accept))
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn gzip(&self) -> bool {
-        #[cfg(any(feature = "decompression-gzip", feature = "compression-gzip"))]
-        {
-            self.gzip
-        }
-        #[cfg(not(any(feature = "decompression-gzip", feature = "compression-gzip")))]
-        {
-            false
-        }
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn deflate(&self) -> bool {
-        #[cfg(any(feature = "decompression-deflate", feature = "compression-deflate"))]
-        {
-            self.deflate
-        }
-        #[cfg(not(any(feature = "decompression-deflate", feature = "compression-deflate")))]
-        {
-            false
-        }
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn br(&self) -> bool {
-        #[cfg(any(feature = "decompression-br", feature = "compression-br"))]
-        {
-            self.br
-        }
-        #[cfg(not(any(feature = "decompression-br", feature = "compression-br")))]
-        {
-            false
-        }
     }
 
     #[allow(dead_code)]
@@ -88,6 +51,44 @@ impl AcceptEncoding {
     #[allow(dead_code)]
     pub(crate) fn set_br(&mut self, enable: bool) {
         self.br = enable;
+    }
+}
+
+impl SupportedEncodings for AcceptEncoding {
+    #[allow(dead_code)]
+    fn gzip(&self) -> bool {
+        #[cfg(any(feature = "decompression-gzip", feature = "compression-gzip"))]
+        {
+            self.gzip
+        }
+        #[cfg(not(any(feature = "decompression-gzip", feature = "compression-gzip")))]
+        {
+            false
+        }
+    }
+
+    #[allow(dead_code)]
+    fn deflate(&self) -> bool {
+        #[cfg(any(feature = "decompression-deflate", feature = "compression-deflate"))]
+        {
+            self.deflate
+        }
+        #[cfg(not(any(feature = "decompression-deflate", feature = "compression-deflate")))]
+        {
+            false
+        }
+    }
+
+    #[allow(dead_code)]
+    fn br(&self) -> bool {
+        #[cfg(any(feature = "decompression-br", feature = "compression-br"))]
+        {
+            self.br
+        }
+        #[cfg(not(any(feature = "decompression-br", feature = "compression-br")))]
+        {
+            false
+        }
     }
 }
 
@@ -119,11 +120,12 @@ pub(crate) trait DecorateAsyncRead {
     fn get_pin_mut(pinned: Pin<&mut Self::Output>) -> Pin<&mut Self::Input>;
 }
 
-/// `Body` that has been decorated by an `AsyncRead`
-#[pin_project]
-pub(crate) struct WrapBody<M: DecorateAsyncRead> {
-    #[pin]
-    pub(crate) read: M::Output,
+pin_project! {
+    /// `Body` that has been decorated by an `AsyncRead`
+    pub(crate) struct WrapBody<M: DecorateAsyncRead> {
+        #[pin]
+        pub(crate) read: M::Output,
+    }
 }
 
 impl<M: DecorateAsyncRead> WrapBody<M> {
@@ -153,10 +155,11 @@ impl<M: DecorateAsyncRead> WrapBody<M> {
 impl<B, M> Body for WrapBody<M>
 where
     B: Body,
+    B::Error: Into<BoxError>,
     M: DecorateAsyncRead<Input = AsyncReadBody<B>>,
 {
     type Data = Bytes;
-    type Error = BodyOrIoError<B::Error>;
+    type Error = BoxError;
 
     fn poll_data(
         self: Pin<&mut Self>,
@@ -175,12 +178,12 @@ where
                     .take();
 
                 if let Some(body_error) = body_error {
-                    return Poll::Ready(Some(Err(BodyOrIoError::Body(body_error))));
+                    return Poll::Ready(Some(Err(body_error.into())));
                 } else if err.raw_os_error() == Some(SENTINEL_ERROR_CODE) {
                     // SENTINEL_ERROR_CODE only gets used when storing an underlying body error
                     unreachable!()
                 } else {
-                    return Poll::Ready(Some(Err(BodyOrIoError::Io(err))));
+                    return Poll::Ready(Some(Err(err.into())));
                 }
             }
         };
@@ -201,15 +204,16 @@ where
             .get_pin_mut()
             .get_pin_mut()
             .get_pin_mut();
-        body.poll_trailers(cx).map_err(BodyOrIoError::Body)
+        body.poll_trailers(cx).map_err(Into::into)
     }
 }
 
-// When https://github.com/hyperium/http-body/pull/36 is merged we can remove this
-#[pin_project]
-pub(crate) struct BodyIntoStream<B> {
-    #[pin]
-    body: B,
+pin_project! {
+    // When https://github.com/hyperium/http-body/pull/36 is merged we can remove this
+    pub(crate) struct BodyIntoStream<B> {
+        #[pin]
+        body: B,
+    }
 }
 
 #[allow(dead_code)]
@@ -250,11 +254,12 @@ where
     }
 }
 
-#[pin_project]
-pub(crate) struct StreamErrorIntoIoError<S, E> {
-    #[pin]
-    inner: S,
-    error: Option<E>,
+pin_project! {
+    pub(crate) struct StreamErrorIntoIoError<S, E> {
+        #[pin]
+        inner: S,
+        error: Option<E>,
+    }
 }
 
 impl<S, E> StreamErrorIntoIoError<S, E> {
@@ -303,26 +308,3 @@ where
 }
 
 pub(crate) const SENTINEL_ERROR_CODE: i32 = -837459418;
-
-pub(crate) fn supports_transparent_compression(headers: &HeaderMap) -> bool {
-    // don't recompress responses that are already compressed
-    if headers.contains_key(header::CONTENT_ENCODING) {
-        // Notice we're leaving it up to the inner layers to ensure that the
-        // content-encoding sent out matches the accept-encoding that came in.
-
-        return false;
-    }
-
-    // grpc doesn't support transparent compression and instead has its compression own
-    // algorithm that implementations can use
-    // https://grpc.github.io/grpc/core/md_doc_compression.html
-    let content_type = headers
-        .get(header::CONTENT_TYPE)
-        .and_then(|h| h.to_str().ok())
-        .unwrap_or_default();
-    if content_type.starts_with("application/grpc") {
-        return false;
-    }
-
-    true
-}

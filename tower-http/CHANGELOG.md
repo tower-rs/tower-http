@@ -7,7 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
-- None.
+- `ServeDir` and `ServeFile`: Ability to serve precompressed files ([#156])
+- `Trace`: Add `DefaultMakeSpan::level` to make log level of tracing spans easily configurable ([#124])
+- Change the response body error type of `Compression` and `Decompression` to
+  `Box<dyn std::error::Error + Send + Sync>`. This makes them usable if the body
+  they're wrapping uses `Box<dyn std::error::Error + Send + Sync>` as its error
+  type which they previously weren't ([#166])
+- Remove `BodyOrIoError`. Its been replaced with `Box<dyn std::error::Error +
+  Send + Sync>` ([#166])
+- `SetRequestHeaderLayer`, `SetResponseHeaderLayer`: Remove unnecessary generic parameter ([#148])
+  This removes the need (and possibility) to specify a body type for these layers.
+- `Compression`: Support specifying predicates to choose when responses should
+  be compressed. This can be used to disable compression of small responses, or
+  responses with a certain `content-type`, or something user defined ([#172])
+- Remove the `compression` and `decompression` feature. They were unnecessary
+  and `compression-full`/`decompression-full` can be used to get full
+  compression/decompression support. For more granular control `[compression|decompression]-gzip`,
+  `[compression|decompression]-br` and `[compression|decompression]-deflate` may
+  be used instead. ([#170])
+- Add `ServiceBuilderExt` which adds methods to `tower::ServiceBuilder` for
+  adding middleware from tower-http.
+
+[#124]: https://github.com/tower-rs/tower-http/pull/124
+[#156]: https://github.com/tower-rs/tower-http/pull/156
+[#166]: https://github.com/tower-rs/tower-http/pull/166
+[#148]: https://github.com/tower-rs/tower-http/pull/148
+[#170]: https://github.com/tower-rs/tower-http/pull/170
+[#172]: https://github.com/tower-rs/tower-http/pull/172
 
 # 0.1.2 (November 13, 2021)
 

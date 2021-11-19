@@ -2,25 +2,27 @@
 
 use super::{body::BodyInner, DecompressionBody};
 use crate::compression_utils::{AcceptEncoding, WrapBody};
+use crate::content_encoding::SupportedEncodings;
 use futures_util::ready;
 use http::{header, Response};
 use http_body::Body;
-use pin_project::pin_project;
+use pin_project_lite::pin_project;
 use std::{
     future::Future,
     pin::Pin,
     task::{Context, Poll},
 };
 
-/// Response future of [`Decompression`].
-///
-/// [`Decompression`]: super::Decompression
-#[pin_project]
-#[derive(Debug)]
-pub struct ResponseFuture<F> {
-    #[pin]
-    pub(crate) inner: F,
-    pub(crate) accept: AcceptEncoding,
+pin_project! {
+    /// Response future of [`Decompression`].
+    ///
+    /// [`Decompression`]: super::Decompression
+    #[derive(Debug)]
+    pub struct ResponseFuture<F> {
+        #[pin]
+        pub(crate) inner: F,
+        pub(crate) accept: AcceptEncoding,
+    }
 }
 
 impl<F, B, E> Future for ResponseFuture<F>
@@ -40,23 +42,23 @@ where
                 let body = match entry.get().as_bytes() {
                     #[cfg(feature = "decompression-gzip")]
                     b"gzip" if self.accept.gzip() => {
-                        DecompressionBody(BodyInner::Gzip(WrapBody::new(body)))
+                        DecompressionBody::new(BodyInner::gzip(WrapBody::new(body)))
                     }
 
                     #[cfg(feature = "decompression-deflate")]
                     b"deflate" if self.accept.deflate() => {
-                        DecompressionBody(BodyInner::Deflate(WrapBody::new(body)))
+                        DecompressionBody::new(BodyInner::deflate(WrapBody::new(body)))
                     }
 
                     #[cfg(feature = "decompression-br")]
                     b"br" if self.accept.br() => {
-                        DecompressionBody(BodyInner::Brotli(WrapBody::new(body)))
+                        DecompressionBody::new(BodyInner::brotli(WrapBody::new(body)))
                     }
 
                     _ => {
                         return Poll::Ready(Ok(Response::from_parts(
                             parts,
-                            DecompressionBody(BodyInner::Identity(body)),
+                            DecompressionBody::new(BodyInner::identity(body)),
                         )))
                     }
                 };
@@ -66,7 +68,7 @@ where
 
                 Response::from_parts(parts, body)
             } else {
-                Response::from_parts(parts, DecompressionBody(BodyInner::Identity(body)))
+                Response::from_parts(parts, DecompressionBody::new(BodyInner::identity(body)))
             };
 
         Poll::Ready(Ok(res))

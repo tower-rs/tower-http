@@ -53,7 +53,7 @@
 use futures_util::ready;
 use http::Response;
 use http_body::Body;
-use pin_project::pin_project;
+use pin_project_lite::pin_project;
 use std::{
     future::Future,
     pin::Pin,
@@ -225,12 +225,13 @@ where
     }
 }
 
-/// Response future for [`InFlightRequests`].
-#[pin_project]
-pub struct ResponseFuture<F> {
-    #[pin]
-    inner: F,
-    guard: Option<IncrementGuard>,
+pin_project! {
+    /// Response future for [`InFlightRequests`].
+    pub struct ResponseFuture<F> {
+        #[pin]
+        inner: F,
+        guard: Option<IncrementGuard>,
+    }
 }
 
 impl<F, B, E> Future for ResponseFuture<F>
@@ -249,12 +250,13 @@ where
     }
 }
 
-/// Response body for [`InFlightRequests`].
-#[pin_project]
-pub struct ResponseBody<B> {
-    #[pin]
-    inner: B,
-    guard: IncrementGuard,
+pin_project! {
+    /// Response body for [`InFlightRequests`].
+    pub struct ResponseBody<B> {
+        #[pin]
+        inner: B,
+        guard: IncrementGuard,
+    }
 }
 
 impl<B> Body for ResponseBody<B>

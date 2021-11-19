@@ -1,32 +1,37 @@
 #![allow(unused_imports)]
 
-use super::{body::BodyInner, CompressionBody, Encoding};
-use crate::compression_utils::{supports_transparent_compression, WrapBody};
+use super::{body::BodyInner, CompressionBody};
+use crate::compression::predicate::Predicate;
+use crate::compression_utils::WrapBody;
+use crate::content_encoding::Encoding;
 use futures_util::ready;
 use http::{header, HeaderMap, HeaderValue, Response};
 use http_body::Body;
-use pin_project::pin_project;
+use pin_project_lite::pin_project;
 use std::{
     future::Future,
     pin::Pin,
     task::{Context, Poll},
 };
 
-/// Response future of [`Compression`].
-///
-/// [`Compression`]: super::Compression
-#[pin_project]
-#[derive(Debug)]
-pub struct ResponseFuture<F> {
-    #[pin]
-    pub(crate) inner: F,
-    pub(crate) encoding: Encoding,
+pin_project! {
+    /// Response future of [`Compression`].
+    ///
+    /// [`Compression`]: super::Compression
+    #[derive(Debug)]
+    pub struct ResponseFuture<F, P> {
+        #[pin]
+        pub(crate) inner: F,
+        pub(crate) encoding: Encoding,
+        pub(crate) predicate: P
+    }
 }
 
-impl<F, B, E> Future for ResponseFuture<F>
+impl<F, B, E, P> Future for ResponseFuture<F, P>
 where
     F: Future<Output = Result<Response<B>, E>>,
     B: Body,
+    P: Predicate,
 {
     type Output = Result<Response<CompressionBody<B>>, E>;
 
@@ -34,26 +39,27 @@ where
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let res = ready!(self.as_mut().project().inner.poll(cx)?);
 
+        // never recompress responses that are already compressed
+        let should_compress = !res.headers().contains_key(header::CONTENT_ENCODING)
+            && self.predicate.should_compress(&res);
+
         let (mut parts, body) = res.into_parts();
 
-        let body = match (
-            supports_transparent_compression(&parts.headers),
-            self.encoding,
-        ) {
+        let body = match (should_compress, self.encoding) {
             // if compression is _not_ support or the client doesn't accept it
             (false, _) | (_, Encoding::Identity) => {
                 return Poll::Ready(Ok(Response::from_parts(
                     parts,
-                    CompressionBody(BodyInner::Identity(body)),
+                    CompressionBody::new(BodyInner::identity(body)),
                 )))
             }
 
             #[cfg(feature = "compression-gzip")]
-            (_, Encoding::Gzip) => CompressionBody(BodyInner::Gzip(WrapBody::new(body))),
+            (_, Encoding::Gzip) => CompressionBody::new(BodyInner::gzip(WrapBody::new(body))),
             #[cfg(feature = "compression-deflate")]
-            (_, Encoding::Deflate) => CompressionBody(BodyInner::Deflate(WrapBody::new(body))),
+            (_, Encoding::Deflate) => CompressionBody::new(BodyInner::deflate(WrapBody::new(body))),
             #[cfg(feature = "compression-br")]
-            (_, Encoding::Brotli) => CompressionBody(BodyInner::Brotli(WrapBody::new(body))),
+            (_, Encoding::Brotli) => CompressionBody::new(BodyInner::brotli(WrapBody::new(body))),
         };
 
         parts.headers.remove(header::CONTENT_LENGTH);

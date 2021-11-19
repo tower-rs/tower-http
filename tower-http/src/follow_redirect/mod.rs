@@ -103,7 +103,7 @@ use iri_string::{
     spec::UriSpec,
     types::{RiAbsoluteString, RiReferenceStr},
 };
-use pin_project::pin_project;
+use pin_project_lite::pin_project;
 use std::{
     convert::TryFrom,
     future::Future,
@@ -227,22 +227,23 @@ where
     }
 }
 
-/// Response future for [`FollowRedirect`].
-#[pin_project]
-#[derive(Debug)]
-pub struct ResponseFuture<S, B, P>
-where
-    S: Service<Request<B>>,
-{
-    #[pin]
-    future: Either<S::Future, Oneshot<S, Request<B>>>,
-    service: S,
-    policy: P,
-    method: Method,
-    uri: Uri,
-    version: Version,
-    headers: HeaderMap<HeaderValue>,
-    body: BodyRepr<B>,
+pin_project! {
+    /// Response future for [`FollowRedirect`].
+    #[derive(Debug)]
+    pub struct ResponseFuture<S, B, P>
+    where
+        S: Service<Request<B>>,
+    {
+        #[pin]
+        future: Either<S::Future, Oneshot<S, Request<B>>>,
+        service: S,
+        policy: P,
+        method: Method,
+        uri: Uri,
+        version: Version,
+        headers: HeaderMap<HeaderValue>,
+        body: BodyRepr<B>,
+    }
 }
 
 impl<S, ReqBody, ResBody, P> Future for ResponseFuture<S, ReqBody, P>

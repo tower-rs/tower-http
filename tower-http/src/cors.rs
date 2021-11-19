@@ -52,7 +52,7 @@ use http::{
     request::Parts,
     Method, Request, Response, StatusCode,
 };
-use pin_project::pin_project;
+use pin_project_lite::pin_project;
 use std::{
     fmt,
     future::Future,
@@ -661,7 +661,9 @@ where
         } else {
             // This is not a CORS request if there is no Origin header
             return ResponseFuture {
-                inner: Kind::NonCorsCall(self.inner.call(req)),
+                inner: Kind::NonCorsCall {
+                    future: self.inner.call(req),
+                },
             };
         };
 
@@ -671,12 +673,14 @@ where
             origin
         } else {
             return ResponseFuture {
-                inner: Kind::Error(Some(
-                    Response::builder()
-                        .status(StatusCode::UNAUTHORIZED)
-                        .body(ResBody::default())
-                        .unwrap(),
-                )),
+                inner: Kind::Error {
+                    response: Some(
+                        Response::builder()
+                            .status(StatusCode::UNAUTHORIZED)
+                            .body(ResBody::default())
+                            .unwrap(),
+                    ),
+                },
             };
         };
 
@@ -689,18 +693,22 @@ where
                 Some(request_method) if self.is_valid_request_method(request_method) => {}
                 _ => {
                     return ResponseFuture {
-                        inner: Kind::Error(Some(
-                            Response::builder()
-                                .status(StatusCode::OK)
-                                .body(ResBody::default())
-                                .unwrap(),
-                        )),
+                        inner: Kind::Error {
+                            response: Some(
+                                Response::builder()
+                                    .status(StatusCode::OK)
+                                    .body(ResBody::default())
+                                    .unwrap(),
+                            ),
+                        },
                     };
                 }
             }
 
             return ResponseFuture {
-                inner: Kind::Error(Some(self.build_preflight_response(origin))),
+                inner: Kind::Error {
+                    response: Some(self.build_preflight_response(origin)),
+                },
             };
         }
 
@@ -716,25 +724,33 @@ where
     }
 }
 
-/// Response future for [`Cors`].
-#[pin_project]
-pub struct ResponseFuture<F, B> {
-    #[pin]
-    inner: Kind<F, B>,
+pin_project! {
+    /// Response future for [`Cors`].
+    pub struct ResponseFuture<F, B> {
+        #[pin]
+        inner: Kind<F, B>,
+    }
 }
 
-#[pin_project(project = KindProj)]
-enum Kind<F, B> {
-    NonCorsCall(#[pin] F),
-    CorsCall {
-        #[pin]
-        future: F,
-        allow_origin: Option<AnyOr<Origin>>,
-        origin: HeaderValue,
-        allow_credentials: Option<HeaderValue>,
-        expose_headers: Option<HeaderValue>,
-    },
-    Error(Option<Response<B>>),
+pin_project! {
+    #[project = KindProj]
+    enum Kind<F, B> {
+        NonCorsCall {
+            #[pin]
+            future: F,
+        },
+        CorsCall {
+            #[pin]
+            future: F,
+            allow_origin: Option<AnyOr<Origin>>,
+            origin: HeaderValue,
+            allow_credentials: Option<HeaderValue>,
+            expose_headers: Option<HeaderValue>,
+        },
+        Error {
+            response: Option<Response<B>>,
+        },
+    }
 }
 
 impl<F, B, E> Future for ResponseFuture<F, B>
@@ -775,8 +791,8 @@ where
 
                 Poll::Ready(Ok(response))
             }
-            KindProj::NonCorsCall(future) => future.poll(cx),
-            KindProj::Error(res) => Poll::Ready(Ok(res.take().unwrap())),
+            KindProj::NonCorsCall { future } => future.poll(cx),
+            KindProj::Error { response } => Poll::Ready(Ok(response.take().unwrap())),
         }
     }
 }

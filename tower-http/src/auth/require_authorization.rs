@@ -116,7 +116,7 @@ use http::{
     Request, Response, StatusCode,
 };
 use http_body::Body;
-use pin_project::pin_project;
+use pin_project_lite::pin_project;
 use std::{
     fmt,
     future::Future,
@@ -279,31 +279,41 @@ where
     }
 }
 
-/// Response future for [`RequireAuthorization`].
-#[pin_project]
-pub struct ResponseFuture<F, B> {
-    #[pin]
-    kind: Kind<F, B>,
+pin_project! {
+    /// Response future for [`RequireAuthorization`].
+    pub struct ResponseFuture<F, B> {
+        #[pin]
+        kind: Kind<F, B>,
+    }
 }
 
 impl<F, B> ResponseFuture<F, B> {
     fn future(future: F) -> Self {
         Self {
-            kind: Kind::Future(future),
+            kind: Kind::Future { future },
         }
     }
 
     fn invalid_auth(res: Response<B>) -> Self {
         Self {
-            kind: Kind::Error(Some(res)),
+            kind: Kind::Error {
+                response: Some(res),
+            },
         }
     }
 }
 
-#[pin_project(project = KindProj)]
-enum Kind<F, B> {
-    Future(#[pin] F),
-    Error(Option<Response<B>>),
+pin_project! {
+    #[project = KindProj]
+    enum Kind<F, B> {
+        Future {
+            #[pin]
+            future: F,
+        },
+        Error {
+            response: Option<Response<B>>,
+        },
+    }
 }
 
 impl<F, B, E> Future for ResponseFuture<F, B>
@@ -314,8 +324,8 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match self.project().kind.project() {
-            KindProj::Future(future) => future.poll(cx),
-            KindProj::Error(response) => {
+            KindProj::Future { future } => future.poll(cx),
+            KindProj::Error { response } => {
                 let response = response.take().unwrap();
                 Poll::Ready(Ok(response))
             }

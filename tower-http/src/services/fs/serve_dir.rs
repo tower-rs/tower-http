@@ -1,10 +1,12 @@
-use super::AsyncReadBody;
-use crate::services::fs::DEFAULT_CAPACITY;
+use super::{open_file_with_fallback, AsyncReadBody, PrecompressedVariants};
+use crate::services::fs::parse_range::{parse_range, ParsedRangeHeader};
+use crate::{content_encoding::Encoding, services::fs::DEFAULT_CAPACITY};
 use bytes::Bytes;
 use futures_util::ready;
 use http::{header, HeaderValue, Request, Response, StatusCode, Uri};
 use http_body::{combinators::BoxBody, Body, Empty, Full};
 use percent_encoding::percent_decode;
+use std::io::SeekFrom;
 use std::{
     future::Future,
     io,
@@ -13,10 +15,8 @@ use std::{
     task::{Context, Poll},
 };
 use tokio::fs::File;
+use tokio::io::AsyncSeekExt;
 use tower_service::Service;
-use tokio::io::{AsyncSeekExt};
-use std::io::SeekFrom;
-use crate::services::fs::parse_range::{ParsedRangeHeader, parse_range};
 
 /// Service that serves files from a given directory and all its sub directories.
 ///
@@ -91,6 +91,7 @@ pub struct ServeDir {
     base: PathBuf,
     append_index_html_on_directories: bool,
     buf_chunk_size: usize,
+    precompressed_variants: Option<PrecompressedVariants>,
 }
 
 impl ServeDir {
@@ -103,6 +104,7 @@ impl ServeDir {
             base,
             append_index_html_on_directories: true,
             buf_chunk_size: DEFAULT_CAPACITY,
+            precompressed_variants: None,
         }
     }
 
@@ -121,6 +123,57 @@ impl ServeDir {
     /// The default capacity is 64kb.
     pub fn with_buf_chunk_size(mut self, chunk_size: usize) -> Self {
         self.buf_chunk_size = chunk_size;
+        self
+    }
+
+    /// Informs the service that it should also look for a precompressed gzip
+    /// version of _any_ file in the directory.
+    ///
+    /// Assuming the `dir` directory is being served and `dir/foo.txt` is requested,
+    /// a client with an `Accept-Encoding` header that allows the gzip encoding
+    /// will receive the file `dir/foo.txt.gz` instead of `dir/foo.txt`.
+    /// If the precompressed file is not available, or the client doesn't support it,
+    /// the uncompressed version will be served instead.
+    /// Both the precompressed version and the uncompressed version are expected
+    /// to be present in the directory. Different precompressed variants can be combined.
+    pub fn precompressed_gzip(mut self) -> Self {
+        self.precompressed_variants
+            .get_or_insert(Default::default())
+            .gzip = true;
+        self
+    }
+
+    /// Informs the service that it should also look for a precompressed brotli
+    /// version of _any_ file in the directory.
+    ///
+    /// Assuming the `dir` directory is being served and `dir/foo.txt` is requested,
+    /// a client with an `Accept-Encoding` header that allows the brotli encoding
+    /// will receive the file `dir/foo.txt.br` instead of `dir/foo.txt`.
+    /// If the precompressed file is not available, or the client doesn't support it,
+    /// the uncompressed version will be served instead.
+    /// Both the precompressed version and the uncompressed version are expected
+    /// to be present in the directory. Different precompressed variants can be combined.
+    pub fn precompressed_br(mut self) -> Self {
+        self.precompressed_variants
+            .get_or_insert(Default::default())
+            .br = true;
+        self
+    }
+
+    /// Informs the service that it should also look for a precompressed deflate
+    /// version of _any_ file in the directory.
+    ///
+    /// Assuming the `dir` directory is being served and `dir/foo.txt` is requested,
+    /// a client with an `Accept-Encoding` header that allows the deflate encoding
+    /// will receive the file `dir/foo.txt.zz` instead of `dir/foo.txt`.
+    /// If the precompressed file is not available, or the client doesn't support it,
+    /// the uncompressed version will be served instead.
+    /// Both the precompressed version and the uncompressed version are expected
+    /// to be present in the directory. Different precompressed variants can be combined.
+    pub fn precompressed_deflate(mut self) -> Self {
+        self.precompressed_variants
+            .get_or_insert(Default::default())
+            .deflate = true;
         self
     }
 }
@@ -161,11 +214,15 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
         let append_index_html_on_directories = self.append_index_html_on_directories;
         let buf_chunk_size = self.buf_chunk_size;
         let uri = req.uri().clone();
-        let range_header = req.headers().get(header::RANGE)
-            .and_then(|value| value.to_str()
-                .ok()
-                .map(|s| s.to_owned())
-            );
+        let range_header = req
+            .headers()
+            .get(header::RANGE)
+            .and_then(|value| value.to_str().ok().map(|s| s.to_owned()));
+
+        let negotiated_encoding = self
+            .precompressed_variants
+            .map(|precompressed| Encoding::from_headers(req.headers(), precompressed))
+            .filter(|encoding| *encoding != Encoding::Identity);
 
         let open_file_future = Box::pin(async move {
             if !uri.path().ends_with('/') {
@@ -181,8 +238,6 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
                     return Ok(Output::NotFound);
                 }
             }
-            let mut file = File::open(&full_path).await?;
-            let file_size = file.metadata().await?.len();
             let guess = mime_guess::from_path(&full_path);
             let mime = guess
                 .first_raw()
@@ -190,19 +245,41 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
                 .unwrap_or_else(|| {
                     HeaderValue::from_str(mime::APPLICATION_OCTET_STREAM.as_ref()).unwrap()
                 });
-            let range_request = range_header.map(|range| parse_range(&range, file_size));
-            if let Some(ParsedRangeHeader::Range(ranges)) = range_request.as_ref() {
+
+            if let Some(file_extension) =
+                negotiated_encoding.and_then(|encoding| encoding.to_file_extension())
+            {
+                let new_extension = full_path
+                    .extension()
+                    .map(|extension| {
+                        let mut os_string = extension.to_os_string();
+                        os_string.push(file_extension);
+                        os_string
+                    })
+                    .unwrap_or_else(|| file_extension.to_os_string());
+                full_path.set_extension(new_extension);
+            }
+
+            let (mut file, maybe_encoding) =
+                open_file_with_fallback(full_path, negotiated_encoding).await?;
+
+            let file_size = file.metadata().await?.len();
+            let maybe_range = range_header.map(|range| parse_range(&range, file_size));
+            if let Some(ParsedRangeHeader::Range(ranges)) = maybe_range.as_ref() {
                 if ranges.len() != 1 {
                     // do something smart
                 }
-                file.seek(SeekFrom::Start(*ranges[0].start())).await.unwrap();
+                file.seek(SeekFrom::Start(*ranges[0].start()))
+                    .await
+                    .unwrap();
             }
-            Ok(Output::File(FileRequest{
+            Ok(Output::File(FileRequest {
                 file,
                 total_size: file_size,
                 chunk_size: buf_chunk_size,
                 mime_header_value: mime,
-                range: range_request
+                maybe_encoding,
+                maybe_range,
             }))
         });
 
@@ -258,7 +335,8 @@ struct FileRequest {
     total_size: u64,
     chunk_size: usize,
     mime_header_value: HeaderValue,
-    range: Option<ParsedRangeHeader>,
+    maybe_encoding: Option<Encoding>,
+    maybe_range: Option<ParsedRangeHeader>,
 }
 
 type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + Sync + 'static>>;
@@ -281,44 +359,73 @@ impl Future for ResponseFuture {
             Inner::Valid(open_file_future) => {
                 let response = match ready!(Pin::new(open_file_future).poll(cx)) {
                     Ok(Output::File(file_request)) => {
-                        let builder = Response::builder()
+                        let mut builder = Response::builder()
                             .header(header::CONTENT_TYPE, file_request.mime_header_value)
                             .header(header::ACCEPT_RANGES, "bytes")
                             .header(header::CONTENT_LENGTH, file_request.total_size.to_string());
-                        if let Some(range) = file_request.range {
+                        if let Some(encoding) = file_request.maybe_encoding {
+                            builder = builder
+                                .header(header::CONTENT_ENCODING, encoding.into_header_value());
+                        }
+                        if let Some(range) = file_request.maybe_range {
                             match range {
                                 ParsedRangeHeader::Range(ranges) => {
                                     let range = &ranges[0];
                                     if *range.end() >= file_request.total_size {
-                                        builder.header(header::CONTENT_RANGE, format!("bytes */{}", file_request.total_size))
+                                        builder
+                                            .header(
+                                                header::CONTENT_RANGE,
+                                                format!("bytes */{}", file_request.total_size),
+                                            )
                                             .status(StatusCode::RANGE_NOT_SATISFIABLE)
                                             .body(empty_body())
                                     } else {
                                         let size = (range.end() - range.start() + 1) as usize;
-                                        let body = AsyncReadBody::with_capacity_limited(file_request.file, file_request.chunk_size, size).boxed();
-                                        builder.header(header::CONTENT_RANGE, format!("bytes {}-{}/{}", range.start(), range.end(), file_request.total_size))
+                                        let body = AsyncReadBody::with_capacity_limited(
+                                            file_request.file,
+                                            file_request.chunk_size,
+                                            size,
+                                        )
+                                        .boxed();
+                                        builder
+                                            .header(
+                                                header::CONTENT_RANGE,
+                                                format!(
+                                                    "bytes {}-{}/{}",
+                                                    range.start(),
+                                                    range.end(),
+                                                    file_request.total_size
+                                                ),
+                                            )
                                             .status(StatusCode::PARTIAL_CONTENT)
-                                            .body(ResponseBody(body))
+                                            .body(ResponseBody::new(body))
                                     }
-
                                 }
-                                ParsedRangeHeader::Unsatisfiable(reason) => {
-                                    builder.header(header::CONTENT_RANGE, format!("bytes */{}", file_request.total_size))
-                                        .status(StatusCode::RANGE_NOT_SATISFIABLE)
-                                        .body(body_from_bytes(Bytes::from(reason)))
-                                }
-                                ParsedRangeHeader::Malformed(reason) => {
-                                    builder.header(header::CONTENT_RANGE, format!("bytes */{}", file_request.total_size))
-                                        .status(StatusCode::BAD_REQUEST)
-                                        .body(body_from_bytes(Bytes::from(reason)))
-                                }
+                                ParsedRangeHeader::Unsatisfiable(reason) => builder
+                                    .header(
+                                        header::CONTENT_RANGE,
+                                        format!("bytes */{}", file_request.total_size),
+                                    )
+                                    .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                                    .body(body_from_bytes(Bytes::from(reason))),
+                                ParsedRangeHeader::Malformed(reason) => builder
+                                    .header(
+                                        header::CONTENT_RANGE,
+                                        format!("bytes */{}", file_request.total_size),
+                                    )
+                                    .status(StatusCode::BAD_REQUEST)
+                                    .body(body_from_bytes(Bytes::from(reason))),
                             }
                         } else {
-                            let body = AsyncReadBody::with_capacity(file_request.file, file_request.chunk_size).boxed();
-                            let body = ResponseBody(body);
+                            let body = AsyncReadBody::with_capacity(
+                                file_request.file,
+                                file_request.chunk_size,
+                            )
+                            .boxed();
+                            let body = ResponseBody::new(body);
                             builder.body(body)
                         }
-                    },
+                    }
 
                     Ok(Output::Redirect(location)) => {
                         let res = Response::builder()
@@ -340,7 +447,8 @@ impl Future for ResponseFuture {
 
                     Err(err) => {
                         return Poll::Ready(
-                            super::response_from_io_error(err).map(|res| res.map(ResponseBody)),
+                            super::response_from_io_error(err)
+                                .map(|res| res.map(ResponseBody::new)),
                         )
                     }
                 };
@@ -360,13 +468,14 @@ impl Future for ResponseFuture {
 
 fn empty_body() -> ResponseBody {
     let body = Empty::new().map_err(|err| match err {}).boxed();
-    ResponseBody(body)
+    ResponseBody::new(body)
 }
 
 fn body_from_bytes(bytes: Bytes) -> ResponseBody {
     let body = BoxBody::new(Full::from(bytes))
-        .map_err(|err| match err { }).boxed();
-    ResponseBody(body)
+        .map_err(|err| match err {})
+        .boxed();
+    ResponseBody::new(body)
 }
 
 opaque_body! {
@@ -376,8 +485,12 @@ opaque_body! {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Read;
+
     #[allow(unused_imports)]
     use super::*;
+    use brotli::BrotliDecompress;
+    use flate2::bufread::{DeflateDecoder, GzDecoder};
     use http::{Request, StatusCode};
     use http_body::Body as HttpBody;
     use hyper::Body;
@@ -422,6 +535,137 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn precompressed_gzip() {
+        let svc = ServeDir::new("../test-files").precompressed_gzip();
+
+        let req = Request::builder()
+            .uri("/precompressed.txt")
+            .header("Accept-Encoding", "gzip")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/plain");
+        assert_eq!(res.headers()["content-encoding"], "gzip");
+
+        let body = res.into_body().data().await.unwrap().unwrap();
+        let mut decoder = GzDecoder::new(&body[..]);
+        let mut decompressed = String::new();
+        decoder.read_to_string(&mut decompressed).unwrap();
+        assert!(decompressed.starts_with("\"This is a test file!\""));
+    }
+
+    #[tokio::test]
+    async fn precompressed_br() {
+        let svc = ServeDir::new("../test-files").precompressed_br();
+
+        let req = Request::builder()
+            .uri("/precompressed.txt")
+            .header("Accept-Encoding", "br")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/plain");
+        assert_eq!(res.headers()["content-encoding"], "br");
+
+        let body = res.into_body().data().await.unwrap().unwrap();
+        let mut decompressed = Vec::new();
+        BrotliDecompress(&mut &body[..], &mut decompressed).unwrap();
+        let decompressed = String::from_utf8(decompressed.to_vec()).unwrap();
+        assert!(decompressed.starts_with("\"This is a test file!\""));
+    }
+
+    #[tokio::test]
+    async fn precompressed_deflate() {
+        let svc = ServeDir::new("../test-files").precompressed_deflate();
+        let request = Request::builder()
+            .uri("/precompressed.txt")
+            .header("Accept-Encoding", "deflate,br")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(request).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/plain");
+        assert_eq!(res.headers()["content-encoding"], "deflate");
+
+        let body = res.into_body().data().await.unwrap().unwrap();
+        let mut decoder = DeflateDecoder::new(&body[..]);
+        let mut decompressed = String::new();
+        decoder.read_to_string(&mut decompressed).unwrap();
+        assert!(decompressed.starts_with("\"This is a test file!\""));
+    }
+
+    #[tokio::test]
+    async fn unsupported_precompression_alogrithm_fallbacks_to_uncompressed() {
+        let svc = ServeDir::new("../test-files").precompressed_gzip();
+
+        let request = Request::builder()
+            .uri("/precompressed.txt")
+            .header("Accept-Encoding", "br")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(request).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/plain");
+        assert!(res.headers().get("content-encoding").is_none());
+
+        let body = res.into_body().data().await.unwrap().unwrap();
+        let body = String::from_utf8(body.to_vec()).unwrap();
+        assert!(body.starts_with("\"This is a test file!\""));
+    }
+
+    #[tokio::test]
+    async fn only_precompressed_variant_existing() {
+        let svc = ServeDir::new("../test-files").precompressed_gzip();
+
+        let request = Request::builder()
+            .uri("/only_gzipped.txt")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.clone().oneshot(request).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
+
+        // Should reply with gzipped file if client supports it
+        let request = Request::builder()
+            .uri("/only_gzipped.txt")
+            .header("Accept-Encoding", "gzip")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(request).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/plain");
+        assert_eq!(res.headers()["content-encoding"], "gzip");
+
+        let body = res.into_body().data().await.unwrap().unwrap();
+        let mut decoder = GzDecoder::new(&body[..]);
+        let mut decompressed = String::new();
+        decoder.read_to_string(&mut decompressed).unwrap();
+        assert!(decompressed.starts_with("\"This is a test file\""));
+    }
+
+    #[tokio::test]
+    async fn missing_precompressed_variant_fallbacks_to_uncompressed() {
+        let svc = ServeDir::new("../test-files").precompressed_gzip();
+
+        let request = Request::builder()
+            .uri("/missing_precompressed.txt")
+            .header("Accept-Encoding", "gzip")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(request).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/plain");
+        // Uncompressed file is served because compressed version is missing
+        assert!(res.headers().get("content-encoding").is_none());
+
+        let body = res.into_body().data().await.unwrap().unwrap();
+        let body = String::from_utf8(body.to_vec()).unwrap();
+        assert!(body.starts_with("Test file!"));
+    }
+
+    #[tokio::test]
     async fn access_to_sub_dirs() {
         let svc = ServeDir::new("..");
 
@@ -446,6 +690,24 @@ mod tests {
 
         let req = Request::builder()
             .uri("/not-found")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
+        assert!(res.headers().get(header::CONTENT_TYPE).is_none());
+
+        let body = body_into_text(res.into_body()).await;
+        assert!(body.is_empty());
+    }
+
+    #[tokio::test]
+    async fn not_found_precompressed() {
+        let svc = ServeDir::new("../test-files").precompressed_gzip();
+
+        let req = Request::builder()
+            .uri("/not-found")
+            .header("Accept-Encoding", "gzip")
             .body(Body::empty())
             .unwrap();
         let res = svc.oneshot(req).await.unwrap();
@@ -547,15 +809,29 @@ mod tests {
 
         let req = Request::builder()
             .uri("/README.md")
-            .header("Range", format!("bytes={}-{}", bytes_start_incl, bytes_end_incl))
+            .header(
+                "Range",
+                format!("bytes={}-{}", bytes_start_incl, bytes_end_incl),
+            )
             .body(Body::empty())
             .unwrap();
         let res = svc.oneshot(req).await.unwrap();
 
         let file_contents = std::fs::read("../README.md").unwrap();
         assert_eq!(res.status(), StatusCode::PARTIAL_CONTENT);
-        assert_eq!(res.headers()["content-length"], file_contents.len().to_string());
-        assert!(res.headers()["content-range"].to_str().unwrap().starts_with(&format!("bytes {}-{}/{}", bytes_start_incl, bytes_end_incl, file_contents.len())));
+        assert_eq!(
+            res.headers()["content-length"],
+            file_contents.len().to_string()
+        );
+        assert!(res.headers()["content-range"]
+            .to_str()
+            .unwrap()
+            .starts_with(&format!(
+                "bytes {}-{}/{}",
+                bytes_start_incl,
+                bytes_end_incl,
+                file_contents.len()
+            )));
         assert_eq!(res.headers()["content-type"], "text/markdown");
 
         let body = hyper::body::to_bytes(res.into_body()).await.ok().unwrap();
@@ -572,7 +848,10 @@ mod tests {
 
         let req = Request::builder()
             .uri("/README.md")
-            .header("Range", format!("bytes={}-{}", bytes_start_incl, requested_len - 1))
+            .header(
+                "Range",
+                format!("bytes={}-{}", bytes_start_incl, requested_len - 1),
+            )
             .body(Body::empty())
             .unwrap();
         let res = svc.oneshot(req).await.unwrap();
@@ -591,7 +870,6 @@ mod tests {
         let res = svc.oneshot(req).await.unwrap();
         assert_eq!(res.status(), StatusCode::BAD_REQUEST);
     }
-
 
     #[tokio::test]
     async fn read_partial_errs_on_bad_range() {

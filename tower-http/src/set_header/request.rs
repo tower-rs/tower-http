@@ -24,12 +24,9 @@
 //!     .layer(
 //!         // Layer that sets `User-Agent: my very cool app` on requests.
 //!         //
-//!         // We have to add `::<_, Body>` since Rust cannot infer the body type when
-//!         // we don't use a closure to produce the header value.
-//!         //
 //!         // `if_not_present` will only insert the header if it does not already
 //!         // have a value.
-//!         SetRequestHeaderLayer::<_, Body>::if_not_present(
+//!         SetRequestHeaderLayer::if_not_present(
 //!             header::USER_AGENT,
 //!             HeaderValue::from_static("my very cool app"),
 //!         )
@@ -87,7 +84,6 @@
 
 use super::{InsertHeaderMode, MakeHeaderValue};
 use http::{header::HeaderName, Request};
-use std::marker::PhantomData;
 use std::{
     fmt,
     task::{Context, Poll},
@@ -98,15 +94,13 @@ use tower_service::Service;
 /// Layer that applies [`SetRequestHeader`] which adds a request header.
 ///
 /// See [`SetRequestHeader`] for more details.
-pub struct SetRequestHeaderLayer<M, T> {
+pub struct SetRequestHeaderLayer<M> {
     header_name: HeaderName,
     make: M,
     mode: InsertHeaderMode,
-    // Covariant over T, no dropping of T
-    _marker: PhantomData<fn() -> T>,
 }
 
-impl<M, T> fmt::Debug for SetRequestHeaderLayer<M, T> {
+impl<M> fmt::Debug for SetRequestHeaderLayer<M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SetRequestHeaderLayer")
             .field("header_name", &self.header_name)
@@ -116,10 +110,7 @@ impl<M, T> fmt::Debug for SetRequestHeaderLayer<M, T> {
     }
 }
 
-impl<M, T> SetRequestHeaderLayer<M, T>
-where
-    M: MakeHeaderValue<T>,
-{
+impl<M> SetRequestHeaderLayer<M> {
     /// Create a new [`SetRequestHeaderLayer`].
     ///
     /// If a previous value exists for the same header, it is removed and replaced with the new
@@ -148,12 +139,11 @@ where
             make,
             header_name,
             mode,
-            _marker: PhantomData,
         }
     }
 }
 
-impl<T, S, M> Layer<S> for SetRequestHeaderLayer<M, T>
+impl<S, M> Layer<S> for SetRequestHeaderLayer<M>
 where
     M: Clone,
 {
@@ -169,7 +159,7 @@ where
     }
 }
 
-impl<M, T> Clone for SetRequestHeaderLayer<M, T>
+impl<M> Clone for SetRequestHeaderLayer<M>
 where
     M: Clone,
 {
@@ -178,7 +168,6 @@ where
             make: self.make.clone(),
             header_name: self.header_name.clone(),
             mode: self.mode,
-            _marker: PhantomData,
         }
     }
 }

@@ -110,7 +110,7 @@
 //!             StatusInRangeAsFailures::new(400..=599).into_make_classifier()
 //!         ))
 //!         // Set a `User-Agent` header on all requests.
-//!         .layer(SetRequestHeaderLayer::<_, Body>::overriding(
+//!         .layer(SetRequestHeaderLayer::overriding(
 //!             USER_AGENT,
 //!             HeaderValue::from_static("tower-http demo")
 //!         ))
@@ -235,8 +235,19 @@ pub mod set_header;
 #[cfg_attr(docsrs, doc(cfg(feature = "propagate-header")))]
 pub mod propagate_header;
 
-#[cfg(feature = "compression")]
-#[cfg_attr(docsrs, doc(cfg(feature = "compression")))]
+#[cfg(any(
+    feature = "compression-br",
+    feature = "compression-deflate",
+    feature = "compression-gzip"
+))]
+#[cfg_attr(
+    docsrs,
+    doc(cfg(any(
+        feature = "compression-br",
+        feature = "compression-deflate",
+        feature = "compression-gzip"
+    )))
+)]
 pub mod compression;
 
 #[cfg(feature = "add-extension")]
@@ -247,11 +258,40 @@ pub mod add_extension;
 #[cfg_attr(docsrs, doc(cfg(feature = "sensitive-headers")))]
 pub mod sensitive_headers;
 
-#[cfg(feature = "decompression")]
-#[cfg_attr(docsrs, doc(cfg(feature = "decompression")))]
+#[cfg(any(
+    feature = "decompression-br",
+    feature = "decompression-deflate",
+    feature = "decompression-gzip"
+))]
+#[cfg_attr(
+    docsrs,
+    doc(cfg(any(
+        feature = "decompression-br",
+        feature = "decompression-deflate",
+        feature = "decompression-gzip"
+    )))
+)]
 pub mod decompression;
 
-#[cfg(any(feature = "compression", feature = "decompression"))]
+#[cfg(any(
+    feature = "compression-br",
+    feature = "compression-deflate",
+    feature = "compression-gzip",
+    feature = "decompression-br",
+    feature = "decompression-deflate",
+    feature = "decompression-gzip",
+    feature = "fs" // Used for serving precompressed static files as well
+))]
+mod content_encoding;
+
+#[cfg(any(
+    feature = "compression-br",
+    feature = "compression-deflate",
+    feature = "compression-gzip",
+    feature = "decompression-br",
+    feature = "decompression-deflate",
+    feature = "decompression-gzip",
+))]
 mod compression_utils;
 
 #[cfg(feature = "map-response-body")]
@@ -281,51 +321,13 @@ pub mod cors;
 pub mod classify;
 pub mod services;
 
-/// Error type containing either a body error or an IO error.
-///
-/// This type is used to combine errors produced by response bodies with compression or
-/// decompression applied. The body itself can produce errors of type `E` whereas compression or
-/// decompression can produce [`io::Error`]s.
-///
-/// [`io::Error`]: std::io::Error
-#[cfg(any(feature = "compression", feature = "decompression"))]
-#[cfg_attr(
-    docsrs,
-    doc(cfg(any(feature = "compression", feature = "decompression")))
-)]
-#[derive(Debug)]
-pub enum BodyOrIoError<E> {
-    /// Errors produced by the body.
-    Body(E),
-    /// IO errors produced by compression or decompression.
-    Io(std::io::Error),
-}
+#[cfg(feature = "util")]
+mod builder;
 
-#[cfg(any(feature = "compression", feature = "decompression"))]
-impl<E> std::fmt::Display for BodyOrIoError<E>
-where
-    E: std::fmt::Display,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            BodyOrIoError::Io(inner) => inner.fmt(f),
-            BodyOrIoError::Body(inner) => inner.fmt(f),
-        }
-    }
-}
-
-#[cfg(any(feature = "compression", feature = "decompression"))]
-impl<E> std::error::Error for BodyOrIoError<E>
-where
-    E: std::error::Error,
-{
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            BodyOrIoError::Io(inner) => inner.source(),
-            BodyOrIoError::Body(inner) => inner.source(),
-        }
-    }
-}
+#[cfg(feature = "util")]
+#[cfg_attr(docsrs, doc(cfg(feature = "util")))]
+#[doc(inline)]
+pub use self::builder::ServiceBuilderExt;
 
 /// The latency unit used to report latencies by middleware.
 #[non_exhaustive]
@@ -337,4 +339,12 @@ pub enum LatencyUnit {
     Micros,
     /// Use nanoseconds.
     Nanos,
+}
+
+/// Alias for a type-erased error type.
+pub type BoxError = Box<dyn std::error::Error + Send + Sync>;
+
+mod sealed {
+    #[allow(unreachable_pub)]
+    pub trait Sealed<T> {}
 }
