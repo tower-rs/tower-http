@@ -86,7 +86,6 @@ impl EncodingCandidates {
     }
 }
 
-
 #[derive(Clone, Copy, Debug)]
 struct PrecompressedVariants {
     gzip: bool,

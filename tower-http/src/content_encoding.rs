@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::ffi::OsStr;
 
 use http::{header, HeaderMap, HeaderValue};
@@ -60,32 +61,30 @@ impl Encoding {
         }
     }
 
-    // based on https://github.com/http-rs/accept-encoding
     pub(crate) fn from_headers(
         headers: &HeaderMap,
         supported_encoding: impl SupportedEncodings,
     ) -> Self {
         preferred_encoding(encodings(headers, supported_encoding).iter())
-        .unwrap_or(Encoding::Identity)
+            .unwrap_or(Encoding::Identity)
     }
 }
-
-// based on https://github.com/http-rs/accept-encoding
+/// Select the max quota Encoding from a list of (Encoding,quota) or None when list is empty.
+/// When any one of all quota equals, the last one selected.
+/// It will select br for Chrome as Chrome usually has a header value "Accept-Encoding: gzip, deflate, br".
 pub(crate) fn preferred_encoding<'a>(
     accptted_encodings: impl Iterator<Item = &'a (Encoding, f32)>,
 ) -> Option<Encoding> {
-    let mut preferred = None;
-    let mut max_qval = 0.0;
-    for (encoding, qval) in accptted_encodings {
-        if (*qval - 1.0f32).abs() < 0.01 {
-            preferred = Some(encoding);
-            break;
-        } else if *qval > max_qval {
-            preferred = Some(encoding);
-            max_qval = *qval;
+    let max = accptted_encodings.max_by(|x, y| {
+        if x.1 > y.1 {
+            Ordering::Greater
+        } else if x.1 < y.1 {
+            Ordering::Less
+        } else {
+            Ordering::Equal
         }
-    }
-    preferred.map(|x| x.to_owned())
+    });
+    max.map(|x| x.0.to_owned())
 }
 
 // based on https://github.com/http-rs/accept-encoding
