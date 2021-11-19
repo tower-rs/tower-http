@@ -86,7 +86,7 @@
 //! #         Some(RequestId::new(request_id))
 //! #     }
 //! # }
-//! #
+//!
 //! let mut svc = ServiceBuilder::new()
 //!     .set_x_request_id(MyMakeRequestId::default())
 //!     .propagate_x_request_id()
