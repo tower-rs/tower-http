@@ -65,25 +65,29 @@ impl Encoding {
         headers: &HeaderMap,
         supported_encoding: impl SupportedEncodings,
     ) -> Self {
+        Encoding::preferred_encoding(&encodings(headers, supported_encoding))
+            .unwrap_or(Encoding::Identity)
+    }
+
+    pub(crate) fn preferred_encoding(accepted_encodings: &[(Encoding, f32)]) -> Option<Self> {
         let mut preferred_encoding = None;
         let mut max_qval = 0.0;
 
-        for (encoding, qval) in encodings(headers, supported_encoding) {
+        for (encoding, qval) in accepted_encodings {
             if (qval - 1.0f32).abs() < 0.01 {
-                preferred_encoding = Some(encoding);
+                preferred_encoding = Some(*encoding);
                 break;
-            } else if qval > max_qval {
-                preferred_encoding = Some(encoding);
-                max_qval = qval;
+            } else if *qval > max_qval {
+                preferred_encoding = Some(*encoding);
+                max_qval = *qval;
             }
         }
-
-        preferred_encoding.unwrap_or(Encoding::Identity)
+        preferred_encoding
     }
 }
 
 // based on https://github.com/http-rs/accept-encoding
-fn encodings(
+pub(crate) fn encodings(
     headers: &HeaderMap,
     supported_encoding: impl SupportedEncodings,
 ) -> Vec<(Encoding, f32)> {

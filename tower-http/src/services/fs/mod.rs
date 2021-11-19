@@ -67,29 +67,54 @@ impl SupportedEncodings for PrecompressedVariants {
 type FileFuture =
     Pin<Box<dyn Future<Output = io::Result<(File, Option<Encoding>)>> + Send + Sync + 'static>>;
 
-// Attempts to open the file with corresponding encoding but
-// fallbacks to the uncompressed variant if it can't be found
+// Returns the preferred_encoding encoding and modifies the path extension
+// to the corresponding file extension for the encoding.
+fn preferred_encoding(
+    path: &mut PathBuf,
+    negotiated_encoding: &[(Encoding, f32)],
+) -> Option<Encoding> {
+    let preferred_encoding = Encoding::preferred_encoding(negotiated_encoding);
+    if let Some(file_extension) =
+        preferred_encoding.and_then(|encoding| encoding.to_file_extension())
+    {
+        let new_extension = path
+            .extension()
+            .map(|extension| {
+                let mut os_string = extension.to_os_string();
+                os_string.push(file_extension);
+                os_string
+            })
+            .unwrap_or_else(|| file_extension.to_os_string());
+        path.set_extension(new_extension);
+    }
+    preferred_encoding
+}
+
+// Attempts to open the file with any of the possible negotiated_encodings in the
+// preferred order. If none of the negotiated_encodings have a corresponding precompressed
+// file the uncompressed file is used as a fallback.
 async fn open_file_with_fallback(
     mut path: PathBuf,
-    mut precompressed_encoding: Option<Encoding>,
+    mut negotiated_encoding: Vec<(Encoding, f32)>,
 ) -> io::Result<(File, Option<Encoding>)> {
-    let file = loop {
-        match File::open(&path).await {
-            Ok(file) => break file,
-            Err(err)
-                if err.kind() == io::ErrorKind::NotFound && precompressed_encoding.is_some() =>
-            {
+    let (file, encoding) = loop {
+        // Get the preferred encoding among the negotiated ones.
+        let encoding = preferred_encoding(&mut path, &negotiated_encoding);
+        match (File::open(&path).await, encoding) {
+            (Ok(file), maybe_encoding) => break (file, maybe_encoding),
+            (Err(err), Some(encoding)) if err.kind() == io::ErrorKind::NotFound => {
                 // Remove the extension corresponding to a precompressed file (.gz, .br, .zz)
-                // to fallback to the uncompressed version
+                // to reset the path before the next iteration.
                 path.set_extension(OsStr::new(""));
-                // Remove the encoding to make sure the correct content encoding header is set
-                precompressed_encoding.take();
+                // Remove the encoding from the negotiated_encodings since the file doesn't exist
+                negotiated_encoding
+                    .retain(|(negotiated_encoding, _)| *negotiated_encoding != encoding);
                 continue;
             }
-            Err(err) => return Err(err),
+            (Err(err), _) => return Err(err),
         };
     };
-    Ok((file, precompressed_encoding))
+    Ok((file, encoding))
 }
 
 pin_project! {
