@@ -9,13 +9,12 @@ use std::{
     pin::Pin,
     task::{Context, Poll},
 };
-use tokio::io::AsyncRead;
+use tokio::io::{AsyncRead, AsyncReadExt, Take};
 
 use futures_util::Stream;
 
 mod serve_dir;
 mod serve_file;
-mod read_stream;
 mod parse_range;
 
 // default capacity 64KiB
@@ -29,7 +28,7 @@ pub use self::{
         ResponseBody as ServeFileResponseBody, ResponseFuture as ServeFileResponseFuture, ServeFile,
     },
 };
-use crate::services::fs::read_stream::ReaderStream;
+use tokio_util::io::ReaderStream;
 
 // NOTE: This could potentially be upstreamed to `http-body`.
 /// Adapter that turns an `impl AsyncRead` to an `impl Body`.
@@ -52,9 +51,9 @@ where
         }
     }
 
-    fn with_capacity_limited(read: T, capacity: usize, max_read_bytes: usize) -> Self {
-        Self {
-            reader: ReaderStream::with_capacity_limited(read, capacity, max_read_bytes)
+    fn with_capacity_limited(read: T, capacity: usize, max_read_bytes: usize) -> AsyncReadBody<Take<T>> {
+        AsyncReadBody {
+            reader: ReaderStream::with_capacity(read.take(max_read_bytes as u64), capacity)
         }
     }
 }

@@ -1,5 +1,5 @@
-use std::ops::{RangeInclusive, RangeBounds};
-use std::fmt::{Debug, Formatter, Write};
+use std::ops::{RangeInclusive};
+use std::fmt::{Debug};
 
 /// Function that parses the content of a range-header
 /// If correctly formatted returns the requested ranges
@@ -48,6 +48,8 @@ pub(crate) fn parse_range(range: &str, file_size_bytes: u64) -> ParsedRangeHeade
             }
             return ParsedRangeHeader::Malformed(format!("Range: {} is not acceptable, range does not contain any dashes.", range));
         }
+    } else {
+        return ParsedRangeHeader::Malformed(format!("Range: {} is not acceptable, range does not start with 'bytes='", range));
     }
     if ranges.is_empty() {
         panic!("Programming error parsing range {}", range)
@@ -110,50 +112,56 @@ mod tests {
 
     #[test]
     fn parse_empty_as_malformed() {
+        let input = "";
+        assert!(matches!(parse_range(input, TEST_FILE_LENGTH), ParsedRangeHeader::Malformed(_)));
+    }
+
+    #[test]
+    fn parse_empty_range_as_malformed() {
         let input = "bytes=";
-        assert_eq!(ParsedRangeHeader::Malformed, parse_range(input, TEST_FILE_LENGTH));
+        assert!(matches!(parse_range(input, TEST_FILE_LENGTH), ParsedRangeHeader::Malformed(_)));
     }
 
     #[test]
     fn parse_bad_unit_as_malformed() {
         let input = "abcde=0-10";
-        assert_eq!(ParsedRangeHeader::Malformed, parse_range(input, TEST_FILE_LENGTH));
+        assert!(matches!(parse_range(input, TEST_FILE_LENGTH), ParsedRangeHeader::Malformed(_)));
     }
 
     #[test]
     fn parse_missing_equals_as_malformed() {
         let input = "abcde0-10";
-        assert_eq!(ParsedRangeHeader::Malformed, parse_range(input, TEST_FILE_LENGTH));
+        assert!(matches!(parse_range(input, TEST_FILE_LENGTH), ParsedRangeHeader::Malformed(_)));
     }
 
     #[test]
     fn parse_negative_bad_characters_in_range_as_malformed() {
         let input = "bytes=1-10a";
-        assert_eq!(ParsedRangeHeader::Malformed, parse_range(input, TEST_FILE_LENGTH));
+        assert!(matches!(parse_range(input, TEST_FILE_LENGTH), ParsedRangeHeader::Malformed(_)));
     }
 
     #[test]
     fn parse_negative_numbers_as_malformed() {
         let input = "bytes=-1-10";
-        assert_eq!(ParsedRangeHeader::Malformed, parse_range(input, TEST_FILE_LENGTH));
+        assert!(matches!(parse_range(input, TEST_FILE_LENGTH), ParsedRangeHeader::Malformed(_)));
     }
 
     #[test]
     fn parse_out_of_bounds_overrun_as_unsatisfiable() {
         let input = &format!("bytes=0-{}", TEST_FILE_LENGTH);
-        assert_eq!(ParsedRangeHeader::Unsatisfiable, parse_range(input, TEST_FILE_LENGTH));
+        assert!(matches!(parse_range(input, TEST_FILE_LENGTH), ParsedRangeHeader::Unsatisfiable(_)));
     }
 
     #[test]
     fn parse_out_of_bounds_suffix_overrun_as_unsatisfiable() {
         let input = &format!("bytes=-{}", TEST_FILE_LENGTH);
-        assert_eq!(ParsedRangeHeader::Unsatisfiable, parse_range(input, TEST_FILE_LENGTH));
+        assert!(matches!(parse_range(input, TEST_FILE_LENGTH), ParsedRangeHeader::Unsatisfiable(_)));
     }
 
     #[test]
     fn parse_zero_length_suffix_as_unsatisfiable() {
         let input = &format!("bytes=-0");
-        assert_eq!(ParsedRangeHeader::Unsatisfiable, parse_range(input, TEST_FILE_LENGTH));
+        assert!(matches!(parse_range(input, TEST_FILE_LENGTH), ParsedRangeHeader::Unsatisfiable(_)));
     }
 
     #[test]
@@ -194,24 +202,24 @@ mod tests {
     #[test]
     fn parse_overlapping_multi_range_as_unsatisfiable_standard() {
         let input = "bytes=0-1023, 500-800";
-        assert_eq!(ParsedRangeHeader::Unsatisfiable, parse_range(input, TEST_FILE_LENGTH));
+        assert!(matches!(parse_range(input, TEST_FILE_LENGTH), ParsedRangeHeader::Unsatisfiable(_)));
     }
 
     #[test]
     fn parse_overlapping_multi_range_as_unsatisfiable_open() {
         let input = "bytes=0-, 5000-6000";
-        assert_eq!(ParsedRangeHeader::Unsatisfiable, parse_range(input, TEST_FILE_LENGTH));
+        assert!(matches!(parse_range(input, TEST_FILE_LENGTH), ParsedRangeHeader::Unsatisfiable(_)));
     }
 
     #[test]
     fn parse_overlapping_multi_range_as_unsatisfiable_suffixed() {
         let input = "bytes=8000-9000, -1001";
-        assert_eq!(ParsedRangeHeader::Unsatisfiable, parse_range(input, TEST_FILE_LENGTH));
+        assert!(matches!(parse_range(input, TEST_FILE_LENGTH), ParsedRangeHeader::Unsatisfiable(_)));
     }
 
     #[test]
     fn parse_overlapping_multi_range_as_unsatisfiable_suffixed_open() {
         let input = "bytes=0-, -1";
-        assert_eq!(ParsedRangeHeader::Unsatisfiable, parse_range(input, TEST_FILE_LENGTH));
+        assert!(matches!(parse_range(input, TEST_FILE_LENGTH), ParsedRangeHeader::Unsatisfiable(_)));
     }
 }

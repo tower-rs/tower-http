@@ -2,7 +2,7 @@ use super::AsyncReadBody;
 use crate::services::fs::DEFAULT_CAPACITY;
 use bytes::Bytes;
 use futures_util::ready;
-use http::{header, HeaderValue, Request, Response, StatusCode, Uri, HeaderMap};
+use http::{header, HeaderValue, Request, Response, StatusCode, Uri};
 use http_body::{combinators::BoxBody, Body, Empty, Full};
 use percent_encoding::percent_decode;
 use std::{
@@ -17,7 +17,6 @@ use tower_service::Service;
 use tokio::io::{AsyncSeekExt};
 use std::io::SeekFrom;
 use crate::services::fs::parse_range::{ParsedRangeHeader, parse_range};
-use std::ops::RangeBounds;
 
 /// Service that serves files from a given directory and all its sub directories.
 ///
@@ -163,7 +162,10 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
         let buf_chunk_size = self.buf_chunk_size;
         let uri = req.uri().clone();
         let range_header = req.headers().get(header::RANGE)
-            .and_then(|value| value.to_str().ok());
+            .and_then(|value| value.to_str()
+                .ok()
+                .map(|s| s.to_owned())
+            );
 
         let open_file_future = Box::pin(async move {
             if !uri.path().ends_with('/') {
@@ -188,7 +190,7 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
                 .unwrap_or_else(|| {
                     HeaderValue::from_str(mime::APPLICATION_OCTET_STREAM.as_ref()).unwrap()
                 });
-            let range_request = range_header.map(|range| parse_range(range, file_size));
+            let range_request = range_header.map(|range| parse_range(&range, file_size));
             if let Some(ParsedRangeHeader::Range(ranges)) = range_request.as_ref() {
                 if ranges.len() != 1 {
                     // do something smart
@@ -292,7 +294,7 @@ impl Future for ResponseFuture {
                                             .status(StatusCode::RANGE_NOT_SATISFIABLE)
                                             .body(empty_body())
                                     } else {
-                                        let size = (range.end() - range.start() - 1) as usize;
+                                        let size = (range.end() - range.start() + 1) as usize;
                                         let body = AsyncReadBody::with_capacity_limited(file_request.file, file_request.chunk_size, size).boxed();
                                         builder.header(header::CONTENT_RANGE, format!("bytes {}-{}/{}", range.start(), range.end(), file_request.total_size))
                                             .status(StatusCode::PARTIAL_CONTENT)
@@ -600,6 +602,6 @@ mod tests {
             .body(Body::empty())
             .unwrap();
         let res = svc.oneshot(req).await.unwrap();
-        assert_eq!(res.status(), StatusCode::RANGE_NOT_SATISFIABLE);
+        assert_eq!(res.status(), StatusCode::BAD_REQUEST);
     }
 }
