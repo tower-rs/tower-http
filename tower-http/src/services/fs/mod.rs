@@ -16,6 +16,7 @@ use futures_util::Stream;
 mod serve_dir;
 mod serve_file;
 mod read_stream;
+mod parse_range;
 
 // default capacity 64KiB
 const DEFAULT_CAPACITY: usize = 65536;
