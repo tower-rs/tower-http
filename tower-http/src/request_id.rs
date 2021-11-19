@@ -1,3 +1,212 @@
+//! Set and propagate request ids.
+//!
+//! # Example
+//!
+//! ```
+//! use http::{Request, Response, header::HeaderName};
+//! use tower::{Service, ServiceExt, ServiceBuilder};
+//! use tower_http::request_id::{
+//!     SetRequestIdLayer, PropagateRequestIdLayer, MakeRequestId, RequestId,
+//! };
+//! use hyper::Body;
+//! use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # let handler = tower::service_fn(|request: Request<Body>| async move {
+//! #     Ok::<_, std::convert::Infallible>(Response::new(request.into_body()))
+//! # });
+//! #
+//! // A `MakeRequestId` that increments an atomic counter
+//! #[derive(Clone, Default)]
+//! struct MyMakeRequestId {
+//!     counter: Arc<AtomicU64>,
+//! }
+//!
+//! impl MakeRequestId for MyMakeRequestId {
+//!     fn make_request_id<B>(&mut self, request: &Request<B>) -> Option<RequestId> {
+//!         let request_id = self.counter
+//!             .fetch_add(1, Ordering::SeqCst)
+//!             .to_string()
+//!             .parse()
+//!             .unwrap();
+//!
+//!         Some(RequestId::new(request_id))
+//!     }
+//! }
+//!
+//! let x_request_id = HeaderName::from_static("x-request-id");
+//!
+//! let mut svc = ServiceBuilder::new()
+//!     // set `x-request-id` header on all requests
+//!     .layer(SetRequestIdLayer::new(
+//!         x_request_id.clone(),
+//!         MyMakeRequestId::default(),
+//!     ))
+//!     // propagate `x-request-id` headers from request to response
+//!     .layer(PropagateRequestIdLayer::new(x_request_id))
+//!     .service(handler);
+//!
+//! let request = Request::new(Body::empty());
+//! let response = svc.ready().await?.call(request).await?;
+//!
+//! assert_eq!(response.headers()["x-request-id"], "0");
+//! #
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! Additional convenience methods are available on [`ServiceBuilderExt`]:
+//!
+//! ```
+//! use tower_http::ServiceBuilderExt;
+//! # use http::{Request, Response, header::HeaderName};
+//! # use tower::{Service, ServiceExt, ServiceBuilder};
+//! # use tower_http::request_id::{
+//! #     SetRequestIdLayer, PropagateRequestIdLayer, MakeRequestId, RequestId,
+//! # };
+//! # use hyper::Body;
+//! # use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # let handler = tower::service_fn(|request: Request<Body>| async move {
+//! #     Ok::<_, std::convert::Infallible>(Response::new(request.into_body()))
+//! # });
+//! # #[derive(Clone, Default)]
+//! # struct MyMakeRequestId {
+//! #     counter: Arc<AtomicU64>,
+//! # }
+//! # impl MakeRequestId for MyMakeRequestId {
+//! #     fn make_request_id<B>(&mut self, request: &Request<B>) -> Option<RequestId> {
+//! #         let request_id = self.counter
+//! #             .fetch_add(1, Ordering::SeqCst)
+//! #             .to_string()
+//! #             .parse()
+//! #             .unwrap();
+//! #         Some(RequestId::new(request_id))
+//! #     }
+//! # }
+//! #
+//! let mut svc = ServiceBuilder::new()
+//!     .set_x_request_id(MyMakeRequestId::default())
+//!     .propagate_x_request_id()
+//!     .service(handler);
+//!
+//! let request = Request::new(Body::empty());
+//! let response = svc.ready().await?.call(request).await?;
+//!
+//! assert_eq!(response.headers()["x-request-id"], "0");
+//! #
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! See [`SetRequestId`] and [`PropagateRequestId`] for more details.
+//!
+//! # Using `Trace`
+//!
+//! To have request ids show up correctly in logs produced by [`Trace`] you must apply the layers
+//! in this order:
+//!
+//! ```
+//! use tower_http::{
+//!     ServiceBuilderExt,
+//!     trace::{TraceLayer, DefaultMakeSpan, DefaultOnResponse},
+//! };
+//! # use http::{Request, Response, header::HeaderName};
+//! # use tower::{Service, ServiceExt, ServiceBuilder};
+//! # use tower_http::request_id::{
+//! #     SetRequestIdLayer, PropagateRequestIdLayer, MakeRequestId, RequestId,
+//! # };
+//! # use hyper::Body;
+//! # use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # let handler = tower::service_fn(|request: Request<Body>| async move {
+//! #     Ok::<_, std::convert::Infallible>(Response::new(request.into_body()))
+//! # });
+//! # #[derive(Clone, Default)]
+//! # struct MyMakeRequestId {
+//! #     counter: Arc<AtomicU64>,
+//! # }
+//! # impl MakeRequestId for MyMakeRequestId {
+//! #     fn make_request_id<B>(&mut self, request: &Request<B>) -> Option<RequestId> {
+//! #         let request_id = self.counter
+//! #             .fetch_add(1, Ordering::SeqCst)
+//! #             .to_string()
+//! #             .parse()
+//! #             .unwrap();
+//! #         Some(RequestId::new(request_id))
+//! #     }
+//! # }
+//!
+//! let svc = ServiceBuilder::new()
+//!     // make sure to set request ids before the request reaches `TraceLayer`
+//!     .set_x_request_id(MyMakeRequestId::default())
+//!     // log requests and responses
+//!     .layer(
+//!         TraceLayer::new_for_http()
+//!             .make_span_with(DefaultMakeSpan::new().include_headers(true))
+//!             .on_response(DefaultOnResponse::new().include_headers(true))
+//!     )
+//!     // propagate the header to the response before the response reaches `TraceLayer`
+//!     .propagate_x_request_id()
+//!     .service(handler);
+//! #
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! # Using `UUID`s
+//!
+//! Generating request ids from [`Uuid`]s can be done like so:
+//!
+//! ```
+//! use tower_http::ServiceBuilderExt;
+//! use http::{Request, Response, header::HeaderName};
+//! use tower::{Service, ServiceExt, ServiceBuilder};
+//! use tower_http::request_id::{
+//!     SetRequestIdLayer, PropagateRequestIdLayer, MakeRequestId, RequestId,
+//! };
+//! use uuid::Uuid;
+//! # use hyper::Body;
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # let handler = tower::service_fn(|request: Request<Body>| async move {
+//! #     Ok::<_, std::convert::Infallible>(Response::new(request.into_body()))
+//! # });
+//!
+//! #[derive(Clone, Copy)]
+//! struct MakeRequestUuid;
+//!
+//! impl MakeRequestId for MakeRequestUuid {
+//!     fn make_request_id<B>(&mut self, request: &Request<B>) -> Option<RequestId> {
+//!         let request_id = Uuid::new_v4()
+//!             .to_string()
+//!             .parse()
+//!             .unwrap();
+//!         Some(RequestId::new(request_id))
+//!     }
+//! }
+//!
+//! let mut svc = ServiceBuilder::new()
+//!     .set_x_request_id(MakeRequestUuid)
+//!     .propagate_x_request_id()
+//!     .service(handler);
+//!
+//! let request = Request::new(Body::empty());
+//! let response = svc.ready().await?.call(request).await?;
+//!
+//! assert!(response.headers().get("x-request-id").is_some());
+//! #
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! [`ServiceBuilderExt`]: crate::ServiceBuilderExt
+//! [`Uuid`]: https://crates.io/crates/uuid
+//! [`Trace`]: crate::trace::Trace
+
 // NOTE: when uuid 1.0 is shipped we can include a `MakeRequestId` that uses that
 // See https://github.com/uuid-rs/uuid/issues/113
 
@@ -13,27 +222,46 @@ use tower_service::Service;
 
 pub(crate) const X_REQUEST_ID: &str = "x-request-id";
 
+/// Trait for producing [`RequestId`]s.
+///
+/// Used by [`SetRequestId`].
 pub trait MakeRequestId {
-    fn make_request_id<B>(&mut self, request: &Request<B>) -> RequestId;
+    /// Try and produce a [`RequestId`] from the request.
+    fn make_request_id<B>(&mut self, request: &Request<B>) -> Option<RequestId>;
 }
 
+/// An identifier for a request.
 #[derive(Debug, Clone)]
 pub struct RequestId(HeaderValue);
 
 impl RequestId {
+    /// Create a new `RequestId` from a [`HeaderValue`].
     pub fn new(header_value: HeaderValue) -> Self {
         Self(header_value)
     }
 
+    /// Gets a reference to the underlying [`HeaderValue`].
     pub fn header_value(&self) -> &HeaderValue {
         &self.0
     }
 
+    /// Consumes `self`, returning the underlying [`HeaderValue`].
     pub fn into_header_value(self) -> HeaderValue {
         self.0
     }
 }
 
+impl From<HeaderValue> for RequestId {
+    fn from(value: HeaderValue) -> Self {
+        Self::new(value)
+    }
+}
+
+/// Set request id headers and extensions on requests.
+///
+/// This layer applies the [`SetRequestId`] middleware.
+///
+/// See the [module docs](self) and [`SetRequestId`] for more details.
 #[derive(Debug, Clone)]
 pub struct SetRequestIdLayer<M> {
     header_name: HeaderName,
@@ -41,14 +269,22 @@ pub struct SetRequestIdLayer<M> {
 }
 
 impl<M> SetRequestIdLayer<M> {
-    pub fn new(header_name: HeaderName, make_request_id: M) -> Self {
+    /// Create a new `SetRequestIdLayer`.
+    pub fn new(header_name: HeaderName, make_request_id: M) -> Self
+    where
+        M: MakeRequestId,
+    {
         SetRequestIdLayer {
             header_name,
             make_request_id,
         }
     }
 
-    pub fn x_request_id(make_request_id: M) -> Self {
+    /// Create a new `SetRequestIdLayer` that uses `x-request-id` as the header name.
+    pub fn x_request_id(make_request_id: M) -> Self
+    where
+        M: MakeRequestId,
+    {
         SetRequestIdLayer {
             header_name: HeaderName::from_static(X_REQUEST_ID),
             make_request_id,
@@ -58,7 +294,7 @@ impl<M> SetRequestIdLayer<M> {
 
 impl<S, M> Layer<S> for SetRequestIdLayer<M>
 where
-    M: Clone,
+    M: Clone + MakeRequestId,
 {
     type Service = SetRequestId<S, M>;
 
@@ -71,6 +307,15 @@ where
     }
 }
 
+/// Set request id headers and extensions on requests.
+///
+/// See the [module docs](self) for an example.
+///
+/// If [`MakeRequestId::make_request_id`] returns `Some(_)` and the request doesn't already have a
+/// header with the same name, then the header will be inserted.
+///
+/// Additionally [`RequestId`] will be inserted into [`Request::extensions`] so other
+/// services can access it.
 #[derive(Debug, Clone)]
 pub struct SetRequestId<S, M> {
     inner: S,
@@ -79,7 +324,11 @@ pub struct SetRequestId<S, M> {
 }
 
 impl<S, M> SetRequestId<S, M> {
-    pub fn new(inner: S, header_name: HeaderName, make_request_id: M) -> Self {
+    /// Create a new `SetRequestId`.
+    pub fn new(inner: S, header_name: HeaderName, make_request_id: M) -> Self
+    where
+        M: MakeRequestId,
+    {
         Self {
             inner,
             header_name,
@@ -87,7 +336,11 @@ impl<S, M> SetRequestId<S, M> {
         }
     }
 
-    pub fn x_request_id(inner: S, make_request_id: M) -> Self {
+    /// Create a new `SetRequestId` that uses `x-request-id` as the header name.
+    pub fn x_request_id(inner: S, make_request_id: M) -> Self
+    where
+        M: MakeRequestId,
+    {
         Self::new(
             inner,
             HeaderName::from_static(X_REQUEST_ID),
@@ -97,7 +350,11 @@ impl<S, M> SetRequestId<S, M> {
 
     define_inner_service_accessors!();
 
-    pub fn layer(header_name: HeaderName, make_request_id: M) -> SetRequestIdLayer<M> {
+    /// Returns a new [`Layer`] that wraps services with a `SetRequestId` middleware.
+    pub fn layer(header_name: HeaderName, make_request_id: M) -> SetRequestIdLayer<M>
+    where
+        M: MakeRequestId,
+    {
         SetRequestIdLayer::new(header_name, make_request_id)
     }
 }
@@ -121,8 +378,7 @@ where
             if req.extensions().get::<RequestId>().is_none() {
                 req.extensions_mut().insert(RequestId::new(request_id));
             }
-        } else {
-            let request_id = self.make_request_id.make_request_id(&req);
+        } else if let Some(request_id) = self.make_request_id.make_request_id(&req) {
             req.extensions_mut().insert(request_id.clone());
             req.headers_mut()
                 .insert(self.header_name.clone(), request_id.0);
@@ -132,16 +388,23 @@ where
     }
 }
 
+/// Propagate request ids from requests to responses.
+///
+/// This layer applies the [`PropagateRequestId`] middleware.
+///
+/// See the [module docs](self) and [`PropagateRequestId`] for more details.
 #[derive(Debug, Clone)]
 pub struct PropagateRequestIdLayer {
     header_name: HeaderName,
 }
 
 impl PropagateRequestIdLayer {
+    /// Create a new `PropagateRequestIdLayer`.
     pub fn new(header_name: HeaderName) -> Self {
         PropagateRequestIdLayer { header_name }
     }
 
+    /// Create a new `PropagateRequestIdLayer` that uses `x-request-id` as the header name.
     pub fn x_request_id() -> Self {
         Self::new(HeaderName::from_static(X_REQUEST_ID))
     }
@@ -155,6 +418,12 @@ impl<S> Layer<S> for PropagateRequestIdLayer {
     }
 }
 
+/// Propagate request ids from requests to responses.
+///
+/// See the [module docs](self) for an example.
+///
+/// If the request contains a matching header that header will be applied to responses. If a
+/// [`RequestId`] extension is also present it will be propagated as well.
 #[derive(Debug, Clone)]
 pub struct PropagateRequestId<S> {
     inner: S,
@@ -162,16 +431,19 @@ pub struct PropagateRequestId<S> {
 }
 
 impl<S> PropagateRequestId<S> {
+    /// Create a new `PropagateRequestId`.
     pub fn new(inner: S, header_name: HeaderName) -> Self {
         Self { inner, header_name }
     }
 
+    /// Create a new `PropagateRequestId` that uses `x-request-id` as the header name.
     pub fn x_request_id(inner: S) -> Self {
         Self::new(inner, HeaderName::from_static(X_REQUEST_ID))
     }
 
     define_inner_service_accessors!();
 
+    /// Returns a new [`Layer`] that wraps services with a `PropagateRequestId` middleware.
     pub fn layer(header_name: HeaderName) -> PropagateRequestIdLayer {
         PropagateRequestIdLayer::new(header_name)
     }
@@ -262,10 +534,10 @@ mod tests {
         struct Counter(Arc<AtomicU64>);
 
         impl MakeRequestId for Counter {
-            fn make_request_id<B>(&mut self, _request: &Request<B>) -> RequestId {
+            fn make_request_id<B>(&mut self, _request: &Request<B>) -> Option<RequestId> {
                 let id = HeaderValue::from_str(&self.0.fetch_add(1, Ordering::SeqCst).to_string())
                     .unwrap();
-                RequestId::new(id)
+                Some(RequestId::new(id))
             }
         }
 

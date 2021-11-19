@@ -314,7 +314,9 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
         self,
         header_name: HeaderName,
         make_request_id: M,
-    ) -> ServiceBuilder<Stack<crate::request_id::SetRequestIdLayer<M>, L>>;
+    ) -> ServiceBuilder<Stack<crate::request_id::SetRequestIdLayer<M>, L>>
+    where
+        M: crate::request_id::MakeRequestId;
 
     /// TODO
     #[cfg(feature = "request-id")]
@@ -322,7 +324,10 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     fn set_x_request_id<M>(
         self,
         make_request_id: M,
-    ) -> ServiceBuilder<Stack<crate::request_id::SetRequestIdLayer<M>, L>> {
+    ) -> ServiceBuilder<Stack<crate::request_id::SetRequestIdLayer<M>, L>>
+    where
+        M: crate::request_id::MakeRequestId,
+    {
         self.set_request_id(
             HeaderName::from_static(crate::request_id::X_REQUEST_ID),
             make_request_id,
@@ -555,7 +560,10 @@ impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
         self,
         header_name: HeaderName,
         make_request_id: M,
-    ) -> ServiceBuilder<Stack<crate::request_id::SetRequestIdLayer<M>, L>> {
+    ) -> ServiceBuilder<Stack<crate::request_id::SetRequestIdLayer<M>, L>>
+    where
+        M: crate::request_id::MakeRequestId,
+    {
         self.layer(crate::request_id::SetRequestIdLayer::new(
             header_name,
             make_request_id,
