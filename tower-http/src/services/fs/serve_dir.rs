@@ -8,7 +8,7 @@ use crate::{
 use bytes::Bytes;
 use futures_util::ready;
 use http::{header, HeaderValue, Method, Request, Response, StatusCode, Uri};
-use http_body::{Body, Empty, combinators::BoxBody};
+use http_body::{combinators::BoxBody, Body, Empty};
 use percent_encoding::percent_decode;
 use std::{
     fs::Metadata,
@@ -377,9 +377,9 @@ impl Future for ResponseFuture {
                     Poll::Ready(Ok(res))
                 }
 
-                Err(err) => {
-                    Poll::Ready(super::response_from_io_error(err).map(|res| res.map(ResponseBody::new)))
-                }
+                Err(err) => Poll::Ready(
+                    super::response_from_io_error(err).map(|res| res.map(ResponseBody::new)),
+                ),
             },
             Inner::Invalid => {
                 let res = Response::builder()
@@ -437,18 +437,18 @@ mod tests {
 
     #[tokio::test]
     async fn head_request() {
-        let svc = ServeDir::new("..");
+        let svc = ServeDir::new("../test-files");
 
         let req = Request::builder()
-            .uri("/README.md")
+            .uri("/precompressed.txt")
             .method(Method::HEAD)
             .body(Body::empty())
             .unwrap();
 
         let res = svc.oneshot(req).await.unwrap();
 
-        assert_eq!(res.headers()["content-type"], "text/markdown");
-        assert_eq!(res.headers()["content-length"], "3015");
+        assert_eq!(res.headers()["content-type"], "text/plain");
+        assert_eq!(res.headers()["content-length"], "23");
 
         let body = res.into_body().data().await;
         assert!(body.is_none());
@@ -625,6 +625,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn missing_precompressed_variant_fallbacks_to_uncompressed_for_head_request() {
+        let svc = ServeDir::new("../test-files").precompressed_gzip();
+
+        let request = Request::builder()
+            .uri("/missing_precompressed.txt")
+            .header("Accept-Encoding", "gzip")
+            .method(Method::HEAD)
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(request).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/plain");
+        assert_eq!(res.headers()["content-length"], "11");
+        // Uncompressed file is served because compressed version is missing
+        assert!(res.headers().get("content-encoding").is_none());
+
+        assert!(res.into_body().data().await.is_none());
+    }
+
+    #[tokio::test]
     async fn access_to_sub_dirs() {
         let svc = ServeDir::new("..");
 
@@ -676,6 +696,27 @@ mod tests {
 
         let body = body_into_text(res.into_body()).await;
         assert!(body.is_empty());
+    }
+
+    #[tokio::test]
+    async fn fallbacks_to_different_precompressed_variant_if_not_found_for_head_request() {
+        let svc = ServeDir::new("../test-files")
+            .precompressed_gzip()
+            .precompressed_br();
+
+        let req = Request::builder()
+            .uri("/precompressed_br.txt")
+            .header("Accept-Encoding", "gzip,br,deflate")
+            .method(Method::HEAD)
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/plain");
+        assert_eq!(res.headers()["content-encoding"], "br");
+        assert_eq!(res.headers()["content-length"], "15");
+
+        assert!(res.into_body().data().await.is_none());
     }
 
     #[tokio::test]

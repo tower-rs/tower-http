@@ -277,14 +277,14 @@ mod tests {
 
     #[tokio::test]
     async fn head_request() {
-        let svc = ServeFile::new("../README.md");
+        let svc = ServeFile::new("../test-files/precompressed.txt");
 
         let mut request = Request::new(Body::empty());
         *request.method_mut() = Method::HEAD;
         let res = svc.oneshot(request).await.unwrap();
 
-        assert_eq!(res.headers()["content-type"], "text/markdown");
-        assert_eq!(res.headers()["content-length"], "3015");
+        assert_eq!(res.headers()["content-type"], "text/plain");
+        assert_eq!(res.headers()["content-length"], "23");
 
         let body = res.into_body().data().await;
         assert!(body.is_none());
@@ -364,6 +364,26 @@ mod tests {
         let body = res.into_body().data().await.unwrap().unwrap();
         let body = String::from_utf8(body.to_vec()).unwrap();
         assert!(body.starts_with("Test file!"));
+    }
+
+    #[tokio::test]
+    async fn missing_precompressed_variant_fallbacks_to_uncompressed_head_request() {
+        let svc = ServeFile::new("../test-files/missing_precompressed.txt").precompressed_gzip();
+
+        let request = Request::builder()
+            .header("Accept-Encoding", "gzip")
+            .method(Method::HEAD)
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(request).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/plain");
+        assert_eq!(res.headers()["content-length"], "11");
+        // Uncompressed file is served because compressed version is missing
+        assert!(res.headers().get("content-encoding").is_none());
+
+        let body = res.into_body().data().await;
+        assert!(body.is_none());
     }
 
     #[tokio::test]
@@ -503,6 +523,28 @@ mod tests {
         BrotliDecompress(&mut &body[..], &mut decompressed).unwrap();
         let decompressed = String::from_utf8(decompressed.to_vec()).unwrap();
         assert!(decompressed.starts_with("Test file"));
+    }
+
+    #[tokio::test]
+    async fn fallbacks_to_different_precompressed_variant_if_not_found_head_request() {
+        let svc = ServeFile::new("../test-files/precompressed_br.txt")
+            .precompressed_gzip()
+            .precompressed_deflate()
+            .precompressed_br();
+
+        let request = Request::builder()
+            .header("Accept-Encoding", "gzip,deflate,br")
+            .method(Method::HEAD)
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(request).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/plain");
+        assert_eq!(res.headers()["content-length"], "15");
+        assert_eq!(res.headers()["content-encoding"], "br");
+
+        let body = res.into_body().data().await;
+        assert!(body.is_none());
     }
 
     #[tokio::test]
