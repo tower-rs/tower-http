@@ -1,5 +1,8 @@
 use super::{open_file_with_fallback, AsyncReadBody, PrecompressedVariants};
-use crate::{content_encoding::Encoding, services::fs::DEFAULT_CAPACITY};
+use crate::{
+    content_encoding::{encodings, Encoding},
+    services::fs::DEFAULT_CAPACITY,
+};
 use bytes::Bytes;
 use futures_util::ready;
 use http::{header, HeaderValue, Request, Response, StatusCode, Uri};
@@ -212,10 +215,12 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
         let buf_chunk_size = self.buf_chunk_size;
         let uri = req.uri().clone();
 
-        let negotiated_encoding = self
-            .precompressed_variants
-            .map(|precompressed| Encoding::from_headers(req.headers(), precompressed))
-            .filter(|encoding| *encoding != Encoding::Identity);
+        // The negotiated encodings based on the Accept-Encoding header and
+        // precompressed variants
+        let negotiated_encodings = encodings(
+            req.headers(),
+            self.precompressed_variants.unwrap_or_default(),
+        );
 
         let open_file_future = Box::pin(async move {
             if !uri.path().ends_with('/') {
@@ -240,22 +245,8 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
                     HeaderValue::from_str(mime::APPLICATION_OCTET_STREAM.as_ref()).unwrap()
                 });
 
-            if let Some(file_extension) =
-                negotiated_encoding.and_then(|encoding| encoding.to_file_extension())
-            {
-                let new_extension = full_path
-                    .extension()
-                    .map(|extension| {
-                        let mut os_string = extension.to_os_string();
-                        os_string.push(file_extension);
-                        os_string
-                    })
-                    .unwrap_or_else(|| file_extension.to_os_string());
-                full_path.set_extension(new_extension);
-            }
-
             let (file, maybe_encoding) =
-                open_file_with_fallback(full_path, negotiated_encoding).await?;
+                open_file_with_fallback(full_path, negotiated_encodings).await?;
             Ok(Output::File(file, mime, buf_chunk_size, maybe_encoding))
         });
 
@@ -624,6 +615,29 @@ mod tests {
 
         let body = body_into_text(res.into_body()).await;
         assert!(body.is_empty());
+    }
+
+    #[tokio::test]
+    async fn fallbacks_to_different_precompressed_variant_if_not_found() {
+        let svc = ServeDir::new("../test-files")
+            .precompressed_gzip()
+            .precompressed_br();
+
+        let req = Request::builder()
+            .uri("/precompressed_br.txt")
+            .header("Accept-Encoding", "gzip,br,deflate")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/plain");
+        assert_eq!(res.headers()["content-encoding"], "br");
+
+        let body = res.into_body().data().await.unwrap().unwrap();
+        let mut decompressed = Vec::new();
+        BrotliDecompress(&mut &body[..], &mut decompressed).unwrap();
+        let decompressed = String::from_utf8(decompressed.to_vec()).unwrap();
+        assert!(decompressed.starts_with("Test file"));
     }
 
     #[tokio::test]

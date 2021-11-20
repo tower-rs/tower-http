@@ -1,8 +1,7 @@
 //! Service that serves a file.
 
 use super::{open_file_with_fallback, AsyncReadBody, FileFuture, PrecompressedVariants};
-use crate::content_encoding::Encoding;
-use crate::services::fs::DEFAULT_CAPACITY;
+use crate::{content_encoding::encodings, services::fs::DEFAULT_CAPACITY};
 use bytes::Bytes;
 use futures_util::ready;
 use http::{header, HeaderValue, Request, Response};
@@ -139,29 +138,15 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeFile {
     }
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
-        let mut path = self.path.clone();
+        let path = self.path.clone();
+        // The negotiated encodings based on the Accept-Encoding header and
+        // precompressed variants
+        let negotiated_encodings = encodings(
+            req.headers(),
+            self.precompressed_variants.unwrap_or_default(),
+        );
 
-        let negotiated_encoding = self
-            .precompressed_variants
-            .map(|precompressed| Encoding::from_headers(req.headers(), precompressed))
-            .filter(|encoding| *encoding != Encoding::Identity);
-
-        if let Some(file_extension) =
-            negotiated_encoding.and_then(|encoding| encoding.to_file_extension())
-        {
-            let new_extension = path
-                .extension()
-                .map(|extension| {
-                    let mut os_string = extension.to_os_string();
-                    os_string.push(file_extension);
-                    os_string
-                })
-                .unwrap_or_else(|| file_extension.to_os_string());
-            path.set_extension(new_extension);
-        }
-
-        let open_file_future = Box::pin(open_file_with_fallback(path, negotiated_encoding));
-
+        let open_file_future = Box::pin(open_file_with_fallback(path, negotiated_encodings));
         ResponseFuture {
             open_file_future,
             mime: Some(self.mime.clone()),
@@ -412,6 +397,29 @@ mod tests {
         let body = String::from_utf8(body.to_vec()).unwrap();
 
         assert!(body.starts_with("# Tower HTTP"));
+    }
+
+    #[tokio::test]
+    async fn fallbacks_to_different_precompressed_variant_if_not_found() {
+        let svc = ServeFile::new("../test-files/precompressed_br.txt")
+            .precompressed_gzip()
+            .precompressed_deflate()
+            .precompressed_br();
+
+        let request = Request::builder()
+            .header("Accept-Encoding", "gzip,deflate,br")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(request).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/plain");
+        assert_eq!(res.headers()["content-encoding"], "br");
+
+        let body = res.into_body().data().await.unwrap().unwrap();
+        let mut decompressed = Vec::new();
+        BrotliDecompress(&mut &body[..], &mut decompressed).unwrap();
+        let decompressed = String::from_utf8(decompressed.to_vec()).unwrap();
+        assert!(decompressed.starts_with("Test file"));
     }
 
     #[tokio::test]
