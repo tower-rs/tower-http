@@ -409,6 +409,8 @@ mod on_request;
 mod on_response;
 mod service;
 
+pub mod otel;
+
 const DEFAULT_MESSAGE_LEVEL: Level = Level::DEBUG;
 const DEFAULT_ERROR_LEVEL: Level = Level::ERROR;
 
