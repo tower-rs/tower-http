@@ -285,10 +285,7 @@ impl<M> SetRequestIdLayer<M> {
     where
         M: MakeRequestId,
     {
-        SetRequestIdLayer {
-            header_name: HeaderName::from_static(X_REQUEST_ID),
-            make_request_id,
-        }
+        SetRequestIdLayer::new(HeaderName::from_static(X_REQUEST_ID), make_request_id)
     }
 }
 
