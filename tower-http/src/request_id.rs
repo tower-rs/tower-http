@@ -374,8 +374,9 @@ where
     }
 
     fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
-        if let Some(request_id) = req.headers().get(&self.header_name).cloned() {
+        if let Some(request_id) = req.headers().get(&self.header_name) {
             if req.extensions().get::<RequestId>().is_none() {
+                let request_id = request_id.clone();
                 req.extensions_mut().insert(RequestId::new(request_id));
             }
         } else if let Some(request_id) = self.make_request_id.make_request_id(&req) {
