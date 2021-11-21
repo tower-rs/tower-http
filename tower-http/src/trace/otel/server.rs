@@ -1,3 +1,71 @@
+//! OpenTelemetry spans for HTTP servers.
+//!
+//! # Example
+//!
+//! ```
+//! use tower_http::trace::{
+//!     TraceLayer,
+//!     otel::server::{
+//!         OtelConfig,
+//!         ExtractMatchedPath,
+//!         ExtractClientIp,
+//!         SetOtelParent,
+//!     },
+//! };
+//! use http::{uri::{Scheme, Uri}, HeaderMap, Request, Response, Extensions};
+//! use tracing::Span;
+//! use std::borrow::Cow;
+//! use hyper::{Body, Error};
+//! use tower::ServiceBuilder;
+//!
+//! let otel_config = OtelConfig::default()
+//!     .scheme(Scheme::HTTP)
+//!     .extract_matched_path_with(MyOtelConfig)
+//!     .extract_client_ip_with(MyOtelConfig)
+//!     .set_otel_parent_with(MyOtelConfig);
+//!
+//! let service = ServiceBuilder::new()
+//!     .layer(TraceLayer::new_for_http().opentelemetry_server(otel_config))
+//!     .service_fn(handler);
+//!
+//! async fn handler(request: Request<Body>) -> Result<Response<Body>, Error> {
+//!     // ...
+//!     # todo!()
+//! }
+//!
+//! #[derive(Copy, Clone)]
+//! struct MyOtelConfig;
+//!
+//! impl ExtractMatchedPath for MyOtelConfig {
+//!     fn extract_matched_path<'a>(
+//!         &self,
+//!         uri: &'a Uri,
+//!         extensions: &'a Extensions,
+//!     ) -> Cow<'a, str> {
+//!         // ...
+//!         # unimplemented!()
+//!     }
+//! }
+//!
+//! impl ExtractClientIp for MyOtelConfig {
+//!     fn extract_client_ip<'a>(
+//!         &self,
+//!         headers: &'a HeaderMap,
+//!         extensions: &'a Extensions,
+//!     ) -> Option<Cow<'a, str>> {
+//!         // ...
+//!         # unimplemented!()
+//!     }
+//! }
+//!
+//! impl SetOtelParent for MyOtelConfig {
+//!     fn set_otel_parent(&self, headers: &HeaderMap, span: &Span) {
+//!         // ...
+//!         # unimplemented!()
+//!     }
+//! }
+//! ```
+
 use crate::{
     classify::{MakeClassifier, ServerErrorsFailureClass},
     trace::{MakeSpan, OnBodyChunk, OnEos, OnFailure, OnRequest, OnResponse, TraceLayer},
@@ -8,7 +76,7 @@ use http::{
 use std::{borrow::Cow, sync::Arc, time::Duration};
 use tracing::{field::Empty, Span};
 
-pub struct Config {
+pub struct OtelConfig {
     scheme: Cow<'static, str>,
     // these are trait objects such that we can add more callbacks without
     // adding more type params, which would be a breaking change
@@ -17,13 +85,13 @@ pub struct Config {
     set_otel_parent: Arc<dyn SetOtelParent>,
 }
 
-impl Config {
+impl OtelConfig {
     pub fn scheme(mut self, scheme: Scheme) -> Self {
         self.scheme = http_scheme(&scheme);
         self
     }
 
-    pub fn extract_matched_path<T>(mut self, extract_matched_path: T) -> Config
+    pub fn extract_matched_path_with<T>(mut self, extract_matched_path: T) -> OtelConfig
     where
         T: ExtractMatchedPath,
     {
@@ -31,7 +99,7 @@ impl Config {
         self
     }
 
-    pub fn extract_client_ip<T>(mut self, extract_client_ip: T) -> Config
+    pub fn extract_client_ip_with<T>(mut self, extract_client_ip: T) -> OtelConfig
     where
         T: ExtractClientIp,
     {
@@ -39,7 +107,7 @@ impl Config {
         self
     }
 
-    pub fn set_otel_parent<T>(mut self, set_otel_parent: T) -> Config
+    pub fn set_otel_parent_with<T>(mut self, set_otel_parent: T) -> OtelConfig
     where
         T: SetOtelParent,
     {
@@ -48,7 +116,7 @@ impl Config {
     }
 }
 
-impl Default for Config {
+impl Default for OtelConfig {
     fn default() -> Self {
         Self {
             scheme: http_scheme(&Scheme::HTTP),
@@ -62,6 +130,7 @@ impl Default for Config {
 impl<M> TraceLayer<M> {
     pub fn opentelemetry_server(
         self,
+        config: OtelConfig,
     ) -> TraceLayer<
         M,
         OtelMakeSpan,
@@ -75,15 +144,20 @@ impl<M> TraceLayer<M> {
         M: MakeClassifier,
         M::FailureClass: FailureDetails,
     {
-        let config = Config::default();
+        let OtelConfig {
+            scheme,
+            extract_matched_path,
+            extract_client_ip,
+            set_otel_parent,
+        } = config;
 
         TraceLayer {
             make_classifier: self.make_classifier,
             make_span: OtelMakeSpan {
-                scheme: config.scheme,
-                extract_matched_path: config.extract_matched_path,
-                extract_client_ip: config.extract_client_ip,
-                set_otel_parent: config.set_otel_parent,
+                scheme,
+                extract_matched_path,
+                extract_client_ip,
+                set_otel_parent,
             },
             on_request: OtelOnRequest,
             on_response: OtelOnResponse,
@@ -91,49 +165,6 @@ impl<M> TraceLayer<M> {
             on_eos: OtelOnEos,
             on_failure: OtelOnFailure,
         }
-    }
-}
-
-impl<M>
-    TraceLayer<
-        M,
-        OtelMakeSpan,
-        OtelOnRequest,
-        OtelOnResponse,
-        OtelOnBodyChunk,
-        OtelOnEos,
-        OtelOnFailure,
-    >
-{
-    pub fn configure(
-        mut self,
-        config: Config,
-    ) -> TraceLayer<
-        M,
-        OtelMakeSpan,
-        OtelOnRequest,
-        OtelOnResponse,
-        OtelOnBodyChunk,
-        OtelOnEos,
-        OtelOnFailure,
-    >
-    where
-        M: MakeClassifier,
-        M::FailureClass: FailureDetails,
-    {
-        let Config {
-            scheme,
-            extract_matched_path,
-            extract_client_ip,
-            set_otel_parent,
-        } = config;
-
-        self.make_span.scheme = scheme;
-        self.make_span.extract_matched_path = extract_matched_path;
-        self.make_span.extract_client_ip = extract_client_ip;
-        self.make_span.set_otel_parent = set_otel_parent;
-
-        self
     }
 }
 
