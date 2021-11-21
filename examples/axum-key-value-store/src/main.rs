@@ -106,20 +106,17 @@ fn app() -> Router {
         .layer(middleware)
 }
 
-async fn get_key(
-    Path(path): Path<String>,
-    Extension(state): Extension<State>,
-) -> impl IntoResponse {
+async fn get_key(path: Path<String>, state: Extension<State>) -> impl IntoResponse {
     let state = state.db.read().unwrap();
 
-    if let Some(value) = state.get(&path).cloned() {
+    if let Some(value) = state.get(&*path).cloned() {
         Ok(value)
     } else {
         Err(StatusCode::NOT_FOUND)
     }
 }
 
-async fn set_key(Path(path): Path<String>, Extension(state): Extension<State>, value: Bytes) {
+async fn set_key(Path(path): Path<String>, state: Extension<State>, value: Bytes) {
     let mut state = state.db.write().unwrap();
     state.insert(path, value);
 }
