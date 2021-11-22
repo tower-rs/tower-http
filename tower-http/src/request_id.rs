@@ -203,6 +203,12 @@
 //! # }
 //! ```
 //!
+//! # Doesn't override existing headers
+//!
+//! [`SetRequestId`] and [`PropagateRequestId`] wont override request ids if its already present on
+//! requests or responses. Among other things, this allows other middleware to conditionally set
+//! request ids and use the middleware in this module as a fallback.
+//!
 //! [`ServiceBuilderExt`]: crate::ServiceBuilderExt
 //! [`Uuid`]: https://crates.io/crates/uuid
 //! [`Trace`]: crate::trace::Trace
