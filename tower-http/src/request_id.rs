@@ -579,7 +579,10 @@ mod tests {
             .service_fn(handler);
 
         let req = Request::builder()
-            .header("x-request-id", "this-will-be-overriden-by-override_request_header-middleware")
+            .header(
+                "x-request-id",
+                "this-will-be-overriden-by-override_request_header-middleware",
+            )
             .body(Body::empty())
             .unwrap();
         let res = svc.clone().oneshot(req).await.unwrap();
