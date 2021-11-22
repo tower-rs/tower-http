@@ -318,6 +318,10 @@ pub mod metrics;
 #[cfg_attr(docsrs, doc(cfg(feature = "cors")))]
 pub mod cors;
 
+#[cfg(feature = "request-id")]
+#[cfg_attr(docsrs, doc(cfg(feature = "request-id")))]
+pub mod request_id;
+
 pub mod classify;
 pub mod services;
 

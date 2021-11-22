@@ -30,13 +30,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   be used instead. ([#170])
 - Add `ServiceBuilderExt` which adds methods to `tower::ServiceBuilder` for
   adding middleware from tower-http.
+- Add `SetRequestId` and `PropagateRequestId` middleware ([#150])
 - Add `LatencyUnit::Seconds` for formatting latencies as seconds.
 
 [#124]: https://github.com/tower-rs/tower-http/pull/124
+[#148]: https://github.com/tower-rs/tower-http/pull/148
+[#150]: https://github.com/tower-rs/tower-http/pull/150
 [#156]: https://github.com/tower-rs/tower-http/pull/156
 [#166]: https://github.com/tower-rs/tower-http/pull/166
 [#169]: https://github.com/tower-rs/tower-http/pull/169
-[#148]: https://github.com/tower-rs/tower-http/pull/148
 [#170]: https://github.com/tower-rs/tower-http/pull/170
 [#172]: https://github.com/tower-rs/tower-http/pull/172
 [#182]: https://github.com/tower-rs/tower-http/pull/182
