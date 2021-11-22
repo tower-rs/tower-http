@@ -7,7 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
+- `AddAuthorization`, `InFlightRequests`, `SetRequestHeader`, `SetResponseHeader`, `AddExtension`, `MapRequestBody` and `MapResponseBody`
+   now requires underlying service to use `http::Request<B>` and `http::Response<U>` as request and responses ([#182])
 - `ServeDir` and `ServeFile`: Ability to serve precompressed files ([#156])
+- `ServeDir` and `ServeFile`: Properly support HEAD requests which return no body and have the `Content-length` header set ([#169])
 - `Trace`: Add `DefaultMakeSpan::level` to make log level of tracing spans easily configurable ([#124])
 - Change the response body error type of `Compression` and `Decompression` to
   `Box<dyn std::error::Error + Send + Sync>`. This makes them usable if the body
@@ -27,14 +30,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   be used instead. ([#170])
 - Add `ServiceBuilderExt` which adds methods to `tower::ServiceBuilder` for
   adding middleware from tower-http.
+- Add `SetRequestId` and `PropagateRequestId` middleware ([#150])
 - Add `LatencyUnit::Seconds` for formatting latencies as seconds.
 
 [#124]: https://github.com/tower-rs/tower-http/pull/124
+[#148]: https://github.com/tower-rs/tower-http/pull/148
+[#150]: https://github.com/tower-rs/tower-http/pull/150
 [#156]: https://github.com/tower-rs/tower-http/pull/156
 [#166]: https://github.com/tower-rs/tower-http/pull/166
-[#148]: https://github.com/tower-rs/tower-http/pull/148
+[#169]: https://github.com/tower-rs/tower-http/pull/169
 [#170]: https://github.com/tower-rs/tower-http/pull/170
 [#172]: https://github.com/tower-rs/tower-http/pull/172
+[#182]: https://github.com/tower-rs/tower-http/pull/182
 
 # 0.1.2 (November 13, 2021)
 

@@ -1,8 +1,11 @@
-use std::sync::Arc;
-
-use crate::classify::{GrpcErrorsAsFailures, ServerErrorsAsFailures, SharedClassifier};
-use http::header::HeaderName;
 use tower::ServiceBuilder;
+
+#[cfg(feature = "trace")]
+use crate::classify::{GrpcErrorsAsFailures, ServerErrorsAsFailures, SharedClassifier};
+
+#[allow(unused_imports)]
+use http::header::HeaderName;
+#[allow(unused_imports)]
 use tower_layer::Stack;
 
 /// Extension trait that adds methods to [`tower::ServiceBuilder`] for adding middleware from
@@ -37,7 +40,7 @@ use tower_layer::Stack;
 /// # service.ready().await.unwrap().call(Request::new(Body::empty())).await.unwrap();
 /// # }
 /// ```
-pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> {
+pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     /// Propagate a header from the request to the response.
     ///
     /// See [`tower_http::propagate_header`] for more details.
@@ -199,7 +202,7 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> {
     #[cfg_attr(docsrs, doc(cfg(feature = "sensitive-headers")))]
     fn sensitive_request_headers(
         self,
-        headers: Arc<[HeaderName]>,
+        headers: std::sync::Arc<[HeaderName]>,
     ) -> ServiceBuilder<Stack<crate::sensitive_headers::SetSensitiveRequestHeadersLayer, L>>;
 
     /// Mark headers as [sensitive] on both responses.
@@ -212,7 +215,7 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> {
     #[cfg_attr(docsrs, doc(cfg(feature = "sensitive-headers")))]
     fn sensitive_response_headers(
         self,
-        headers: Arc<[HeaderName]>,
+        headers: std::sync::Arc<[HeaderName]>,
     ) -> ServiceBuilder<Stack<crate::sensitive_headers::SetSensitiveResponseHeadersLayer, L>>;
 
     /// Insert a header into the request.
@@ -302,6 +305,66 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> {
         header_name: HeaderName,
         make: M,
     ) -> ServiceBuilder<Stack<crate::set_header::SetResponseHeaderLayer<M>, L>>;
+
+    /// Add request id header and extension.
+    ///
+    /// See [`tower_http::request_id`] for more details.
+    ///
+    /// [`tower_http::request_id`]: crate::request_id
+    #[cfg(feature = "request-id")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "request-id")))]
+    fn set_request_id<M>(
+        self,
+        header_name: HeaderName,
+        make_request_id: M,
+    ) -> ServiceBuilder<Stack<crate::request_id::SetRequestIdLayer<M>, L>>
+    where
+        M: crate::request_id::MakeRequestId;
+
+    /// Add request id header and extension, using `x-request-id` as the header name.
+    ///
+    /// See [`tower_http::request_id`] for more details.
+    ///
+    /// [`tower_http::request_id`]: crate::request_id
+    #[cfg(feature = "request-id")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "request-id")))]
+    fn set_x_request_id<M>(
+        self,
+        make_request_id: M,
+    ) -> ServiceBuilder<Stack<crate::request_id::SetRequestIdLayer<M>, L>>
+    where
+        M: crate::request_id::MakeRequestId,
+    {
+        self.set_request_id(
+            HeaderName::from_static(crate::request_id::X_REQUEST_ID),
+            make_request_id,
+        )
+    }
+
+    /// Propgate request ids from requests to responses.
+    ///
+    /// See [`tower_http::request_id`] for more details.
+    ///
+    /// [`tower_http::request_id`]: crate::request_id
+    #[cfg(feature = "request-id")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "request-id")))]
+    fn propagate_request_id(
+        self,
+        header_name: HeaderName,
+    ) -> ServiceBuilder<Stack<crate::request_id::PropagateRequestIdLayer, L>>;
+
+    /// Propgate request ids from requests to responses, using `x-request-id` as the header name.
+    ///
+    /// See [`tower_http::request_id`] for more details.
+    ///
+    /// [`tower_http::request_id`]: crate::request_id
+    #[cfg(feature = "request-id")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "request-id")))]
+    fn propagate_x_request_id(
+        self,
+    ) -> ServiceBuilder<Stack<crate::request_id::PropagateRequestIdLayer, L>> {
+        self.propagate_request_id(HeaderName::from_static(crate::request_id::X_REQUEST_ID))
+    }
 }
 
 impl<L> crate::sealed::Sealed<L> for ServiceBuilder<L> {}
@@ -418,7 +481,7 @@ impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
     #[cfg(feature = "sensitive-headers")]
     fn sensitive_request_headers(
         self,
-        headers: Arc<[HeaderName]>,
+        headers: std::sync::Arc<[HeaderName]>,
     ) -> ServiceBuilder<Stack<crate::sensitive_headers::SetSensitiveRequestHeadersLayer, L>> {
         self.layer(crate::sensitive_headers::SetSensitiveRequestHeadersLayer::from_shared(headers))
     }
@@ -426,7 +489,7 @@ impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
     #[cfg(feature = "sensitive-headers")]
     fn sensitive_response_headers(
         self,
-        headers: Arc<[HeaderName]>,
+        headers: std::sync::Arc<[HeaderName]>,
     ) -> ServiceBuilder<Stack<crate::sensitive_headers::SetSensitiveResponseHeadersLayer, L>> {
         self.layer(crate::sensitive_headers::SetSensitiveResponseHeadersLayer::from_shared(headers))
     }
@@ -501,5 +564,28 @@ impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
             header_name,
             make,
         ))
+    }
+
+    #[cfg(feature = "request-id")]
+    fn set_request_id<M>(
+        self,
+        header_name: HeaderName,
+        make_request_id: M,
+    ) -> ServiceBuilder<Stack<crate::request_id::SetRequestIdLayer<M>, L>>
+    where
+        M: crate::request_id::MakeRequestId,
+    {
+        self.layer(crate::request_id::SetRequestIdLayer::new(
+            header_name,
+            make_request_id,
+        ))
+    }
+
+    #[cfg(feature = "request-id")]
+    fn propagate_request_id(
+        self,
+        header_name: HeaderName,
+    ) -> ServiceBuilder<Stack<crate::request_id::PropagateRequestIdLayer, L>> {
+        self.layer(crate::request_id::PropagateRequestIdLayer::new(header_name))
     }
 }

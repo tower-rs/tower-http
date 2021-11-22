@@ -4,6 +4,7 @@ use bytes::Bytes;
 use http::{HeaderMap, Response, StatusCode};
 use http_body::{combinators::BoxBody, Body, Empty};
 use pin_project_lite::pin_project;
+use std::fs::Metadata;
 use std::{ffi::OsStr, future::Future, path::PathBuf};
 use std::{
     io,
@@ -102,6 +103,33 @@ async fn open_file_with_fallback(
         // Get the preferred encoding among the negotiated ones.
         let encoding = preferred_encoding(&mut path, &negotiated_encoding);
         match (File::open(&path).await, encoding) {
+            (Ok(file), maybe_encoding) => break (file, maybe_encoding),
+            (Err(err), Some(encoding)) if err.kind() == io::ErrorKind::NotFound => {
+                // Remove the extension corresponding to a precompressed file (.gz, .br, .zz)
+                // to reset the path before the next iteration.
+                path.set_extension(OsStr::new(""));
+                // Remove the encoding from the negotiated_encodings since the file doesn't exist
+                negotiated_encoding
+                    .retain(|(negotiated_encoding, _)| *negotiated_encoding != encoding);
+                continue;
+            }
+            (Err(err), _) => return Err(err),
+        };
+    };
+    Ok((file, encoding))
+}
+
+// Attempts to get the file metadata with any of the possible negotiated_encodings in the
+// preferred order. If none of the negotiated_encodings have a corresponding precompressed
+// file the uncompressed file is used as a fallback.
+async fn file_metadata_with_fallback(
+    mut path: PathBuf,
+    mut negotiated_encoding: Vec<(Encoding, f32)>,
+) -> io::Result<(Metadata, Option<Encoding>)> {
+    let (file, encoding) = loop {
+        // Get the preferred encoding among the negotiated ones.
+        let encoding = preferred_encoding(&mut path, &negotiated_encoding);
+        match (tokio::fs::metadata(&path).await, encoding) {
             (Ok(file), maybe_encoding) => break (file, maybe_encoding),
             (Err(err), Some(encoding)) if err.kind() == io::ErrorKind::NotFound => {
                 // Remove the extension corresponding to a precompressed file (.gz, .br, .zz)

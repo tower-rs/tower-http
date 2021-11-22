@@ -6,7 +6,7 @@ use crate::{
 };
 use bytes::Bytes;
 use futures_util::ready;
-use http::{header, HeaderValue, Request, Response, StatusCode, Uri};
+use http::{header, HeaderValue, Method, Request, Response, StatusCode, Uri};
 use http_body::{combinators::BoxBody, Body, Empty, Full};
 use percent_encoding::percent_decode;
 use std::io::SeekFrom;
@@ -229,6 +229,8 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
             self.precompressed_variants.unwrap_or_default(),
         );
 
+        let request_method = req.method().clone();
+
         let open_file_future = Box::pin(async move {
             if !uri.path().ends_with('/') {
                 if is_dir(&full_path).await {
@@ -254,12 +256,12 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
             let (mut file, maybe_encoding) =
                 open_file_with_fallback(full_path, negotiated_encodings).await?;
             let file_size = file.metadata().await?.len();
+            let head_request = request_method == Method::HEAD;
             let maybe_range = range_header.map(|range| parse_range(&range, file_size));
             if let Some(ParsedRangeHeader::Range(ranges)) = maybe_range.as_ref() {
                 // If there is any other amount of ranges than 1 we'll return an unsatisfiable later as there isn't yet support for multipart ranges
-                if ranges.len() == 1 {
-                    file.seek(SeekFrom::Start(*ranges[0].start()))
-                        .await?;
+                if ranges.len() == 1 && !head_request {
+                    file.seek(SeekFrom::Start(*ranges[0].start())).await?;
                 }
             }
             Ok(Output::File(FileRequest {
@@ -269,6 +271,7 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
                 mime_header_value: mime,
                 maybe_encoding,
                 maybe_range,
+                head_request,
             }))
         });
 
@@ -326,6 +329,7 @@ struct FileRequest {
     mime_header_value: HeaderValue,
     maybe_encoding: Option<Encoding>,
     maybe_range: Option<ParsedRangeHeader>,
+    head_request: bool,
 }
 
 type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + Sync + 'static>>;
@@ -380,12 +384,17 @@ impl Future for ResponseFuture {
                                                 )))
                                         } else {
                                             let size = range.end() - range.start() + 1;
-                                            let body = AsyncReadBody::with_capacity_limited(
-                                                file_request.file,
-                                                file_request.chunk_size,
-                                                size,
-                                            )
+                                            let body = if !file_request.head_request {
+                                                let body = AsyncReadBody::with_capacity_limited(
+                                                    file_request.file,
+                                                    file_request.chunk_size,
+                                                    size,
+                                                )
                                                 .boxed();
+                                                ResponseBody::new(body)
+                                            } else {
+                                                empty_body()
+                                            };
                                             builder
                                                 .header(
                                                     header::CONTENT_RANGE,
@@ -397,7 +406,7 @@ impl Future for ResponseFuture {
                                                     ),
                                                 )
                                                 .status(StatusCode::PARTIAL_CONTENT)
-                                                .body(ResponseBody::new(body))
+                                                .body(body)
                                         }
                                     } else {
                                         builder
@@ -427,12 +436,16 @@ impl Future for ResponseFuture {
                                     .body(body_from_bytes(Bytes::from(reason))),
                             }
                         } else {
-                            let body = AsyncReadBody::with_capacity(
-                                file_request.file,
-                                file_request.chunk_size,
-                            )
-                            .boxed();
-                            let body = ResponseBody::new(body);
+                            let body = if !file_request.head_request {
+                                let box_body = AsyncReadBody::with_capacity(
+                                    file_request.file,
+                                    file_request.chunk_size,
+                                )
+                                .boxed();
+                                ResponseBody::new(box_body)
+                            } else {
+                                empty_body()
+                            };
                             builder.body(body)
                         }
                     }
@@ -523,6 +536,45 @@ mod tests {
 
         let contents = std::fs::read_to_string("../README.md").unwrap();
         assert_eq!(body, contents);
+    }
+
+    #[tokio::test]
+    async fn head_request() {
+        let svc = ServeDir::new("../test-files");
+
+        let req = Request::builder()
+            .uri("/precompressed.txt")
+            .method(Method::HEAD)
+            .body(Body::empty())
+            .unwrap();
+
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/plain");
+        assert_eq!(res.headers()["content-length"], "23");
+
+        let body = res.into_body().data().await;
+        assert!(body.is_none());
+    }
+
+    #[tokio::test]
+    async fn precompresed_head_request() {
+        let svc = ServeDir::new("../test-files").precompressed_gzip();
+
+        let req = Request::builder()
+            .uri("/precompressed.txt")
+            .header("Accept-Encoding", "gzip")
+            .method(Method::HEAD)
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/plain");
+        assert_eq!(res.headers()["content-encoding"], "gzip");
+        assert_eq!(res.headers()["content-length"], "59");
+
+        let body = res.into_body().data().await;
+        assert!(body.is_none());
     }
 
     #[tokio::test]
@@ -676,6 +728,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn missing_precompressed_variant_fallbacks_to_uncompressed_for_head_request() {
+        let svc = ServeDir::new("../test-files").precompressed_gzip();
+
+        let request = Request::builder()
+            .uri("/missing_precompressed.txt")
+            .header("Accept-Encoding", "gzip")
+            .method(Method::HEAD)
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(request).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/plain");
+        assert_eq!(res.headers()["content-length"], "11");
+        // Uncompressed file is served because compressed version is missing
+        assert!(res.headers().get("content-encoding").is_none());
+
+        assert!(res.into_body().data().await.is_none());
+    }
+
+    #[tokio::test]
     async fn access_to_sub_dirs() {
         let svc = ServeDir::new("..");
 
@@ -727,6 +799,27 @@ mod tests {
 
         let body = body_into_text(res.into_body()).await;
         assert!(body.is_empty());
+    }
+
+    #[tokio::test]
+    async fn fallbacks_to_different_precompressed_variant_if_not_found_for_head_request() {
+        let svc = ServeDir::new("../test-files")
+            .precompressed_gzip()
+            .precompressed_br();
+
+        let req = Request::builder()
+            .uri("/precompressed_br.txt")
+            .header("Accept-Encoding", "gzip,br,deflate")
+            .method(Method::HEAD)
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/plain");
+        assert_eq!(res.headers()["content-encoding"], "br");
+        assert_eq!(res.headers()["content-length"], "15");
+
+        assert!(res.into_body().data().await.is_none());
     }
 
     #[tokio::test]
