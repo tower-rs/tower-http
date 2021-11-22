@@ -266,12 +266,11 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
             let file_size = file.metadata().await?.len();
             let maybe_range = range_header.map(|range| parse_range(&range, file_size));
             if let Some(ParsedRangeHeader::Range(ranges)) = maybe_range.as_ref() {
-                if ranges.len() != 1 {
-                    // do something smart
+                if ranges.len() == 1 {
+                    file.seek(SeekFrom::Start(*ranges[0].start()))
+                        .await
+                        .unwrap();
                 }
-                file.seek(SeekFrom::Start(*ranges[0].start()))
-                    .await
-                    .unwrap();
             }
             Ok(Output::File(FileRequest {
                 file,
@@ -379,6 +378,16 @@ impl Future for ResponseFuture {
                                             )
                                             .status(StatusCode::RANGE_NOT_SATISFIABLE)
                                             .body(empty_body())
+                                    } else if ranges.len() > 1 {
+                                        builder
+                                            .header(
+                                                header::CONTENT_RANGE,
+                                                format!("bytes */{}", file_request.total_size),
+                                            )
+                                            .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                                            .body(body_from_bytes(Bytes::from(
+                                                "Cannot serve multipart range requests",
+                                            )))
                                     } else {
                                         let size = (range.end() - range.start() + 1) as usize;
                                         let body = AsyncReadBody::with_capacity_limited(
