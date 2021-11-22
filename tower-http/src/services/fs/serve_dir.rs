@@ -495,9 +495,7 @@ fn empty_body() -> ResponseBody {
 }
 
 fn body_from_bytes(bytes: Bytes) -> ResponseBody {
-    let body = BoxBody::new(Full::from(bytes))
-        .map_err(|err| match err {})
-        .boxed();
+    let body = Full::from(bytes).map_err(|err| match err {}).boxed();
     ResponseBody::new(body)
 }
 
