@@ -49,6 +49,8 @@ jobs:
         curl -LsSf https://github.com/taiki-e/cargo-hack/releases/latest/download/cargo-hack-x86_64-unknown-linux-gnu.tar.gz | tar xzf - -C ~/.cargo/bin
     - name: cargo hack check
       working-directory: ${{ matrix.subcrate }}
+      env:
+        RUSTFLAGS: "-D unused_imports -D dead_code -D unused_variables"
       run: cargo hack check --each-feature --no-dev-deps --workspace
 
   test-versions:

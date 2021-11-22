@@ -1,8 +1,11 @@
-use std::sync::Arc;
-
-use crate::classify::{GrpcErrorsAsFailures, ServerErrorsAsFailures, SharedClassifier};
-use http::header::HeaderName;
 use tower::ServiceBuilder;
+
+#[cfg(feature = "trace")]
+use crate::classify::{GrpcErrorsAsFailures, ServerErrorsAsFailures, SharedClassifier};
+
+#[allow(unused_imports)]
+use http::header::HeaderName;
+#[allow(unused_imports)]
 use tower_layer::Stack;
 
 /// Extension trait that adds methods to [`tower::ServiceBuilder`] for adding middleware from
@@ -199,7 +202,7 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> {
     #[cfg_attr(docsrs, doc(cfg(feature = "sensitive-headers")))]
     fn sensitive_request_headers(
         self,
-        headers: Arc<[HeaderName]>,
+        headers: std::sync::Arc<[HeaderName]>,
     ) -> ServiceBuilder<Stack<crate::sensitive_headers::SetSensitiveRequestHeadersLayer, L>>;
 
     /// Mark headers as [sensitive] on both responses.
@@ -212,7 +215,7 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> {
     #[cfg_attr(docsrs, doc(cfg(feature = "sensitive-headers")))]
     fn sensitive_response_headers(
         self,
-        headers: Arc<[HeaderName]>,
+        headers: std::sync::Arc<[HeaderName]>,
     ) -> ServiceBuilder<Stack<crate::sensitive_headers::SetSensitiveResponseHeadersLayer, L>>;
 
     /// Insert a header into the request.
@@ -418,7 +421,7 @@ impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
     #[cfg(feature = "sensitive-headers")]
     fn sensitive_request_headers(
         self,
-        headers: Arc<[HeaderName]>,
+        headers: std::sync::Arc<[HeaderName]>,
     ) -> ServiceBuilder<Stack<crate::sensitive_headers::SetSensitiveRequestHeadersLayer, L>> {
         self.layer(crate::sensitive_headers::SetSensitiveRequestHeadersLayer::from_shared(headers))
     }
@@ -426,7 +429,7 @@ impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
     #[cfg(feature = "sensitive-headers")]
     fn sensitive_response_headers(
         self,
-        headers: Arc<[HeaderName]>,
+        headers: std::sync::Arc<[HeaderName]>,
     ) -> ServiceBuilder<Stack<crate::sensitive_headers::SetSensitiveResponseHeadersLayer, L>> {
         self.layer(crate::sensitive_headers::SetSensitiveResponseHeadersLayer::from_shared(headers))
     }
