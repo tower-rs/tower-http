@@ -83,7 +83,7 @@
 //! ```
 
 use super::{InsertHeaderMode, MakeHeaderValue};
-use http::{header::HeaderName, Request};
+use http::{header::HeaderName, Request, Response};
 use std::{
     fmt,
     task::{Context, Poll},
@@ -231,9 +231,9 @@ where
     }
 }
 
-impl<ReqBody, S, M> Service<Request<ReqBody>> for SetRequestHeader<S, M>
+impl<ReqBody, ResBody, S, M> Service<Request<ReqBody>> for SetRequestHeader<S, M>
 where
-    S: Service<Request<ReqBody>>,
+    S: Service<Request<ReqBody>, Response = Response<ResBody>>,
     M: MakeHeaderValue<Request<ReqBody>>,
 {
     type Response = S::Response;

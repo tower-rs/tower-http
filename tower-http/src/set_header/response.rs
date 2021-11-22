@@ -94,7 +94,7 @@
 
 use super::{InsertHeaderMode, MakeHeaderValue};
 use futures_util::ready;
-use http::{header::HeaderName, Response};
+use http::{header::HeaderName, Request, Response};
 use pin_project_lite::pin_project;
 use std::{
     fmt,
@@ -245,9 +245,9 @@ where
     }
 }
 
-impl<Req, ResBody, S, M> Service<Req> for SetResponseHeader<S, M>
+impl<ReqBody, ResBody, S, M> Service<Request<ReqBody>> for SetResponseHeader<S, M>
 where
-    S: Service<Req, Response = Response<ResBody>>,
+    S: Service<Request<ReqBody>, Response = Response<ResBody>>,
     M: MakeHeaderValue<Response<ResBody>> + Clone,
 {
     type Response = S::Response;
@@ -259,7 +259,7 @@ where
         self.inner.poll_ready(cx)
     }
 
-    fn call(&mut self, req: Req) -> Self::Future {
+    fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
         ResponseFuture {
             future: self.inner.call(req),
             header_name: self.header_name.clone(),
@@ -309,7 +309,7 @@ mod tests {
     #[tokio::test]
     async fn test_override_mode() {
         let svc = SetResponseHeader::overriding(
-            service_fn(|_req: ()| async {
+            service_fn(|_req: Request<Body>| async {
                 let res = Response::builder()
                     .header(header::CONTENT_TYPE, "good-content")
                     .body(Body::empty())
@@ -320,7 +320,7 @@ mod tests {
             HeaderValue::from_static("text/html"),
         );
 
-        let res = svc.oneshot(()).await.unwrap();
+        let res = svc.oneshot(Request::new(Body::empty())).await.unwrap();
 
         let mut values = res.headers().get_all(header::CONTENT_TYPE).iter();
         assert_eq!(values.next().unwrap(), "text/html");
@@ -330,7 +330,7 @@ mod tests {
     #[tokio::test]
     async fn test_append_mode() {
         let svc = SetResponseHeader::appending(
-            service_fn(|_req: ()| async {
+            service_fn(|_req: Request<Body>| async {
                 let res = Response::builder()
                     .header(header::CONTENT_TYPE, "good-content")
                     .body(Body::empty())
@@ -341,7 +341,7 @@ mod tests {
             HeaderValue::from_static("text/html"),
         );
 
-        let res = svc.oneshot(()).await.unwrap();
+        let res = svc.oneshot(Request::new(Body::empty())).await.unwrap();
 
         let mut values = res.headers().get_all(header::CONTENT_TYPE).iter();
         assert_eq!(values.next().unwrap(), "good-content");
@@ -352,7 +352,7 @@ mod tests {
     #[tokio::test]
     async fn test_skip_if_present_mode() {
         let svc = SetResponseHeader::if_not_present(
-            service_fn(|_req: ()| async {
+            service_fn(|_req: Request<Body>| async {
                 let res = Response::builder()
                     .header(header::CONTENT_TYPE, "good-content")
                     .body(Body::empty())
@@ -363,7 +363,7 @@ mod tests {
             HeaderValue::from_static("text/html"),
         );
 
-        let res = svc.oneshot(()).await.unwrap();
+        let res = svc.oneshot(Request::new(Body::empty())).await.unwrap();
 
         let mut values = res.headers().get_all(header::CONTENT_TYPE).iter();
         assert_eq!(values.next().unwrap(), "good-content");
@@ -373,7 +373,7 @@ mod tests {
     #[tokio::test]
     async fn test_skip_if_present_mode_when_not_present() {
         let svc = SetResponseHeader::if_not_present(
-            service_fn(|_req: ()| async {
+            service_fn(|_req: Request<Body>| async {
                 let res = Response::builder().body(Body::empty()).unwrap();
                 Ok::<_, Infallible>(res)
             }),
@@ -381,7 +381,7 @@ mod tests {
             HeaderValue::from_static("text/html"),
         );
 
-        let res = svc.oneshot(()).await.unwrap();
+        let res = svc.oneshot(Request::new(Body::empty())).await.unwrap();
 
         let mut values = res.headers().get_all(header::CONTENT_TYPE).iter();
         assert_eq!(values.next().unwrap(), "text/html");

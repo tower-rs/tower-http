@@ -37,7 +37,7 @@
 //! # }
 //! ```
 
-use http::{HeaderValue, Request};
+use http::{HeaderValue, Request, Response};
 use std::{
     convert::TryFrom,
     task::{Context, Poll},
@@ -162,9 +162,9 @@ impl<S> AddAuthorization<S> {
     }
 }
 
-impl<S, ReqBody> Service<Request<ReqBody>> for AddAuthorization<S>
+impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for AddAuthorization<S>
 where
-    S: Service<Request<ReqBody>>,
+    S: Service<Request<ReqBody>, Response = Response<ResBody>>,
 {
     type Response = S::Response;
     type Error = S::Error;

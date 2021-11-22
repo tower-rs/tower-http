@@ -51,7 +51,7 @@
 //! ```
 
 use futures_util::ready;
-use http::Response;
+use http::{Request, Response};
 use http_body::Body;
 use pin_project_lite::pin_project;
 use std::{
@@ -204,9 +204,9 @@ impl Drop for IncrementGuard {
     }
 }
 
-impl<S, R, ResBody> Service<R> for InFlightRequests<S>
+impl<S, R, ResBody> Service<Request<R>> for InFlightRequests<S>
 where
-    S: Service<R, Response = Response<ResBody>>,
+    S: Service<Request<R>, Response = Response<ResBody>>,
 {
     type Response = Response<ResponseBody<ResBody>>;
     type Error = S::Error;
@@ -216,7 +216,7 @@ where
         self.inner.poll_ready(cx)
     }
 
-    fn call(&mut self, req: R) -> Self::Future {
+    fn call(&mut self, req: Request<R>) -> Self::Future {
         let guard = self.counter.increment();
         ResponseFuture {
             inner: self.inner.call(req),
