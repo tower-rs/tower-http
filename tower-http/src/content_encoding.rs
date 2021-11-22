@@ -1,7 +1,3 @@
-use std::ffi::OsStr;
-
-use http::{header, HeaderMap, HeaderValue};
-
 pub(crate) trait SupportedEncodings: Copy {
     fn gzip(&self) -> bool;
     fn deflate(&self) -> bool;
@@ -16,10 +12,12 @@ pub(crate) enum Encoding {
     Deflate,
     #[cfg(any(feature = "fs", feature = "compression-br"))]
     Brotli,
+    #[allow(dead_code)]
     Identity,
 }
 
 impl Encoding {
+    #[allow(dead_code)]
     fn to_str(self) -> &'static str {
         match self {
             #[cfg(any(feature = "fs", feature = "compression-gzip"))]
@@ -33,42 +31,59 @@ impl Encoding {
     }
 
     #[cfg(feature = "fs")]
-    pub(crate) fn to_file_extension(self) -> Option<&'static OsStr> {
+    pub(crate) fn to_file_extension(self) -> Option<&'static std::ffi::OsStr> {
         match self {
-            Encoding::Gzip => Some(OsStr::new(".gz")),
-            Encoding::Deflate => Some(OsStr::new(".zz")),
-            Encoding::Brotli => Some(OsStr::new(".br")),
+            Encoding::Gzip => Some(std::ffi::OsStr::new(".gz")),
+            Encoding::Deflate => Some(std::ffi::OsStr::new(".zz")),
+            Encoding::Brotli => Some(std::ffi::OsStr::new(".br")),
             Encoding::Identity => None,
         }
     }
 
-    pub(crate) fn into_header_value(self) -> HeaderValue {
-        HeaderValue::from_static(self.to_str())
+    #[allow(dead_code)]
+    pub(crate) fn into_header_value(self) -> http::HeaderValue {
+        http::HeaderValue::from_static(self.to_str())
     }
 
-    #[allow(unused_variables)]
-    fn parse(s: &str, supported_encoding: impl SupportedEncodings) -> Option<Encoding> {
+    #[cfg(any(
+        feature = "compression-gzip",
+        feature = "compression-br",
+        feature = "compression-deflate",
+        feature = "fs",
+    ))]
+    fn parse(s: &str, _supported_encoding: impl SupportedEncodings) -> Option<Encoding> {
         match s {
             #[cfg(any(feature = "fs", feature = "compression-gzip"))]
-            "gzip" if supported_encoding.gzip() => Some(Encoding::Gzip),
+            "gzip" if _supported_encoding.gzip() => Some(Encoding::Gzip),
             #[cfg(any(feature = "fs", feature = "compression-deflate"))]
-            "deflate" if supported_encoding.deflate() => Some(Encoding::Deflate),
+            "deflate" if _supported_encoding.deflate() => Some(Encoding::Deflate),
             #[cfg(any(feature = "fs", feature = "compression-br"))]
-            "br" if supported_encoding.br() => Some(Encoding::Brotli),
+            "br" if _supported_encoding.br() => Some(Encoding::Brotli),
             "identity" => Some(Encoding::Identity),
             _ => None,
         }
     }
 
+    #[cfg(any(
+        feature = "compression-gzip",
+        feature = "compression-br",
+        feature = "compression-deflate",
+    ))]
     // based on https://github.com/http-rs/accept-encoding
     pub(crate) fn from_headers(
-        headers: &HeaderMap,
+        headers: &http::HeaderMap,
         supported_encoding: impl SupportedEncodings,
     ) -> Self {
         Encoding::preferred_encoding(&encodings(headers, supported_encoding))
             .unwrap_or(Encoding::Identity)
     }
 
+    #[cfg(any(
+        feature = "compression-gzip",
+        feature = "compression-br",
+        feature = "compression-deflate",
+        feature = "fs",
+    ))]
     pub(crate) fn preferred_encoding(accepted_encodings: &[(Encoding, f32)]) -> Option<Self> {
         let mut preferred_encoding = None;
         let mut max_qval = 0.0;
@@ -86,13 +101,19 @@ impl Encoding {
     }
 }
 
+#[cfg(any(
+    feature = "compression-gzip",
+    feature = "compression-br",
+    feature = "compression-deflate",
+    feature = "fs",
+))]
 // based on https://github.com/http-rs/accept-encoding
 pub(crate) fn encodings(
-    headers: &HeaderMap,
+    headers: &http::HeaderMap,
     supported_encoding: impl SupportedEncodings,
 ) -> Vec<(Encoding, f32)> {
     headers
-        .get_all(header::ACCEPT_ENCODING)
+        .get_all(http::header::ACCEPT_ENCODING)
         .iter()
         .filter_map(|hval| hval.to_str().ok())
         .flat_map(|s| s.split(',').map(str::trim))
