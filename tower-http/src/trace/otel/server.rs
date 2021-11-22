@@ -68,6 +68,7 @@
 
 use crate::{
     classify::{MakeClassifier, ServerErrorsFailureClass},
+    request_id::RequestId,
     trace::{MakeSpan, OnBodyChunk, OnEos, OnFailure, OnRequest, OnResponse, TraceLayer},
 };
 use http::{
@@ -213,11 +214,18 @@ impl<B> MakeSpan<B> for OtelMakeSpan {
             otel.kind = "server",
             otel.status_code = Empty,
             trace_id = Empty,
-            // requires https://github.com/tower-rs/tower-http/pull/150
-            // request_id = %request_id,
+            request_id = Empty,
             exception.message = Empty,
             exception.details = Empty,
         );
+
+        if let Some(request_id) = request
+            .extensions()
+            .get::<RequestId>()
+            .and_then(|id| id.header_value().to_str().ok())
+        {
+            span.record("request_id", &request_id);
+        }
 
         self.set_otel_parent
             .set_otel_parent(request.headers(), &span);

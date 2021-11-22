@@ -80,7 +80,7 @@ redirect = []
 request-id = []
 sensitive-headers = []
 set-header = []
-trace = ["tracing"]
+trace = ["tracing", "request-id"]
 util = ["tower"]
 
 compression-br = ["async-compression/brotli", "tokio-util", "tokio"]
