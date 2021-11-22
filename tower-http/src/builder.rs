@@ -4,9 +4,9 @@ use tower::ServiceBuilder;
 use crate::classify::{GrpcErrorsAsFailures, ServerErrorsAsFailures, SharedClassifier};
 
 #[allow(unused_imports)]
-use tower_layer::Stack;
-#[allow(unused_imports)]
 use http::header::HeaderName;
+#[allow(unused_imports)]
+use tower_layer::Stack;
 
 /// Extension trait that adds methods to [`tower::ServiceBuilder`] for adding middleware from
 /// tower-http.
