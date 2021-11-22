@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `AddAuthorization`, `InFlightRequests`, `SetRequestHeader`, `SetResponseHeader`, `AddExtension`, `MapRequestBody` and `MapResponseBody`
    now requires underlying service to use `http::Request<B>` and `http::Response<U>` as request and responses ([#182])
 - `ServeDir` and `ServeFile`: Ability to serve precompressed files ([#156])
+- `ServeDir` and `ServeFile`: Properly support HEAD requests which return no body and have the `Content-length` header set ([#169])
 - `Trace`: Add `DefaultMakeSpan::level` to make log level of tracing spans easily configurable ([#124])
 - Change the response body error type of `Compression` and `Decompression` to
   `Box<dyn std::error::Error + Send + Sync>`. This makes them usable if the body
@@ -34,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#124]: https://github.com/tower-rs/tower-http/pull/124
 [#156]: https://github.com/tower-rs/tower-http/pull/156
 [#166]: https://github.com/tower-rs/tower-http/pull/166
+[#169]: https://github.com/tower-rs/tower-http/pull/169
 [#148]: https://github.com/tower-rs/tower-http/pull/148
 [#170]: https://github.com/tower-rs/tower-http/pull/170
 [#172]: https://github.com/tower-rs/tower-http/pull/172
