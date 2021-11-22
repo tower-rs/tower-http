@@ -256,10 +256,10 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
             let file_size = file.metadata().await?.len();
             let maybe_range = range_header.map(|range| parse_range(&range, file_size));
             if let Some(ParsedRangeHeader::Range(ranges)) = maybe_range.as_ref() {
+                // If there is any other amount of ranges than 1 we'll return an unsatisfiable later as there isn't yet support for multipart ranges
                 if ranges.len() == 1 {
                     file.seek(SeekFrom::Start(*ranges[0].start()))
-                        .await
-                        .unwrap();
+                        .await?;
                 }
             }
             Ok(Output::File(FileRequest {
@@ -359,16 +359,47 @@ impl Future for ResponseFuture {
                         if let Some(range) = file_request.maybe_range {
                             match range {
                                 ParsedRangeHeader::Range(ranges) => {
-                                    let range = &ranges[0];
-                                    if *range.end() >= file_request.total_size {
-                                        builder
-                                            .header(
-                                                header::CONTENT_RANGE,
-                                                format!("bytes */{}", file_request.total_size),
+                                    if let Some(range) = ranges.get(0) {
+                                        if *range.end() >= file_request.total_size {
+                                            builder
+                                                .header(
+                                                    header::CONTENT_RANGE,
+                                                    format!("bytes */{}", file_request.total_size),
+                                                )
+                                                .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                                                .body(empty_body())
+                                        } else if ranges.len() > 1 {
+                                            builder
+                                                .header(
+                                                    header::CONTENT_RANGE,
+                                                    format!("bytes */{}", file_request.total_size),
+                                                )
+                                                .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                                                .body(body_from_bytes(Bytes::from(
+                                                    "Cannot serve multipart range requests",
+                                                )))
+                                        } else {
+                                            let size = range.end() - range.start() + 1;
+                                            let body = AsyncReadBody::with_capacity_limited(
+                                                file_request.file,
+                                                file_request.chunk_size,
+                                                size,
                                             )
-                                            .status(StatusCode::RANGE_NOT_SATISFIABLE)
-                                            .body(empty_body())
-                                    } else if ranges.len() > 1 {
+                                                .boxed();
+                                            builder
+                                                .header(
+                                                    header::CONTENT_RANGE,
+                                                    format!(
+                                                        "bytes {}-{}/{}",
+                                                        range.start(),
+                                                        range.end(),
+                                                        file_request.total_size
+                                                    ),
+                                                )
+                                                .status(StatusCode::PARTIAL_CONTENT)
+                                                .body(ResponseBody::new(body))
+                                        }
+                                    } else {
                                         builder
                                             .header(
                                                 header::CONTENT_RANGE,
@@ -376,28 +407,8 @@ impl Future for ResponseFuture {
                                             )
                                             .status(StatusCode::RANGE_NOT_SATISFIABLE)
                                             .body(body_from_bytes(Bytes::from(
-                                                "Cannot serve multipart range requests",
+                                                "No range found after parsing range header, please file an issue",
                                             )))
-                                    } else {
-                                        let size = range.end() - range.start() + 1;
-                                        let body = AsyncReadBody::with_capacity_limited(
-                                            file_request.file,
-                                            file_request.chunk_size,
-                                            size,
-                                        )
-                                        .boxed();
-                                        builder
-                                            .header(
-                                                header::CONTENT_RANGE,
-                                                format!(
-                                                    "bytes {}-{}/{}",
-                                                    range.start(),
-                                                    range.end(),
-                                                    file_request.total_size
-                                                ),
-                                            )
-                                            .status(StatusCode::PARTIAL_CONTENT)
-                                            .body(ResponseBody::new(body))
                                     }
                                 }
                                 ParsedRangeHeader::Unsatisfiable(reason) => builder
