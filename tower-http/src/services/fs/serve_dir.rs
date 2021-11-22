@@ -379,7 +379,7 @@ impl Future for ResponseFuture {
                                                 "Cannot serve multipart range requests",
                                             )))
                                     } else {
-                                        let size = (range.end() - range.start() + 1) as usize;
+                                        let size = (range.end() - range.start() + 1);
                                         let body = AsyncReadBody::with_capacity_limited(
                                             file_request.file,
                                             file_request.chunk_size,

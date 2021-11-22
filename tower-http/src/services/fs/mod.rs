@@ -143,7 +143,7 @@ where
     fn with_capacity_limited(
         read: T,
         capacity: usize,
-        max_read_bytes: usize,
+        max_read_bytes: u64,
     ) -> AsyncReadBody<Take<T>> {
         AsyncReadBody {
             reader: ReaderStream::with_capacity(read.take(max_read_bytes as u64), capacity),
