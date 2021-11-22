@@ -76,7 +76,10 @@ pub(crate) fn parse_range(range: &str, file_size_bytes: u64) -> ParsedRangeHeade
         ));
     }
     if ranges.is_empty() {
-        panic!("Programming error parsing range {}", range)
+        return ParsedRangeHeader::Malformed(format!(
+            "Range: {} could not be parsed for unknown reason, please file an issue",
+            range
+        ));
     } else {
         if ranges.len() == 1 {
             ParsedRangeHeader::Range(ranges)
@@ -91,7 +94,7 @@ pub(crate) fn parse_range(range: &str, file_size_bytes: u64) -> ParsedRangeHeade
     }
 }
 
-fn overlaps(ranges: &Vec<RangeInclusive<u64>>) -> bool {
+fn overlaps(ranges: &[RangeInclusive<u64>]) -> bool {
     let mut bounds = Vec::new();
     for range in ranges {
         bounds.push((range.start(), range.end()));
@@ -108,8 +111,9 @@ fn overlaps(ranges: &Vec<RangeInclusive<u64>>) -> bool {
 
 fn split_once<'a>(s: &'a str, pat: &'a str) -> Option<(&'a str, &'a str)> {
     let mut iter = s.split(pat);
-    let left = iter.next();
-    left.and_then(|l| iter.next().map(|r| (l, r)))
+    let left = iter.next()?;
+    let right = iter.next()?;
+    Some((left, right))
 }
 
 #[derive(Debug, PartialEq)]
