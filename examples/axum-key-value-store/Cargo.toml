@@ -1,0 +1,17 @@
+[package]
+name = "axum-key-value-store"
+version = "0.1.0"
+authors = ["Tower Maintainers <team@tower-rs.com>"]
+edition = "2018"
+publish = false
+license = "MIT"
+
+[dependencies]
+hyper = { version = "0.14.15", features = ["full"] }
+structopt = "0.3.21"
+tokio = { version = "1.2.0", features = ["full"] }
+tower = { version = "0.4.5", features = ["full"] }
+tower-http = { path = "../../tower-http", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = "0.2"
+axum = "0.3"

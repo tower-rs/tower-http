@@ -92,6 +92,14 @@ macro_rules! log_pattern_match {
     ) => {
         match ($this.level, $this.latency_unit) {
             $(
+                (Level::$level, LatencyUnit::Seconds) => {
+                    tracing::event!(
+                        Level::$level,
+                        classification = tracing::field::display($failure_classification),
+                        latency = format_args!("{} s", $latency.as_secs_f64()),
+                        "response failed"
+                    );
+                }
                 (Level::$level, LatencyUnit::Millis) => {
                     tracing::event!(
                         Level::$level,

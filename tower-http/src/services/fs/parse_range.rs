@@ -109,8 +109,7 @@ fn overlaps(ranges: &Vec<RangeInclusive<u64>>) -> bool {
 fn split_once<'a>(s: &'a str, pat: &'a str) -> Option<(&'a str, &'a str)> {
     let mut iter = s.split(pat);
     let left = iter.next();
-    left.and_then(|l| iter.next()
-        .map(|r| (l, r)))
+    left.and_then(|l| iter.next().map(|r| (l, r)))
 }
 
 #[derive(Debug, PartialEq)]
