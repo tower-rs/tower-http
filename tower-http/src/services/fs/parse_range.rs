@@ -6,7 +6,7 @@ use std::ops::RangeInclusive;
 /// If syntactically correct but unsatisfiable due to file-constraints returns `Unsatisfiable`
 /// If un-parseable as a range returns `Malformed`
 pub(crate) fn parse_range(range: &str, file_size_bytes: u64) -> ParsedRangeHeader {
-    let start = range.split_once("bytes=");
+    let start = split_once(range, "bytes=");
     let mut ranges = Vec::new();
     if let Some((_, indicated_range)) = start {
         for range in indicated_range.split(",") {
@@ -18,7 +18,7 @@ pub(crate) fn parse_range(range: &str, file_size_bytes: u64) -> ParsedRangeHeade
                     range
                 ));
             }
-            if let Some((start, end)) = range.split_once("-") {
+            if let Some((start, end)) = split_once(range, "-") {
                 if start == "" {
                     if let Ok(end) = end.parse::<u64>() {
                         if end >= file_size_bytes {
@@ -104,6 +104,13 @@ fn overlaps(ranges: &Vec<RangeInclusive<u64>>) -> bool {
         }
     }
     false
+}
+
+fn split_once<'a>(s: &'a str, pat: &'a str) -> Option<(&'a str, &'a str)> {
+    let mut iter = s.split(pat);
+    let left = iter.next();
+    left.and_then(|l| iter.next()
+        .map(|r| (l, r)))
 }
 
 #[derive(Debug, PartialEq)]
