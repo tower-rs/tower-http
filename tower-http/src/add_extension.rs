@@ -50,7 +50,7 @@
 //! # }
 //! ```
 
-use http::Request;
+use http::{Request, Response};
 use std::task::{Context, Poll};
 use tower_layer::Layer;
 use tower_service::Service;
@@ -113,9 +113,9 @@ impl<S, T> AddExtension<S, T> {
     }
 }
 
-impl<ResBody, S, T> Service<Request<ResBody>> for AddExtension<S, T>
+impl<ResBody, ReqBody, S, T> Service<Request<ReqBody>> for AddExtension<S, T>
 where
-    S: Service<Request<ResBody>>,
+    S: Service<Request<ReqBody>, Response = Response<ResBody>>,
     T: Clone + Send + Sync + 'static,
 {
     type Response = S::Response;
@@ -127,7 +127,7 @@ where
         self.inner.poll_ready(cx)
     }
 
-    fn call(&mut self, mut req: Request<ResBody>) -> Self::Future {
+    fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
         req.extensions_mut().insert(self.value.clone());
         self.inner.call(req)
     }

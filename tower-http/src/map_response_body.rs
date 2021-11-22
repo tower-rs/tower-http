@@ -76,7 +76,7 @@
 //! ```
 
 use futures_core::ready;
-use http::Response;
+use http::{Request, Response};
 use pin_project_lite::pin_project;
 use std::future::Future;
 use std::{
@@ -150,9 +150,9 @@ impl<S, F> MapResponseBody<S, F> {
     define_inner_service_accessors!();
 }
 
-impl<F, S, Req, ResBody, NewResBody> Service<Req> for MapResponseBody<S, F>
+impl<F, S, ReqBody, ResBody, NewResBody> Service<Request<ReqBody>> for MapResponseBody<S, F>
 where
-    S: Service<Req, Response = Response<ResBody>>,
+    S: Service<Request<ReqBody>, Response = Response<ResBody>>,
     F: FnMut(ResBody) -> NewResBody + Clone,
 {
     type Response = Response<NewResBody>;
@@ -163,7 +163,7 @@ where
         self.inner.poll_ready(cx)
     }
 
-    fn call(&mut self, req: Req) -> Self::Future {
+    fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
         ResponseFuture {
             inner: self.inner.call(req),
             f: self.f.clone(),
