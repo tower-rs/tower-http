@@ -318,7 +318,11 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     where
         M: crate::request_id::MakeRequestId;
 
-    /// TODO
+    /// Add request id header and extension, using `x-request-id` as the header name.
+    ///
+    /// See [`tower_http::request_id`] for more details.
+    ///
+    /// [`tower_http::request_id`]: crate::request_id
     #[cfg(feature = "request-id")]
     #[cfg_attr(docsrs, doc(cfg(feature = "request-id")))]
     fn set_x_request_id<M>(
@@ -346,7 +350,11 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
         header_name: HeaderName,
     ) -> ServiceBuilder<Stack<crate::request_id::PropagateRequestIdLayer, L>>;
 
-    /// TODO
+    /// Propgate request ids from requests to responses, using `x-request-id` as the header name.
+    ///
+    /// See [`tower_http::request_id`] for more details.
+    ///
+    /// [`tower_http::request_id`]: crate::request_id
     #[cfg(feature = "request-id")]
     #[cfg_attr(docsrs, doc(cfg(feature = "request-id")))]
     fn propagate_x_request_id(
