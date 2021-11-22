@@ -62,14 +62,22 @@
 //! # Ok(())
 //! # }
 //! ```
+//!
+
+pub mod predicate;
 
 mod body;
 mod future;
 mod layer;
 mod service;
 
+#[doc(inline)]
 pub use self::{
-    body::CompressionBody, future::ResponseFuture, layer::CompressionLayer, service::Compression,
+    body::CompressionBody,
+    future::ResponseFuture,
+    layer::CompressionLayer,
+    predicate::{DefaultPredicate, Predicate},
+    service::Compression,
 };
 
 #[cfg(test)]
@@ -80,14 +88,28 @@ mod tests {
     use flate2::read::GzDecoder;
     use http_body::Body as _;
     use hyper::{Body, Error, Request, Response, Server};
+    use std::sync::{Arc, RwLock};
     use std::{io::Read, net::SocketAddr};
     use tokio::io::AsyncWriteExt;
     use tower::{make::Shared, service_fn, Service, ServiceExt};
 
+    // Compression filter allows every other request to be compressed
+    #[derive(Clone)]
+    struct Always;
+
+    impl Predicate for Always {
+        fn should_compress<B>(&self, _: &http::Response<B>) -> bool
+        where
+            B: http_body::Body,
+        {
+            true
+        }
+    }
+
     #[tokio::test]
     async fn works() {
         let svc = service_fn(handle);
-        let mut svc = Compression::new(svc);
+        let mut svc = Compression::new(svc).compress_when(Always);
 
         // call the service
         let req = Request::builder()
@@ -193,5 +215,69 @@ mod tests {
 
     async fn handle(_req: Request<Body>) -> Result<Response<Body>, Error> {
         Ok(Response::new(Body::from("Hello, World!")))
+    }
+
+    #[tokio::test]
+    async fn will_not_compress_if_filtered_out() {
+        use predicate::Predicate;
+
+        const DATA: &str = "Hello world uncompressed";
+
+        let svc_fn = service_fn(|_| async {
+            let resp = Response::builder()
+                // .header("content-encoding", "br")
+                .body(Body::from(DATA.as_bytes()))
+                .unwrap();
+            Ok::<_, std::io::Error>(resp)
+        });
+
+        // Compression filter allows every other request to be compressed
+        #[derive(Default, Clone)]
+        struct EveryOtherResponse(Arc<RwLock<u64>>);
+
+        impl Predicate for EveryOtherResponse {
+            fn should_compress<B>(&self, _: &http::Response<B>) -> bool
+            where
+                B: http_body::Body,
+            {
+                let mut guard = self.0.write().unwrap();
+                let should_compress = *guard % 2 != 0;
+                *guard += 1;
+                dbg!(should_compress)
+            }
+        }
+
+        let mut svc = Compression::new(svc_fn).compress_when(EveryOtherResponse::default());
+        let req = Request::builder()
+            .header("accept-encoding", "br")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.ready().await.unwrap().call(req).await.unwrap();
+
+        // read the uncompressed body
+        let mut body = res.into_body();
+        let mut data = BytesMut::new();
+        while let Some(chunk) = body.data().await {
+            let chunk = chunk.unwrap();
+            data.extend_from_slice(&chunk[..]);
+        }
+        let still_uncompressed = String::from_utf8(data.to_vec()).unwrap();
+        assert_eq!(DATA, &still_uncompressed);
+
+        // Compression filter will compress the next body
+        let req = Request::builder()
+            .header("accept-encoding", "br")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.ready().await.unwrap().call(req).await.unwrap();
+
+        // read the compressed body
+        let mut body = res.into_body();
+        let mut data = BytesMut::new();
+        while let Some(chunk) = body.data().await {
+            let chunk = chunk.unwrap();
+            data.extend_from_slice(&chunk[..]);
+        }
+        assert!(String::from_utf8(data.to_vec()).is_err());
     }
 }

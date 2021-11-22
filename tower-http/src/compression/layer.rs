@@ -1,4 +1,5 @@
-use super::Compression;
+use super::{Compression, Predicate};
+use crate::compression::predicate::DefaultPredicate;
 use crate::compression_utils::AcceptEncoding;
 use tower_layer::Layer;
 
@@ -9,18 +10,22 @@ use tower_layer::Layer;
 ///
 /// See the [module docs](crate::compression) for more details.
 #[derive(Clone, Debug, Default)]
-pub struct CompressionLayer {
-    _priv: (),
+pub struct CompressionLayer<P = DefaultPredicate> {
     accept: AcceptEncoding,
+    predicate: P,
 }
 
-impl<S> Layer<S> for CompressionLayer {
-    type Service = Compression<S>;
+impl<S, P> Layer<S> for CompressionLayer<P>
+where
+    P: Predicate,
+{
+    type Service = Compression<S, P>;
 
     fn layer(&self, inner: S) -> Self::Service {
         Compression {
             inner,
             accept: self.accept,
+            predicate: self.predicate.clone(),
         }
     }
 }
@@ -77,6 +82,19 @@ impl CompressionLayer {
     pub fn no_br(mut self) -> Self {
         self.accept.set_br(false);
         self
+    }
+
+    /// Replace the current compression predicate.
+    ///
+    /// See [`Compression::predicate`] for more details.
+    pub fn compress_when<C>(self, predicate: C) -> CompressionLayer<C>
+    where
+        C: Predicate,
+    {
+        CompressionLayer {
+            accept: self.accept,
+            predicate,
+        }
     }
 }
 

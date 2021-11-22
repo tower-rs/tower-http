@@ -113,6 +113,39 @@ macro_rules! log_pattern_match {
     ) => {
         match ($this.level, $include_headers, $this.latency_unit, status($res)) {
             $(
+                (Level::$level, true, LatencyUnit::Seconds, None) => {
+                    tracing::event!(
+                        Level::$level,
+                        latency = format_args!("{} s", $latency.as_secs_f64()),
+                        response_headers = ?$res.headers(),
+                        "finished processing request"
+                    );
+                }
+                (Level::$level, false, LatencyUnit::Seconds, None) => {
+                    tracing::event!(
+                        Level::$level,
+                        latency = format_args!("{} s", $latency.as_secs_f64()),
+                        "finished processing request"
+                    );
+                }
+                (Level::$level, true, LatencyUnit::Seconds, Some(status)) => {
+                    tracing::event!(
+                        Level::$level,
+                        latency = format_args!("{} s", $latency.as_secs_f64()),
+                        status = status,
+                        response_headers = ?$res.headers(),
+                        "finished processing request"
+                    );
+                }
+                (Level::$level, false, LatencyUnit::Seconds, Some(status)) => {
+                    tracing::event!(
+                        Level::$level,
+                        latency = format_args!("{} s", $latency.as_secs_f64()),
+                        status = status,
+                        "finished processing request"
+                    );
+                }
+
                 (Level::$level, true, LatencyUnit::Millis, None) => {
                     tracing::event!(
                         Level::$level,

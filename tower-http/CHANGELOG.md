@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
+- `AddAuthorization`, `InFlightRequests`, `SetRequestHeader`, `SetResponseHeader`, `AddExtension`, `MapRequestBody` and `MapResponseBody`
+   now requires underlying service to use `http::Request<B>` and `http::Response<U>` as request and responses ([#182])
 - `ServeDir` and `ServeFile`: Ability to serve precompressed files ([#156])
 - `Trace`: Add `DefaultMakeSpan::level` to make log level of tracing spans easily configurable ([#124])
 - Change the response body error type of `Compression` and `Decompression` to
@@ -17,14 +19,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Send + Sync>` ([#166])
 - `SetRequestHeaderLayer`, `SetResponseHeaderLayer`: Remove unnecessary generic parameter ([#148])
   This removes the need (and possibility) to specify a body type for these layers.
+- `Compression`: Support specifying predicates to choose when responses should
+  be compressed. This can be used to disable compression of small responses, or
+  responses with a certain `content-type`, or something user defined ([#172])
 - Remove the `compression` and `decompression` feature. They were unnecessary
   and `compression-full`/`decompression-full` can be used to get full
-  compression/decompression support. For more granular control `[compression|decompression]-gzip`, 
+  compression/decompression support. For more granular control `[compression|decompression]-gzip`,
   `[compression|decompression]-br` and `[compression|decompression]-deflate` may
   be used instead. ([#170])
 - Add `ServiceBuilderExt` which adds methods to `tower::ServiceBuilder` for
   adding middleware from tower-http.
 - Add `SetRequestId` and `PropagateRequestId` middleware ([#150])
+- Add `LatencyUnit::Seconds` for formatting latencies as seconds.
 
 [#124]: https://github.com/tower-rs/tower-http/pull/124
 [#148]: https://github.com/tower-rs/tower-http/pull/148
@@ -32,6 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#156]: https://github.com/tower-rs/tower-http/pull/156
 [#166]: https://github.com/tower-rs/tower-http/pull/166
 [#170]: https://github.com/tower-rs/tower-http/pull/170
+[#172]: https://github.com/tower-rs/tower-http/pull/172
+[#182]: https://github.com/tower-rs/tower-http/pull/182
 
 # 0.1.2 (November 13, 2021)
 

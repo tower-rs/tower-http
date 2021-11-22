@@ -1,4 +1,5 @@
 use super::{CompressionBody, CompressionLayer, ResponseFuture};
+use crate::compression::predicate::{DefaultPredicate, Predicate};
 use crate::{compression_utils::AcceptEncoding, content_encoding::Encoding};
 use http::{Request, Response};
 use http_body::Body;
@@ -12,20 +13,24 @@ use tower_service::Service;
 ///
 /// See the [module docs](crate::compression) for more details.
 #[derive(Clone, Copy)]
-pub struct Compression<S> {
+pub struct Compression<S, P = DefaultPredicate> {
     pub(crate) inner: S,
     pub(crate) accept: AcceptEncoding,
+    pub(crate) predicate: P,
 }
 
-impl<S> Compression<S> {
+impl<S> Compression<S, DefaultPredicate> {
     /// Creates a new `Compression` wrapping the `service`.
-    pub fn new(service: S) -> Self {
+    pub fn new(service: S) -> Compression<S, DefaultPredicate> {
         Self {
             inner: service,
             accept: AcceptEncoding::default(),
+            predicate: DefaultPredicate::default(),
         }
     }
+}
 
+impl<S, P> Compression<S, P> {
     define_inner_service_accessors!();
 
     /// Returns a new [`Layer`] that wraps services with a `Compression` middleware.
@@ -82,16 +87,63 @@ impl<S> Compression<S> {
         self.accept.set_br(false);
         self
     }
+
+    /// Replace the current compression predicate.
+    ///
+    /// Predicates are used to determine whether a response should be compressed or not.
+    ///
+    /// The default predicate is [`DefaultPredicate`]. See its documentation for more
+    /// details on which responses it wont compress.
+    ///
+    /// # Changing the compression predicate
+    ///
+    /// ```
+    /// use tower_http::compression::{
+    ///     Compression,
+    ///     predicate::{Predicate, NotForContentType, DefaultPredicate},
+    /// };
+    /// use tower::util::service_fn;
+    ///
+    /// // Placeholder service_fn
+    /// let service = service_fn(|_: ()| async {
+    ///     Ok::<_, std::io::Error>(http::Response::new(()))
+    /// });
+    ///
+    /// // build our custom compression predicate
+    /// // its recommended to still include `DefaultPredicate` as part of
+    /// // custom predicates
+    /// let predicate = DefaultPredicate::new()
+    ///     // don't compress responses who's `content-type` starts with `application/json`
+    ///     .and(NotForContentType::new("application/json"));
+    ///
+    /// let service = Compression::new(service).compress_when(predicate);
+    /// ```
+    ///
+    /// See [`predicate`](super::predicate) for more utilities for building compression predicates.
+    ///
+    /// Responses that are already compressed (ie have a `content-encoding` header) will _never_ be
+    /// recompressed, regardless what they predicate says.
+    pub fn compress_when<C>(self, predicate: C) -> Compression<S, C>
+    where
+        C: Predicate,
+    {
+        Compression {
+            inner: self.inner,
+            accept: self.accept,
+            predicate,
+        }
+    }
 }
 
-impl<ReqBody, ResBody, S> Service<Request<ReqBody>> for Compression<S>
+impl<ReqBody, ResBody, S, P> Service<Request<ReqBody>> for Compression<S, P>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
     ResBody: Body,
+    P: Predicate,
 {
     type Response = Response<CompressionBody<ResBody>>;
     type Error = S::Error;
-    type Future = ResponseFuture<S::Future>;
+    type Future = ResponseFuture<S::Future, P>;
 
     #[inline]
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -104,6 +156,7 @@ where
         ResponseFuture {
             inner: self.inner.call(req),
             encoding,
+            predicate: self.predicate.clone(),
         }
     }
 }

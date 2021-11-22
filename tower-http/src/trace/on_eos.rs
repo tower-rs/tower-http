@@ -95,6 +95,22 @@ macro_rules! log_pattern_match {
     ) => {
         match ($this.level, $this.latency_unit, $status) {
             $(
+                (Level::$level, LatencyUnit::Seconds, None) => {
+                    tracing::event!(
+                        Level::$level,
+                        stream_duration = format_args!("{} s", $stream_duration.as_secs_f64()),
+                        "end of stream"
+                    );
+                }
+                (Level::$level, LatencyUnit::Seconds, Some(status)) => {
+                    tracing::event!(
+                        Level::$level,
+                        stream_duration = format_args!("{} s", $stream_duration.as_secs_f64()),
+                        status = status,
+                        "end of stream"
+                    );
+                }
+
                 (Level::$level, LatencyUnit::Millis, None) => {
                     tracing::event!(
                         Level::$level,

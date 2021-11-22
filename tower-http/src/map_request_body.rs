@@ -75,7 +75,7 @@
 //! # }
 //! ```
 
-use http::Request;
+use http::{Request, Response};
 use std::{
     fmt,
     task::{Context, Poll},
@@ -146,9 +146,9 @@ impl<S, F> MapRequestBody<S, F> {
     define_inner_service_accessors!();
 }
 
-impl<F, S, ReqBody, NewReqBody> Service<Request<ReqBody>> for MapRequestBody<S, F>
+impl<F, S, ReqBody, ResBody, NewReqBody> Service<Request<ReqBody>> for MapRequestBody<S, F>
 where
-    S: Service<Request<NewReqBody>>,
+    S: Service<Request<NewReqBody>, Response = Response<ResBody>>,
     F: FnMut(ReqBody) -> NewReqBody,
 {
     type Response = S::Response;

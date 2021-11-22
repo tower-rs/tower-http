@@ -337,6 +337,8 @@ pub use self::builder::ServiceBuilderExt;
 #[non_exhaustive]
 #[derive(Copy, Clone, Debug)]
 pub enum LatencyUnit {
+    /// Use seconds.
+    Seconds,
     /// Use milliseconds.
     Millis,
     /// Use microseconds.
