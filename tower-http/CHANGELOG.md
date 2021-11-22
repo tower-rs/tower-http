@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
+- `AddAuthorization`, `InFlightRequests`, `SetRequestHeader`, `SetResponseHeader`, `AddExtension`, `MapRequestBody` and `MapResponseBody`
+   now requires underlying service to use `http::Request<B>` and `http::Response<U>` as request and responses ([#182])
 - `ServeDir` and `ServeFile`: Ability to serve precompressed files ([#156])
 - `Trace`: Add `DefaultMakeSpan::level` to make log level of tracing spans easily configurable ([#124])
 - Change the response body error type of `Compression` and `Decompression` to
@@ -35,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#148]: https://github.com/tower-rs/tower-http/pull/148
 [#170]: https://github.com/tower-rs/tower-http/pull/170
 [#172]: https://github.com/tower-rs/tower-http/pull/172
+[#182]: https://github.com/tower-rs/tower-http/pull/182
 
 # 0.1.2 (November 13, 2021)
 
