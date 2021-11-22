@@ -497,7 +497,7 @@ where
         if let Some(current_id) = response.headers().get(&*this.header_name) {
             if response.extensions().get::<RequestId>().is_none() {
                 let current_id = current_id.clone();
-                response.extensions_mut().insert(current_id);
+                response.extensions_mut().insert(RequestId::new(current_id));
             }
         } else if let Some(request_id) = this.request_id.take() {
             response
@@ -527,18 +527,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_something() {
-        #[derive(Clone, Default)]
-        struct Counter(Arc<AtomicU64>);
-
-        impl MakeRequestId for Counter {
-            fn make_request_id<B>(&mut self, _request: &Request<B>) -> Option<RequestId> {
-                let id = HeaderValue::from_str(&self.0.fetch_add(1, Ordering::SeqCst).to_string())
-                    .unwrap();
-                Some(RequestId::new(id))
-            }
-        }
-
+    async fn basic() {
         let svc = ServiceBuilder::new()
             .set_x_request_id(Counter::default())
             .propagate_x_request_id()
@@ -565,6 +554,62 @@ mod tests {
         let req = Request::builder().body(Body::empty()).unwrap();
         let res = svc.clone().oneshot(req).await.unwrap();
         assert_eq!(res.extensions().get::<RequestId>().unwrap().0, "2");
+    }
+
+    #[tokio::test]
+    async fn other_middleware_setting_request_id() {
+        let svc = ServiceBuilder::new()
+            .override_request_header(
+                HeaderName::from_static("x-request-id"),
+                HeaderValue::from_str("foo").unwrap(),
+            )
+            .set_x_request_id(Counter::default())
+            .map_request(|request: Request<_>| {
+                // `set_x_request_id` should set the extension if its missing
+                assert_eq!(request.extensions().get::<RequestId>().unwrap().0, "foo");
+                request
+            })
+            .propagate_x_request_id()
+            .service_fn(handler);
+
+        let req = Request::builder()
+            .header("x-request-id", "foo")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.clone().oneshot(req).await.unwrap();
+        assert_eq!(res.headers()["x-request-id"], "foo");
+        assert_eq!(res.extensions().get::<RequestId>().unwrap().0, "foo");
+    }
+
+    #[tokio::test]
+    async fn other_middleware_setting_request_id_on_response() {
+        let svc = ServiceBuilder::new()
+            .set_x_request_id(Counter::default())
+            .propagate_x_request_id()
+            .override_response_header(
+                HeaderName::from_static("x-request-id"),
+                HeaderValue::from_str("foo").unwrap(),
+            )
+            .service_fn(handler);
+
+        let req = Request::builder()
+            .header("x-request-id", "foo")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.clone().oneshot(req).await.unwrap();
+        assert_eq!(res.headers()["x-request-id"], "foo");
+        assert_eq!(res.extensions().get::<RequestId>().unwrap().0, "foo");
+    }
+
+    #[derive(Clone, Default)]
+    struct Counter(Arc<AtomicU64>);
+
+    impl MakeRequestId for Counter {
+        fn make_request_id<B>(&mut self, _request: &Request<B>) -> Option<RequestId> {
+            let id =
+                HeaderValue::from_str(&self.0.fetch_add(1, Ordering::SeqCst).to_string()).unwrap();
+            Some(RequestId::new(id))
+        }
     }
 
     async fn handler(_: Request<Body>) -> Result<Response<Body>, Infallible> {
