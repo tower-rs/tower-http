@@ -87,6 +87,15 @@ pub struct OtelConfig {
 }
 
 impl OtelConfig {
+    pub fn new() -> Self {
+        Self {
+            scheme: http_scheme(&Scheme::HTTP),
+            extract_matched_path: Arc::new(DefaultExtractMatchedPath),
+            extract_client_ip: Arc::new(DefaultExtractClientIp),
+            set_otel_parent: Arc::new(DefaultSetOtelParent),
+        }
+    }
+
     pub fn scheme(mut self, scheme: Scheme) -> Self {
         self.scheme = http_scheme(&scheme);
         self
@@ -119,12 +128,7 @@ impl OtelConfig {
 
 impl Default for OtelConfig {
     fn default() -> Self {
-        Self {
-            scheme: http_scheme(&Scheme::HTTP),
-            extract_matched_path: Arc::new(DefaultExtractMatchedPath),
-            extract_client_ip: Arc::new(DefaultExtractClientIp),
-            set_otel_parent: Arc::new(DefaultSetOtelParent),
-        }
+        Self::new()
     }
 }
 

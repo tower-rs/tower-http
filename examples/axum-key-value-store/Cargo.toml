@@ -13,5 +13,10 @@ tokio = { version = "1.2.0", features = ["full"] }
 tower = { version = "0.4.5", features = ["full"] }
 tower-http = { path = "../../tower-http", features = ["full"] }
 tracing = "0.1"
-tracing-subscriber = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 axum = "0.3"
+uuid = { version = "0.8", features = ["v4"] }
+
+opentelemetry = { version = "0.16", features = ["rt-tokio"] }
+opentelemetry-jaeger = { version = "0.15", features = ["rt-tokio"] }
+tracing-opentelemetry = "0.16"
