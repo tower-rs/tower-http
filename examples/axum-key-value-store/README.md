@@ -13,3 +13,21 @@ This examples contains a simple key/value store with an HTTP API built using axu
 RUST_LOG=axum_key_value_store=trace,tower_http=trace \
     cargo run --bin axum-key-value-store
 ```
+
+## Enabling OpenTelemetry
+
+Run Jaeger, or whatever trace collector you want to use:
+
+```
+docker run -d -p6831:6831/udp -p6832:6832/udp -p16686:16686 jaegertracing/all-in-one:latest
+```
+
+Go to `localhost:16686`.
+
+Run the application with OpenTelemetry enabled:
+
+```
+RUST_LOG=axum_key_value_store=trace,tower_http=trace \
+    cargo run --bin axum-key-value-store -- --otel
+```
+

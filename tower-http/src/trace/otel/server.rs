@@ -1,4 +1,36 @@
-//! OpenTelemetry spans for HTTP servers.
+//! OpenTelemetry [semantic conventions for HTTP spans][otel] for servers.
+//!
+//! # Span fields
+//!
+//! [`TraceLayer::opentelemetry_server`] and [`Trace::opentelemetry_server`] will add the following
+//! fields to the request span:
+//!
+//! - `http.method`: [`Method`] of the incoming request.
+//! - `http.route`: The path of the request as returned by [`ExtractMatchedPath`]. Use
+//! [`OtelConfig::extract_matched_path_with`] to customize this. Defaults to the requests exact path.
+//! - `http.flavor`: [`Version`] of the incoming request.
+//! - `http.scheme`: [`Scheme`] used by the server. Use [`OtelConfig::scheme`] to customize this.
+//! Defaults to HTTP.
+//! - `http.host`: `Host` header of the incoming request.
+//! - `http.client_ip`: Address of the connected client. Use [`OtelConfig::extract_client_ip_with`] to
+//! customize this. Defaults to being empty.
+//! - `http.user_agent`: `User-Agent` header of the incoming request.
+//! - `http.target`: The requests exact path.
+//! - `http.status_code`: The response status code.
+//! - `request_id`: The request's id. Requires using the [`SetRequestId`] middleware.
+//! - `trace_id`: Trace ID for the parent trace context. Use [`OtelConfig::set_otel_parent_with`] to
+//! customize this.
+//! - `exception.message`: The error message, if any. Applied if the [classifier] you're using
+//! deems the response to be a failure. See ["Customizing `exception.message` and `exception.details`".][exec]
+//! - `exception.details`: The error details, if any. See ["Customizing `exception.message` and
+//! `exception.details`".][exec]
+//! - `otel.kind`: Always `"server"`.
+//! - `otel.status_code`: Whether the response was an error or not, as determined by the
+//! [classifier].
+//!
+//! [`SetRequestId`]: crate::request_id::SetRequestId
+//! [classifier]: crate::classify::ClassifyResponse
+//! [exec]: #customizing-exceptionmessage-and-exceptiondetails
 //!
 //! # Example
 //!
@@ -40,6 +72,7 @@
 //!     fn extract_matched_path<'a>(
 //!         &self,
 //!         uri: &'a Uri,
+//!         headers: &'a HeaderMap,
 //!         extensions: &'a Extensions,
 //!     ) -> Cow<'a, str> {
 //!         // ...
@@ -50,6 +83,7 @@
 //! impl ExtractClientIp for MyOtelConfig {
 //!     fn extract_client_ip<'a>(
 //!         &self,
+//!         uri: &'a Uri,
 //!         headers: &'a HeaderMap,
 //!         extensions: &'a Extensions,
 //!     ) -> Option<Cow<'a, str>> {
@@ -59,21 +93,129 @@
 //! }
 //!
 //! impl SetOtelParent for MyOtelConfig {
-//!     fn set_otel_parent(&self, headers: &HeaderMap, span: &Span) {
+//!     fn set_otel_parent(
+//!         &self,
+//!         uri: &Uri,
+//!         headers: &HeaderMap,
+//!         extensions: &Extensions,
+//!         span: &Span,
+//!     ) {
 //!         // ...
 //!         # unimplemented!()
 //!     }
 //! }
 //! ```
+//!
+//! See [axum-key-value-store] for a complete example that also sends traces to a collector.
+//!
+//! [axum-key-value-store]: https://github.com/tower-rs/tower-http/tree/master/examples/axum-key-value-store
+//!
+//! # Using functions for customization
+//!
+//! ```
+//! use tower_http::trace::{TraceLayer, otel::server::OtelConfig};
+//! use http::{uri::{Scheme, Uri}, HeaderMap, Request, Response, Extensions};
+//! use tracing::Span;
+//! use std::borrow::Cow;
+//! use hyper::{Body, Error};
+//! use tower::ServiceBuilder;
+//!
+//! let otel_config = OtelConfig::default()
+//!     .extract_matched_path_with(extract_matched_path)
+//!     .extract_client_ip_with(extract_client_ip)
+//!     .set_otel_parent_with(set_otel_parent);
+//!
+//! let service = ServiceBuilder::new()
+//!     .layer(TraceLayer::new_for_http().opentelemetry_server(otel_config))
+//!     .service_fn(handler);
+//!
+//! async fn handler(request: Request<Body>) -> Result<Response<Body>, Error> {
+//!     // ...
+//!     # todo!()
+//! }
+//!
+//! // The functions most be defined as standalone functions like so
+//! // otherwise Rust cannot infer the correct lifetimes of the arguments.
+//! //
+//! // If you need to pass state to the callbacks consider making a struct and
+//! // implementing the corresponding trait instead.
+//!
+//! fn extract_matched_path<'a>(
+//!     uri: &'a Uri,
+//!     headers: &'a HeaderMap,
+//!     extensions: &'a Extensions,
+//! ) -> Cow<'a, str> {
+//!     # unimplemented!();
+//!     // ...
+//! }
+//!
+//! fn extract_client_ip<'a>(
+//!     uri: &'a Uri,
+//!     headers: &'a HeaderMap,
+//!     extensions: &'a Extensions,
+//! ) -> Option<Cow<'a, str>> {
+//!     # unimplemented!();
+//!     // ...
+//! }
+//!
+//! fn set_otel_parent(
+//!     uri: &Uri,
+//!     headers: &HeaderMap,
+//!     extensions: &Extensions,
+//!     span: &Span,
+//! ) {
+//!     # unimplemented!();
+//!     // ...
+//! }
+//! ```
+//!
+//! # Request ids
+//!
+//! Request ids applied with the [`SetRequestId`] middleware will be automatically picked up:
+//!
+//! ```
+//! use tower_http::{
+//!     trace::{TraceLayer, otel::server::OtelConfig},
+//!     request_id::{SetRequestIdLayer, MakeRequestId, RequestId},
+//! };
+//! use http::{uri::{Scheme, Uri}, HeaderMap, Request, Response, Extensions};
+//! use tracing::Span;
+//! use std::borrow::Cow;
+//! use hyper::{Body, Error};
+//! use tower::ServiceBuilder;
+//!
+//! let service = ServiceBuilder::new()
+//!     // make sure you're adding the middleware above `TraceLayer`
+//!     .layer(SetRequestIdLayer::x_request_id(MyMakeRequestId))
+//!     .layer(TraceLayer::new_for_http().opentelemetry_server(OtelConfig::default()))
+//!     .service_fn(handler);
+//!
+//! async fn handler(request: Request<Body>) -> Result<Response<Body>, Error> {
+//!     // ...
+//!     # todo!()
+//! }
+//!
+//! #[derive(Clone, Copy)]
+//! struct MyMakeRequestId;
+//!
+//! impl MakeRequestId for MyMakeRequestId {
+//!     fn make_request_id<B>(&mut self, request: &Request<B>) -> Option<RequestId> {
+//!         # unimplemented!()
+//!         // ...
+//!     }
+//! }
+//! ```
+//!
+//! # Customizing `exception.message` and `exception.details`
+//!
+//! [otel]: https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/semantic_conventions/http.md
 
 use crate::{
     classify::{MakeClassifier, ServerErrorsFailureClass},
     request_id::RequestId,
-    trace::{MakeSpan, OnBodyChunk, OnEos, OnFailure, OnRequest, OnResponse, TraceLayer},
+    trace::{MakeSpan, OnBodyChunk, OnEos, OnFailure, OnRequest, OnResponse, Trace, TraceLayer},
 };
-use http::{
-    header, uri::Scheme, Extensions, HeaderMap, Method, Request, Response, StatusCode, Uri, Version,
-};
+use http::{header, uri::Scheme, Extensions, HeaderMap, Method, Request, Response, Uri, Version};
 use std::{borrow::Cow, sync::Arc, time::Duration};
 use tracing::{field::Empty, Span};
 
@@ -133,6 +275,13 @@ impl Default for OtelConfig {
 }
 
 impl<M> TraceLayer<M> {
+    /// Change this layer to use OpenTelemetry's [semantic conventions for HTTP spans][otel].
+    ///
+    /// Note this overrides all callbacks added previously.
+    ///
+    /// See [`tower_http::trace::otel::server`](self) for more details and examples.
+    ///
+    /// [otel]: https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/semantic_conventions/http.md
     pub fn opentelemetry_server(
         self,
         config: OtelConfig,
@@ -173,6 +322,56 @@ impl<M> TraceLayer<M> {
     }
 }
 
+impl<S, M> Trace<S, M> {
+    /// Change this middleware to use OpenTelemetry's [semantic conventions for HTTP spans][otel].
+    ///
+    /// Note this overrides all callbacks added previously.
+    ///
+    /// See [`tower_http::trace::otel::server`](self) for more details and examples.
+    ///
+    /// [otel]: https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/semantic_conventions/http.md
+    pub fn opentelemetry_server(
+        self,
+        config: OtelConfig,
+    ) -> Trace<
+        S,
+        M,
+        OtelMakeSpan,
+        OtelOnRequest,
+        OtelOnResponse,
+        OtelOnBodyChunk,
+        OtelOnEos,
+        OtelOnFailure,
+    >
+    where
+        M: MakeClassifier,
+        M::FailureClass: FailureDetails,
+    {
+        let OtelConfig {
+            scheme,
+            extract_matched_path,
+            extract_client_ip,
+            set_otel_parent,
+        } = config;
+
+        Trace {
+            inner: self.inner,
+            make_classifier: self.make_classifier,
+            make_span: OtelMakeSpan {
+                scheme,
+                extract_matched_path,
+                extract_client_ip,
+                set_otel_parent,
+            },
+            on_request: OtelOnRequest,
+            on_response: OtelOnResponse,
+            on_body_chunk: OtelOnBodyChunk,
+            on_eos: OtelOnEos,
+            on_failure: OtelOnFailure,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct OtelMakeSpan {
     scheme: Cow<'static, str>,
@@ -195,13 +394,15 @@ impl<B> MakeSpan<B> for OtelMakeSpan {
             .map(|h| h.to_str().unwrap_or(""))
             .unwrap_or("");
 
-        let http_route = self
-            .extract_matched_path
-            .extract_matched_path(request.uri(), request.extensions());
+        let http_route = self.extract_matched_path.extract_matched_path(
+            request.uri(),
+            request.headers(),
+            request.extensions(),
+        );
 
         let client_ip = self
             .extract_client_ip
-            .extract_client_ip(request.headers(), request.extensions())
+            .extract_client_ip(request.uri(), request.headers(), request.extensions())
             .unwrap_or_default();
 
         let span = tracing::info_span!(
@@ -231,8 +432,12 @@ impl<B> MakeSpan<B> for OtelMakeSpan {
             span.record("request_id", &request_id);
         }
 
-        self.set_otel_parent
-            .set_otel_parent(request.headers(), &span);
+        self.set_otel_parent.set_otel_parent(
+            request.uri(),
+            request.headers(),
+            request.extensions(),
+            &span,
+        );
 
         span
     }
@@ -254,15 +459,38 @@ fn http_method(method: &Method) -> Cow<'static, str> {
 }
 
 pub trait ExtractMatchedPath: Send + Sync + 'static {
-    fn extract_matched_path<'a>(&self, uri: &'a Uri, extensions: &'a Extensions) -> Cow<'a, str>;
+    fn extract_matched_path<'a>(
+        &self,
+        uri: &'a Uri,
+        headers: &'a HeaderMap,
+        extensions: &'a Extensions,
+    ) -> Cow<'a, str>;
+}
+
+impl<F> ExtractMatchedPath for F
+where
+    F: for<'a> Fn(&'a Uri, &'a HeaderMap, &'a Extensions) -> Cow<'a, str> + Send + Sync + 'static,
+{
+    fn extract_matched_path<'a>(
+        &self,
+        uri: &'a Uri,
+        headers: &'a HeaderMap,
+        extensions: &'a Extensions,
+    ) -> Cow<'a, str> {
+        self(uri, headers, extensions)
+    }
 }
 
 #[derive(Clone, Copy)]
 struct DefaultExtractMatchedPath;
 
 impl ExtractMatchedPath for DefaultExtractMatchedPath {
-    #[inline]
-    fn extract_matched_path<'a>(&self, uri: &'a Uri, _extensions: &'a Extensions) -> Cow<'a, str> {
+    fn extract_matched_path<'a>(
+        &self,
+        uri: &'a Uri,
+        _headers: &'a HeaderMap,
+        _extensions: &'a Extensions,
+    ) -> Cow<'a, str> {
         uri.path().into()
     }
 }
@@ -270,18 +498,36 @@ impl ExtractMatchedPath for DefaultExtractMatchedPath {
 pub trait ExtractClientIp: Send + Sync + 'static {
     fn extract_client_ip<'a>(
         &self,
+        uri: &'a Uri,
         headers: &'a HeaderMap,
         extensions: &'a Extensions,
     ) -> Option<Cow<'a, str>>;
+}
+
+impl<F> ExtractClientIp for F
+where
+    F: for<'a> Fn(&'a Uri, &'a HeaderMap, &'a Extensions) -> Option<Cow<'a, str>>
+        + Send
+        + Sync
+        + 'static,
+{
+    fn extract_client_ip<'a>(
+        &self,
+        uri: &'a Uri,
+        headers: &'a HeaderMap,
+        extensions: &'a Extensions,
+    ) -> Option<Cow<'a, str>> {
+        self(uri, headers, extensions)
+    }
 }
 
 #[derive(Clone, Copy)]
 struct DefaultExtractClientIp;
 
 impl ExtractClientIp for DefaultExtractClientIp {
-    #[inline]
     fn extract_client_ip<'a>(
         &self,
+        _uri: &'a Uri,
         _headers: &'a HeaderMap,
         _extensions: &'a Extensions,
     ) -> Option<Cow<'a, str>> {
@@ -289,18 +535,38 @@ impl ExtractClientIp for DefaultExtractClientIp {
     }
 }
 
-// NOTE: should also record trace_id on span a la
-// https://github.com/LukeMathWalker/tracing-actix-web/blob/352c274c8da1a9dec8757fc254deae5c689d408f/src/otel.rs#L43-L55
+// NOTE: document should also record trace_id on span a la
 pub trait SetOtelParent: Send + Sync + 'static {
-    fn set_otel_parent(&self, headers: &HeaderMap, span: &Span);
+    fn set_otel_parent(&self, uri: &Uri, headers: &HeaderMap, extensions: &Extensions, span: &Span);
+}
+
+impl<F> SetOtelParent for F
+where
+    F: for<'a> Fn(&'a Uri, &'a HeaderMap, &'a Extensions, &'a Span) + Send + Sync + 'static,
+{
+    fn set_otel_parent(
+        &self,
+        uri: &Uri,
+        headers: &HeaderMap,
+        extensions: &Extensions,
+        span: &Span,
+    ) {
+        self(uri, headers, extensions, span)
+    }
 }
 
 #[derive(Clone, Copy)]
 struct DefaultSetOtelParent;
 
 impl SetOtelParent for DefaultSetOtelParent {
-    #[inline]
-    fn set_otel_parent(&self, _headers: &HeaderMap, _span: &Span) {}
+    fn set_otel_parent(
+        &self,
+        _uri: &Uri,
+        _headers: &HeaderMap,
+        _extensions: &Extensions,
+        _span: &Span,
+    ) {
+    }
 }
 
 fn http_flavor(version: Version) -> Cow<'static, str> {
@@ -348,7 +614,6 @@ impl<B> OnResponse<B> for OtelOnResponse {
 pub struct OtelOnBodyChunk;
 
 impl<B> OnBodyChunk<B> for OtelOnBodyChunk {
-    #[inline]
     fn on_body_chunk(&mut self, _chunk: &B, _latency: Duration, _span: &Span) {}
 }
 
@@ -357,7 +622,6 @@ impl<B> OnBodyChunk<B> for OtelOnBodyChunk {
 pub struct OtelOnEos;
 
 impl OnEos for OtelOnEos {
-    #[inline]
     fn on_eos(self, _trailers: Option<&HeaderMap>, _stream_duration: Duration, _span: &Span) {}
 }
 
@@ -370,13 +634,7 @@ where
     E: FailureDetails,
 {
     fn on_failure(&mut self, failure: E, _latency: Duration, span: &Span) {
-        if let Some(status) = failure.status() {
-            if status.is_server_error() {
-                span.record("otel.status_code", &"ERROR");
-            }
-        } else {
-            span.record("otel.status_code", &"ERROR");
-        }
+        span.record("otel.status_code", &"ERROR");
 
         if let Some(message) = failure.message() {
             span.record("exception.message", &tracing::field::display(message));
@@ -389,21 +647,12 @@ where
 }
 
 pub trait FailureDetails {
-    fn status(&self) -> Option<StatusCode>;
-
     fn message(&self) -> Option<String>;
 
     fn details(&self) -> Option<String>;
 }
 
 impl FailureDetails for ServerErrorsFailureClass {
-    fn status(&self) -> Option<StatusCode> {
-        match self {
-            ServerErrorsFailureClass::StatusCode(status) => Some(*status),
-            ServerErrorsFailureClass::Error(_) => None,
-        }
-    }
-
     fn message(&self) -> Option<String> {
         match self {
             ServerErrorsFailureClass::StatusCode(_) => None,
@@ -411,7 +660,6 @@ impl FailureDetails for ServerErrorsFailureClass {
         }
     }
 
-    #[inline]
     fn details(&self) -> Option<String> {
         None
     }

@@ -371,6 +371,10 @@
 //! - [`TraceLayer::new_for_grpc`] classifies based on the gRPC protocol and supports streaming
 //! responses.
 //!
+//! # OpenTelemetry
+//!
+//! For using OpenTelemetry's conventional span fields see [`otel::server`].
+//!
 //! [tracing]: https://crates.io/crates/tracing
 //! [`Service`]: tower_service::Service
 //! [`Service::call`]: tower_service::Service::call
