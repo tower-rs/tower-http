@@ -33,6 +33,11 @@ The [examples] folder contains various examples of how to use Tower HTTP:
 
 - [warp-key-value-store]: A key/value store with an HTTP API built with warp.
 - [tonic-key-value-store]: A key/value store with a gRPC API and client built with tonic.
+- [axum-key-value-store]: A key/value store with an HTTP API built with axum.
+
+## Minimum supported Rust version
+
+tower-http's MSRV is 1.51.
 
 ## Getting Help
 
@@ -64,6 +69,7 @@ additional terms or conditions.
 [http]: https://crates.io/crates/http
 [tonic-key-value-store]: https://github.com/tower-rs/tower-http/tree/master/examples/tonic-key-value-store
 [warp-key-value-store]: https://github.com/tower-rs/tower-http/tree/master/examples/warp-key-value-store
+[axum-key-value-store]: https://github.com/tower-rs/tower-http/tree/master/examples/axum-key-value-store
 [chat]: https://discord.gg/tokio
 [docs]: https://docs.rs/tower-http
 [hyper]: https://github.com/hyperium/hyper
