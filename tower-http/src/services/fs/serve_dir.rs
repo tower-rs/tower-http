@@ -513,6 +513,20 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn basic_with_index() {
+        let svc = ServeDir::new("../test-files");
+
+        let req = Request::new(Body::empty());
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(res.headers()[header::CONTENT_TYPE], "text/html");
+
+        let body = body_into_text(res.into_body()).await;
+        assert_eq!(body, "<b>HTML!</b>\n");
+    }
+
+    #[tokio::test]
     async fn head_request() {
         let svc = ServeDir::new("../test-files");
 
