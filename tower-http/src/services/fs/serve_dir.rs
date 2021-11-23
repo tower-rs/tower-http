@@ -476,7 +476,7 @@ fn empty_body() -> ResponseBody {
 }
 
 opaque_body! {
-    /// Response body for [`ServeDir`].
+    /// Response body for [`ServeDir`] and [`ServeFile`].
     pub type ResponseBody = BoxBody<Bytes, io::Error>;
 }
 
