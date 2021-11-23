@@ -58,14 +58,14 @@ use tower_service::Service;
 /// [`and_then`](tower::ServiceBuilder::and_then) to change the response:
 ///
 /// ```
-/// use tower_http::services::fs::{ServeDir, ServeDirResponseBody};
+/// use tower_http::services::fs::{ServeDir, ServeFileSystemResponseBody};
 /// use tower::ServiceBuilder;
 /// use http::{StatusCode, Response};
 /// use http_body::{Body as _, Full};
 /// use std::io;
 ///
 /// let service = ServiceBuilder::new()
-///     .and_then(|response: Response<ServeDirResponseBody>| async move {
+///     .and_then(|response: Response<ServeFileSystemResponseBody>| async move {
 ///         let response = if response.status() == StatusCode::NOT_FOUND {
 ///             let body = Full::from("Not Found")
 ///                 .map_err(|err| match err {})
@@ -92,9 +92,53 @@ use tower_service::Service;
 #[derive(Clone, Debug)]
 pub struct ServeDir {
     base: PathBuf,
-    append_index_html_on_directories: bool,
     buf_chunk_size: usize,
     precompressed_variants: Option<PrecompressedVariants>,
+    // This is used to specialise implementation for
+    // single files
+    variant: ServeVariant,
+}
+
+// Allow the ServeDir service to be used in the ServeFile service
+// with almost no overhead
+#[derive(Clone, Debug)]
+enum ServeVariant {
+    Directory {
+        append_index_html_on_directories: bool,
+    },
+    SingleFile {
+        mime: HeaderValue,
+    },
+}
+
+impl ServeVariant {
+    fn full_path(&self, base_path: &Path, requested_path: &str) -> Option<PathBuf> {
+        match self {
+            ServeVariant::Directory {
+                append_index_html_on_directories: _,
+            } => {
+                let full_path = build_and_validate_path(base_path, requested_path)?;
+                Some(full_path)
+            }
+            ServeVariant::SingleFile { mime: _ } => Some(base_path.to_path_buf()),
+        }
+    }
+}
+
+fn build_and_validate_path(base_path: &Path, requested_path: &str) -> Option<PathBuf> {
+    // build and validate the path
+    let path = requested_path.trim_start_matches('/');
+
+    let path_decoded = percent_decode(path.as_ref()).decode_utf8().ok()?;
+
+    let mut full_path = base_path.to_path_buf();
+    for seg in path_decoded.split('/') {
+        if seg.starts_with("..") || seg.contains('\\') {
+            return None;
+        }
+        full_path.push(seg);
+    }
+    Some(full_path)
 }
 
 impl ServeDir {
@@ -105,9 +149,20 @@ impl ServeDir {
 
         Self {
             base,
-            append_index_html_on_directories: true,
             buf_chunk_size: DEFAULT_CAPACITY,
             precompressed_variants: None,
+            variant: ServeVariant::Directory {
+                append_index_html_on_directories: true,
+            },
+        }
+    }
+
+    pub(crate) fn new_single_file<P: AsRef<Path>>(path: P, mime: HeaderValue) -> Self {
+        Self {
+            base: path.as_ref().to_owned(),
+            buf_chunk_size: DEFAULT_CAPACITY,
+            precompressed_variants: None,
+            variant: ServeVariant::SingleFile { mime },
         }
     }
 
@@ -117,8 +172,15 @@ impl ServeDir {
     ///
     /// Defaults to `true`.
     pub fn append_index_html_on_directories(mut self, append: bool) -> Self {
-        self.append_index_html_on_directories = append;
-        self
+        match &mut self.variant {
+            ServeVariant::Directory {
+                append_index_html_on_directories,
+            } => {
+                *append_index_html_on_directories = append;
+                self
+            }
+            ServeVariant::SingleFile { mime: _ } => self,
+        }
     }
 
     /// Set a specific read buffer chunk size.
@@ -181,6 +243,29 @@ impl ServeDir {
     }
 }
 
+async fn maybe_redirect_or_append_path(
+    full_path: &mut PathBuf,
+    uri: Uri,
+    append_index_html_on_directories: bool,
+) -> Option<Output> {
+    if !uri.path().ends_with('/') {
+        if is_dir(full_path).await {
+            let location = HeaderValue::from_str(&append_slash_on_path(uri).to_string()).unwrap();
+            return Some(Output::Redirect(location));
+        } else {
+            return None;
+        }
+    } else if is_dir(full_path).await {
+        if append_index_html_on_directories {
+            full_path.push("index.html");
+            return None;
+        } else {
+            return Some(Output::NotFound);
+        }
+    }
+    None
+}
+
 impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
     type Response = Response<ResponseBody>;
     type Error = io::Error;
@@ -192,29 +277,15 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
     }
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
-        // build and validate the path
-        let path = req.uri().path();
-        let path = path.trim_start_matches('/');
-
-        let path_decoded = if let Ok(decoded_utf8) = percent_decode(path.as_ref()).decode_utf8() {
-            decoded_utf8
-        } else {
-            return ResponseFuture {
-                inner: Inner::Invalid,
-            };
-        };
-
-        let mut full_path = self.base.clone();
-        for seg in path_decoded.split('/') {
-            if seg.starts_with("..") || seg.contains('\\') {
+        let mut full_path = match self.variant.full_path(&self.base, req.uri().path()) {
+            Some(full_path) => full_path,
+            None => {
                 return ResponseFuture {
                     inner: Inner::Invalid,
-                };
+                }
             }
-            full_path.push(seg);
-        }
+        };
 
-        let append_index_html_on_directories = self.append_index_html_on_directories;
         let buf_chunk_size = self.buf_chunk_size;
         let uri = req.uri().clone();
 
@@ -226,29 +297,35 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
         );
 
         let request_method = req.method().clone();
+        let variant = self.variant.clone();
 
         let open_file_future = Box::pin(async move {
-            if !uri.path().ends_with('/') {
-                if is_dir(&full_path).await {
-                    let location =
-                        HeaderValue::from_str(&append_slash_on_path(uri).to_string()).unwrap();
-                    return Ok(Output::Redirect(location));
+            let mime = match variant {
+                ServeVariant::Directory {
+                    append_index_html_on_directories,
+                } => {
+                    // Might already at this point know a redirect or not found result should be
+                    // returned which corresponds to a Some(output). Otherwise the path might be
+                    // modified and proceed to the open file/metadata future.
+                    if let Some(output) = maybe_redirect_or_append_path(
+                        &mut full_path,
+                        uri,
+                        append_index_html_on_directories,
+                    )
+                    .await
+                    {
+                        return Ok(output);
+                    }
+                    let guess = mime_guess::from_path(&full_path);
+                    guess
+                        .first_raw()
+                        .map(|mime| HeaderValue::from_static(mime))
+                        .unwrap_or_else(|| {
+                            HeaderValue::from_str(mime::APPLICATION_OCTET_STREAM.as_ref()).unwrap()
+                        })
                 }
-            } else if is_dir(&full_path).await {
-                if append_index_html_on_directories {
-                    full_path.push("index.html");
-                } else {
-                    return Ok(Output::NotFound);
-                }
-            }
-
-            let guess = mime_guess::from_path(&full_path);
-            let mime = guess
-                .first_raw()
-                .map(|mime| HeaderValue::from_static(mime))
-                .unwrap_or_else(|| {
-                    HeaderValue::from_str(mime::APPLICATION_OCTET_STREAM.as_ref()).unwrap()
-                });
+                ServeVariant::SingleFile { mime } => mime,
+            };
 
             match request_method {
                 Method::HEAD => {
