@@ -1,42 +1,24 @@
 //! Service that serves a file.
 
-use super::{
-    file_metadata_with_fallback, open_file_with_fallback, AsyncReadBody, FileFuture,
-    PrecompressedVariants,
-};
-use crate::{
-    content_encoding::{encodings, Encoding},
-    services::fs::DEFAULT_CAPACITY,
-};
-use bytes::Bytes;
-use http::{header, method::Method, HeaderValue, Request, Response};
-use http_body::{combinators::BoxBody, Body};
+use super::ServeDir;
+use http::{HeaderValue, Request};
 use mime::Mime;
 use std::{
-    fs::Metadata,
-    future::Future,
-    io,
-    path::{Path, PathBuf},
-    pin::Pin,
+    path::Path,
     task::{Context, Poll},
 };
 use tower_service::Service;
 
 /// Service that serves a file.
 #[derive(Clone, Debug)]
-pub struct ServeFile {
-    path: PathBuf,
-    mime: HeaderValue,
-    buf_chunk_size: usize,
-    precompressed_variants: Option<PrecompressedVariants>,
-}
-
+pub struct ServeFile(ServeDir);
+// Note that this is just a special case of ServeDir
 impl ServeFile {
     /// Create a new [`ServeFile`].
     ///
     /// The `Content-Type` will be guessed from the file extension.
     pub fn new<P: AsRef<Path>>(path: P) -> Self {
-        let guess = mime_guess::from_path(&path);
+        let guess = mime_guess::from_path(path.as_ref());
         let mime = guess
             .first_raw()
             .map(|mime| HeaderValue::from_static(mime))
@@ -44,14 +26,7 @@ impl ServeFile {
                 HeaderValue::from_str(mime::APPLICATION_OCTET_STREAM.as_ref()).unwrap()
             });
 
-        let path = path.as_ref().to_owned();
-
-        Self {
-            path,
-            mime,
-            buf_chunk_size: DEFAULT_CAPACITY,
-            precompressed_variants: None,
-        }
+        Self(ServeDir::new_single_file(path, mime))
     }
 
     /// Create a new [`ServeFile`] with a specific mime type.
@@ -63,14 +38,7 @@ impl ServeFile {
     /// [header value]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html
     pub fn new_with_mime<P: AsRef<Path>>(path: P, mime: &Mime) -> Self {
         let mime = HeaderValue::from_str(mime.as_ref()).expect("mime isn't a valid header value");
-        let path = path.as_ref().to_owned();
-
-        Self {
-            path,
-            mime,
-            buf_chunk_size: DEFAULT_CAPACITY,
-            precompressed_variants: None,
-        }
+        Self(ServeDir::new_single_file(path, mime))
     }
 
     /// Informs the service that it should also look for a precompressed gzip
@@ -83,11 +51,8 @@ impl ServeFile {
     /// Both the precompressed version and the uncompressed version are expected
     /// to be present in the same directory. Different precompressed
     /// variants can be combined.
-    pub fn precompressed_gzip(mut self) -> Self {
-        self.precompressed_variants
-            .get_or_insert(Default::default())
-            .gzip = true;
-        self
+    pub fn precompressed_gzip(self) -> Self {
+        Self(self.0.precompressed_gzip())
     }
 
     /// Informs the service that it should also look for a precompressed brotli
@@ -100,11 +65,8 @@ impl ServeFile {
     /// Both the precompressed version and the uncompressed version are expected
     /// to be present in the same directory. Different precompressed
     /// variants can be combined.
-    pub fn precompressed_br(mut self) -> Self {
-        self.precompressed_variants
-            .get_or_insert(Default::default())
-            .br = true;
-        self
+    pub fn precompressed_br(self) -> Self {
+        Self(self.0.precompressed_br())
     }
 
     /// Informs the service that it should also look for a precompressed deflate
@@ -117,31 +79,22 @@ impl ServeFile {
     /// Both the precompressed version and the uncompressed version are expected
     /// to be present in the same directory. Different precompressed
     /// variants can be combined.
-    pub fn precompressed_deflate(mut self) -> Self {
-        self.precompressed_variants
-            .get_or_insert(Default::default())
-            .deflate = true;
-        self
+    pub fn precompressed_deflate(self) -> Self {
+        Self(self.0.precompressed_deflate())
     }
 
     /// Set a specific read buffer chunk size.
     ///
     /// The default capacity is 64kb.
-    pub fn with_buf_chunk_size(mut self, chunk_size: usize) -> Self {
-        self.buf_chunk_size = chunk_size;
-        self
+    pub fn with_buf_chunk_size(self, chunk_size: usize) -> Self {
+        Self(self.0.with_buf_chunk_size(chunk_size))
     }
 }
 
-enum FileReadFuture {
-    Open(FileFuture),
-    Metadata(Pin<Box<dyn Future<Output = io::Result<(Metadata, Option<Encoding>)>>>>),
-}
-
 impl<ReqBody> Service<Request<ReqBody>> for ServeFile {
-    type Error = io::Error;
-    type Response = Response<ResponseBody>;
-    type Future = ResponseFuture;
+    type Error = <ServeDir as Service<Request<ReqBody>>>::Error;
+    type Response = <ServeDir as Service<Request<ReqBody>>>::Response;
+    type Future = <ServeDir as Service<Request<ReqBody>>>::Future;
 
     #[inline]
     fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -149,112 +102,21 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeFile {
     }
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
-        let path = self.path.clone();
-        // The negotiated encodings based on the Accept-Encoding header and
-        // precompressed variants
-        let negotiated_encodings = encodings(
-            req.headers(),
-            self.precompressed_variants.unwrap_or_default(),
-        );
-        let file_future = match *req.method() {
-            Method::HEAD => FileReadFuture::Metadata(Box::pin(file_metadata_with_fallback(
-                path,
-                negotiated_encodings,
-            ))),
-            _ => FileReadFuture::Open(Box::pin(open_file_with_fallback(
-                path,
-                negotiated_encodings,
-            ))),
-        };
-
-        ResponseFuture {
-            file_future,
-            mime: Some(self.mime.clone()),
-            buf_chunk_size: self.buf_chunk_size,
-        }
+        self.0.call(req)
     }
-}
-
-/// Response future of [`ServeFile`].
-pub struct ResponseFuture {
-    file_future: FileReadFuture,
-    mime: Option<HeaderValue>,
-    buf_chunk_size: usize,
-}
-
-impl Future for ResponseFuture {
-    type Output = io::Result<Response<ResponseBody>>;
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        match &mut self.file_future {
-            FileReadFuture::Open(open_file_future) => {
-                let (file, maybe_encoding) = match open_file_future.as_mut().poll(cx) {
-                    Poll::Ready(Ok((file, maybe_encoding))) => (file, maybe_encoding),
-                    Poll::Ready(Err(err)) => {
-                        return Poll::Ready(
-                            super::response_from_io_error(err)
-                                .map(|res| res.map(ResponseBody::new)),
-                        )
-                    }
-                    Poll::Pending => return Poll::Pending,
-                };
-                let chunk_size = self.buf_chunk_size;
-                let body = AsyncReadBody::with_capacity(file, chunk_size).boxed();
-                let body = ResponseBody::new(body);
-                let mut res = Response::new(body);
-
-                res.headers_mut()
-                    .insert(header::CONTENT_TYPE, self.mime.take().unwrap());
-
-                if let Some(encoding) = maybe_encoding {
-                    res.headers_mut()
-                        .insert(header::CONTENT_ENCODING, encoding.into_header_value());
-                }
-                Poll::Ready(Ok(res))
-            }
-            FileReadFuture::Metadata(metadata_future) => {
-                let (metadata, maybe_encoding) = match metadata_future.as_mut().poll(cx) {
-                    Poll::Ready(Ok((metadata, maybe_encoding))) => (metadata, maybe_encoding),
-                    Poll::Ready(Err(err)) => {
-                        return Poll::Ready(
-                            super::response_from_io_error(err)
-                                .map(|res| res.map(ResponseBody::new)),
-                        )
-                    }
-                    Poll::Pending => return Poll::Pending,
-                };
-
-                let mut res = Response::new(ResponseBody::new(BoxBody::default()));
-
-                res.headers_mut()
-                    .insert(header::CONTENT_LENGTH, metadata.len().into());
-                res.headers_mut()
-                    .insert(header::CONTENT_TYPE, self.mime.take().unwrap());
-
-                if let Some(encoding) = maybe_encoding {
-                    res.headers_mut()
-                        .insert(header::CONTENT_ENCODING, encoding.into_header_value());
-                }
-                Poll::Ready(Ok(res))
-            }
-        }
-    }
-}
-
-opaque_body! {
-    /// Response body for [`ServeFile`].
-    pub type ResponseBody = BoxBody<Bytes, io::Error>;
 }
 
 #[cfg(test)]
 mod tests {
     use std::io::Read;
+    use std::str::FromStr;
 
     #[allow(unused_imports)]
     use super::*;
     use brotli::BrotliDecompress;
     use flate2::bufread::DeflateDecoder;
     use flate2::bufread::GzDecoder;
+    use http::header;
     use http::Method;
     use http::{Request, StatusCode};
     use http_body::Body as _;
@@ -268,6 +130,20 @@ mod tests {
         let res = svc.oneshot(Request::new(Body::empty())).await.unwrap();
 
         assert_eq!(res.headers()["content-type"], "text/markdown");
+
+        let body = res.into_body().data().await.unwrap().unwrap();
+        let body = String::from_utf8(body.to_vec()).unwrap();
+
+        assert!(body.starts_with("# Tower HTTP"));
+    }
+
+    #[tokio::test]
+    async fn basic_with_mime() {
+        let svc = ServeFile::new_with_mime("../README.md", &Mime::from_str("image/jpg").unwrap());
+
+        let res = svc.oneshot(Request::new(Body::empty())).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "image/jpg");
 
         let body = res.into_body().data().await.unwrap().unwrap();
         let body = String::from_utf8(body.to_vec()).unwrap();

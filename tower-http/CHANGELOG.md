@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
+- `ServeDir` and `ServeFile`: Changed service types, both now return `ServeFileSystemResponseBody` and `ServeFileSystemResponseFuture` ([#187])
 - `AddAuthorization`, `InFlightRequests`, `SetRequestHeader`, `SetResponseHeader`, `AddExtension`, `MapRequestBody` and `MapResponseBody`
    now requires underlying service to use `http::Request<B>` and `http::Response<U>` as request and responses ([#182])
 - `ServeDir` and `ServeFile`: Ability to serve precompressed files ([#156])
@@ -42,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#170]: https://github.com/tower-rs/tower-http/pull/170
 [#172]: https://github.com/tower-rs/tower-http/pull/172
 [#182]: https://github.com/tower-rs/tower-http/pull/182
+[#187]: https://github.com/tower-rs/tower-http/pull/187
 
 # 0.1.2 (November 13, 2021)
 
