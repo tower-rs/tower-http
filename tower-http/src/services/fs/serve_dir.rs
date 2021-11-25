@@ -1,4 +1,5 @@
 use super::{open_file_with_fallback, AsyncReadBody, PrecompressedVariants};
+use crate::services::fs::file_metadata_with_fallback;
 use crate::{
     content_encoding::{encodings, Encoding},
     services::fs::DEFAULT_CAPACITY,
@@ -7,8 +8,11 @@ use bytes::Bytes;
 use futures_util::ready;
 use http::{header, HeaderValue, Method, Request, Response, StatusCode, Uri};
 use http_body::{combinators::BoxBody, Body, Empty, Full};
+use http_range_header::RangeUnsatisfiableError;
 use percent_encoding::percent_decode;
+use std::fs::Metadata;
 use std::io::SeekFrom;
+use std::ops::RangeInclusive;
 use std::{
     future::Future,
     io,
@@ -19,8 +23,6 @@ use std::{
 use tokio::fs::File;
 use tokio::io::AsyncSeekExt;
 use tower_service::Service;
-use std::ops::RangeInclusive;
-use http_range_header::RangeUnsatisfiableError;
 
 /// Service that serves files from a given directory and all its sub directories.
 ///
@@ -332,35 +334,55 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
                 ServeVariant::SingleFile { mime } => mime,
             };
 
-            let (mut file, maybe_encoding) =
-                open_file_with_fallback(full_path, negotiated_encodings).await?;
-            let file_size = file.metadata().await?.len();
-            let head_request = request_method == Method::HEAD;
-
-            let maybe_range = range_header.as_ref()
-                .map(|header_value| http_range_header::parse_range_header(header_value)
-                    .and_then(|first_pass| first_pass.validate(file_size)));
-            if let Some(Ok(ranges)) = maybe_range.as_ref() {
-                // If there is any other amount of ranges than 1 we'll return an unsatisfiable later as there isn't yet support for multipart ranges
-                if ranges.len() == 1 && !head_request {
-                    file.seek(SeekFrom::Start(*ranges[0].start())).await?;
+            match request_method {
+                Method::HEAD => {
+                    let (meta, maybe_encoding) =
+                        file_metadata_with_fallback(full_path, negotiated_encodings).await?;
+                    let maybe_range = try_parse_range(range_header.as_ref(), meta.len());
+                    Ok(Output::File(FileRequest {
+                        extent: FileRequestExtent::Head(meta),
+                        chunk_size: buf_chunk_size,
+                        mime_header_value: mime,
+                        maybe_encoding,
+                        maybe_range,
+                    }))
+                }
+                _ => {
+                    let (mut file, maybe_encoding) =
+                        open_file_with_fallback(full_path, negotiated_encodings).await?;
+                    let meta = file.metadata().await?;
+                    let maybe_range = try_parse_range(range_header.as_ref(), meta.len());
+                    if let Some(Ok(ranges)) = maybe_range.as_ref() {
+                        // If there is any other amount of ranges than 1 we'll return an unsatisfiable later as there isn't yet support for multipart ranges
+                        if ranges.len() == 1 {
+                            file.seek(SeekFrom::Start(*ranges[0].start())).await?;
+                        }
+                    }
+                    Ok(Output::File(FileRequest {
+                        extent: FileRequestExtent::Full(file, meta),
+                        chunk_size: buf_chunk_size,
+                        mime_header_value: mime,
+                        maybe_encoding,
+                        maybe_range,
+                    }))
                 }
             }
-            Ok(Output::File(FileRequest {
-                file,
-                total_size: file_size,
-                chunk_size: buf_chunk_size,
-                mime_header_value: mime,
-                maybe_encoding,
-                maybe_range,
-                head_request,
-            }))
         });
 
         ResponseFuture {
             inner: Inner::Valid(open_file_future),
         }
     }
+}
+
+fn try_parse_range(
+    maybe_range_ref: Option<&String>,
+    file_size: u64,
+) -> Option<Result<Vec<RangeInclusive<u64>>, RangeUnsatisfiableError>> {
+    maybe_range_ref.map(|header_value| {
+        http_range_header::parse_range_header(header_value)
+            .and_then(|first_pass| first_pass.validate(file_size))
+    })
 }
 
 async fn is_dir(full_path: &Path) -> bool {
@@ -405,13 +427,16 @@ enum Output {
 }
 
 struct FileRequest {
-    file: File,
-    total_size: u64,
+    extent: FileRequestExtent,
     chunk_size: usize,
     mime_header_value: HeaderValue,
     maybe_encoding: Option<Encoding>,
     maybe_range: Option<Result<Vec<RangeInclusive<u64>>, RangeUnsatisfiableError>>,
-    head_request: bool,
+}
+
+enum FileRequestExtent {
+    Full(File, Metadata),
+    Head(Metadata),
 }
 
 type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + Sync + 'static>>;
@@ -434,10 +459,14 @@ impl Future for ResponseFuture {
             Inner::Valid(open_file_future) => {
                 let response = match ready!(Pin::new(open_file_future).poll(cx)) {
                     Ok(Output::File(file_request)) => {
+                        let (maybe_file, size) = match file_request.extent {
+                            FileRequestExtent::Full(file, meta) => (Some(file), meta.len()),
+                            FileRequestExtent::Head(meta) => (None, meta.len()),
+                        };
                         let mut builder = Response::builder()
                             .header(header::CONTENT_TYPE, file_request.mime_header_value)
                             .header(header::ACCEPT_RANGES, "bytes")
-                            .header(header::CONTENT_LENGTH, file_request.total_size.to_string());
+                            .header(header::CONTENT_LENGTH, size.to_string());
                         if let Some(encoding) = file_request.maybe_encoding {
                             builder = builder
                                 .header(header::CONTENT_ENCODING, encoding.into_header_value());
@@ -450,21 +479,21 @@ impl Future for ResponseFuture {
                                             builder
                                                 .header(
                                                     header::CONTENT_RANGE,
-                                                    format!("bytes */{}", file_request.total_size),
+                                                    format!("bytes */{}", size),
                                                 )
                                                 .status(StatusCode::RANGE_NOT_SATISFIABLE)
                                                 .body(body_from_bytes(Bytes::from(
                                                     "Cannot serve multipart range requests",
                                                 )))
                                         } else {
-                                            let size = range.end() - range.start() + 1;
-                                            let body = if !file_request.head_request {
+                                            let range_size = range.end() - range.start() + 1;
+                                            let body = if let Some(file) = maybe_file {
                                                 let body = AsyncReadBody::with_capacity_limited(
-                                                    file_request.file,
+                                                    file,
                                                     file_request.chunk_size,
-                                                    size,
+                                                    range_size,
                                                 )
-                                                    .boxed();
+                                                .boxed();
                                                 ResponseBody::new(body)
                                             } else {
                                                 empty_body()
@@ -476,7 +505,7 @@ impl Future for ResponseFuture {
                                                         "bytes {}-{}/{}",
                                                         range.start(),
                                                         range.end(),
-                                                        file_request.total_size
+                                                        size
                                                     ),
                                                 )
                                                 .status(StatusCode::PARTIAL_CONTENT)
@@ -486,7 +515,7 @@ impl Future for ResponseFuture {
                                         builder
                                             .header(
                                                 header::CONTENT_RANGE,
-                                                format!("bytes */{}", file_request.total_size),
+                                                format!("bytes */{}", size),
                                             )
                                             .status(StatusCode::RANGE_NOT_SATISFIABLE)
                                             .body(body_from_bytes(Bytes::from(
@@ -495,20 +524,15 @@ impl Future for ResponseFuture {
                                     }
                                 }
                                 Err(_) => builder
-                                    .header(
-                                        header::CONTENT_RANGE,
-                                        format!("bytes */{}", file_request.total_size),
-                                    )
+                                    .header(header::CONTENT_RANGE, format!("bytes */{}", size))
                                     .status(StatusCode::RANGE_NOT_SATISFIABLE)
                                     .body(empty_body()),
                             }
                         } else {
-                            let body = if !file_request.head_request {
-                                let box_body = AsyncReadBody::with_capacity(
-                                    file_request.file,
-                                    file_request.chunk_size,
-                                )
-                                .boxed();
+                            let body = if let Some(file) = maybe_file {
+                                let box_body =
+                                    AsyncReadBody::with_capacity(file, file_request.chunk_size)
+                                        .boxed();
                                 ResponseBody::new(box_body)
                             } else {
                                 empty_body()
