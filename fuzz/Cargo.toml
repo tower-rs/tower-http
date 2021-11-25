@@ -1,0 +1,27 @@
+[package]
+name = "http-range-header-fuzz"
+version = "0.0.0"
+authors = ["Automatically generated"]
+publish = false
+edition = "2018"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = { version = "0.4" }
+regex = "1.5.4"
+lazy_static = "1.4.0"
+
+[dependencies.http-range-header]
+path = "../http-range-header"
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "random_string_input"
+path = "fuzz_targets/http_range_header.rs"
+test = false
+doc = false
