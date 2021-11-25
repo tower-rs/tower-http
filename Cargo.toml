@@ -2,5 +2,4 @@
 members = [
   "tower-http",
   "examples/*",
-  "http-range-header",
 ]
