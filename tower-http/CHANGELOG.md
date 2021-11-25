@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   adding middleware from tower-http.
 - Add `SetRequestId` and `PropagateRequestId` middleware ([#150])
 - Add `LatencyUnit::Seconds` for formatting latencies as seconds.
+- Support customizing which status codes are considered failures by `GrpcErrorsAsFailures` ([#189])
 
 [#124]: https://github.com/tower-rs/tower-http/pull/124
 [#148]: https://github.com/tower-rs/tower-http/pull/148
@@ -44,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#172]: https://github.com/tower-rs/tower-http/pull/172
 [#182]: https://github.com/tower-rs/tower-http/pull/182
 [#187]: https://github.com/tower-rs/tower-http/pull/187
+[#189]: https://github.com/tower-rs/tower-http/pull/189
 
 # 0.1.2 (November 13, 2021)
 
