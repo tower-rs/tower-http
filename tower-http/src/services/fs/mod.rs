@@ -17,7 +17,6 @@ use tokio_util::io::ReaderStream;
 
 use futures_util::Stream;
 
-mod parse_range;
 mod serve_dir;
 mod serve_file;
 

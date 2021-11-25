@@ -1,5 +1,4 @@
 use super::{open_file_with_fallback, AsyncReadBody, PrecompressedVariants};
-use crate::services::fs::parse_range::{parse_range, ParsedRangeHeader};
 use crate::{
     content_encoding::{encodings, Encoding},
     services::fs::DEFAULT_CAPACITY,
@@ -20,6 +19,8 @@ use std::{
 use tokio::fs::File;
 use tokio::io::AsyncSeekExt;
 use tower_service::Service;
+use std::ops::RangeInclusive;
+use http_range_header::RangeUnsatisfiableError;
 
 /// Service that serves files from a given directory and all its sub directories.
 ///
@@ -257,8 +258,11 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
                 open_file_with_fallback(full_path, negotiated_encodings).await?;
             let file_size = file.metadata().await?.len();
             let head_request = request_method == Method::HEAD;
-            let maybe_range = range_header.map(|range| parse_range(&range, file_size));
-            if let Some(ParsedRangeHeader::Range(ranges)) = maybe_range.as_ref() {
+
+            let maybe_range = range_header.as_ref()
+                .map(|header_value| http_range_header::parse_range_header(header_value)
+                    .and_then(|first_pass| first_pass.validate(file_size)));
+            if let Some(Ok(ranges)) = maybe_range.as_ref() {
                 // If there is any other amount of ranges than 1 we'll return an unsatisfiable later as there isn't yet support for multipart ranges
                 if ranges.len() == 1 && !head_request {
                     file.seek(SeekFrom::Start(*ranges[0].start())).await?;
@@ -328,7 +332,7 @@ struct FileRequest {
     chunk_size: usize,
     mime_header_value: HeaderValue,
     maybe_encoding: Option<Encoding>,
-    maybe_range: Option<ParsedRangeHeader>,
+    maybe_range: Option<Result<Vec<RangeInclusive<u64>>, RangeUnsatisfiableError>>,
     head_request: bool,
 }
 
@@ -360,19 +364,11 @@ impl Future for ResponseFuture {
                             builder = builder
                                 .header(header::CONTENT_ENCODING, encoding.into_header_value());
                         }
-                        if let Some(range) = file_request.maybe_range {
-                            match range {
-                                ParsedRangeHeader::Range(ranges) => {
+                        if let Some(reasonable_range) = file_request.maybe_range {
+                            match reasonable_range {
+                                Ok(ranges) => {
                                     if let Some(range) = ranges.get(0) {
-                                        if *range.end() >= file_request.total_size {
-                                            builder
-                                                .header(
-                                                    header::CONTENT_RANGE,
-                                                    format!("bytes */{}", file_request.total_size),
-                                                )
-                                                .status(StatusCode::RANGE_NOT_SATISFIABLE)
-                                                .body(empty_body())
-                                        } else if ranges.len() > 1 {
+                                        if ranges.len() > 1 {
                                             builder
                                                 .header(
                                                     header::CONTENT_RANGE,
@@ -390,7 +386,7 @@ impl Future for ResponseFuture {
                                                     file_request.chunk_size,
                                                     size,
                                                 )
-                                                .boxed();
+                                                    .boxed();
                                                 ResponseBody::new(body)
                                             } else {
                                                 empty_body()
@@ -420,20 +416,13 @@ impl Future for ResponseFuture {
                                             )))
                                     }
                                 }
-                                ParsedRangeHeader::Unsatisfiable(reason) => builder
+                                Err(_) => builder
                                     .header(
                                         header::CONTENT_RANGE,
                                         format!("bytes */{}", file_request.total_size),
                                     )
                                     .status(StatusCode::RANGE_NOT_SATISFIABLE)
-                                    .body(body_from_bytes(Bytes::from(reason))),
-                                ParsedRangeHeader::Malformed(reason) => builder
-                                    .header(
-                                        header::CONTENT_RANGE,
-                                        format!("bytes */{}", file_request.total_size),
-                                    )
-                                    .status(StatusCode::BAD_REQUEST)
-                                    .body(body_from_bytes(Bytes::from(reason))),
+                                    .body(empty_body()),
                             }
                         } else {
                             let body = if !file_request.head_request {
@@ -992,7 +981,7 @@ mod tests {
             .body(Body::empty())
             .unwrap();
         let res = svc.oneshot(req).await.unwrap();
-        assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(res.status(), StatusCode::RANGE_NOT_SATISFIABLE);
     }
 
     #[tokio::test]
@@ -1004,6 +993,6 @@ mod tests {
             .body(Body::empty())
             .unwrap();
         let res = svc.oneshot(req).await.unwrap();
-        assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(res.status(), StatusCode::RANGE_NOT_SATISFIABLE);
     }
 }
