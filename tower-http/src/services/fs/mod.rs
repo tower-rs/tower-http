@@ -5,7 +5,7 @@ use http::{HeaderMap, Response, StatusCode};
 use http_body::{combinators::BoxBody, Body, Empty};
 use pin_project_lite::pin_project;
 use std::fs::Metadata;
-use std::{ffi::OsStr, future::Future, path::PathBuf};
+use std::{ffi::OsStr, path::PathBuf};
 use std::{
     io,
     pin::Pin,
@@ -27,11 +27,12 @@ use crate::content_encoding::{Encoding, SupportedEncodings};
 
 pub use self::{
     serve_dir::{
-        ResponseBody as ServeDirResponseBody, ResponseFuture as ServeDirResponseFuture, ServeDir,
+        // The response body and future are used for both ServeDir and ServeFile
+        ResponseBody as ServeFileSystemResponseBody,
+        ResponseFuture as ServeFileSystemResponseFuture,
+        ServeDir,
     },
-    serve_file::{
-        ResponseBody as ServeFileResponseBody, ResponseFuture as ServeFileResponseFuture, ServeFile,
-    },
+    serve_file::ServeFile,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -64,9 +65,6 @@ impl SupportedEncodings for PrecompressedVariants {
         self.br
     }
 }
-
-type FileFuture =
-    Pin<Box<dyn Future<Output = io::Result<(File, Option<Encoding>)>> + Send + Sync + 'static>>;
 
 // Returns the preferred_encoding encoding and modifies the path extension
 // to the corresponding file extension for the encoding.
