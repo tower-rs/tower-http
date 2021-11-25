@@ -3,7 +3,7 @@
 use http::{HeaderMap, Request, Response, StatusCode};
 use std::{convert::Infallible, fmt, marker::PhantomData};
 
-mod grpc_errors_as_failures;
+pub(crate) mod grpc_errors_as_failures;
 mod map_failure_class;
 mod status_in_range_is_error;
 
@@ -14,8 +14,6 @@ pub use self::{
     map_failure_class::MapFailureClass,
     status_in_range_is_error::{StatusInRangeAsFailures, StatusInRangeFailureClass},
 };
-
-pub(crate) use self::grpc_errors_as_failures::{classify_grpc_metadata, ParsedGrpcStatus};
 
 /// Trait for producing response classifiers from a request.
 ///

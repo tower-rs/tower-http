@@ -1,5 +1,5 @@
 use super::DEFAULT_MESSAGE_LEVEL;
-use crate::{classify::ParsedGrpcStatus, LatencyUnit};
+use crate::{classify::grpc_errors_as_failures::ParsedGrpcStatus, LatencyUnit};
 use http::header::HeaderMap;
 use std::time::Duration;
 use tracing::{Level, Span};
@@ -166,7 +166,7 @@ macro_rules! log_pattern_match {
 impl OnEos for DefaultOnEos {
     fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Duration, _span: &Span) {
         let status = trailers.and_then(|trailers| {
-            match crate::classify::classify_grpc_metadata(
+            match crate::classify::grpc_errors_as_failures::classify_grpc_metadata(
                 trailers,
                 crate::classify::GrpcCodeBitmask::OK,
             ) {
