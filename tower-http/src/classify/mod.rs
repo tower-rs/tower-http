@@ -1,15 +1,21 @@
 //! Tools for classifying responses as either success or failure.
 
 use http::{HeaderMap, Request, Response, StatusCode};
-use std::{convert::Infallible, fmt, marker::PhantomData, num::NonZeroI32};
+use std::{convert::Infallible, fmt, marker::PhantomData};
 
+mod grpc_errors_as_failures;
 mod map_failure_class;
 mod status_in_range_is_error;
 
 pub use self::{
+    grpc_errors_as_failures::{
+        GrpcCodeBitmask, GrpcEosErrorsAsFailures, GrpcErrorsAsFailures, GrpcFailureClass,
+    },
     map_failure_class::MapFailureClass,
     status_in_range_is_error::{StatusInRangeAsFailures, StatusInRangeFailureClass},
 };
+
+pub(crate) use self::grpc_errors_as_failures::{classify_grpc_metadata, ParsedGrpcStatus};
 
 /// Trait for producing response classifiers from a request.
 ///
@@ -364,148 +370,6 @@ impl fmt::Display for ServerErrorsFailureClass {
             Self::Error(error) => write!(f, "Error: {}", error),
         }
     }
-}
-
-/// Response classifier for gRPC responses.
-///
-/// gRPC doesn't use normal HTTP statuses for indicating success or failure but instead a special
-/// header that might appear in a trailer.
-///
-/// Responses are considered successful if
-///
-/// - `grpc-status` header value is 0.
-/// - `grpc-status` header is missing.
-/// - `grpc-status` header value isn't a valid `String`.
-/// - `grpc-status` header value can't parsed into an `i32`.
-///
-/// All others are considered failures.
-#[derive(Debug, Clone, Default)]
-pub struct GrpcErrorsAsFailures {
-    _priv: (),
-}
-
-impl GrpcErrorsAsFailures {
-    /// Create a new [`GrpcErrorsAsFailures`].
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Returns a [`MakeClassifier`] that produces `GrpcErrorsAsFailures`.
-    ///
-    /// This is a convenience function that simply calls `SharedClassifier::new`.
-    pub fn make_classifier() -> SharedClassifier<Self> {
-        SharedClassifier::new(Self::new())
-    }
-}
-
-impl ClassifyResponse for GrpcErrorsAsFailures {
-    type FailureClass = GrpcFailureClass;
-    type ClassifyEos = GrpcEosErrorsAsFailures;
-
-    fn classify_response<B>(
-        self,
-        res: &Response<B>,
-    ) -> ClassifiedResponse<Self::FailureClass, Self::ClassifyEos> {
-        match classify_grpc_metadata(res.headers()) {
-            ParsedGrpcStatus::Success
-            | ParsedGrpcStatus::HeaderNotString
-            | ParsedGrpcStatus::HeaderNotInt => ClassifiedResponse::Ready(Ok(())),
-            ParsedGrpcStatus::NonSuccess(status) => {
-                ClassifiedResponse::Ready(Err(GrpcFailureClass::Code(status)))
-            }
-            ParsedGrpcStatus::GrpcStatusHeaderMissing => {
-                ClassifiedResponse::RequiresEos(GrpcEosErrorsAsFailures { _priv: () })
-            }
-        }
-    }
-
-    fn classify_error<E>(self, error: &E) -> Self::FailureClass
-    where
-        E: fmt::Display + 'static,
-    {
-        GrpcFailureClass::Error(error.to_string())
-    }
-}
-
-/// The [`ClassifyEos`] for [`GrpcErrorsAsFailures`].
-#[derive(Debug, Clone)]
-pub struct GrpcEosErrorsAsFailures {
-    _priv: (),
-}
-
-impl ClassifyEos for GrpcEosErrorsAsFailures {
-    type FailureClass = GrpcFailureClass;
-
-    fn classify_eos(self, trailers: Option<&HeaderMap>) -> Result<(), Self::FailureClass> {
-        if let Some(trailers) = trailers {
-            match classify_grpc_metadata(trailers) {
-                ParsedGrpcStatus::Success
-                | ParsedGrpcStatus::GrpcStatusHeaderMissing
-                | ParsedGrpcStatus::HeaderNotString
-                | ParsedGrpcStatus::HeaderNotInt => Ok(()),
-                ParsedGrpcStatus::NonSuccess(status) => Err(GrpcFailureClass::Code(status)),
-            }
-        } else {
-            Ok(())
-        }
-    }
-
-    fn classify_error<E>(self, error: &E) -> Self::FailureClass
-    where
-        E: fmt::Display + 'static,
-    {
-        GrpcFailureClass::Error(error.to_string())
-    }
-}
-
-/// The failure class for [`GrpcErrorsAsFailures`].
-#[derive(Debug)]
-pub enum GrpcFailureClass {
-    /// A gRPC response was classified as a failure with the corresponding status.
-    Code(std::num::NonZeroI32),
-    /// A gRPC response was classified as an error with the corresponding error description.
-    Error(String),
-}
-
-impl fmt::Display for GrpcFailureClass {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::Code(code) => write!(f, "Code: {}", code),
-            Self::Error(error) => write!(f, "Error: {}", error),
-        }
-    }
-}
-
-#[allow(clippy::if_let_some_result)]
-pub(crate) fn classify_grpc_metadata(headers: &HeaderMap) -> ParsedGrpcStatus {
-    macro_rules! or_else {
-        ($expr:expr, $other:ident) => {
-            if let Some(value) = $expr {
-                value
-            } else {
-                return ParsedGrpcStatus::$other;
-            }
-        };
-    }
-
-    let status = or_else!(headers.get("grpc-status"), GrpcStatusHeaderMissing);
-    let status = or_else!(status.to_str().ok(), HeaderNotString);
-    let status = or_else!(status.parse::<i32>().ok(), HeaderNotInt);
-
-    if status == 0 {
-        ParsedGrpcStatus::Success
-    } else {
-        ParsedGrpcStatus::NonSuccess(NonZeroI32::new(status).unwrap())
-    }
-}
-
-pub(crate) enum ParsedGrpcStatus {
-    Success,
-    NonSuccess(NonZeroI32),
-    GrpcStatusHeaderMissing,
-    // these two are treated as `Success` but kept separate for clarity
-    HeaderNotString,
-    HeaderNotInt,
 }
 
 // Just verify that we can actually use this response classifier to determine retries as well

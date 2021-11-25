@@ -165,16 +165,18 @@ macro_rules! log_pattern_match {
 
 impl OnEos for DefaultOnEos {
     fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Duration, _span: &Span) {
-        let status =
-            trailers.and_then(
-                |trailers| match crate::classify::classify_grpc_metadata(trailers) {
-                    ParsedGrpcStatus::Success
-                    | ParsedGrpcStatus::HeaderNotString
-                    | ParsedGrpcStatus::HeaderNotInt => Some(0),
-                    ParsedGrpcStatus::NonSuccess(status) => Some(status.get()),
-                    ParsedGrpcStatus::GrpcStatusHeaderMissing => None,
-                },
-            );
+        let status = trailers.and_then(|trailers| {
+            match crate::classify::classify_grpc_metadata(
+                trailers,
+                crate::classify::GrpcCodeBitmask::OK,
+            ) {
+                ParsedGrpcStatus::Success
+                | ParsedGrpcStatus::HeaderNotString
+                | ParsedGrpcStatus::HeaderNotInt => Some(0),
+                ParsedGrpcStatus::NonSuccess(status) => Some(status.get()),
+                ParsedGrpcStatus::GrpcStatusHeaderMissing => None,
+            }
+        });
 
         log_pattern_match!(
             self,

@@ -29,6 +29,7 @@ use tokio_stream::{
 use tonic::{async_trait, body::BoxBody, transport::Channel, Code, Request, Response, Status};
 use tower::{BoxError, Service, ServiceBuilder};
 use tower_http::{
+    classify::{GrpcCodeBitmask, GrpcErrorsAsFailures, SharedClassifier},
     compression::CompressionLayer,
     decompression::DecompressionLayer,
     sensitive_headers::SetSensitiveHeadersLayer,
@@ -165,6 +166,11 @@ async fn serve_forever(listener: TcpListener) -> Result<(), Box<dyn std::error::
     // Build our tonic `Service`
     let service = key_value_store_server::KeyValueStoreServer::new(ServerImpl { db, tx });
 
+    // Response classifier that doesn't consider `Ok`, `Invalid Argument`, or `Not Found` as
+    // failures
+    let classifier = GrpcErrorsAsFailures::new()
+        .success_codes(GrpcCodeBitmask::INVALID_ARGUMENT | GrpcCodeBitmask::NOT_FOUND);
+
     // Build our middleware stack
     let layer = ServiceBuilder::new()
         // Set a timeout
@@ -175,7 +181,8 @@ async fn serve_forever(listener: TcpListener) -> Result<(), Box<dyn std::error::
         .layer(SetSensitiveHeadersLayer::new(once(header::AUTHORIZATION)))
         // Log all requests and responses
         .layer(
-            TraceLayer::new_for_grpc().make_span_with(DefaultMakeSpan::new().include_headers(true)),
+            TraceLayer::new(SharedClassifier::new(classifier))
+                .make_span_with(DefaultMakeSpan::new().include_headers(true)),
         )
         .into_inner();
 
