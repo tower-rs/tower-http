@@ -72,6 +72,48 @@
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! You can also authorize requests with an async closure:
+//!
+//! ```
+//! use tower_http::auth::{AsyncRequireAuthorizationLayer, AsyncAuthorizeRequest};
+//! use hyper::{Request, Response, Body, Error};
+//! use http::StatusCode;
+//! use tower::{Service, ServiceExt, ServiceBuilder};
+//! use futures_util::future::BoxFuture;
+//!
+//! async fn check_auth<B>(request: &Request<B>) -> Option<UserId> {
+//!     // ...
+//!     # None
+//! }
+//!
+//! #[derive(Debug)]
+//! struct UserId(String);
+//!
+//! async fn handle(request: Request<Body>) -> Result<Response<Body>, Error> {
+//!     # todo!();
+//!     // ...
+//! }
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let service = ServiceBuilder::new()
+//!     .layer(AsyncRequireAuthorizationLayer::new(|request: Request<Body>| async move {
+//!         if let Some(user_id) = check_auth(&request).await {
+//!             Ok(request)
+//!         } else {
+//!             let unauthorized_response = Response::builder()
+//!                 .status(StatusCode::UNAUTHORIZED)
+//!                 .body(Body::empty())
+//!                 .unwrap();
+//!
+//!             Err(unauthorized_response)
+//!         }
+//!     }))
+//!     .service_fn(handle);
+//! # Ok(())
+//! # }
+//! ```
 
 use futures_core::ready;
 use http::{Request, Response};
@@ -237,6 +279,20 @@ pub trait AsyncAuthorizeRequest<B> {
     ///
     /// If the future resolves to `Ok(request)` then the request is allowed through, otherwise not.
     fn authorize(&mut self, request: Request<B>) -> Self::Future;
+}
+
+impl<B, F, Fut, ReqBody, ResBody> AsyncAuthorizeRequest<B> for F
+where
+    F: FnMut(Request<B>) -> Fut,
+    Fut: Future<Output = Result<Request<ReqBody>, Response<ResBody>>>,
+{
+    type RequestBody = ReqBody;
+    type ResponseBody = ResBody;
+    type Future = Fut;
+
+    fn authorize(&mut self, request: Request<B>) -> Self::Future {
+        self(request)
+    }
 }
 
 #[cfg(test)]
