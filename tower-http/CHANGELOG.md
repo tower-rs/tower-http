@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **request_id**: Add `SetRequestId` and `PropagateRequestId` middleware ([#150])
 - **trace**: Add `DefaultMakeSpan::level` to make log level of tracing spans easily configurable ([#124])
 - **trace**: Add `LatencyUnit::Seconds` for formatting latencies as seconds.
+- **trace**: Support customizing which status codes are considered failures by `GrpcErrorsAsFailures` ([#189])
 - **compression**: Support specifying predicates to choose when responses should
   be compressed. This can be used to disable compression of small responses,
   responses with a certain `content-type`, or something user defined ([#172])
@@ -59,6 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#172]: https://github.com/tower-rs/tower-http/pull/172
 [#182]: https://github.com/tower-rs/tower-http/pull/182
 [#187]: https://github.com/tower-rs/tower-http/pull/187
+[#189]: https://github.com/tower-rs/tower-http/pull/189
 
 # 0.1.2 (November 13, 2021)
 

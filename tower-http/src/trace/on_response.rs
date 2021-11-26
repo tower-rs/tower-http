@@ -262,7 +262,7 @@ impl<B> OnResponse<B> for DefaultOnResponse {
 }
 
 fn status<B>(res: &Response<B>) -> Option<i32> {
-    use crate::classify::ParsedGrpcStatus;
+    use crate::classify::grpc_errors_as_failures::ParsedGrpcStatus;
 
     let is_grpc = res
         .headers()
@@ -270,7 +270,10 @@ fn status<B>(res: &Response<B>) -> Option<i32> {
         .map_or(false, |value| value == "application/grpc");
 
     if is_grpc {
-        match crate::classify::classify_grpc_metadata(res.headers()) {
+        match crate::classify::grpc_errors_as_failures::classify_grpc_metadata(
+            res.headers(),
+            crate::classify::GrpcCode::Ok.into_bitmask(),
+        ) {
             ParsedGrpcStatus::Success
             | ParsedGrpcStatus::HeaderNotString
             | ParsedGrpcStatus::HeaderNotInt => Some(0),
