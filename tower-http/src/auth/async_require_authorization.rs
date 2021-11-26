@@ -18,6 +18,7 @@
 //! where
 //!     B: Send + Sync + 'static,
 //! {
+//!     type RequestBody = B;
 //!     type ResponseBody = Body;
 //!     type Future = BoxFuture<'static, Result<Request<B>, Response<Self::ResponseBody>>>;
 //!
@@ -74,7 +75,6 @@
 
 use futures_core::ready;
 use http::{Request, Response};
-use http_body::Body;
 use pin_project_lite::pin_project;
 use std::{
     future::Future,
@@ -137,14 +137,14 @@ impl<S, T> AsyncRequireAuthorization<S, T> {
     }
 }
 
-impl<ReqBody, ResBody, S, T> Service<Request<ReqBody>> for AsyncRequireAuthorization<S, T>
+impl<ReqBody, ResBody, S, Auth> Service<Request<ReqBody>> for AsyncRequireAuthorization<S, Auth>
 where
-    S: Service<Request<ReqBody>, Response = Response<ResBody>> + Clone,
-    T: AsyncAuthorizeRequest<ReqBody, ResponseBody = ResBody>,
+    Auth: AsyncAuthorizeRequest<ReqBody, ResponseBody = ResBody>,
+    S: Service<Request<Auth::RequestBody>, Response = Response<ResBody>> + Clone,
 {
     type Response = Response<ResBody>;
     type Error = S::Error;
-    type Future = ResponseFuture<T, S, ReqBody>;
+    type Future = ResponseFuture<Auth, S, ReqBody>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx)
@@ -166,7 +166,7 @@ pin_project! {
     pub struct ResponseFuture<Auth, S, ReqBody>
     where
         Auth: AsyncAuthorizeRequest<ReqBody>,
-        S: Service<Request<ReqBody>>,
+        S: Service<Request<Auth::RequestBody>>,
     {
         #[pin]
         state: State<Auth::Future, S::Future>,
@@ -191,7 +191,7 @@ pin_project! {
 impl<Auth, S, ReqBody, B> Future for ResponseFuture<Auth, S, ReqBody>
 where
     Auth: AsyncAuthorizeRequest<ReqBody, ResponseBody = B>,
-    S: Service<Request<ReqBody>, Response = Response<B>>,
+    S: Service<Request<Auth::RequestBody>, Response = Response<B>>,
 {
     type Output = Result<Response<B>, S::Error>;
 
@@ -222,11 +222,16 @@ where
 
 /// Trait for authorizing requests.
 pub trait AsyncAuthorizeRequest<B> {
-    /// The Future type returned by `authorize`
-    type Future: Future<Output = Result<Request<B>, Response<Self::ResponseBody>>>;
+    /// The type of request body returned by `authorize`.
+    ///
+    /// Set this to `B` if you need to change the request body type.
+    type RequestBody;
 
     /// The body type used for responses to unauthorized requests.
-    type ResponseBody: Body;
+    type ResponseBody;
+
+    /// The Future type returned by `authorize`
+    type Future: Future<Output = Result<Request<Self::RequestBody>, Response<Self::ResponseBody>>>;
 
     /// Authorize the request.
     ///
@@ -250,8 +255,9 @@ mod tests {
     where
         B: Send + 'static,
     {
-        type Future = BoxFuture<'static, Result<Request<B>, Response<Self::ResponseBody>>>;
+        type RequestBody = B;
         type ResponseBody = Body;
+        type Future = BoxFuture<'static, Result<Request<B>, Response<Self::ResponseBody>>>;
 
         fn authorize(&mut self, mut request: Request<B>) -> Self::Future {
             Box::pin(async move {

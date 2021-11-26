@@ -260,10 +260,10 @@ where
     }
 }
 
-impl<ReqBody, ResBody, S, T> Service<Request<ReqBody>> for RequireAuthorization<S, T>
+impl<ReqBody, ResBody, S, Auth> Service<Request<ReqBody>> for RequireAuthorization<S, Auth>
 where
+    Auth: AuthorizeRequest<ResponseBody = ResBody>,
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
-    T: AuthorizeRequest<ResponseBody = ResBody>,
 {
     type Response = Response<ResBody>;
     type Error = S::Error;
