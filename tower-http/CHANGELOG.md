@@ -39,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   be used instead ([#170]) (BREAKING)
 - **fs**: Changed response body type of `ServeDir` and `ServeFile` to
   `ServeFileSystemResponseBody` and `ServeFileSystemResponseFuture` ([#187]) (BREAKING)
+- **auth**: Change `AuthorizeRequest` and `AsyncAuthorizeRequest` traits to be simpler ([#???]) (BREAKING)
 
 ## Removed
 
