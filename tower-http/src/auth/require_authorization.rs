@@ -63,26 +63,32 @@
 //! struct MyAuth;
 //!
 //! impl AuthorizeRequest for MyAuth {
-//!     type Output = UserId;
 //!     type ResponseBody = Body;
 //!
-//!     fn authorize<B>(&mut self, request: &Request<B>) -> Option<UserId> {
-//!         // ...
-//!         # None
-//!     }
+//!     fn authorize<B>(
+//!         &mut self,
+//!         request: &mut Request<B>,
+//!     ) -> Result<(), Response<Self::ResponseBody>> {
+//!         if let Some(user_id) = check_auth(request) {
+//!             // Set `user_id` as a request extension so it can be accessed by other
+//!             // services down the stack.
+//!             request.extensions_mut().insert(user_id);
 //!
-//!     fn on_authorized<B>(&mut self, request: &mut Request<B>, user_id: UserId) {
-//!         // Set `user_id` as a request extension so it can be accessed by other
-//!         // services down the stack.
-//!         request.extensions_mut().insert(user_id);
-//!     }
+//!             Ok(())
+//!         } else {
+//!             let unauthorized_response = Response::builder()
+//!                 .status(StatusCode::UNAUTHORIZED)
+//!                 .body(Body::empty())
+//!                 .unwrap();
 //!
-//!     fn unauthorized_response<B>(&mut self, request: &Request<B>) -> Response<Body> {
-//!         Response::builder()
-//!             .status(StatusCode::UNAUTHORIZED)
-//!             .body(Body::empty())
-//!             .unwrap()
+//!             Err(unauthorized_response)
+//!         }
 //!     }
+//! }
+//!
+//! fn check_auth<B>(request: &Request<B>) -> Option<UserId> {
+//!     // ...
+//!     # unimplemented!()
 //! }
 //!
 //! #[derive(Debug)]
@@ -269,12 +275,9 @@ where
     }
 
     fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
-        if let Some(output) = self.auth.authorize(&req) {
-            self.auth.on_authorized(&mut req, output);
-            ResponseFuture::future(self.inner.call(req))
-        } else {
-            let res = self.auth.unauthorized_response(&req);
-            ResponseFuture::invalid_auth(res)
+        match self.auth.authorize(&mut req) {
+            Ok(_) => ResponseFuture::future(self.inner.call(req)),
+            Err(res) => ResponseFuture::invalid_auth(res),
         }
     }
 }
@@ -335,36 +338,16 @@ where
 
 /// Trait for authorizing requests.
 pub trait AuthorizeRequest {
-    /// The output type of doing the authorization.
-    ///
-    /// Use `()` if authorization doesn't produce any meaningful output.
-    type Output;
-
     /// The body type used for responses to unauthorized requests.
-    type ResponseBody: Body;
+    type ResponseBody;
 
     /// Authorize the request.
     ///
-    /// If `Some(_)` is returned then the request is allowed through, otherwise not.
-    fn authorize<B>(&mut self, request: &Request<B>) -> Option<Self::Output>;
-
-    /// Callback for when a request has been successfully authorized.
-    ///
-    /// For example this allows you to save `Self::Output` in a [request extension][] to make it
-    /// available to services further down the stack. This could for example be the "claims" for a
-    /// valid [JWT].
-    ///
-    /// Defaults to doing nothing.
-    ///
-    /// See the [module docs](crate::auth::require_authorization) for an example.
-    ///
-    /// [request extension]: https://docs.rs/http/latest/http/struct.Extensions.html
-    /// [JWT]: https://jwt.io
-    #[inline]
-    fn on_authorized<B>(&mut self, _request: &mut Request<B>, _output: Self::Output) {}
-
-    /// Create the response for an unauthorized request.
-    fn unauthorized_response<B>(&mut self, request: &Request<B>) -> Response<Self::ResponseBody>;
+    /// If `Ok(())` is returned then the request is allowed through, otherwise not.
+    fn authorize<B>(
+        &mut self,
+        request: &mut Request<B>,
+    ) -> Result<(), Response<Self::ResponseBody>>;
 }
 
 /// Type that performs "bearer token" authorization.
@@ -410,22 +393,20 @@ impl<ResBody> AuthorizeRequest for Bearer<ResBody>
 where
     ResBody: Body + Default,
 {
-    type Output = ();
     type ResponseBody = ResBody;
 
-    fn authorize<B>(&mut self, request: &Request<B>) -> Option<Self::Output> {
-        if let Some(actual) = request.headers().get(header::AUTHORIZATION) {
-            (actual == self.header_value).then(|| ())
-        } else {
-            None
+    fn authorize<B>(
+        &mut self,
+        request: &mut Request<B>,
+    ) -> Result<(), Response<Self::ResponseBody>> {
+        match request.headers().get(header::AUTHORIZATION) {
+            Some(actual) if actual == self.header_value => Ok(()),
+            _ => {
+                let mut res = Response::new(ResBody::default());
+                *res.status_mut() = StatusCode::UNAUTHORIZED;
+                Err(res)
+            }
         }
-    }
-
-    fn unauthorized_response<B>(&mut self, _request: &Request<B>) -> Response<Self::ResponseBody> {
-        let body = ResBody::default();
-        let mut res = Response::new(body);
-        *res.status_mut() = StatusCode::UNAUTHORIZED;
-        res
     }
 }
 
@@ -472,24 +453,22 @@ impl<ResBody> AuthorizeRequest for Basic<ResBody>
 where
     ResBody: Body + Default,
 {
-    type Output = ();
     type ResponseBody = ResBody;
 
-    fn authorize<B>(&mut self, request: &Request<B>) -> Option<Self::Output> {
-        if let Some(actual) = request.headers().get(header::AUTHORIZATION) {
-            (actual == self.header_value).then(|| ())
-        } else {
-            None
+    fn authorize<B>(
+        &mut self,
+        request: &mut Request<B>,
+    ) -> Result<(), Response<Self::ResponseBody>> {
+        match request.headers().get(header::AUTHORIZATION) {
+            Some(actual) if actual == self.header_value => Ok(()),
+            _ => {
+                let mut res = Response::new(ResBody::default());
+                *res.status_mut() = StatusCode::UNAUTHORIZED;
+                res.headers_mut()
+                    .insert(header::WWW_AUTHENTICATE, "Basic".parse().unwrap());
+                Err(res)
+            }
         }
-    }
-
-    fn unauthorized_response<B>(&mut self, _request: &Request<B>) -> Response<Self::ResponseBody> {
-        let body = ResBody::default();
-        let mut res = Response::new(body);
-        *res.status_mut() = StatusCode::UNAUTHORIZED;
-        res.headers_mut()
-            .insert(header::WWW_AUTHENTICATE, "Basic".parse().unwrap());
-        res
     }
 }
 
