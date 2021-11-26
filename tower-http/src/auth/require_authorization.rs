@@ -62,10 +62,10 @@
 //! #[derive(Clone, Copy)]
 //! struct MyAuth;
 //!
-//! impl AuthorizeRequest for MyAuth {
+//! impl<B> AuthorizeRequest<B> for MyAuth {
 //!     type ResponseBody = Body;
 //!
-//!     fn authorize<B>(
+//!     fn authorize(
 //!         &mut self,
 //!         request: &mut Request<B>,
 //!     ) -> Result<(), Response<Self::ResponseBody>> {
@@ -112,6 +112,31 @@
 //! let service = ServiceBuilder::new()
 //!     // Authorize requests using `MyAuth`
 //!     .layer(RequireAuthorizationLayer::custom(MyAuth))
+//!     .service_fn(handle);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! Or using a closure:
+//!
+//! ```
+//! use tower_http::auth::{RequireAuthorizationLayer, AuthorizeRequest};
+//! use hyper::{Request, Response, Body, Error};
+//! use http::{StatusCode, header::AUTHORIZATION};
+//! use tower::{Service, ServiceExt, ServiceBuilder, service_fn};
+//!
+//! async fn handle(request: Request<Body>) -> Result<Response<Body>, Error> {
+//!     # todo!();
+//!     // ...
+//! }
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let service = ServiceBuilder::new()
+//!     .layer(RequireAuthorizationLayer::custom(|request: &mut Request<Body>| {
+//!         // authorize the request
+//!         # Ok::<_, Response<Body>>(())
+//!     }))
 //!     .service_fn(handle);
 //! # Ok(())
 //! # }
@@ -176,10 +201,7 @@ impl<ResBody> RequireAuthorizationLayer<Basic<ResBody>> {
     }
 }
 
-impl<T> RequireAuthorizationLayer<T>
-where
-    T: AuthorizeRequest,
-{
+impl<T> RequireAuthorizationLayer<T> {
     /// Authorize requests using a custom scheme.
     pub fn custom(auth: T) -> RequireAuthorizationLayer<T> {
         Self { auth }
@@ -248,10 +270,7 @@ impl<S, ResBody> RequireAuthorization<S, Basic<ResBody>> {
     }
 }
 
-impl<S, T> RequireAuthorization<S, T>
-where
-    T: AuthorizeRequest,
-{
+impl<S, T> RequireAuthorization<S, T> {
     /// Authorize requests using a custom scheme.
     ///
     /// The `Authorization` header is required to have the value provided.
@@ -262,7 +281,7 @@ where
 
 impl<ReqBody, ResBody, S, Auth> Service<Request<ReqBody>> for RequireAuthorization<S, Auth>
 where
-    Auth: AuthorizeRequest<ResponseBody = ResBody>,
+    Auth: AuthorizeRequest<ReqBody, ResponseBody = ResBody>,
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
 {
     type Response = Response<ResBody>;
@@ -336,17 +355,25 @@ where
 }
 
 /// Trait for authorizing requests.
-pub trait AuthorizeRequest {
+pub trait AuthorizeRequest<B> {
     /// The body type used for responses to unauthorized requests.
     type ResponseBody;
 
     /// Authorize the request.
     ///
     /// If `Ok(())` is returned then the request is allowed through, otherwise not.
-    fn authorize<B>(
-        &mut self,
-        request: &mut Request<B>,
-    ) -> Result<(), Response<Self::ResponseBody>>;
+    fn authorize(&mut self, request: &mut Request<B>) -> Result<(), Response<Self::ResponseBody>>;
+}
+
+impl<B, F, ResBody> AuthorizeRequest<B> for F
+where
+    F: FnMut(&mut Request<B>) -> Result<(), Response<ResBody>>,
+{
+    type ResponseBody = ResBody;
+
+    fn authorize(&mut self, request: &mut Request<B>) -> Result<(), Response<Self::ResponseBody>> {
+        self(request)
+    }
 }
 
 /// Type that performs "bearer token" authorization.
@@ -388,16 +415,13 @@ impl<ResBody> fmt::Debug for Bearer<ResBody> {
     }
 }
 
-impl<ResBody> AuthorizeRequest for Bearer<ResBody>
+impl<B, ResBody> AuthorizeRequest<B> for Bearer<ResBody>
 where
     ResBody: Body + Default,
 {
     type ResponseBody = ResBody;
 
-    fn authorize<B>(
-        &mut self,
-        request: &mut Request<B>,
-    ) -> Result<(), Response<Self::ResponseBody>> {
+    fn authorize(&mut self, request: &mut Request<B>) -> Result<(), Response<Self::ResponseBody>> {
         match request.headers().get(header::AUTHORIZATION) {
             Some(actual) if actual == self.header_value => Ok(()),
             _ => {
@@ -448,16 +472,13 @@ impl<ResBody> fmt::Debug for Basic<ResBody> {
     }
 }
 
-impl<ResBody> AuthorizeRequest for Basic<ResBody>
+impl<B, ResBody> AuthorizeRequest<B> for Basic<ResBody>
 where
     ResBody: Body + Default,
 {
     type ResponseBody = ResBody;
 
-    fn authorize<B>(
-        &mut self,
-        request: &mut Request<B>,
-    ) -> Result<(), Response<Self::ResponseBody>> {
+    fn authorize(&mut self, request: &mut Request<B>) -> Result<(), Response<Self::ResponseBody>> {
         match request.headers().get(header::AUTHORIZATION) {
             Some(actual) if actual == self.header_value => Ok(()),
             _ => {

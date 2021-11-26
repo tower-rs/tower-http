@@ -73,7 +73,7 @@
 //! # }
 //! ```
 //!
-//! You can also authorize requests with an async closure:
+//! Or using a closure:
 //!
 //! ```
 //! use tower_http::auth::{AsyncRequireAuthorizationLayer, AsyncAuthorizeRequest};
