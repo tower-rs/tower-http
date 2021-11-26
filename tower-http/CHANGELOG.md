@@ -7,33 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
-- `ServeDir` and `ServeFile`: Changed service types, both now return `ServeFileSystemResponseBody` and `ServeFileSystemResponseFuture` ([#187])
-- `AddAuthorization`, `InFlightRequests`, `SetRequestHeader`, `SetResponseHeader`, `AddExtension`, `MapRequestBody` and `MapResponseBody`
-   now requires underlying service to use `http::Request<B>` and `http::Response<U>` as request and responses ([#182])
-- `ServeDir` and `ServeFile`: Ability to serve precompressed files ([#156])
-- `ServeDir` and `ServeFile`: Properly support HEAD requests which return no body and have the `Content-length` header set ([#169])
-- `Trace`: Add `DefaultMakeSpan::level` to make log level of tracing spans easily configurable ([#124])
-- Change the response body error type of `Compression` and `Decompression` to
-  `Box<dyn std::error::Error + Send + Sync>`. This makes them usable if the body
-  they're wrapping uses `Box<dyn std::error::Error + Send + Sync>` as its error
-  type which they previously weren't ([#166])
-- Remove `BodyOrIoError`. Its been replaced with `Box<dyn std::error::Error +
-  Send + Sync>` ([#166])
-- `SetRequestHeaderLayer`, `SetResponseHeaderLayer`: Remove unnecessary generic parameter ([#148])
-  This removes the need (and possibility) to specify a body type for these layers.
-- `Compression`: Support specifying predicates to choose when responses should
-  be compressed. This can be used to disable compression of small responses, or
+## Added
+
+- **builder**: Add `ServiceBuilderExt` which adds methods to `tower::ServiceBuilder` for
+  adding middleware from tower-http.
+- **request_id**: Add `SetRequestId` and `PropagateRequestId` middleware ([#150])
+- **trace**: Add `DefaultMakeSpan::level` to make log level of tracing spans easily configurable ([#124])
+- **trace**: Add `LatencyUnit::Seconds` for formatting latencies as seconds.
+- **trace**: Support customizing which status codes are considered failures by `GrpcErrorsAsFailures` ([#189])
+- **compression**: Support specifying predicates to choose when responses should
+  be compressed. This can be used to disable compression of small responses,
   responses with a certain `content-type`, or something user defined ([#172])
-- Remove the `compression` and `decompression` feature. They were unnecessary
+- **fs**: Ability to serve precompressed files ([#156])
+
+## Changed
+
+- `AddAuthorization`, `InFlightRequests`, `SetRequestHeader`,
+  `SetResponseHeader`, `AddExtension`, `MapRequestBody` and `MapResponseBody`
+   now requires underlying service to use `http::Request<ReqBody>` and
+   `http::Response<ResBody>` as request and responses ([#182]) (BREAKING)
+- **set_header**: Remove unnecessary generic parameter from `SetRequestHeaderLayer`
+  and `SetResponseHeaderLayer`. This removes the need (and possibility) to specify a
+  body type for these layers ([#148]) (BREAKING)
+- **compression, decompression**: Change the response body error type to
+  `Box<dyn std::error::Error + Send + Sync>`. This makes them usable if
+  the body they're wrapping uses `Box<dyn std::error::Error + Send + Sync>` as
+  its error type which they previously weren't ([#166]) (BREAKING)
+- **compression, decompression**: Remove the `compression` and `decompression` feature. They were unnecessary
   and `compression-full`/`decompression-full` can be used to get full
   compression/decompression support. For more granular control `[compression|decompression]-gzip`,
   `[compression|decompression]-br` and `[compression|decompression]-deflate` may
-  be used instead. ([#170])
-- Add `ServiceBuilderExt` which adds methods to `tower::ServiceBuilder` for
-  adding middleware from tower-http.
-- Add `SetRequestId` and `PropagateRequestId` middleware ([#150])
-- Add `LatencyUnit::Seconds` for formatting latencies as seconds.
-- Support customizing which status codes are considered failures by `GrpcErrorsAsFailures` ([#189])
+  be used instead ([#170]) (BREAKING)
+- **fs**: Changed response body type of `ServeDir` and `ServeFile` to
+  `ServeFileSystemResponseBody` and `ServeFileSystemResponseFuture` ([#187]) (BREAKING)
+
+## Removed
+
+- **compression, decompression**: Remove `BodyOrIoError`. Its been replaced with `Box<dyn
+  std::error::Error + Send + Sync>` ([#166]) (BREAKING)
+
+## Fixed
+
+- **fs**: Properly support HEAD requests which return no body and have the `Content-Length` header set ([#169])
 
 [#124]: https://github.com/tower-rs/tower-http/pull/124
 [#148]: https://github.com/tower-rs/tower-http/pull/148
