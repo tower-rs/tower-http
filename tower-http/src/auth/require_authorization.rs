@@ -263,7 +263,6 @@ where
 impl<ReqBody, ResBody, S, T> Service<Request<ReqBody>> for RequireAuthorization<S, T>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
-    ResBody: Default,
     T: AuthorizeRequest<ResponseBody = ResBody>,
 {
     type Response = Response<ResBody>;
