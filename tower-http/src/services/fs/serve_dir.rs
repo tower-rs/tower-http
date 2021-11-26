@@ -6,6 +6,7 @@ use crate::{
 };
 use bytes::Bytes;
 use futures_util::ready;
+use http::response::Builder;
 use http::{header, HeaderValue, Method, Request, Response, StatusCode, Uri};
 use http_body::{combinators::BoxBody, Body, Empty, Full};
 use http_range_header::RangeUnsatisfiableError;
@@ -457,7 +458,7 @@ impl Future for ResponseFuture {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match &mut self.inner {
             Inner::Valid(open_file_future) => {
-                let response = match ready!(Pin::new(open_file_future).poll(cx)) {
+                return match ready!(Pin::new(open_file_future).poll(cx)) {
                     Ok(Output::File(file_request)) => {
                         let (maybe_file, size) = match file_request.extent {
                             FileRequestExtent::Full(file, meta) => (Some(file), meta.len()),
@@ -471,74 +472,14 @@ impl Future for ResponseFuture {
                             builder = builder
                                 .header(header::CONTENT_ENCODING, encoding.into_header_value());
                         }
-                        if let Some(reasonable_range) = file_request.maybe_range {
-                            match reasonable_range {
-                                Ok(ranges) => {
-                                    if let Some(range) = ranges.get(0) {
-                                        if ranges.len() > 1 {
-                                            builder
-                                                .header(
-                                                    header::CONTENT_RANGE,
-                                                    format!("bytes */{}", size),
-                                                )
-                                                .status(StatusCode::RANGE_NOT_SATISFIABLE)
-                                                .body(body_from_bytes(Bytes::from(
-                                                    "Cannot serve multipart range requests",
-                                                )))
-                                        } else {
-                                            let range_size = range.end() - range.start() + 1;
-                                            let body = if let Some(file) = maybe_file {
-                                                let body = AsyncReadBody::with_capacity_limited(
-                                                    file,
-                                                    file_request.chunk_size,
-                                                    range_size,
-                                                )
-                                                .boxed();
-                                                ResponseBody::new(body)
-                                            } else {
-                                                empty_body()
-                                            };
-                                            builder
-                                                .header(
-                                                    header::CONTENT_RANGE,
-                                                    format!(
-                                                        "bytes {}-{}/{}",
-                                                        range.start(),
-                                                        range.end(),
-                                                        size
-                                                    ),
-                                                )
-                                                .status(StatusCode::PARTIAL_CONTENT)
-                                                .body(body)
-                                        }
-                                    } else {
-                                        builder
-                                            .header(
-                                                header::CONTENT_RANGE,
-                                                format!("bytes */{}", size),
-                                            )
-                                            .status(StatusCode::RANGE_NOT_SATISFIABLE)
-                                            .body(body_from_bytes(Bytes::from(
-                                                "No range found after parsing range header, please file an issue",
-                                            )))
-                                    }
-                                }
-                                Err(_) => builder
-                                    .header(header::CONTENT_RANGE, format!("bytes */{}", size))
-                                    .status(StatusCode::RANGE_NOT_SATISFIABLE)
-                                    .body(empty_body()),
-                            }
-                        } else {
-                            let body = if let Some(file) = maybe_file {
-                                let box_body =
-                                    AsyncReadBody::with_capacity(file, file_request.chunk_size)
-                                        .boxed();
-                                ResponseBody::new(box_body)
-                            } else {
-                                empty_body()
-                            };
-                            builder.body(body)
-                        }
+                        let res = handle_file_request(
+                            builder,
+                            maybe_file,
+                            file_request.maybe_range,
+                            file_request.chunk_size,
+                            size,
+                        );
+                        Poll::Ready(Ok(res.unwrap()))
                     }
 
                     Ok(Output::Redirect(location)) => {
@@ -547,7 +488,7 @@ impl Future for ResponseFuture {
                             .status(StatusCode::TEMPORARY_REDIRECT)
                             .body(empty_body())
                             .unwrap();
-                        return Poll::Ready(Ok(res));
+                        Poll::Ready(Ok(res))
                     }
 
                     Ok(Output::NotFound) => {
@@ -556,17 +497,13 @@ impl Future for ResponseFuture {
                             .body(empty_body())
                             .unwrap();
 
-                        return Poll::Ready(Ok(res));
+                        Poll::Ready(Ok(res))
                     }
 
-                    Err(err) => {
-                        return Poll::Ready(
-                            super::response_from_io_error(err)
-                                .map(|res| res.map(ResponseBody::new)),
-                        )
-                    }
+                    Err(err) => Poll::Ready(
+                        super::response_from_io_error(err).map(|res| res.map(ResponseBody::new)),
+                    ),
                 };
-                Poll::Ready(Ok(response.unwrap()))
             }
             Inner::Invalid => {
                 let res = Response::builder()
@@ -576,6 +513,67 @@ impl Future for ResponseFuture {
 
                 Poll::Ready(Ok(res))
             }
+        }
+    }
+}
+
+fn handle_file_request(
+    builder: Builder,
+    maybe_file: Option<File>,
+    maybe_range: Option<Result<Vec<RangeInclusive<u64>>, RangeUnsatisfiableError>>,
+    chunk_size: usize,
+    size: u64,
+) -> Result<Response<ResponseBody>, http::Error> {
+    match maybe_range {
+        Some(Ok(ranges)) => {
+            if let Some(range) = ranges.first() {
+                if ranges.len() > 1 {
+                    builder
+                        .header(header::CONTENT_RANGE, format!("bytes */{}", size))
+                        .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                        .body(body_from_bytes(Bytes::from(
+                            "Cannot serve multipart range requests",
+                        )))
+                } else {
+                    let range_size = range.end() - range.start() + 1;
+                    let body = if let Some(file) = maybe_file {
+                        let body =
+                            AsyncReadBody::with_capacity_limited(file, chunk_size, range_size)
+                                .boxed();
+                        ResponseBody::new(body)
+                    } else {
+                        empty_body()
+                    };
+                    builder
+                        .header(
+                            header::CONTENT_RANGE,
+                            format!("bytes {}-{}/{}", range.start(), range.end(), size),
+                        )
+                        .status(StatusCode::PARTIAL_CONTENT)
+                        .body(body)
+                }
+            } else {
+                builder
+                    .header(header::CONTENT_RANGE, format!("bytes */{}", size))
+                    .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                    .body(body_from_bytes(Bytes::from(
+                        "No range found after parsing range header, please file an issue",
+                    )))
+            }
+        }
+        Some(Err(_)) => builder
+            .header(header::CONTENT_RANGE, format!("bytes */{}", size))
+            .status(StatusCode::RANGE_NOT_SATISFIABLE)
+            .body(empty_body()),
+        // Not a range request
+        None => {
+            let body = if let Some(file) = maybe_file {
+                let box_body = AsyncReadBody::with_capacity(file, chunk_size).boxed();
+                ResponseBody::new(box_body)
+            } else {
+                empty_body()
+            };
+            builder.body(body)
         }
     }
 }
@@ -1086,6 +1084,11 @@ mod tests {
         let res = svc.oneshot(req).await.unwrap();
 
         assert_eq!(res.status(), StatusCode::RANGE_NOT_SATISFIABLE);
+        let file_contents = std::fs::read("../README.md").unwrap();
+        assert_eq!(
+            res.headers()["content-range"],
+            &format!("bytes */{}", file_contents.len())
+        )
     }
 
     #[tokio::test]
@@ -1098,6 +1101,11 @@ mod tests {
             .unwrap();
         let res = svc.oneshot(req).await.unwrap();
         assert_eq!(res.status(), StatusCode::RANGE_NOT_SATISFIABLE);
+        let file_contents = std::fs::read("../README.md").unwrap();
+        assert_eq!(
+            res.headers()["content-range"],
+            &format!("bytes */{}", file_contents.len())
+        )
     }
 
     #[tokio::test]
@@ -1110,5 +1118,10 @@ mod tests {
             .unwrap();
         let res = svc.oneshot(req).await.unwrap();
         assert_eq!(res.status(), StatusCode::RANGE_NOT_SATISFIABLE);
+        let file_contents = std::fs::read("../README.md").unwrap();
+        assert_eq!(
+            res.headers()["content-range"],
+            &format!("bytes */{}", file_contents.len())
+        )
     }
 }
