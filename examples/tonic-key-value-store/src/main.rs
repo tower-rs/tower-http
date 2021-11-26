@@ -29,7 +29,7 @@ use tokio_stream::{
 use tonic::{async_trait, body::BoxBody, transport::Channel, Code, Request, Response, Status};
 use tower::{BoxError, Service, ServiceBuilder};
 use tower_http::{
-    classify::{GrpcCodeBitmask, GrpcErrorsAsFailures, SharedClassifier},
+    classify::{GrpcCode, GrpcErrorsAsFailures, SharedClassifier},
     compression::CompressionLayer,
     decompression::DecompressionLayer,
     sensitive_headers::SetSensitiveHeadersLayer,
@@ -169,7 +169,8 @@ async fn serve_forever(listener: TcpListener) -> Result<(), Box<dyn std::error::
     // Response classifier that doesn't consider `Ok`, `Invalid Argument`, or `Not Found` as
     // failures
     let classifier = GrpcErrorsAsFailures::new()
-        .success_codes(GrpcCodeBitmask::INVALID_ARGUMENT | GrpcCodeBitmask::NOT_FOUND);
+        .with_success(GrpcCode::InvalidArgument)
+        .with_success(GrpcCode::NotFound);
 
     // Build our middleware stack
     let layer = ServiceBuilder::new()

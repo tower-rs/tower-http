@@ -3,44 +3,91 @@ use bitflags::bitflags;
 use http::{HeaderMap, Response};
 use std::{fmt, num::NonZeroI32};
 
+/// gRPC status codes. Used in [`GrpcErrorsAsFailures::success_codes`].
+///
+/// These variants match the [gRPC status codes].
+///
+/// [gRPC status codes]: https://github.com/grpc/grpc/blob/master/doc/statuscodes.md#status-codes-and-their-use-in-grpc
+#[derive(Clone, Copy, Debug)]
+pub enum GrpcCode {
+    /// The operation completed successfully.
+    Ok,
+    /// The operation was cancelled.
+    Cancelled,
+    /// Unknown error.
+    Unknown,
+    /// Client specified an invalid argument.
+    InvalidArgument,
+    /// Deadline expired before operation could complete.
+    DeadlineExceeded,
+    /// Some requested entity was not found.
+    NotFound,
+    /// Some entity that we attempted to create already exists.
+    AlreadyExists,
+    /// The caller does not have permission to execute the specified operation.
+    PermissionDenied,
+    /// Some resource has been exhausted.
+    ResourceExhausted,
+    /// The system is not in a state required for the operation's execution.
+    FailedPrecondition,
+    /// The operation was aborted.
+    Aborted,
+    /// Operation was attempted past the valid range.
+    OutOfRange,
+    /// Operation is not implemented or not supported.
+    Unimplemented,
+    /// Internal error.
+    Internal,
+    /// The service is currently unavailable.
+    Unavailable,
+    /// Unrecoverable data loss or corruption.
+    DataLoss,
+    /// The request does not have valid authentication credentials
+    Unauthenticated,
+}
+
+impl GrpcCode {
+    pub(crate) fn into_bitmask(self) -> GrpcCodeBitmask {
+        match self {
+            Self::Ok => GrpcCodeBitmask::OK,
+            Self::Cancelled => GrpcCodeBitmask::CANCELLED,
+            Self::Unknown => GrpcCodeBitmask::UNKNOWN,
+            Self::InvalidArgument => GrpcCodeBitmask::INVALID_ARGUMENT,
+            Self::DeadlineExceeded => GrpcCodeBitmask::DEADLINE_EXCEEDED,
+            Self::NotFound => GrpcCodeBitmask::NOT_FOUND,
+            Self::AlreadyExists => GrpcCodeBitmask::ALREADY_EXISTS,
+            Self::PermissionDenied => GrpcCodeBitmask::PERMISSION_DENIED,
+            Self::ResourceExhausted => GrpcCodeBitmask::RESOURCE_EXHAUSTED,
+            Self::FailedPrecondition => GrpcCodeBitmask::FAILED_PRECONDITION,
+            Self::Aborted => GrpcCodeBitmask::ABORTED,
+            Self::OutOfRange => GrpcCodeBitmask::OUT_OF_RANGE,
+            Self::Unimplemented => GrpcCodeBitmask::UNIMPLEMENTED,
+            Self::Internal => GrpcCodeBitmask::INTERNAL,
+            Self::Unavailable => GrpcCodeBitmask::UNAVAILABLE,
+            Self::DataLoss => GrpcCodeBitmask::DATA_LOSS,
+            Self::Unauthenticated => GrpcCodeBitmask::UNAUTHENTICATED,
+        }
+    }
+}
+
 bitflags! {
-    /// Bitmask used to specify which gRPC status codes are considered successes.
-    ///
-    /// Used in [`GrpcErrorsAsFailures::success_codes`].
-    pub struct GrpcCodeBitmask: u32 {
-        /// The operation completed successfully.
+    pub(crate) struct GrpcCodeBitmask: u32 {
         const OK                  = 0b00000000000000001;
-        /// The operation was cancelled.
         const CANCELLED           = 0b00000000000000010;
-        /// Unknown error.
         const UNKNOWN             = 0b00000000000000100;
-        /// Client specified an invalid argument.
         const INVALID_ARGUMENT    = 0b00000000000001000;
-        /// Deadline expired before operation could complete.
         const DEADLINE_EXCEEDED   = 0b00000000000010000;
-        /// Some requested entity was not found.
         const NOT_FOUND           = 0b00000000000100000;
-        /// Some entity that we attempted to create already exists.
         const ALREADY_EXISTS      = 0b00000000001000000;
-        /// The caller does not have permission to execute the specified operation.
         const PERMISSION_DENIED   = 0b00000000010000000;
-        /// Some resource has been exhausted.
         const RESOURCE_EXHAUSTED  = 0b00000000100000000;
-        /// The system is not in a state required for the operation's execution.
         const FAILED_PRECONDITION = 0b00000001000000000;
-        /// The operation was aborted.
         const ABORTED             = 0b00000010000000000;
-        /// Operation was attempted past the valid range.
         const OUT_OF_RANGE        = 0b00000100000000000;
-        /// Operation is not implemented or not supported.
         const UNIMPLEMENTED       = 0b00001000000000000;
-        /// Internal error.
         const INTERNAL            = 0b00010000000000000;
-        /// The service is currently unavailable.
         const UNAVAILABLE         = 0b00100000000000000;
-        /// Unrecoverable data loss or corruption.
         const DATA_LOSS           = 0b01000000000000000;
-        /// The request does not have valid authentication credentials
         const UNAUTHENTICATED     = 0b10000000000000000;
     }
 }
@@ -107,10 +154,6 @@ impl GrpcErrorsAsFailures {
     ///
     /// Defaults to only considering `Ok` as success.
     ///
-    /// Calling this method multiple times overrides previous calls.
-    ///
-    /// Use `|` to combine multiple codes, ie `GrpcCodeBitmask::INVALID_ARGUMENT | GrpcCodeBitmask::NOT_FOUND`.
-    ///
     /// `Ok` will always be considered a success.
     ///
     /// # Example
@@ -119,14 +162,14 @@ impl GrpcErrorsAsFailures {
     /// thats likely the clients fault:
     ///
     /// ```rust
-    /// use tower_http::classify::{GrpcErrorsAsFailures, GrpcCodeBitmask};
+    /// use tower_http::classify::{GrpcErrorsAsFailures, GrpcCode};
     ///
-    /// let classifier = GrpcErrorsAsFailures::new().success_codes(
-    ///     GrpcCodeBitmask::INVALID_ARGUMENT | GrpcCodeBitmask::NOT_FOUND,
-    /// );
+    /// let classifier = GrpcErrorsAsFailures::new()
+    ///     .with_success(GrpcCode::InvalidArgument)
+    ///     .with_success(GrpcCode::NotFound);
     /// ```
-    pub fn success_codes(mut self, codes: GrpcCodeBitmask) -> Self {
-        self.success_codes = GrpcCodeBitmask::OK | codes;
+    pub fn with_success(mut self, code: GrpcCode) -> Self {
+        self.success_codes |= code.into_bitmask();
         self
     }
 

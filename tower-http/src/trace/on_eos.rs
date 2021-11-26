@@ -168,7 +168,7 @@ impl OnEos for DefaultOnEos {
         let status = trailers.and_then(|trailers| {
             match crate::classify::grpc_errors_as_failures::classify_grpc_metadata(
                 trailers,
-                crate::classify::GrpcCodeBitmask::OK,
+                crate::classify::GrpcCode::Ok.into_bitmask(),
             ) {
                 ParsedGrpcStatus::Success
                 | ParsedGrpcStatus::HeaderNotString

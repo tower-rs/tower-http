@@ -272,7 +272,7 @@ fn status<B>(res: &Response<B>) -> Option<i32> {
     if is_grpc {
         match crate::classify::grpc_errors_as_failures::classify_grpc_metadata(
             res.headers(),
-            crate::classify::GrpcCodeBitmask::OK,
+            crate::classify::GrpcCode::Ok.into_bitmask(),
         ) {
             ParsedGrpcStatus::Success
             | ParsedGrpcStatus::HeaderNotString

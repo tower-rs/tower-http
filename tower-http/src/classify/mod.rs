@@ -9,7 +9,7 @@ mod status_in_range_is_error;
 
 pub use self::{
     grpc_errors_as_failures::{
-        GrpcCodeBitmask, GrpcEosErrorsAsFailures, GrpcErrorsAsFailures, GrpcFailureClass,
+        GrpcCode, GrpcEosErrorsAsFailures, GrpcErrorsAsFailures, GrpcFailureClass,
     },
     map_failure_class::MapFailureClass,
     status_in_range_is_error::{StatusInRangeAsFailures, StatusInRangeFailureClass},
