@@ -62,27 +62,33 @@
 //! #[derive(Clone, Copy)]
 //! struct MyAuth;
 //!
-//! impl AuthorizeRequest for MyAuth {
-//!     type Output = UserId;
+//! impl<B> AuthorizeRequest<B> for MyAuth {
 //!     type ResponseBody = Body;
 //!
-//!     fn authorize<B>(&mut self, request: &Request<B>) -> Option<UserId> {
-//!         // ...
-//!         # None
-//!     }
+//!     fn authorize(
+//!         &mut self,
+//!         request: &mut Request<B>,
+//!     ) -> Result<(), Response<Self::ResponseBody>> {
+//!         if let Some(user_id) = check_auth(request) {
+//!             // Set `user_id` as a request extension so it can be accessed by other
+//!             // services down the stack.
+//!             request.extensions_mut().insert(user_id);
 //!
-//!     fn on_authorized<B>(&mut self, request: &mut Request<B>, user_id: UserId) {
-//!         // Set `user_id` as a request extension so it can be accessed by other
-//!         // services down the stack.
-//!         request.extensions_mut().insert(user_id);
-//!     }
+//!             Ok(())
+//!         } else {
+//!             let unauthorized_response = Response::builder()
+//!                 .status(StatusCode::UNAUTHORIZED)
+//!                 .body(Body::empty())
+//!                 .unwrap();
 //!
-//!     fn unauthorized_response<B>(&mut self, request: &Request<B>) -> Response<Body> {
-//!         Response::builder()
-//!             .status(StatusCode::UNAUTHORIZED)
-//!             .body(Body::empty())
-//!             .unwrap()
+//!             Err(unauthorized_response)
+//!         }
 //!     }
+//! }
+//!
+//! fn check_auth<B>(request: &Request<B>) -> Option<UserId> {
+//!     // ...
+//!     # unimplemented!()
 //! }
 //!
 //! #[derive(Debug)]
@@ -106,6 +112,31 @@
 //! let service = ServiceBuilder::new()
 //!     // Authorize requests using `MyAuth`
 //!     .layer(RequireAuthorizationLayer::custom(MyAuth))
+//!     .service_fn(handle);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! Or using a closure:
+//!
+//! ```
+//! use tower_http::auth::{RequireAuthorizationLayer, AuthorizeRequest};
+//! use hyper::{Request, Response, Body, Error};
+//! use http::{StatusCode, header::AUTHORIZATION};
+//! use tower::{Service, ServiceExt, ServiceBuilder, service_fn};
+//!
+//! async fn handle(request: Request<Body>) -> Result<Response<Body>, Error> {
+//!     # todo!();
+//!     // ...
+//! }
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let service = ServiceBuilder::new()
+//!     .layer(RequireAuthorizationLayer::custom(|request: &mut Request<Body>| {
+//!         // authorize the request
+//!         # Ok::<_, Response<Body>>(())
+//!     }))
 //!     .service_fn(handle);
 //! # Ok(())
 //! # }
@@ -170,10 +201,7 @@ impl<ResBody> RequireAuthorizationLayer<Basic<ResBody>> {
     }
 }
 
-impl<T> RequireAuthorizationLayer<T>
-where
-    T: AuthorizeRequest,
-{
+impl<T> RequireAuthorizationLayer<T> {
     /// Authorize requests using a custom scheme.
     pub fn custom(auth: T) -> RequireAuthorizationLayer<T> {
         Self { auth }
@@ -242,10 +270,7 @@ impl<S, ResBody> RequireAuthorization<S, Basic<ResBody>> {
     }
 }
 
-impl<S, T> RequireAuthorization<S, T>
-where
-    T: AuthorizeRequest,
-{
+impl<S, T> RequireAuthorization<S, T> {
     /// Authorize requests using a custom scheme.
     ///
     /// The `Authorization` header is required to have the value provided.
@@ -254,11 +279,10 @@ where
     }
 }
 
-impl<ReqBody, ResBody, S, T> Service<Request<ReqBody>> for RequireAuthorization<S, T>
+impl<ReqBody, ResBody, S, Auth> Service<Request<ReqBody>> for RequireAuthorization<S, Auth>
 where
+    Auth: AuthorizeRequest<ReqBody, ResponseBody = ResBody>,
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
-    ResBody: Default,
-    T: AuthorizeRequest<ResponseBody = ResBody>,
 {
     type Response = Response<ResBody>;
     type Error = S::Error;
@@ -269,12 +293,9 @@ where
     }
 
     fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
-        if let Some(output) = self.auth.authorize(&req) {
-            self.auth.on_authorized(&mut req, output);
-            ResponseFuture::future(self.inner.call(req))
-        } else {
-            let res = self.auth.unauthorized_response(&req);
-            ResponseFuture::invalid_auth(res)
+        match self.auth.authorize(&mut req) {
+            Ok(_) => ResponseFuture::future(self.inner.call(req)),
+            Err(res) => ResponseFuture::invalid_auth(res),
         }
     }
 }
@@ -334,37 +355,25 @@ where
 }
 
 /// Trait for authorizing requests.
-pub trait AuthorizeRequest {
-    /// The output type of doing the authorization.
-    ///
-    /// Use `()` if authorization doesn't produce any meaningful output.
-    type Output;
-
+pub trait AuthorizeRequest<B> {
     /// The body type used for responses to unauthorized requests.
-    type ResponseBody: Body;
+    type ResponseBody;
 
     /// Authorize the request.
     ///
-    /// If `Some(_)` is returned then the request is allowed through, otherwise not.
-    fn authorize<B>(&mut self, request: &Request<B>) -> Option<Self::Output>;
+    /// If `Ok(())` is returned then the request is allowed through, otherwise not.
+    fn authorize(&mut self, request: &mut Request<B>) -> Result<(), Response<Self::ResponseBody>>;
+}
 
-    /// Callback for when a request has been successfully authorized.
-    ///
-    /// For example this allows you to save `Self::Output` in a [request extension][] to make it
-    /// available to services further down the stack. This could for example be the "claims" for a
-    /// valid [JWT].
-    ///
-    /// Defaults to doing nothing.
-    ///
-    /// See the [module docs](crate::auth::require_authorization) for an example.
-    ///
-    /// [request extension]: https://docs.rs/http/latest/http/struct.Extensions.html
-    /// [JWT]: https://jwt.io
-    #[inline]
-    fn on_authorized<B>(&mut self, _request: &mut Request<B>, _output: Self::Output) {}
+impl<B, F, ResBody> AuthorizeRequest<B> for F
+where
+    F: FnMut(&mut Request<B>) -> Result<(), Response<ResBody>>,
+{
+    type ResponseBody = ResBody;
 
-    /// Create the response for an unauthorized request.
-    fn unauthorized_response<B>(&mut self, request: &Request<B>) -> Response<Self::ResponseBody>;
+    fn authorize(&mut self, request: &mut Request<B>) -> Result<(), Response<Self::ResponseBody>> {
+        self(request)
+    }
 }
 
 /// Type that performs "bearer token" authorization.
@@ -406,26 +415,21 @@ impl<ResBody> fmt::Debug for Bearer<ResBody> {
     }
 }
 
-impl<ResBody> AuthorizeRequest for Bearer<ResBody>
+impl<B, ResBody> AuthorizeRequest<B> for Bearer<ResBody>
 where
     ResBody: Body + Default,
 {
-    type Output = ();
     type ResponseBody = ResBody;
 
-    fn authorize<B>(&mut self, request: &Request<B>) -> Option<Self::Output> {
-        if let Some(actual) = request.headers().get(header::AUTHORIZATION) {
-            (actual == self.header_value).then(|| ())
-        } else {
-            None
+    fn authorize(&mut self, request: &mut Request<B>) -> Result<(), Response<Self::ResponseBody>> {
+        match request.headers().get(header::AUTHORIZATION) {
+            Some(actual) if actual == self.header_value => Ok(()),
+            _ => {
+                let mut res = Response::new(ResBody::default());
+                *res.status_mut() = StatusCode::UNAUTHORIZED;
+                Err(res)
+            }
         }
-    }
-
-    fn unauthorized_response<B>(&mut self, _request: &Request<B>) -> Response<Self::ResponseBody> {
-        let body = ResBody::default();
-        let mut res = Response::new(body);
-        *res.status_mut() = StatusCode::UNAUTHORIZED;
-        res
     }
 }
 
@@ -468,28 +472,23 @@ impl<ResBody> fmt::Debug for Basic<ResBody> {
     }
 }
 
-impl<ResBody> AuthorizeRequest for Basic<ResBody>
+impl<B, ResBody> AuthorizeRequest<B> for Basic<ResBody>
 where
     ResBody: Body + Default,
 {
-    type Output = ();
     type ResponseBody = ResBody;
 
-    fn authorize<B>(&mut self, request: &Request<B>) -> Option<Self::Output> {
-        if let Some(actual) = request.headers().get(header::AUTHORIZATION) {
-            (actual == self.header_value).then(|| ())
-        } else {
-            None
+    fn authorize(&mut self, request: &mut Request<B>) -> Result<(), Response<Self::ResponseBody>> {
+        match request.headers().get(header::AUTHORIZATION) {
+            Some(actual) if actual == self.header_value => Ok(()),
+            _ => {
+                let mut res = Response::new(ResBody::default());
+                *res.status_mut() = StatusCode::UNAUTHORIZED;
+                res.headers_mut()
+                    .insert(header::WWW_AUTHENTICATE, "Basic".parse().unwrap());
+                Err(res)
+            }
         }
-    }
-
-    fn unauthorized_response<B>(&mut self, _request: &Request<B>) -> Response<Self::ResponseBody> {
-        let body = ResBody::default();
-        let mut res = Response::new(body);
-        *res.status_mut() = StatusCode::UNAUTHORIZED;
-        res.headers_mut()
-            .insert(header::WWW_AUTHENTICATE, "Basic".parse().unwrap());
-        res
     }
 }
 
