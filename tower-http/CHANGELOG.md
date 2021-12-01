@@ -63,7 +63,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   std::error::Error + Send + Sync>` ([#166]) (BREAKING)
 - **compression, decompression**: Remove the `compression` and `decompression` feature. They were unnecessary
   and `compression-full`/`decompression-full` can be used to get full
-  compression/decompression support. For more granular control `[compression|decompression]-gzip`,
+  compression/decompression support. For more granular control, `[compression|decompression]-gzip`,
   `[compression|decompression]-br` and `[compression|decompression]-deflate` may
   be used instead ([#170]) (BREAKING)
 
