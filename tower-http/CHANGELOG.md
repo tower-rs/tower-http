@@ -53,7 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Box<dyn std::error::Error + Send + Sync>`. This makes them usable if
   the body they're wrapping uses `Box<dyn std::error::Error + Send + Sync>` as
   its error type which they previously weren't ([#166]) (BREAKING)
-- **fs**: Changed response body type of `ServeDir` and `ServeFile` to
+- **fs**: Change response body type of `ServeDir` and `ServeFile` to
   `ServeFileSystemResponseBody` and `ServeFileSystemResponseFuture` ([#187]) (BREAKING)
 - **auth**: Change `AuthorizeRequest` and `AsyncAuthorizeRequest` traits to be simpler ([#192]) (BREAKING)
 
