@@ -177,6 +177,14 @@ impl<S, T> AsyncRequireAuthorization<S, T> {
     pub fn new(inner: S, auth: T) -> AsyncRequireAuthorization<S, T> {
         Self { inner, auth }
     }
+
+    /// Returns a new [`Layer`] that wraps services with an [`AsyncRequireAuthorizationLayer`]
+    /// middleware.
+    ///
+    /// [`Layer`]: tower_layer::Layer
+    pub fn layer(auth: T) -> AsyncRequireAuthorizationLayer<T> {
+        AsyncRequireAuthorizationLayer::new(auth)
+    }
 }
 
 impl<ReqBody, ResBody, S, Auth> Service<Request<ReqBody>> for AsyncRequireAuthorization<S, Auth>
