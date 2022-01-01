@@ -81,6 +81,12 @@ pub struct CorsLayer {
 
 const WILDCARD: &str = "*";
 
+const VARY_HEADERS: [HeaderName; 3] = [
+    header::ORIGIN,
+    header::ACCESS_CONTROL_REQUEST_METHOD,
+    header::ACCESS_CONTROL_REQUEST_HEADERS,
+];
+
 impl CorsLayer {
     /// Create a new `CorsLayer`.
     ///
@@ -769,24 +775,29 @@ where
                 expose_headers,
             } => {
                 let mut response: Response<B> = ready!(future.poll(cx))?;
+                let headers = response.headers_mut();
 
-                response.headers_mut().insert(
+                headers.insert(
                     header::ACCESS_CONTROL_ALLOW_ORIGIN,
                     response_origin(allow_origin.take().unwrap(), origin),
                 );
 
                 if let Some(allow_credentials) = allow_credentials {
-                    response.headers_mut().insert(
+                    headers.insert(
                         header::ACCESS_CONTROL_ALLOW_CREDENTIALS,
                         allow_credentials.clone(),
                     );
                 }
 
                 if let Some(expose_headers) = expose_headers {
-                    response.headers_mut().insert(
+                    headers.insert(
                         header::ACCESS_CONTROL_EXPOSE_HEADERS,
                         expose_headers.clone(),
                     );
+                }
+
+                for h in &VARY_HEADERS {
+                    headers.append(header::VARY, HeaderValue::from_static(h.as_str()));
                 }
 
                 Poll::Ready(Ok(response))
