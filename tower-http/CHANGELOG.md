@@ -21,7 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Fixed
 
-- None.
+- Set `Vary` header in `Cors` middleware ([#199])
+
+[#199]: https://github.com/tower-rs/tower-http/pull/199
 
 # 0.2.0 (December 1, 2021)
 
