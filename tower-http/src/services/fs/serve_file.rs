@@ -1,8 +1,7 @@
-//! Service that serves a file.
-
 use super::ServeDir;
 use http::{HeaderValue, Request};
 use mime::Mime;
+use std::convert::TryInto;
 use std::{
     path::Path,
     task::{Context, Poll},
@@ -445,5 +444,59 @@ mod tests {
 
         assert_eq!(res.status(), StatusCode::NOT_FOUND);
         assert!(res.headers().get(header::CONTENT_TYPE).is_none());
+    }
+    #[tokio::test]
+    async fn last_modified() {
+        let svc = ServeFile::new("../README.md");
+
+        let req = Request::builder().body(Body::empty()).unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::OK);
+
+        let last_modified = res
+            .headers()
+            .get(header::LAST_MODIFIED)
+            .expect("Missing last modified header!");
+
+        // -- If-Modified-Since
+
+        let svc = ServeFile::new("../README.md");
+        let req = Request::builder()
+            .header(header::IF_MODIFIED_SINCE, last_modified)
+            .body(Body::empty())
+            .unwrap();
+
+        let res = svc.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::NOT_MODIFIED);
+
+        let svc = ServeFile::new("../README.md");
+        let req = Request::builder()
+            .header(header::IF_MODIFIED_SINCE, "Fri, 09 Aug 1996 14:21:40 GMT")
+            .body(Body::empty())
+            .unwrap();
+
+        let res = svc.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+
+        // -- If-Unmodified-Since
+
+        let svc = ServeFile::new("../README.md");
+        let req = Request::builder()
+            .header(header::IF_UNMODIFIED_SINCE, last_modified)
+            .body(Body::empty())
+            .unwrap();
+
+        let res = svc.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+
+        let svc = ServeFile::new("../README.md");
+        let req = Request::builder()
+            .header(header::IF_UNMODIFIED_SINCE, "Fri, 09 Aug 1996 14:21:40 GMT")
+            .body(Body::empty())
+            .unwrap();
+
+        let res = svc.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::PRECONDITION_FAILED);
     }
 }
