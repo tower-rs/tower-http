@@ -354,7 +354,7 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
 
                     let last_modified = meta.modified().ok().map(LastModified::from);
                     if let Some(status_code) = check_modified_headers(
-                        &last_modified,
+                        last_modified.as_ref(),
                         if_unmodified_since,
                         if_modified_since,
                     ) {
@@ -377,7 +377,7 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
                     let meta = file.metadata().await?;
                     let last_modified = meta.modified().ok().map(LastModified::from);
                     if let Some(status_code) = check_modified_headers(
-                        &last_modified,
+                        last_modified.as_ref(),
                         if_unmodified_since,
                         if_modified_since,
                     ) {

@@ -248,7 +248,7 @@ impl IfUnmodifiedSince {
 }
 
 fn check_modified_headers(
-    modified: &Option<LastModified>,
+    modified: Option<&LastModified>,
     if_unmodified_since: Option<IfUnmodifiedSince>,
     if_modified_since: Option<IfModifiedSince>,
 ) -> Option<StatusCode> {
