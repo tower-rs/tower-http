@@ -1,3 +1,5 @@
+//! Service that serves a file.
+
 use super::ServeDir;
 use http::{HeaderValue, Request};
 use mime::Mime;
