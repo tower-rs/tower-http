@@ -787,6 +787,7 @@ mod tests {
             .unwrap();
         let res = svc.oneshot(request).await.unwrap();
 
+        assert_eq!(res.headers()["content-type"], "text/plain");
         assert_eq!(res.headers()["content-encoding"], "deflate");
 
         let body = res.into_body().data().await.unwrap().unwrap();
