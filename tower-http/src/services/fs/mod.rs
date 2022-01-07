@@ -226,8 +226,7 @@ impl IfModifiedSince {
     fn from_header_value(value: &http::header::HeaderValue) -> Option<IfModifiedSince> {
         String::from_utf8(value.as_bytes().to_vec())
             .ok()
-            .map(|value| httpdate::parse_http_date(&value).ok())
-            .flatten()
+            .and_then(|value| httpdate::parse_http_date(&value).ok())
             .map(|time| IfModifiedSince(time.into()))
     }
 }
