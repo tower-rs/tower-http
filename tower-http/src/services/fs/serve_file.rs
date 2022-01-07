@@ -3,7 +3,6 @@
 use super::ServeDir;
 use http::{HeaderValue, Request};
 use mime::Mime;
-use std::convert::TryInto;
 use std::{
     path::Path,
     task::{Context, Poll},

@@ -2,7 +2,7 @@
 
 use bytes::Bytes;
 use futures_util::Stream;
-use http::{HeaderMap, HeaderValue, Response, StatusCode};
+use http::{HeaderMap, Response, StatusCode};
 use http_body::{combinators::BoxBody, Body, Empty};
 use httpdate::HttpDate;
 use pin_project_lite::pin_project;
