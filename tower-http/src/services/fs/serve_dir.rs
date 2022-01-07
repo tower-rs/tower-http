@@ -310,13 +310,11 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
         let if_unmodified_since = req
             .headers()
             .get(header::IF_UNMODIFIED_SINCE)
-            .map(IfUnmodifiedSince::from_header_value)
-            .flatten();
+            .and_then(IfUnmodifiedSince::from_header_value);
         let if_modified_since = req
             .headers()
             .get(header::IF_MODIFIED_SINCE)
-            .map(IfModifiedSince::from_header_value)
-            .flatten();
+            .and_then(IfModifiedSince::from_header_value);
 
         let request_method = req.method().clone();
         let variant = self.variant.clone();
