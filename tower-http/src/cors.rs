@@ -769,7 +769,7 @@ where
         match self.project().inner.project() {
             KindProj::CorsCall {
                 future,
-                allow_origin,
+                allow_origin: _,
                 origin,
                 allow_credentials,
                 expose_headers,
@@ -779,7 +779,7 @@ where
 
                 headers.insert(
                     header::ACCESS_CONTROL_ALLOW_ORIGIN,
-                    response_origin(allow_origin.take().unwrap(), origin),
+                    origin.clone()
                 );
 
                 if let Some(allow_credentials) = allow_credentials {
@@ -805,14 +805,6 @@ where
             KindProj::NonCorsCall { future } => future.poll(cx),
             KindProj::Error { response } => Poll::Ready(Ok(response.take().unwrap())),
         }
-    }
-}
-
-fn response_origin(allow_origin: AnyOr<Origin>, origin: &HeaderValue) -> HeaderValue {
-    if let AnyOrInner::Any = allow_origin.0 {
-        WILDCARD.parse().unwrap()
-    } else {
-        origin.clone()
     }
 }
 
