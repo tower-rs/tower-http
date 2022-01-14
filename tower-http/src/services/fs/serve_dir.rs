@@ -137,7 +137,7 @@ fn build_and_validate_path(base_path: &Path, requested_path: &str) -> Option<Pat
 
     let mut full_path = base_path.to_path_buf();
     for seg in path_decoded.split('/') {
-        if seg.starts_with("..") || seg.contains('\\') {
+        if seg.starts_with("..") || seg.contains('\\') || seg.contains(':') {
             return None;
         }
         full_path.push(seg);
