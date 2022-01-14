@@ -50,7 +50,7 @@ async fn main() {
         .expect("server error");
 }
 
-fn handle_errors(err: BoxError) -> (StatusCode, String) {
+async fn handle_errors(err: BoxError) -> impl IntoResponse {
     if err.is::<tower::timeout::error::Elapsed>() {
         (
             StatusCode::REQUEST_TIMEOUT,
@@ -103,7 +103,7 @@ fn app() -> Router {
     // Build route service
     Router::new()
         .route("/:key", get(get_key).post(set_key))
-        .layer(middleware)
+        .layer(middleware.into_inner())
 }
 
 async fn get_key(path: Path<String>, state: Extension<State>) -> impl IntoResponse {
