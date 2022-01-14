@@ -38,6 +38,7 @@ multiple-versions = "deny"
 highlight = "all"
 skip-tree = [{ name = "tower", version = ">=0.3, <=0.4" }]
 skip = [
+    { name = "itoa", version = "=0.4.8" },
 ]
 
 [sources]
