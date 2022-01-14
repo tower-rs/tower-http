@@ -35,21 +35,11 @@ pub use self::{
     serve_file::ServeFile,
 };
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 struct PrecompressedVariants {
     gzip: bool,
     deflate: bool,
     br: bool,
-}
-
-impl Default for PrecompressedVariants {
-    fn default() -> Self {
-        Self {
-            gzip: false,
-            deflate: false,
-            br: false,
-        }
-    }
 }
 
 impl SupportedEncodings for PrecompressedVariants {
