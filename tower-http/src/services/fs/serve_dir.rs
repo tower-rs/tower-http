@@ -14,6 +14,7 @@ use percent_encoding::percent_decode;
 use std::fs::Metadata;
 use std::io::SeekFrom;
 use std::ops::RangeInclusive;
+use std::path::Component;
 use std::{
     future::Future,
     io,
@@ -138,18 +139,22 @@ fn build_and_validate_path(base_path: &Path, requested_path: &str) -> Option<Pat
     let mut full_path = base_path.to_path_buf();
     for component in path_decoded.components() {
         match component {
-            std::path::Component::Normal(comp) => full_path.push(comp),
-            std::path::Component::CurDir => {}
-            std::path::Component::Prefix(_)
-            | std::path::Component::RootDir
-            | std::path::Component::ParentDir => return None,
+            Component::Normal(comp) => {
+                // protect against paths like `/foo/c:/bar/baz` (#204)
+                if Path::new(&comp)
+                    .components()
+                    .all(|c| matches!(c, Component::Normal(_)))
+                {
+                    full_path.push(comp)
+                } else {
+                    return None;
+                }
+            }
+            Component::CurDir => {}
+            Component::Prefix(_) | Component::RootDir | Component::ParentDir => return None,
         }
     }
-    if full_path.is_relative() {
-        Some(full_path)
-    } else {
-        None
-    }
+    Some(full_path)
 }
 
 impl ServeDir {
