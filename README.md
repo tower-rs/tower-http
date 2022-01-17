@@ -5,7 +5,7 @@ Tower middleware and utilities for HTTP clients and servers.
 [![Build status](https://github.com/tower-rs/tower-http/workflows/CI/badge.svg)](https://github.com/tower-rs/tower-http/actions)
 [![Crates.io](https://img.shields.io/crates/v/tower-http)](https://crates.io/crates/tower-http)
 [![Documentation](https://docs.rs/tower-http/badge.svg)](https://docs.rs/tower-http)
-[![Crates.io](https://img.shields.io/crates/l/tower-http)](LICENSE)
+[![Crates.io](https://img.shields.io/crates/l/tower-http)](tower-http/LICENSE)
 
 More information about this crate can be found in the [crate documentation][docs].
 
@@ -56,7 +56,7 @@ HTTP project.
 
 ## License
 
-This project is licensed under the [MIT license](LICENSE).
+This project is licensed under the [MIT license](tower-http/LICENSE).
 
 ### Contribution
 
