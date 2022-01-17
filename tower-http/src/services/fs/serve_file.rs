@@ -446,4 +446,67 @@ mod tests {
         assert_eq!(res.status(), StatusCode::NOT_FOUND);
         assert!(res.headers().get(header::CONTENT_TYPE).is_none());
     }
+    #[tokio::test]
+    async fn last_modified() {
+        let svc = ServeFile::new("../README.md");
+
+        let req = Request::builder().body(Body::empty()).unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::OK);
+
+        let last_modified = res
+            .headers()
+            .get(header::LAST_MODIFIED)
+            .expect("Missing last modified header!");
+
+        // -- If-Modified-Since
+
+        let svc = ServeFile::new("../README.md");
+        let req = Request::builder()
+            .header(header::IF_MODIFIED_SINCE, last_modified)
+            .body(Body::empty())
+            .unwrap();
+
+        let res = svc.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::NOT_MODIFIED);
+        let body = res.into_body().data().await;
+        assert!(body.is_none());
+
+        let svc = ServeFile::new("../README.md");
+        let req = Request::builder()
+            .header(header::IF_MODIFIED_SINCE, "Fri, 09 Aug 1996 14:21:40 GMT")
+            .body(Body::empty())
+            .unwrap();
+
+        let res = svc.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let readme_bytes = include_bytes!("../../../../README.md");
+        let body = res.into_body().data().await.unwrap().unwrap();
+        assert_eq!(body.as_ref(), readme_bytes);
+
+        // -- If-Unmodified-Since
+
+        let svc = ServeFile::new("../README.md");
+        let req = Request::builder()
+            .header(header::IF_UNMODIFIED_SINCE, last_modified)
+            .body(Body::empty())
+            .unwrap();
+
+        let res = svc.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = res.into_body().data().await.unwrap().unwrap();
+        assert_eq!(body.as_ref(), readme_bytes);
+
+        let svc = ServeFile::new("../README.md");
+        let req = Request::builder()
+            .header(header::IF_UNMODIFIED_SINCE, "Fri, 09 Aug 1996 14:21:40 GMT")
+            .body(Body::empty())
+            .unwrap();
+
+        let res = svc.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::PRECONDITION_FAILED);
+        let body = res.into_body().data().await;
+        assert!(body.is_none());
+    }
 }
