@@ -470,6 +470,8 @@ mod tests {
 
         let res = svc.oneshot(req).await.unwrap();
         assert_eq!(res.status(), StatusCode::NOT_MODIFIED);
+        let body = res.into_body().data().await;
+        assert!(body.is_none());
 
         let svc = ServeFile::new("../README.md");
         let req = Request::builder()
@@ -479,6 +481,9 @@ mod tests {
 
         let res = svc.oneshot(req).await.unwrap();
         assert_eq!(res.status(), StatusCode::OK);
+        let readme_bytes = include_bytes!("../../../../README.md");
+        let body = res.into_body().data().await.unwrap().unwrap();
+        assert_eq!(body.as_ref(), readme_bytes);
 
         // -- If-Unmodified-Since
 
@@ -490,6 +495,8 @@ mod tests {
 
         let res = svc.oneshot(req).await.unwrap();
         assert_eq!(res.status(), StatusCode::OK);
+        let body = res.into_body().data().await.unwrap().unwrap();
+        assert_eq!(body.as_ref(), readme_bytes);
 
         let svc = ServeFile::new("../README.md");
         let req = Request::builder()
@@ -499,5 +506,7 @@ mod tests {
 
         let res = svc.oneshot(req).await.unwrap();
         assert_eq!(res.status(), StatusCode::PRECONDITION_FAILED);
+        let body = res.into_body().data().await;
+        assert!(body.is_none());
     }
 }
