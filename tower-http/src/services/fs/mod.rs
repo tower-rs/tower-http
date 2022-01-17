@@ -224,7 +224,7 @@ impl IfModifiedSince {
 
     /// convert a header value into a IfModifiedSince, invalid values are silentely ignored
     fn from_header_value(value: &http::header::HeaderValue) -> Option<IfModifiedSince> {
-        String::from_utf8(value.as_bytes().to_vec())
+        std::str::from_utf8(value.as_bytes())
             .ok()
             .and_then(|value| httpdate::parse_http_date(&value).ok())
             .map(|time| IfModifiedSince(time.into()))
@@ -239,7 +239,7 @@ impl IfUnmodifiedSince {
 
     /// convert a header value into a IfModifiedSince, invalid values are silentely ignored
     fn from_header_value(value: &http::header::HeaderValue) -> Option<IfUnmodifiedSince> {
-        String::from_utf8(value.as_bytes().to_vec())
+        std::str::from_utf8(value.as_bytes())
             .ok()
             .and_then(|value| httpdate::parse_http_date(&value).ok())
             .map(|time| IfUnmodifiedSince(time.into()))
