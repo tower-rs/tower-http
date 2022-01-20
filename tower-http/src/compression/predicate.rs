@@ -89,8 +89,8 @@ where
 /// This will compress responses unless:
 ///
 /// - They're gRPC, which has its own protocol specific compression scheme.
-/// - Its not an image as determined by the `content-type` starting with `image/`.
-/// - The response is larger than 32 bytes.
+/// - It's an image as determined by the `content-type` starting with `image/`.
+/// - The response is less than 32 bytes.
 ///
 /// # Configuring the defaults
 ///
