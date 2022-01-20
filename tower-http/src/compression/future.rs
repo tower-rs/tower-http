@@ -60,6 +60,27 @@ where
             (_, Encoding::Deflate) => CompressionBody::new(BodyInner::deflate(WrapBody::new(body))),
             #[cfg(feature = "compression-br")]
             (_, Encoding::Brotli) => CompressionBody::new(BodyInner::brotli(WrapBody::new(body))),
+            #[cfg(feature = "fs")]
+            (true, _) => {
+                // This should never happen because the `AcceptEncoding` struct which is used to determine
+                // `self.encoding` will only enable the different compression algorightms if the
+                // corresponding crate feature has been enabled. This means
+                // Encoding::[Gzip|Brotli|Deflate] should be impossible at this point without the
+                // features enabled.
+                //
+                // The match arm is still required though because the `fs` feature uses the
+                // Encoding struct independently and requires no compression logic to be enabled.
+                // This means a combination of an individual compression features and `fs` will fail
+                // to compile without this branch even though it will never be reached.
+                //
+                // To safeguard against refactors that changes this relationship or other bugs the
+                // server will return an uncompressed response instead of panicing since that could
+                // become a ddos attack vector.
+                return Poll::Ready(Ok(Response::from_parts(
+                    parts,
+                    CompressionBody::new(BodyInner::identity(body)),
+                )));
+            }
         };
 
         parts.headers.remove(header::CONTENT_LENGTH);
