@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Added
 
-- Support `Last-Modified` (and friends) headers in `ServeDir` and `ServeFile` ([#145])
+- None.
 
 ## Changed
 
@@ -21,10 +21,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Fixed
 
-- Set `Vary` header in `Cors` middleware ([#199])
+# 0.2.1 (January 21, 2022)
+
+## Added
+
+- Support `Last-Modified` (and friends) headers in `ServeDir` and `ServeFile` ([#145])
+- Add `AsyncRequireAuthorization::layer` ([#195])
+
+## Fixed
+
+- Fix build error for certain feature sets ([#209])
+- `Cors`: Set `Vary` header ([#199])
+- `ServeDir` and `ServeFile`: Fix potential directory traversal attack due to
+  improper path validation on Windows ([#204])
 
 [#145]: https://github.com/tower-rs/tower-http/pull/145
+[#195]: https://github.com/tower-rs/tower-http/pull/195
 [#199]: https://github.com/tower-rs/tower-http/pull/199
+[#204]: https://github.com/tower-rs/tower-http/pull/204
+[#209]: https://github.com/tower-rs/tower-http/pull/209
 
 # 0.2.0 (December 1, 2021)
 
