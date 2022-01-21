@@ -17,6 +17,7 @@ use percent_encoding::percent_decode;
 use std::fs::Metadata;
 use std::io::SeekFrom;
 use std::ops::RangeInclusive;
+use std::path::Component;
 use std::{
     future::Future,
     io,
@@ -133,17 +134,28 @@ impl ServeVariant {
 }
 
 fn build_and_validate_path(base_path: &Path, requested_path: &str) -> Option<PathBuf> {
-    // build and validate the path
     let path = requested_path.trim_start_matches('/');
 
     let path_decoded = percent_decode(path.as_ref()).decode_utf8().ok()?;
+    let path_decoded = Path::new(&*path_decoded);
 
     let mut full_path = base_path.to_path_buf();
-    for seg in path_decoded.split('/') {
-        if seg.starts_with("..") || seg.contains('\\') {
-            return None;
+    for component in path_decoded.components() {
+        match component {
+            Component::Normal(comp) => {
+                // protect against paths like `/foo/c:/bar/baz` (#204)
+                if Path::new(&comp)
+                    .components()
+                    .all(|c| matches!(c, Component::Normal(_)))
+                {
+                    full_path.push(comp)
+                } else {
+                    return None;
+                }
+            }
+            Component::CurDir => {}
+            Component::Prefix(_) | Component::RootDir | Component::ParentDir => return None,
         }
-        full_path.push(seg);
     }
     Some(full_path)
 }
@@ -1020,15 +1032,10 @@ mod tests {
 
     #[tokio::test]
     async fn access_cjk_percent_encoded_uri_path() {
-        let cjk_filename = "你好世界.txt";
         // percent encoding present of 你好世界.txt
         let cjk_filename_encoded = "%E4%BD%A0%E5%A5%BD%E4%B8%96%E7%95%8C.txt";
 
-        let tmp_dir = std::env::temp_dir();
-        let tmp_filename = std::path::Path::new(tmp_dir.as_path()).join(cjk_filename);
-        let _ = tokio::fs::File::create(&tmp_filename).await.unwrap();
-
-        let svc = ServeDir::new(&tmp_dir);
+        let svc = ServeDir::new("../test-files");
 
         let req = Request::builder()
             .uri(format!("/{}", cjk_filename_encoded))
@@ -1038,20 +1045,13 @@ mod tests {
 
         assert_eq!(res.status(), StatusCode::OK);
         assert_eq!(res.headers()["content-type"], "text/plain");
-        let _ = tokio::fs::remove_file(&tmp_filename).await.unwrap();
     }
 
     #[tokio::test]
     async fn access_space_percent_encoded_uri_path() {
-        let raw_filename = "filename with space.txt";
-        // percent encoding present of "filename with space.txt"
         let encoded_filename = "filename%20with%20space.txt";
 
-        let tmp_dir = std::env::temp_dir();
-        let tmp_filename = std::path::Path::new(tmp_dir.as_path()).join(raw_filename);
-        let _ = tokio::fs::File::create(&tmp_filename).await.unwrap();
-
-        let svc = ServeDir::new(&tmp_dir);
+        let svc = ServeDir::new("../test-files");
 
         let req = Request::builder()
             .uri(format!("/{}", encoded_filename))
@@ -1061,7 +1061,6 @@ mod tests {
 
         assert_eq!(res.status(), StatusCode::OK);
         assert_eq!(res.headers()["content-type"], "text/plain");
-        let _ = tokio::fs::remove_file(&tmp_filename).await.unwrap();
     }
 
     #[tokio::test]
