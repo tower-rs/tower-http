@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - None.
 
+# 0.1.3 (January 22, 2022)
+
+- `ServeDir` and `ServeFile`: Fix potential directory traversal attack due to
+  improper path validation on Windows ([#204])
+
+[#204]: https://github.com/tower-rs/tower-http/pull/204
+
 # 0.1.2 (November 13, 2021)
 
 - New middleware: Add `Cors` for setting [CORS] headers ([#112])
