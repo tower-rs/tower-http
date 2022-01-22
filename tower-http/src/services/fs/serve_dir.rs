@@ -8,7 +8,7 @@ use percent_encoding::percent_decode;
 use std::{
     future::Future,
     io,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     pin::Pin,
     task::{Context, Poll},
 };
@@ -133,27 +133,14 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
     }
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
-        // build and validate the path
         let path = req.uri().path();
-        let path = path.trim_start_matches('/');
-
-        let path_decoded = if let Ok(decoded_utf8) = percent_decode(path.as_ref()).decode_utf8() {
-            decoded_utf8
+        let mut full_path = if let Some(path) = build_and_validate_path(&self.base, path) {
+            path
         } else {
             return ResponseFuture {
                 inner: Inner::Invalid,
             };
         };
-
-        let mut full_path = self.base.clone();
-        for seg in path_decoded.split('/') {
-            if seg.starts_with("..") || seg.contains('\\') {
-                return ResponseFuture {
-                    inner: Inner::Invalid,
-                };
-            }
-            full_path.push(seg);
-        }
 
         let append_index_html_on_directories = self.append_index_html_on_directories;
         let buf_chunk_size = self.buf_chunk_size;
@@ -177,7 +164,7 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
             let guess = mime_guess::from_path(&full_path);
             let mime = guess
                 .first_raw()
-                .map(|mime| HeaderValue::from_static(mime))
+                .map(HeaderValue::from_static)
                 .unwrap_or_else(|| {
                     HeaderValue::from_str(mime::APPLICATION_OCTET_STREAM.as_ref()).unwrap()
                 });
@@ -190,6 +177,33 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
             inner: Inner::Valid(open_file_future),
         }
     }
+}
+
+fn build_and_validate_path(base_path: &Path, requested_path: &str) -> Option<PathBuf> {
+    let path = requested_path.trim_start_matches('/');
+
+    let path_decoded = percent_decode(path.as_ref()).decode_utf8().ok()?;
+    let path_decoded = Path::new(&*path_decoded);
+
+    let mut full_path = base_path.to_path_buf();
+    for component in path_decoded.components() {
+        match component {
+            Component::Normal(comp) => {
+                // protect against paths like `/foo/c:/bar/baz` (#204)
+                if Path::new(&comp)
+                    .components()
+                    .all(|c| matches!(c, Component::Normal(_)))
+                {
+                    full_path.push(comp)
+                } else {
+                    return None;
+                }
+            }
+            Component::CurDir => {}
+            Component::Prefix(_) | Component::RootDir | Component::ParentDir => return None,
+        }
+    }
+    Some(full_path)
 }
 
 async fn is_dir(full_path: &Path) -> bool {
