@@ -54,6 +54,7 @@ default = []
 full = [
     "add-extension",
     "auth",
+    "catch-panic",
     "compression-full",
     "cors",
     "decompression-full",
@@ -73,6 +74,7 @@ full = [
 
 add-extension = []
 auth = ["base64"]
+catch-panic = []
 cors = []
 follow-redirect = ["iri-string", "tower/util"]
 fs = ["tokio/fs", "tokio-util/io", "tokio/io-util", "mime_guess", "mime", "percent-encoding", "httpdate"]
