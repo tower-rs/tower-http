@@ -1,4 +1,83 @@
-//! TODO(david): docs
+//! Convert panics into responses.
+//!
+//! # Example
+//!
+//! ```rust
+//! use http::{Request, Response, header::HeaderName};
+//! use std::convert::Infallible;
+//! use tower::{Service, ServiceExt, ServiceBuilder, service_fn};
+//! use tower_http::catch_panic::CatchPanicLayer;
+//! use hyper::Body;
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! async fn handle(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+//!     panic!("something went wrong...")
+//! }
+//!
+//! let mut svc = ServiceBuilder::new()
+//!     // Catch panics and convert them into responses.
+//!     .layer(CatchPanicLayer::new())
+//!     .service_fn(handle);
+//!
+//! // Call the service.
+//! let request = Request::new(Body::empty());
+//!
+//! let response = svc.ready().await?.call(request).await?;
+//!
+//! assert_eq!(response.status(), 500);
+//! #
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! Using a custom panic handler:
+//!
+//! ```rust
+//! use http::{Request, StatusCode, Response, header::{self, HeaderName}};
+//! use std::{any::Any, convert::Infallible};
+//! use tower::{Service, ServiceExt, ServiceBuilder, service_fn};
+//! use tower_http::catch_panic::CatchPanicLayer;
+//! use hyper::Body;
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! async fn handle(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+//!     panic!("something went wrong...")
+//! }
+//!
+//! fn handle_panic(err: Box<dyn Any + Send + 'static>) -> Response<Body> {
+//!     let details = if let Some(s) = err.downcast_ref::<String>() {
+//!         s.clone()
+//!     } else if let Some(s) = err.downcast_ref::<&str>() {
+//!         s.to_string()
+//!     } else {
+//!         "Unknown panic message".to_string()
+//!     };
+//!
+//!     let body = serde_json::json!({
+//!         "error": {
+//!             "kind": "panic",
+//!             "details": details,
+//!         }
+//!     });
+//!     let body = serde_json::to_string(&body).unwrap();
+//!
+//!     Response::builder()
+//!         .status(StatusCode::INTERNAL_SERVER_ERROR)
+//!         .header(header::CONTENT_TYPE, "application/json")
+//!         .body(Body::from(body))
+//!         .unwrap()
+//! }
+//!
+//! let svc = ServiceBuilder::new()
+//!     // Use `handle_panic` to create the response.
+//!     .layer(CatchPanicLayer::custom(handle_panic))
+//!     .service_fn(handle);
+//! #
+//! # Ok(())
+//! # }
+//! ```
 
 use bytes::Bytes;
 use futures_core::ready;

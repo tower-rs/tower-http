@@ -48,6 +48,7 @@ tokio = { version = "1", features = ["full"] }
 tower = { version = "0.4.10", features = ["buffer", "util", "retry", "make", "timeout"] }
 tracing-subscriber = "0.3"
 uuid = { version = "0.8", features = ["v4"] }
+serde_json = "1.0"
 
 [features]
 default = []
