@@ -75,7 +75,7 @@ full = [
 
 add-extension = []
 auth = ["base64"]
-catch-panic = ["tracing"]
+catch-panic = ["tracing", "futures-util/std"]
 cors = []
 follow-redirect = ["iri-string", "tower/util"]
 fs = ["tokio/fs", "tokio-util/io", "tokio/io-util", "mime_guess", "mime", "percent-encoding", "httpdate"]
