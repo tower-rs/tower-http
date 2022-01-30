@@ -373,7 +373,11 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     /// [`tower_http::catch_panic`]: crate::catch_panic
     #[cfg(feature = "catch-panic")]
     #[cfg_attr(docsrs, doc(cfg(feature = "catch-panic")))]
-    fn catch_panic(self) -> ServiceBuilder<Stack<crate::catch_panic::CatchPanicLayer, L>>;
+    fn catch_panic(
+        self,
+    ) -> ServiceBuilder<
+        Stack<crate::catch_panic::CatchPanicLayer<crate::catch_panic::DefaultResponseForPanic>, L>,
+    >;
 }
 
 impl<L> crate::sealed::Sealed<L> for ServiceBuilder<L> {}
@@ -600,7 +604,11 @@ impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
 
     #[cfg(feature = "catch-panic")]
     #[cfg_attr(docsrs, doc(cfg(feature = "catch-panic")))]
-    fn catch_panic(self) -> ServiceBuilder<Stack<crate::catch_panic::CatchPanicLayer, L>> {
+    fn catch_panic(
+        self,
+    ) -> ServiceBuilder<
+        Stack<crate::catch_panic::CatchPanicLayer<crate::catch_panic::DefaultResponseForPanic>, L>,
+    > {
         self.layer(crate::catch_panic::CatchPanicLayer::new())
     }
 }

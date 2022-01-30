@@ -3,12 +3,11 @@
 use bytes::Bytes;
 use futures_core::ready;
 use futures_util::future::{CatchUnwind, FutureExt};
-use http::{Request, Response, StatusCode};
+use http::{HeaderValue, Request, Response, StatusCode};
 use http_body::{combinators::UnsyncBoxBody, Body, Full};
 use pin_project_lite::pin_project;
 use std::{
     any::Any,
-    borrow::Cow,
     future::Future,
     panic::AssertUnwindSafe,
     pin::Pin,
@@ -17,26 +16,47 @@ use std::{
 use tower_layer::Layer;
 use tower_service::Service;
 
+use crate::BoxError;
+
 /// Layer that applies the [`CatchPanic`] middleware that catches panics and converts them into
 /// `500 Internal Server` responses.
 ///
 /// See the [module docs](self) for an example.
 #[derive(Debug, Clone, Copy, Default)]
-#[non_exhaustive]
-pub struct CatchPanicLayer;
+pub struct CatchPanicLayer<T> {
+    panic_handler: T,
+}
 
-impl CatchPanicLayer {
-    /// Create a new `CatchPanicLayer`.
+impl CatchPanicLayer<DefaultResponseForPanic> {
+    /// Create a new `CatchPanicLayer` with the default panic handler.
     pub fn new() -> Self {
-        CatchPanicLayer {}
+        CatchPanicLayer {
+            panic_handler: DefaultResponseForPanic,
+        }
     }
 }
 
-impl<S> Layer<S> for CatchPanicLayer {
-    type Service = CatchPanic<S>;
+impl<T> CatchPanicLayer<T> {
+    /// Create a new `CatchPanicLayer` with a custom panic handler.
+    pub fn custom(panic_handler: T) -> Self
+    where
+        T: ResponseForPanic,
+    {
+        Self { panic_handler }
+    }
+}
+
+impl<T, S> Layer<S> for CatchPanicLayer<T>
+where
+    T: Clone,
+{
+    type Service = CatchPanic<S, T>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        CatchPanic::new(inner)
+        CatchPanic {
+            inner,
+            panic_handler: self.panic_handler.clone(),
+        }
     }
 }
 
@@ -44,34 +64,48 @@ impl<S> Layer<S> for CatchPanicLayer {
 ///
 /// See the [module docs](self) for an example.
 #[derive(Debug, Clone, Copy)]
-pub struct CatchPanic<S> {
+pub struct CatchPanic<S, T> {
     inner: S,
+    panic_handler: T,
 }
 
-impl<S> CatchPanic<S> {
-    /// Create a new `CatchPanic`.
+impl<S> CatchPanic<S, DefaultResponseForPanic> {
+    /// Create a new `CatchPanic` with the default panic handler.
     pub fn new(inner: S) -> Self {
-        Self { inner }
+        Self {
+            inner,
+            panic_handler: DefaultResponseForPanic,
+        }
     }
+}
 
+impl<S, T> CatchPanic<S, T> {
     define_inner_service_accessors!();
 
-    /// Returns a new [`Layer`] that wraps services with a `CatchPanic` middleware.
-    ///
-    /// [`Layer`]: tower_layer::Layer
-    pub fn layer() -> CatchPanicLayer {
-        CatchPanicLayer::new()
+    /// Create a new `CatchPanic` with a custom panic handler.
+    pub fn custom(inner: S, panic_handler: T) -> Self
+    where
+        T: ResponseForPanic,
+    {
+        Self {
+            inner,
+            panic_handler,
+        }
     }
 }
 
-impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for CatchPanic<S>
+impl<S, T, ReqBody, ResBody> Service<Request<ReqBody>> for CatchPanic<S, T>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
     ResBody: Body<Data = Bytes> + Send + 'static,
+    ResBody::Error: Into<BoxError>,
+    T: ResponseForPanic + Clone,
+    T::ResponseBody: Body<Data = Bytes> + Send + 'static,
+    <T::ResponseBody as Body>::Error: Into<BoxError>,
 {
-    type Response = Response<UnsyncBoxBody<Bytes, ResBody::Error>>;
+    type Response = Response<UnsyncBoxBody<Bytes, BoxError>>;
     type Error = S::Error;
-    type Future = ResponseFuture<S::Future>;
+    type Future = ResponseFuture<S::Future, T>;
 
     #[inline]
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -83,11 +117,13 @@ where
             Ok(future) => ResponseFuture {
                 kind: Kind::Future {
                     future: AssertUnwindSafe(future).catch_unwind(),
+                    panic_handler: Some(self.panic_handler.clone()),
                 },
             },
             Err(panic_err) => ResponseFuture {
                 kind: Kind::Panicked {
                     panic_err: Some(panic_err),
+                    panic_handler: Some(self.panic_handler.clone()),
                 },
             },
         }
@@ -96,63 +132,144 @@ where
 
 pin_project! {
     /// Response future for [`CatchPanic`].
-    pub struct ResponseFuture<F> {
+    pub struct ResponseFuture<F, T> {
         #[pin]
-        kind: Kind<F>,
+        kind: Kind<F, T>,
     }
 }
 
 pin_project! {
     #[project = KindProj]
-    enum Kind<F> {
+    enum Kind<F, T> {
         Panicked {
             panic_err: Option<Box<dyn Any + Send + 'static>>,
+            panic_handler: Option<T>,
         },
         Future {
             #[pin]
             future: CatchUnwind<AssertUnwindSafe<F>>,
+            panic_handler: Option<T>,
         }
     }
 }
 
-impl<F, ResBody, E> Future for ResponseFuture<F>
+impl<F, ResBody, E, T> Future for ResponseFuture<F, T>
 where
     F: Future<Output = Result<Response<ResBody>, E>>,
     ResBody: Body<Data = Bytes> + Send + 'static,
+    ResBody::Error: Into<BoxError>,
+    T: ResponseForPanic,
+    T::ResponseBody: Body<Data = Bytes> + Send + 'static,
+    <T::ResponseBody as Body>::Error: Into<BoxError>,
 {
-    type Output = Result<Response<UnsyncBoxBody<Bytes, ResBody::Error>>, E>;
+    type Output = Result<Response<UnsyncBoxBody<Bytes, BoxError>>, E>;
 
-    #[allow(warnings)]
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match self.project().kind.project() {
-            KindProj::Panicked { panic_err } => Poll::Ready(Ok(panic_err_to_response(
-                panic_err.take().expect("future polled after completion"),
-            ))),
-            KindProj::Future { future } => match ready!(future.poll(cx)) {
-                Ok(Ok(res)) => Poll::Ready(Ok(res.map(|body| body.boxed_unsync()))),
+            KindProj::Panicked {
+                panic_err,
+                panic_handler,
+            } => {
+                let panic_handler = panic_handler
+                    .take()
+                    .expect("future polled after completion");
+                let panic_err = panic_err.take().expect("future polled after completion");
+                Poll::Ready(Ok(response_for_panic(panic_handler, panic_err)))
+            }
+            KindProj::Future {
+                future,
+                panic_handler,
+            } => match ready!(future.poll(cx)) {
+                Ok(Ok(res)) => {
+                    Poll::Ready(Ok(res.map(|body| body.map_err(Into::into).boxed_unsync())))
+                }
                 Ok(Err(svc_err)) => Poll::Ready(Err(svc_err)),
-                Err(panic_err) => Poll::Ready(Ok(panic_err_to_response(panic_err))),
+                Err(panic_err) => Poll::Ready(Ok(response_for_panic(
+                    panic_handler
+                        .take()
+                        .expect("future polled after completion"),
+                    panic_err,
+                ))),
             },
         }
     }
 }
 
-fn panic_err_to_response<E>(
+fn response_for_panic<T>(
+    mut panic_handler: T,
     err: Box<dyn Any + Send + 'static>,
-) -> Response<UnsyncBoxBody<Bytes, E>> {
-    let message: Cow<_> = if let Some(s) = err.downcast_ref::<String>() {
-        s.to_owned().into()
-    } else if let Some(s) = err.downcast_ref::<&str>() {
-        (*s).into()
-    } else {
-        "`CatchPanic` middleware was unable to obtain panic info".into()
-    };
-    let body = format!("Service panicked: {}", message);
+) -> Response<UnsyncBoxBody<Bytes, BoxError>>
+where
+    T: ResponseForPanic,
+    T::ResponseBody: Body<Data = Bytes> + Send + 'static,
+    <T::ResponseBody as Body>::Error: Into<BoxError>,
+{
+    panic_handler
+        .response_for_panic(err)
+        .map(|body| body.map_err(Into::into).boxed_unsync())
+}
 
-    let mut res = Response::new(Full::from(body).map_err(|err| match err {}).boxed_unsync());
-    *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+/// Trait for creating responses from panics.
+pub trait ResponseForPanic: Clone {
+    /// The body type used for responses to panics.
+    type ResponseBody;
 
-    res
+    /// Create a response from the panic error.
+    fn response_for_panic(
+        &mut self,
+        err: Box<dyn Any + Send + 'static>,
+    ) -> Response<Self::ResponseBody>;
+}
+
+impl<F, B> ResponseForPanic for F
+where
+    F: FnMut(Box<dyn Any + Send + 'static>) -> Response<B> + Clone,
+{
+    type ResponseBody = B;
+
+    fn response_for_panic(
+        &mut self,
+        err: Box<dyn Any + Send + 'static>,
+    ) -> Response<Self::ResponseBody> {
+        self(err)
+    }
+}
+
+/// The default `ResponseForPanic` used by `CatchPanic`.
+///
+/// It will log the panic message and return a `500 Internal Server` error response with an empty
+/// body.
+#[derive(Debug, Default, Clone, Copy)]
+#[non_exhaustive]
+pub struct DefaultResponseForPanic;
+
+impl ResponseForPanic for DefaultResponseForPanic {
+    type ResponseBody = Full<Bytes>;
+
+    fn response_for_panic(
+        &mut self,
+        err: Box<dyn Any + Send + 'static>,
+    ) -> Response<Self::ResponseBody> {
+        if let Some(s) = err.downcast_ref::<String>() {
+            tracing::error!("Service panicked: {}", s);
+        } else if let Some(s) = err.downcast_ref::<&str>() {
+            tracing::error!("Service panicked: {}", s);
+        } else {
+            tracing::error!(
+                "Service panicked but `CatchPanic` was unable to downcast the panic info"
+            );
+        };
+
+        let mut res = Response::new(Full::from("Service panicked"));
+        *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+
+        #[allow(clippy::declare_interior_mutable_const)]
+        const TEXT_PLAIN: HeaderValue = HeaderValue::from_static("text/plain; charset=utf-8");
+        res.headers_mut()
+            .insert(http::header::CONTENT_TYPE, TEXT_PLAIN);
+
+        res
+    }
 }
 
 #[cfg(test)]
@@ -179,7 +296,7 @@ mod tests {
 
         assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
         let body = hyper::body::to_bytes(res).await.unwrap();
-        assert_eq!(&body[..], b"Service panicked: service panic");
+        assert_eq!(&body[..], b"Service panicked");
     }
 
     #[tokio::test]
@@ -197,6 +314,6 @@ mod tests {
 
         assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
         let body = hyper::body::to_bytes(res).await.unwrap();
-        assert_eq!(&body[..], b"Service panicked: future panic");
+        assert_eq!(&body[..], b"Service panicked");
     }
 }
