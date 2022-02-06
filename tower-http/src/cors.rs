@@ -712,7 +712,7 @@ where
             }
 
             return ResponseFuture {
-                inner: Kind::Error {
+                inner: Kind::PreflightCall {
                     response: Some(self.build_preflight_response(origin)),
                 },
             };
@@ -752,6 +752,9 @@ pin_project! {
             origin: HeaderValue,
             allow_credentials: Option<HeaderValue>,
             expose_headers: Option<HeaderValue>,
+        },
+        PreflightCall {
+            response: Option<Response<B>>,
         },
         Error {
             response: Option<Response<B>>,
@@ -803,6 +806,7 @@ where
                 Poll::Ready(Ok(response))
             }
             KindProj::NonCorsCall { future } => future.poll(cx),
+            KindProj::PreflightCall { response } => Poll::Ready(Ok(response.take().unwrap())),
             KindProj::Error { response } => Poll::Ready(Ok(response.take().unwrap())),
         }
     }
