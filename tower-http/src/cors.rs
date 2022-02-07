@@ -81,12 +81,6 @@ pub struct CorsLayer {
 
 const WILDCARD: &str = "*";
 
-const VARY_HEADERS: [HeaderName; 3] = [
-    header::ORIGIN,
-    header::ACCESS_CONTROL_REQUEST_METHOD,
-    header::ACCESS_CONTROL_REQUEST_HEADERS,
-];
-
 impl CorsLayer {
     /// Create a new `CorsLayer`.
     ///
@@ -712,7 +706,7 @@ where
             }
 
             return ResponseFuture {
-                inner: Kind::Error {
+                inner: Kind::PreflightCall {
                     response: Some(self.build_preflight_response(origin)),
                 },
             };
@@ -752,6 +746,9 @@ pin_project! {
             origin: HeaderValue,
             allow_credentials: Option<HeaderValue>,
             expose_headers: Option<HeaderValue>,
+        },
+        PreflightCall {
+            response: Option<Response<B>>,
         },
         Error {
             response: Option<Response<B>>,
@@ -796,15 +793,32 @@ where
                     );
                 }
 
-                for h in &VARY_HEADERS {
-                    headers.append(header::VARY, HeaderValue::from_static(h.as_str()));
-                }
+                apply_vary_headers(headers);
 
                 Poll::Ready(Ok(response))
             }
             KindProj::NonCorsCall { future } => future.poll(cx),
+            KindProj::PreflightCall { response } => {
+                let mut response = response.take().unwrap();
+
+                apply_vary_headers(response.headers_mut());
+
+                Poll::Ready(Ok(response))
+            }
             KindProj::Error { response } => Poll::Ready(Ok(response.take().unwrap())),
         }
+    }
+}
+
+fn apply_vary_headers(headers: &mut http::HeaderMap) {
+    const VARY_HEADERS: [HeaderName; 3] = [
+        header::ORIGIN,
+        header::ACCESS_CONTROL_REQUEST_METHOD,
+        header::ACCESS_CONTROL_REQUEST_HEADERS,
+    ];
+
+    for h in &VARY_HEADERS {
+        headers.append(header::VARY, HeaderValue::from_static(h.as_str()));
     }
 }
 
