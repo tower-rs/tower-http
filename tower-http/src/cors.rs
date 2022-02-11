@@ -653,7 +653,7 @@ where
 {
     type Response = S::Response;
     type Error = S::Error;
-    type Future = ResponseFuture<S::Future, ResBody>;
+    type Future = ResponseFuture<S::Future>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx)
@@ -679,14 +679,7 @@ where
             origin
         } else {
             return ResponseFuture {
-                inner: Kind::Error {
-                    response: Some(
-                        Response::builder()
-                            .status(StatusCode::UNAUTHORIZED)
-                            .body(ResBody::default())
-                            .unwrap(),
-                    ),
-                },
+                inner: Kind::InvalidOrigin,
             };
         };
 
@@ -699,14 +692,7 @@ where
                 Some(request_method) if self.is_valid_request_method(request_method) => {}
                 _ => {
                     return ResponseFuture {
-                        inner: Kind::Error {
-                            response: Some(
-                                Response::builder()
-                                    .status(StatusCode::OK)
-                                    .body(ResBody::default())
-                                    .unwrap(),
-                            ),
-                        },
+                        inner: Kind::InvalidCorsCall,
                     };
                 }
             }
@@ -737,15 +723,15 @@ where
 
 pin_project! {
     /// Response future for [`Cors`].
-    pub struct ResponseFuture<F, B> {
+    pub struct ResponseFuture<F> {
         #[pin]
-        inner: Kind<F, B>,
+        inner: Kind<F>,
     }
 }
 
 pin_project! {
     #[project = KindProj]
-    enum Kind<F, B> {
+    enum Kind<F> {
         NonCorsCall {
             #[pin]
             future: F,
@@ -758,13 +744,12 @@ pin_project! {
         PreflightCall {
             headers: HeaderMap,
         },
-        Error {
-            response: Option<Response<B>>,
-        },
+        InvalidCorsCall,
+        InvalidOrigin,
     }
 }
 
-impl<F, B, E> Future for ResponseFuture<F, B>
+impl<F, B, E> Future for ResponseFuture<F>
 where
     F: Future<Output = Result<Response<B>, E>>,
     B: Default,
@@ -788,7 +773,22 @@ where
 
                 Poll::Ready(Ok(response))
             }
-            KindProj::Error { response } => Poll::Ready(Ok(response.take().unwrap())),
+            KindProj::InvalidCorsCall => {
+                let response = Response::builder()
+                    .status(StatusCode::OK)
+                    .body(B::default())
+                    .unwrap();
+
+                Poll::Ready(Ok(response))
+            }
+            KindProj::InvalidOrigin => {
+                let response = Response::builder()
+                    .status(StatusCode::UNAUTHORIZED)
+                    .body(B::default())
+                    .unwrap();
+
+                Poll::Ready(Ok(response))
+            }
         }
     }
 }
