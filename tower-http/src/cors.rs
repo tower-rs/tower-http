@@ -79,7 +79,8 @@ pub struct CorsLayer {
     max_age: Option<HeaderValue>,
 }
 
-const WILDCARD: &str = "*";
+#[allow(clippy::declare_interior_mutable_const)]
+const WILDCARD: HeaderValue = HeaderValue::from_static("*");
 
 impl CorsLayer {
     /// Create a new `CorsLayer`.
@@ -160,7 +161,7 @@ impl CorsLayer {
         I: Into<AnyOr<Vec<HeaderName>>>,
     {
         self.allow_headers = match headers.into().0 {
-            AnyOrInner::Any => Some(WILDCARD.parse().unwrap()),
+            AnyOrInner::Any => Some(WILDCARD),
             AnyOrInner::Value(headers) => Some(separated_by_commas(headers)),
         };
         self
@@ -214,7 +215,7 @@ impl CorsLayer {
         T: Into<AnyOr<Vec<Method>>>,
     {
         self.allow_methods = match methods.into().0 {
-            AnyOrInner::Any => Some(WILDCARD.parse().unwrap()),
+            AnyOrInner::Any => Some(WILDCARD),
             AnyOrInner::Value(methods) => Some(separated_by_commas(methods)),
         };
         self
@@ -302,7 +303,7 @@ impl CorsLayer {
         I: Into<AnyOr<Vec<HeaderName>>>,
     {
         self.expose_headers = Some(match headers.into().0 {
-            AnyOrInner::Any => WILDCARD.parse().unwrap(),
+            AnyOrInner::Any => WILDCARD,
             AnyOrInner::Value(headers) => separated_by_commas(headers),
         });
         self
@@ -526,7 +527,8 @@ impl<S> Cors<S> {
 
     fn is_valid_request_method(&self, method: &HeaderValue) -> bool {
         if let Some(allow_methods) = &self.layer.allow_methods {
-            if allow_methods.as_bytes() == WILDCARD.as_bytes() {
+            #[allow(clippy::borrow_interior_mutable_const)]
+            if allow_methods == WILDCARD {
                 return true;
             }
 
@@ -822,7 +824,7 @@ fn apply_vary_headers(headers: &mut http::HeaderMap) {
 
 fn response_origin(allow_origin: AnyOr<Origin>, origin: &HeaderValue) -> HeaderValue {
     if let AnyOrInner::Any = allow_origin.0 {
-        WILDCARD.parse().unwrap()
+        WILDCARD
     } else {
         origin.clone()
     }
