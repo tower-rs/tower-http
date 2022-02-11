@@ -6,7 +6,7 @@
 //! use http::{Request, Response, Method, header};
 //! use hyper::Body;
 //! use tower::{ServiceBuilder, ServiceExt, Service};
-//! use tower_http::cors::{CorsLayer, any};
+//! use tower_http::cors::{Any, CorsLayer};
 //! use std::convert::Infallible;
 //!
 //! async fn handle(request: Request<Body>) -> Result<Response<Body>, Infallible> {
@@ -19,7 +19,7 @@
 //!     // allow `GET` and `POST` when accessing the resource
 //!     .allow_methods(vec![Method::GET, Method::POST])
 //!     // allow requests from any origin
-//!     .allow_origin(any());
+//!     .allow_origin(Any);
 //!
 //! let mut service = ServiceBuilder::new()
 //!     .layer(cors)
@@ -110,10 +110,10 @@ impl CorsLayer {
     pub fn permissive() -> Self {
         Self::new()
             .allow_credentials(true)
-            .allow_headers(any())
-            .allow_methods(any())
-            .allow_origin(any())
-            .expose_headers(any())
+            .allow_headers(Any)
+            .allow_methods(Any)
+            .allow_origin(Any)
+            .expose_headers(Any)
             .max_age(Duration::from_secs(60 * 60))
     }
 
@@ -143,9 +143,9 @@ impl CorsLayer {
     /// All headers can be allowed with
     ///
     /// ```
-    /// use tower_http::cors::{CorsLayer, any};
+    /// use tower_http::cors::{Any, CorsLayer};
     ///
-    /// let layer = CorsLayer::new().allow_headers(any());
+    /// let layer = CorsLayer::new().allow_headers(Any);
     /// ```
     ///
     /// Note that multiple calls to this method will override any previous
@@ -200,9 +200,9 @@ impl CorsLayer {
     /// All methods can be allowed with
     ///
     /// ```
-    /// use tower_http::cors::{CorsLayer, any};
+    /// use tower_http::cors::{Any, CorsLayer};
     ///
-    /// let layer = CorsLayer::new().allow_methods(any());
+    /// let layer = CorsLayer::new().allow_methods(Any);
     /// ```
     ///
     /// Note that multiple calls to this method will override any previous
@@ -246,9 +246,9 @@ impl CorsLayer {
     /// All origins can be allowed with
     ///
     /// ```
-    /// use tower_http::cors::{CorsLayer, any};
+    /// use tower_http::cors::{Any, CorsLayer};
     ///
-    /// let layer = CorsLayer::new().allow_origin(any());
+    /// let layer = CorsLayer::new().allow_origin(Any);
     /// ```
     ///
     /// You can also use a closure
@@ -288,9 +288,9 @@ impl CorsLayer {
     /// All headers can be allowed with
     ///
     /// ```
-    /// use tower_http::cors::{CorsLayer, any};
+    /// use tower_http::cors::{Any, CorsLayer};
     ///
-    /// let layer = CorsLayer::new().expose_headers(any());
+    /// let layer = CorsLayer::new().expose_headers(Any);
     /// ```
     ///
     /// Note that multiple calls to this method will override any previous
@@ -311,14 +311,12 @@ impl CorsLayer {
 
 /// Represents a wildcard value (`*`) used with some CORS headers such as
 /// [`CorsLayer::allow_methods`].
-///
-/// Created with [`any`].
 #[derive(Debug, Clone, Copy)]
-#[non_exhaustive]
 pub struct Any;
 
 /// Represents a wildcard value (`*`) used with some CORS headers such as
 /// [`CorsLayer::allow_methods`].
+#[deprecated = "Use Any as a unit struct literal instead"]
 pub fn any() -> Any {
     Any
 }
