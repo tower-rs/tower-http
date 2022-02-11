@@ -72,7 +72,7 @@ use tower_service::Service;
 /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
 #[derive(Debug, Clone)]
 pub struct CorsLayer {
-    allow_credentials: Option<HeaderValue>,
+    allow_credentials: bool,
     allow_headers: Option<HeaderValue>,
     allow_methods: Option<HeaderValue>,
     allow_origin: Option<AnyOr<Origin>>,
@@ -90,7 +90,7 @@ impl CorsLayer {
     /// customize the behavior.
     pub fn new() -> Self {
         Self {
-            allow_credentials: None,
+            allow_credentials: false,
             allow_headers: None,
             allow_methods: None,
             allow_origin: None,
@@ -129,7 +129,7 @@ impl CorsLayer {
     ///
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Credentials
     pub fn allow_credentials(mut self, allow_credentials: bool) -> Self {
-        self.allow_credentials = allow_credentials.then(|| HeaderValue::from_static("true"));
+        self.allow_credentials = allow_credentials;
         self
     }
 
@@ -553,10 +553,13 @@ impl<S> Cors<S> {
     }
 
     fn make_response_header_map(&self) -> HeaderMap {
+        #[allow(clippy::declare_interior_mutable_const)]
+        const TRUE: HeaderValue = HeaderValue::from_static("true");
+
         let mut headers = HeaderMap::new();
 
-        if let Some(allow_credentials) = self.layer.allow_credentials.clone() {
-            headers.insert(header::ACCESS_CONTROL_ALLOW_CREDENTIALS, allow_credentials);
+        if self.layer.allow_credentials {
+            headers.insert(header::ACCESS_CONTROL_ALLOW_CREDENTIALS, TRUE);
         }
 
         if let Some(expose_headers) = self.layer.expose_headers.clone() {
