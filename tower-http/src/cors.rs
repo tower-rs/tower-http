@@ -57,6 +57,7 @@ use pin_project_lite::pin_project;
 use std::{
     fmt,
     future::Future,
+    mem,
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
@@ -569,10 +570,7 @@ impl<S> Cors<S> {
         headers
     }
 
-    fn build_preflight_response<B>(&self, origin: HeaderValue) -> Response<B>
-    where
-        B: Default,
-    {
+    fn make_preflight_header_map(&self, origin: HeaderValue) -> HeaderMap {
         let mut headers = self.make_response_header_map();
 
         headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
@@ -589,9 +587,7 @@ impl<S> Cors<S> {
             headers.insert(header::ACCESS_CONTROL_MAX_AGE, max_age);
         }
 
-        let mut response = Response::new(B::default());
-        *response.headers_mut() = headers;
-        response
+        headers
     }
 }
 
@@ -717,7 +713,7 @@ where
 
             return ResponseFuture {
                 inner: Kind::PreflightCall {
-                    response: Some(self.build_preflight_response(origin)),
+                    headers: self.make_preflight_header_map(origin),
                 },
             };
         }
@@ -760,7 +756,7 @@ pin_project! {
             headers: HeaderMap,
         },
         PreflightCall {
-            response: Option<Response<B>>,
+            headers: HeaderMap,
         },
         Error {
             response: Option<Response<B>>,
@@ -771,6 +767,7 @@ pin_project! {
 impl<F, B, E> Future for ResponseFuture<F, B>
 where
     F: Future<Output = Result<Response<B>, E>>,
+    B: Default,
 {
     type Output = Result<Response<B>, E>;
 
@@ -783,10 +780,11 @@ where
                 Poll::Ready(Ok(response))
             }
             KindProj::NonCorsCall { future } => future.poll(cx),
-            KindProj::PreflightCall { response } => {
-                let mut response = response.take().unwrap();
+            KindProj::PreflightCall { headers } => {
+                apply_vary_headers(headers);
 
-                apply_vary_headers(response.headers_mut());
+                let mut response = Response::new(B::default());
+                mem::swap(response.headers_mut(), headers);
 
                 Poll::Ready(Ok(response))
             }
