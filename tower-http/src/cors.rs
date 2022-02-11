@@ -51,7 +51,7 @@ use futures_core::ready;
 use http::{
     header::{self, HeaderName, HeaderValue},
     request::Parts,
-    Method, Request, Response, StatusCode,
+    HeaderMap, Method, Request, Response, StatusCode,
 };
 use pin_project_lite::pin_project;
 use std::{
@@ -552,46 +552,42 @@ impl<S> Cors<S> {
         }
     }
 
+    fn make_response_header_map(&self) -> HeaderMap {
+        let mut headers = HeaderMap::new();
+
+        if let Some(allow_credentials) = self.layer.allow_credentials.clone() {
+            headers.insert(header::ACCESS_CONTROL_ALLOW_CREDENTIALS, allow_credentials);
+        }
+
+        if let Some(expose_headers) = self.layer.expose_headers.clone() {
+            headers.insert(header::ACCESS_CONTROL_EXPOSE_HEADERS, expose_headers);
+        }
+
+        headers
+    }
+
     fn build_preflight_response<B>(&self, origin: HeaderValue) -> Response<B>
     where
         B: Default,
     {
-        let mut response = Response::new(B::default());
+        let mut headers = self.make_response_header_map();
 
-        response
-            .headers_mut()
-            .insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
+        headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
 
         if let Some(allow_methods) = &self.layer.allow_methods {
-            response
-                .headers_mut()
-                .insert(header::ACCESS_CONTROL_ALLOW_METHODS, allow_methods.clone());
+            headers.insert(header::ACCESS_CONTROL_ALLOW_METHODS, allow_methods.clone());
         }
 
         if let Some(allow_headers) = &self.layer.allow_headers {
-            response
-                .headers_mut()
-                .insert(header::ACCESS_CONTROL_ALLOW_HEADERS, allow_headers.clone());
+            headers.insert(header::ACCESS_CONTROL_ALLOW_HEADERS, allow_headers.clone());
         }
 
         if let Some(max_age) = self.layer.max_age.clone() {
-            response
-                .headers_mut()
-                .insert(header::ACCESS_CONTROL_MAX_AGE, max_age);
+            headers.insert(header::ACCESS_CONTROL_MAX_AGE, max_age);
         }
 
-        if let Some(allow_credentials) = self.layer.allow_credentials.clone() {
-            response
-                .headers_mut()
-                .insert(header::ACCESS_CONTROL_ALLOW_CREDENTIALS, allow_credentials);
-        }
-
-        if let Some(expose_headers) = self.layer.expose_headers.clone() {
-            response
-                .headers_mut()
-                .insert(header::ACCESS_CONTROL_EXPOSE_HEADERS, expose_headers);
-        }
-
+        let mut response = Response::new(B::default());
+        *response.headers_mut() = headers;
         response
     }
 }
@@ -723,13 +719,18 @@ where
             };
         }
 
+        let mut headers = self.make_response_header_map();
+        headers.insert(
+            header::ACCESS_CONTROL_ALLOW_ORIGIN,
+            response_origin(self.layer.allow_origin.as_ref().unwrap(), &origin),
+        );
+
+        apply_vary_headers(&mut headers);
+
         ResponseFuture {
             inner: Kind::CorsCall {
                 future: self.inner.call(req),
-                allow_origin: self.layer.allow_origin.clone(),
-                origin,
-                allow_credentials: self.layer.allow_credentials.clone(),
-                expose_headers: self.layer.expose_headers.clone(),
+                headers,
             },
         }
     }
@@ -753,10 +754,7 @@ pin_project! {
         CorsCall {
             #[pin]
             future: F,
-            allow_origin: Option<AnyOr<Origin>>,
-            origin: HeaderValue,
-            allow_credentials: Option<HeaderValue>,
-            expose_headers: Option<HeaderValue>,
+            headers: HeaderMap,
         },
         PreflightCall {
             response: Option<Response<B>>,
@@ -775,36 +773,9 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match self.project().inner.project() {
-            KindProj::CorsCall {
-                future,
-                allow_origin,
-                origin,
-                allow_credentials,
-                expose_headers,
-            } => {
+            KindProj::CorsCall { future, headers } => {
                 let mut response: Response<B> = ready!(future.poll(cx))?;
-                let headers = response.headers_mut();
-
-                headers.insert(
-                    header::ACCESS_CONTROL_ALLOW_ORIGIN,
-                    response_origin(allow_origin.take().unwrap(), origin),
-                );
-
-                if let Some(allow_credentials) = allow_credentials {
-                    headers.insert(
-                        header::ACCESS_CONTROL_ALLOW_CREDENTIALS,
-                        allow_credentials.clone(),
-                    );
-                }
-
-                if let Some(expose_headers) = expose_headers {
-                    headers.insert(
-                        header::ACCESS_CONTROL_EXPOSE_HEADERS,
-                        expose_headers.clone(),
-                    );
-                }
-
-                apply_vary_headers(headers);
+                response.headers_mut().extend(headers.drain());
 
                 Poll::Ready(Ok(response))
             }
@@ -833,8 +804,8 @@ fn apply_vary_headers(headers: &mut http::HeaderMap) {
     }
 }
 
-fn response_origin(allow_origin: AnyOr<Origin>, origin: &HeaderValue) -> HeaderValue {
-    if let AnyOrInner::Any = allow_origin.0 {
+fn response_origin(allow_origin: &AnyOr<Origin>, origin: &HeaderValue) -> HeaderValue {
+    if let AnyOrInner::Any = &allow_origin.0 {
         WILDCARD
     } else {
         origin.clone()
