@@ -588,7 +588,7 @@ impl<S> Cors<S> {
 /// See [`CorsLayer::allow_origin`] for more details.
 ///
 /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Origin
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Origin(OriginInner);
 
 impl Origin {
@@ -621,21 +621,21 @@ impl Origin {
     }
 }
 
+impl fmt::Debug for Origin {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.0 {
+            OriginInner::Exact(inner) => f.debug_tuple("Exact").field(inner).finish(),
+            OriginInner::List(inner) => f.debug_tuple("List").field(inner).finish(),
+            OriginInner::Closure(_) => f.debug_tuple("Closure").finish(),
+        }
+    }
+}
+
 #[derive(Clone)]
 enum OriginInner {
     Exact(HeaderValue),
     List(Arc<[HeaderValue]>),
     Closure(Arc<dyn for<'a> Fn(&'a HeaderValue, &'a Parts) -> bool + Send + Sync + 'static>),
-}
-
-impl fmt::Debug for OriginInner {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Exact(inner) => f.debug_tuple("Exact").field(inner).finish(),
-            Self::List(inner) => f.debug_tuple("List").field(inner).finish(),
-            Self::Closure(_) => f.debug_tuple("Closure").finish(),
-        }
-    }
 }
 
 impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for Cors<S>
