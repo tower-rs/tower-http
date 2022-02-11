@@ -46,6 +46,7 @@
 //!
 //! [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
 
+use bytes::{BufMut, BytesMut};
 use futures_core::ready;
 use http::{
     header::{self, HeaderName, HeaderValue},
@@ -162,7 +163,7 @@ impl CorsLayer {
     {
         self.allow_headers = match headers.into().0 {
             AnyOrInner::Any => Some(WILDCARD),
-            AnyOrInner::Value(headers) => Some(separated_by_commas(headers)),
+            AnyOrInner::Value(headers) => separated_by_commas(headers.into_iter().map(Into::into)),
         };
         self
     }
@@ -216,7 +217,11 @@ impl CorsLayer {
     {
         self.allow_methods = match methods.into().0 {
             AnyOrInner::Any => Some(WILDCARD),
-            AnyOrInner::Value(methods) => Some(separated_by_commas(methods)),
+            AnyOrInner::Value(methods) => separated_by_commas(
+                methods
+                    .into_iter()
+                    .map(|m| HeaderValue::from_str(m.as_str()).unwrap()),
+            ),
         };
         self
     }
@@ -302,10 +307,10 @@ impl CorsLayer {
     where
         I: Into<AnyOr<Vec<HeaderName>>>,
     {
-        self.expose_headers = Some(match headers.into().0 {
-            AnyOrInner::Any => WILDCARD,
-            AnyOrInner::Value(headers) => separated_by_commas(headers),
-        });
+        self.expose_headers = match headers.into().0 {
+            AnyOrInner::Any => Some(WILDCARD),
+            AnyOrInner::Value(headers) => separated_by_commas(headers.into_iter().map(Into::into)),
+        };
         self
     }
 }
@@ -364,17 +369,23 @@ where
     }
 }
 
-fn separated_by_commas<I>(into_iter: I) -> HeaderValue
+fn separated_by_commas<I>(mut iter: I) -> Option<HeaderValue>
 where
-    I: IntoIterator,
-    I::Item: ToString,
+    I: Iterator<Item = HeaderValue>,
 {
-    let methods = into_iter
-        .into_iter()
-        .map(|item| item.to_string())
-        .collect::<Vec<_>>()
-        .join(",");
-    HeaderValue::from_str(&methods).unwrap()
+    match iter.next() {
+        Some(fst) => {
+            let mut result = BytesMut::from(fst.as_bytes());
+            for val in iter {
+                result.reserve(val.len() + 1);
+                result.put_u8(b',');
+                result.extend_from_slice(val.as_bytes());
+            }
+
+            Some(HeaderValue::from_maybe_shared(result.freeze()).unwrap())
+        }
+        None => None,
+    }
 }
 
 impl Default for CorsLayer {
