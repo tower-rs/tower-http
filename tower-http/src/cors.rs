@@ -6,7 +6,7 @@
 //! use http::{Request, Response, Method, header};
 //! use hyper::Body;
 //! use tower::{ServiceBuilder, ServiceExt, Service};
-//! use tower_http::cors::{CorsLayer, any};
+//! use tower_http::cors::{Any, CorsLayer};
 //! use std::convert::Infallible;
 //!
 //! async fn handle(request: Request<Body>) -> Result<Response<Body>, Infallible> {
@@ -19,7 +19,7 @@
 //!     // allow `GET` and `POST` when accessing the resource
 //!     .allow_methods(vec![Method::GET, Method::POST])
 //!     // allow requests from any origin
-//!     .allow_origin(any());
+//!     .allow_origin(Any);
 //!
 //! let mut service = ServiceBuilder::new()
 //!     .layer(cors)
@@ -46,6 +46,7 @@
 //!
 //! [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
 
+use bytes::{BufMut, BytesMut};
 use futures_core::ready;
 use http::{
     header::{self, HeaderName, HeaderValue},
@@ -79,7 +80,8 @@ pub struct CorsLayer {
     max_age: Option<HeaderValue>,
 }
 
-const WILDCARD: &str = "*";
+#[allow(clippy::declare_interior_mutable_const)]
+const WILDCARD: HeaderValue = HeaderValue::from_static("*");
 
 impl CorsLayer {
     /// Create a new `CorsLayer`.
@@ -110,10 +112,10 @@ impl CorsLayer {
     pub fn permissive() -> Self {
         Self::new()
             .allow_credentials(true)
-            .allow_headers(any())
-            .allow_methods(any())
-            .allow_origin(any())
-            .expose_headers(any())
+            .allow_headers(Any)
+            .allow_methods(Any)
+            .allow_origin(Any)
+            .expose_headers(Any)
             .max_age(Duration::from_secs(60 * 60))
     }
 
@@ -143,9 +145,9 @@ impl CorsLayer {
     /// All headers can be allowed with
     ///
     /// ```
-    /// use tower_http::cors::{CorsLayer, any};
+    /// use tower_http::cors::{Any, CorsLayer};
     ///
-    /// let layer = CorsLayer::new().allow_headers(any());
+    /// let layer = CorsLayer::new().allow_headers(Any);
     /// ```
     ///
     /// Note that multiple calls to this method will override any previous
@@ -160,8 +162,8 @@ impl CorsLayer {
         I: Into<AnyOr<Vec<HeaderName>>>,
     {
         self.allow_headers = match headers.into().0 {
-            AnyOrInner::Any => Some(WILDCARD.parse().unwrap()),
-            AnyOrInner::Value(headers) => Some(separated_by_commas(headers)),
+            AnyOrInner::Any => Some(WILDCARD),
+            AnyOrInner::Value(headers) => separated_by_commas(headers.into_iter().map(Into::into)),
         };
         self
     }
@@ -200,9 +202,9 @@ impl CorsLayer {
     /// All methods can be allowed with
     ///
     /// ```
-    /// use tower_http::cors::{CorsLayer, any};
+    /// use tower_http::cors::{Any, CorsLayer};
     ///
-    /// let layer = CorsLayer::new().allow_methods(any());
+    /// let layer = CorsLayer::new().allow_methods(Any);
     /// ```
     ///
     /// Note that multiple calls to this method will override any previous
@@ -214,8 +216,12 @@ impl CorsLayer {
         T: Into<AnyOr<Vec<Method>>>,
     {
         self.allow_methods = match methods.into().0 {
-            AnyOrInner::Any => Some(WILDCARD.parse().unwrap()),
-            AnyOrInner::Value(methods) => Some(separated_by_commas(methods)),
+            AnyOrInner::Any => Some(WILDCARD),
+            AnyOrInner::Value(methods) => separated_by_commas(
+                methods
+                    .into_iter()
+                    .map(|m| HeaderValue::from_str(m.as_str()).unwrap()),
+            ),
         };
         self
     }
@@ -246,9 +252,9 @@ impl CorsLayer {
     /// All origins can be allowed with
     ///
     /// ```
-    /// use tower_http::cors::{CorsLayer, any};
+    /// use tower_http::cors::{Any, CorsLayer};
     ///
-    /// let layer = CorsLayer::new().allow_origin(any());
+    /// let layer = CorsLayer::new().allow_origin(Any);
     /// ```
     ///
     /// You can also use a closure
@@ -288,9 +294,9 @@ impl CorsLayer {
     /// All headers can be allowed with
     ///
     /// ```
-    /// use tower_http::cors::{CorsLayer, any};
+    /// use tower_http::cors::{Any, CorsLayer};
     ///
-    /// let layer = CorsLayer::new().expose_headers(any());
+    /// let layer = CorsLayer::new().expose_headers(Any);
     /// ```
     ///
     /// Note that multiple calls to this method will override any previous
@@ -301,24 +307,22 @@ impl CorsLayer {
     where
         I: Into<AnyOr<Vec<HeaderName>>>,
     {
-        self.expose_headers = Some(match headers.into().0 {
-            AnyOrInner::Any => WILDCARD.parse().unwrap(),
-            AnyOrInner::Value(headers) => separated_by_commas(headers),
-        });
+        self.expose_headers = match headers.into().0 {
+            AnyOrInner::Any => Some(WILDCARD),
+            AnyOrInner::Value(headers) => separated_by_commas(headers.into_iter().map(Into::into)),
+        };
         self
     }
 }
 
 /// Represents a wildcard value (`*`) used with some CORS headers such as
 /// [`CorsLayer::allow_methods`].
-///
-/// Created with [`any`].
 #[derive(Debug, Clone, Copy)]
-#[non_exhaustive]
 pub struct Any;
 
 /// Represents a wildcard value (`*`) used with some CORS headers such as
 /// [`CorsLayer::allow_methods`].
+#[deprecated = "Use Any as a unit struct literal instead"]
 pub fn any() -> Any {
     Any
 }
@@ -365,17 +369,23 @@ where
     }
 }
 
-fn separated_by_commas<I>(into_iter: I) -> HeaderValue
+fn separated_by_commas<I>(mut iter: I) -> Option<HeaderValue>
 where
-    I: IntoIterator,
-    I::Item: ToString,
+    I: Iterator<Item = HeaderValue>,
 {
-    let methods = into_iter
-        .into_iter()
-        .map(|item| item.to_string())
-        .collect::<Vec<_>>()
-        .join(",");
-    HeaderValue::from_str(&methods).unwrap()
+    match iter.next() {
+        Some(fst) => {
+            let mut result = BytesMut::from(fst.as_bytes());
+            for val in iter {
+                result.reserve(val.len() + 1);
+                result.put_u8(b',');
+                result.extend_from_slice(val.as_bytes());
+            }
+
+            Some(HeaderValue::from_maybe_shared(result.freeze()).unwrap())
+        }
+        None => None,
+    }
 }
 
 impl Default for CorsLayer {
@@ -528,7 +538,8 @@ impl<S> Cors<S> {
 
     fn is_valid_request_method(&self, method: &HeaderValue) -> bool {
         if let Some(allow_methods) = &self.layer.allow_methods {
-            if allow_methods.as_bytes() == WILDCARD.as_bytes() {
+            #[allow(clippy::borrow_interior_mutable_const)]
+            if allow_methods == WILDCARD {
                 return true;
             }
 
@@ -590,7 +601,7 @@ impl<S> Cors<S> {
 /// See [`CorsLayer::allow_origin`] for more details.
 ///
 /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Origin
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Origin(OriginInner);
 
 impl Origin {
@@ -623,21 +634,21 @@ impl Origin {
     }
 }
 
+impl fmt::Debug for Origin {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.0 {
+            OriginInner::Exact(inner) => f.debug_tuple("Exact").field(inner).finish(),
+            OriginInner::List(inner) => f.debug_tuple("List").field(inner).finish(),
+            OriginInner::Closure(_) => f.debug_tuple("Closure").finish(),
+        }
+    }
+}
+
 #[derive(Clone)]
 enum OriginInner {
     Exact(HeaderValue),
     List(Arc<[HeaderValue]>),
     Closure(Arc<dyn for<'a> Fn(&'a HeaderValue, &'a Parts) -> bool + Send + Sync + 'static>),
-}
-
-impl fmt::Debug for OriginInner {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Exact(inner) => f.debug_tuple("Exact").field(inner).finish(),
-            Self::List(inner) => f.debug_tuple("List").field(inner).finish(),
-            Self::Closure(_) => f.debug_tuple("Closure").finish(),
-        }
-    }
 }
 
 impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for Cors<S>
@@ -824,7 +835,7 @@ fn apply_vary_headers(headers: &mut http::HeaderMap) {
 
 fn response_origin(allow_origin: AnyOr<Origin>, origin: &HeaderValue) -> HeaderValue {
     if let AnyOrInner::Any = allow_origin.0 {
-        WILDCARD.parse().unwrap()
+        WILDCARD
     } else {
         origin.clone()
     }

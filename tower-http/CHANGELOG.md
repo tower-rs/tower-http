@@ -21,7 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Fixed
 
-- None.
+- The CORS layer / service methods `allow_headers`, `allow_methods`, `allow_origin`
+  and `expose_headers` now do nothing if given an empty `Vec`, instead of sending
+  the respective header with an empty value
 
 # 0.2.2 (February 8, 2022)
 

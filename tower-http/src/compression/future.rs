@@ -70,7 +70,7 @@ where
                 //
                 // The match arm is still required though because the `fs` feature uses the
                 // Encoding struct independently and requires no compression logic to be enabled.
-                // This means a combination of an individual compression features and `fs` will fail
+                // This means a combination of an individual compression feature and `fs` will fail
                 // to compile without this branch even though it will never be reached.
                 //
                 // To safeguard against refactors that changes this relationship or other bugs the
