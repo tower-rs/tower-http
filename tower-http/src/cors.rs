@@ -593,7 +593,7 @@ impl Origin {
     ///
     /// See [`CorsLayer::allow_origin`] for more details.
     pub fn exact(origin: HeaderValue) -> Self {
-        Self(OriginInner::Exact(origin))
+        Self(OriginInner::Const(Some(origin)))
     }
 
     /// Set multiple allow origin targets
@@ -603,8 +603,9 @@ impl Origin {
     where
         I: IntoIterator<Item = HeaderValue>,
     {
-        let origins = origins.into_iter().collect::<Vec<_>>().into();
-        Self(OriginInner::List(origins))
+        Self(OriginInner::Const(separated_by_commas(
+            origins.into_iter().map(Into::into),
+        )))
     }
 
     /// Set the allowed origins from a predicate
@@ -619,8 +620,7 @@ impl Origin {
 
     fn to_header_val(&self, origin: HeaderValue, parts: &Parts) -> Option<HeaderValue> {
         match &self.0 {
-            OriginInner::Exact(v) => Some(v.clone()),
-            OriginInner::List(vs) => separated_by_commas(vs.iter().map(Into::into)),
+            OriginInner::Const(v) => v.clone(),
             OriginInner::Closure(c) => {
                 if c(&origin, parts) {
                     Some(origin)
@@ -644,8 +644,7 @@ impl AnyOr<Origin> {
 impl fmt::Debug for Origin {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.0 {
-            OriginInner::Exact(inner) => f.debug_tuple("Exact").field(inner).finish(),
-            OriginInner::List(inner) => f.debug_tuple("List").field(inner).finish(),
+            OriginInner::Const(inner) => f.debug_tuple("Const").field(inner).finish(),
             OriginInner::Closure(_) => f.debug_tuple("Closure").finish(),
         }
     }
@@ -653,8 +652,7 @@ impl fmt::Debug for Origin {
 
 #[derive(Clone)]
 enum OriginInner {
-    Exact(HeaderValue),
-    List(Arc<[HeaderValue]>),
+    Const(Option<HeaderValue>),
     Closure(Arc<dyn for<'a> Fn(&'a HeaderValue, &'a Parts) -> bool + Send + Sync + 'static>),
 }
 
