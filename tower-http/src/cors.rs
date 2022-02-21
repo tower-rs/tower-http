@@ -573,7 +573,11 @@ impl<S> Cors<S> {
     fn make_preflight_header_map(&self, origin: HeaderValue) -> HeaderMap {
         let mut headers = self.make_response_header_map();
 
-        headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
+        if let Some(allow_origin) = &self.layer.allow_origin {
+            if let Some(origin) = allow_origin.to_header_val(origin) {
+                headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
+            }
+        }
 
         if let Some(allow_methods) = &self.layer.allow_methods {
             headers.insert(header::ACCESS_CONTROL_ALLOW_METHODS, allow_methods.clone());
@@ -626,6 +630,24 @@ impl Origin {
         F: Fn(&HeaderValue, &Parts) -> bool + Send + Sync + 'static,
     {
         Self(OriginInner::Closure(Arc::new(f)))
+    }
+
+    fn to_header_val(&self, origin: HeaderValue) -> Option<HeaderValue> {
+        match &self.0 {
+            OriginInner::Exact(v) => Some(v.clone()),
+            OriginInner::List(vs) => separated_by_commas(vs.iter().map(Into::into)),
+            // It is checked before this fn that this returns true for the request being processed
+            OriginInner::Closure(_) => Some(origin),
+        }
+    }
+}
+
+impl AnyOr<Origin> {
+    fn to_header_val(&self, origin: HeaderValue) -> Option<HeaderValue> {
+        match &self.0 {
+            AnyOrInner::Any => Some(WILDCARD),
+            AnyOrInner::Value(o) => o.to_header_val(origin),
+        }
     }
 }
 
