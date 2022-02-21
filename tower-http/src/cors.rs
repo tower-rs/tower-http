@@ -522,21 +522,6 @@ impl<S> Cors<S> {
         self
     }
 
-    fn is_valid_origin(&self, origin: &HeaderValue, parts: &Parts) -> bool {
-        if let Some(allow_origin) = &self.layer.allow_origin {
-            match &allow_origin.0 {
-                AnyOrInner::Any => true,
-                AnyOrInner::Value(allow_origin) => match &allow_origin.0 {
-                    OriginInner::Exact(s) => s == origin,
-                    OriginInner::List(list) => list.contains(origin),
-                    OriginInner::Closure(f) => f(origin, parts),
-                },
-            }
-        } else {
-            false
-        }
-    }
-
     fn is_valid_request_method(&self, method: &HeaderValue) -> bool {
         if let Some(allow_methods) = &self.layer.allow_methods {
             #[allow(clippy::borrow_interior_mutable_const)]
@@ -570,11 +555,11 @@ impl<S> Cors<S> {
         headers
     }
 
-    fn make_preflight_header_map(&self, origin: HeaderValue) -> HeaderMap {
+    fn make_preflight_header_map(&self, origin: HeaderValue, parts: &Parts) -> HeaderMap {
         let mut headers = self.make_response_header_map();
 
         if let Some(allow_origin) = &self.layer.allow_origin {
-            if let Some(origin) = allow_origin.to_header_val(origin) {
+            if let Some(origin) = allow_origin.to_header_val(origin, parts) {
                 headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
             }
         }
@@ -632,21 +617,26 @@ impl Origin {
         Self(OriginInner::Closure(Arc::new(f)))
     }
 
-    fn to_header_val(&self, origin: HeaderValue) -> Option<HeaderValue> {
+    fn to_header_val(&self, origin: HeaderValue, parts: &Parts) -> Option<HeaderValue> {
         match &self.0 {
             OriginInner::Exact(v) => Some(v.clone()),
             OriginInner::List(vs) => separated_by_commas(vs.iter().map(Into::into)),
-            // It is checked before this fn that this returns true for the request being processed
-            OriginInner::Closure(_) => Some(origin),
+            OriginInner::Closure(c) => {
+                if c(&origin, parts) {
+                    Some(origin)
+                } else {
+                    None
+                }
+            }
         }
     }
 }
 
 impl AnyOr<Origin> {
-    fn to_header_val(&self, origin: HeaderValue) -> Option<HeaderValue> {
+    fn to_header_val(&self, origin: HeaderValue, parts: &Parts) -> Option<HeaderValue> {
         match &self.0 {
             AnyOrInner::Any => Some(WILDCARD),
-            AnyOrInner::Value(o) => o.to_header_val(origin),
+            AnyOrInner::Value(o) => o.to_header_val(origin, parts),
         }
     }
 }
@@ -697,20 +687,10 @@ where
 
         let (parts, body) = req.into_parts();
 
-        let origin = if self.is_valid_origin(&origin, &parts) {
-            origin
-        } else {
-            return ResponseFuture {
-                inner: Kind::InvalidOrigin,
-            };
-        };
-
-        let req = Request::from_parts(parts, body);
-
         // Return results immediately upon preflight request
-        if req.method() == Method::OPTIONS {
+        if parts.method == Method::OPTIONS {
             // the method the real request will be made with
-            match req.headers().get(header::ACCESS_CONTROL_REQUEST_METHOD) {
+            match parts.headers.get(header::ACCESS_CONTROL_REQUEST_METHOD) {
                 Some(request_method) if self.is_valid_request_method(request_method) => {}
                 _ => {
                     return ResponseFuture {
@@ -721,10 +701,12 @@ where
 
             return ResponseFuture {
                 inner: Kind::PreflightCall {
-                    headers: self.make_preflight_header_map(origin),
+                    headers: self.make_preflight_header_map(origin, &parts),
                 },
             };
         }
+
+        let req = Request::from_parts(parts, body);
 
         let mut headers = self.make_response_header_map();
         headers.insert(
