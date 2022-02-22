@@ -51,12 +51,13 @@ use futures_core::ready;
 use http::{
     header::{self, HeaderName, HeaderValue},
     request::Parts,
-    Method, Request, Response, StatusCode,
+    HeaderMap, Method, Request, Response, StatusCode,
 };
 use pin_project_lite::pin_project;
 use std::{
     fmt,
     future::Future,
+    mem,
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
@@ -72,7 +73,7 @@ use tower_service::Service;
 /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
 #[derive(Debug, Clone)]
 pub struct CorsLayer {
-    allow_credentials: Option<HeaderValue>,
+    allow_credentials: bool,
     allow_headers: Option<HeaderValue>,
     allow_methods: Option<HeaderValue>,
     allow_origin: Option<AnyOr<Origin>>,
@@ -90,7 +91,7 @@ impl CorsLayer {
     /// customize the behavior.
     pub fn new() -> Self {
         Self {
-            allow_credentials: None,
+            allow_credentials: false,
             allow_headers: None,
             allow_methods: None,
             allow_origin: None,
@@ -129,7 +130,7 @@ impl CorsLayer {
     ///
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Credentials
     pub fn allow_credentials(mut self, allow_credentials: bool) -> Self {
-        self.allow_credentials = allow_credentials.then(|| HeaderValue::from_static("true"));
+        self.allow_credentials = allow_credentials;
         self
     }
 
@@ -552,47 +553,41 @@ impl<S> Cors<S> {
         }
     }
 
-    fn build_preflight_response<B>(&self, origin: HeaderValue) -> Response<B>
-    where
-        B: Default,
-    {
-        let mut response = Response::new(B::default());
+    fn make_response_header_map(&self) -> HeaderMap {
+        #[allow(clippy::declare_interior_mutable_const)]
+        const TRUE: HeaderValue = HeaderValue::from_static("true");
 
-        response
-            .headers_mut()
-            .insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
+        let mut headers = HeaderMap::new();
 
-        if let Some(allow_methods) = &self.layer.allow_methods {
-            response
-                .headers_mut()
-                .insert(header::ACCESS_CONTROL_ALLOW_METHODS, allow_methods.clone());
-        }
-
-        if let Some(allow_headers) = &self.layer.allow_headers {
-            response
-                .headers_mut()
-                .insert(header::ACCESS_CONTROL_ALLOW_HEADERS, allow_headers.clone());
-        }
-
-        if let Some(max_age) = self.layer.max_age.clone() {
-            response
-                .headers_mut()
-                .insert(header::ACCESS_CONTROL_MAX_AGE, max_age);
-        }
-
-        if let Some(allow_credentials) = self.layer.allow_credentials.clone() {
-            response
-                .headers_mut()
-                .insert(header::ACCESS_CONTROL_ALLOW_CREDENTIALS, allow_credentials);
+        if self.layer.allow_credentials {
+            headers.insert(header::ACCESS_CONTROL_ALLOW_CREDENTIALS, TRUE);
         }
 
         if let Some(expose_headers) = self.layer.expose_headers.clone() {
-            response
-                .headers_mut()
-                .insert(header::ACCESS_CONTROL_EXPOSE_HEADERS, expose_headers);
+            headers.insert(header::ACCESS_CONTROL_EXPOSE_HEADERS, expose_headers);
         }
 
-        response
+        headers
+    }
+
+    fn make_preflight_header_map(&self, origin: HeaderValue) -> HeaderMap {
+        let mut headers = self.make_response_header_map();
+
+        headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
+
+        if let Some(allow_methods) = &self.layer.allow_methods {
+            headers.insert(header::ACCESS_CONTROL_ALLOW_METHODS, allow_methods.clone());
+        }
+
+        if let Some(allow_headers) = &self.layer.allow_headers {
+            headers.insert(header::ACCESS_CONTROL_ALLOW_HEADERS, allow_headers.clone());
+        }
+
+        if let Some(max_age) = self.layer.max_age.clone() {
+            headers.insert(header::ACCESS_CONTROL_MAX_AGE, max_age);
+        }
+
+        headers
     }
 }
 
@@ -658,7 +653,7 @@ where
 {
     type Response = S::Response;
     type Error = S::Error;
-    type Future = ResponseFuture<S::Future, ResBody>;
+    type Future = ResponseFuture<S::Future>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx)
@@ -684,14 +679,7 @@ where
             origin
         } else {
             return ResponseFuture {
-                inner: Kind::Error {
-                    response: Some(
-                        Response::builder()
-                            .status(StatusCode::UNAUTHORIZED)
-                            .body(ResBody::default())
-                            .unwrap(),
-                    ),
-                },
+                inner: Kind::InvalidOrigin,
             };
         };
 
@@ -704,32 +692,30 @@ where
                 Some(request_method) if self.is_valid_request_method(request_method) => {}
                 _ => {
                     return ResponseFuture {
-                        inner: Kind::Error {
-                            response: Some(
-                                Response::builder()
-                                    .status(StatusCode::OK)
-                                    .body(ResBody::default())
-                                    .unwrap(),
-                            ),
-                        },
+                        inner: Kind::InvalidCorsCall,
                     };
                 }
             }
 
             return ResponseFuture {
                 inner: Kind::PreflightCall {
-                    response: Some(self.build_preflight_response(origin)),
+                    headers: self.make_preflight_header_map(origin),
                 },
             };
         }
 
+        let mut headers = self.make_response_header_map();
+        headers.insert(
+            header::ACCESS_CONTROL_ALLOW_ORIGIN,
+            response_origin(self.layer.allow_origin.as_ref().unwrap(), &origin),
+        );
+
+        apply_vary_headers(&mut headers);
+
         ResponseFuture {
             inner: Kind::CorsCall {
                 future: self.inner.call(req),
-                allow_origin: self.layer.allow_origin.clone(),
-                origin,
-                allow_credentials: self.layer.allow_credentials.clone(),
-                expose_headers: self.layer.expose_headers.clone(),
+                headers,
             },
         }
     }
@@ -737,15 +723,15 @@ where
 
 pin_project! {
     /// Response future for [`Cors`].
-    pub struct ResponseFuture<F, B> {
+    pub struct ResponseFuture<F> {
         #[pin]
-        inner: Kind<F, B>,
+        inner: Kind<F>,
     }
 }
 
 pin_project! {
     #[project = KindProj]
-    enum Kind<F, B> {
+    enum Kind<F> {
         NonCorsCall {
             #[pin]
             future: F,
@@ -753,70 +739,56 @@ pin_project! {
         CorsCall {
             #[pin]
             future: F,
-            allow_origin: Option<AnyOr<Origin>>,
-            origin: HeaderValue,
-            allow_credentials: Option<HeaderValue>,
-            expose_headers: Option<HeaderValue>,
+            headers: HeaderMap,
         },
         PreflightCall {
-            response: Option<Response<B>>,
+            headers: HeaderMap,
         },
-        Error {
-            response: Option<Response<B>>,
-        },
+        InvalidCorsCall,
+        InvalidOrigin,
     }
 }
 
-impl<F, B, E> Future for ResponseFuture<F, B>
+impl<F, B, E> Future for ResponseFuture<F>
 where
     F: Future<Output = Result<Response<B>, E>>,
+    B: Default,
 {
     type Output = Result<Response<B>, E>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match self.project().inner.project() {
-            KindProj::CorsCall {
-                future,
-                allow_origin,
-                origin,
-                allow_credentials,
-                expose_headers,
-            } => {
+            KindProj::CorsCall { future, headers } => {
                 let mut response: Response<B> = ready!(future.poll(cx))?;
-                let headers = response.headers_mut();
-
-                headers.insert(
-                    header::ACCESS_CONTROL_ALLOW_ORIGIN,
-                    response_origin(allow_origin.take().unwrap(), origin),
-                );
-
-                if let Some(allow_credentials) = allow_credentials {
-                    headers.insert(
-                        header::ACCESS_CONTROL_ALLOW_CREDENTIALS,
-                        allow_credentials.clone(),
-                    );
-                }
-
-                if let Some(expose_headers) = expose_headers {
-                    headers.insert(
-                        header::ACCESS_CONTROL_EXPOSE_HEADERS,
-                        expose_headers.clone(),
-                    );
-                }
-
-                apply_vary_headers(headers);
+                response.headers_mut().extend(headers.drain());
 
                 Poll::Ready(Ok(response))
             }
             KindProj::NonCorsCall { future } => future.poll(cx),
-            KindProj::PreflightCall { response } => {
-                let mut response = response.take().unwrap();
+            KindProj::PreflightCall { headers } => {
+                apply_vary_headers(headers);
 
-                apply_vary_headers(response.headers_mut());
+                let mut response = Response::new(B::default());
+                mem::swap(response.headers_mut(), headers);
 
                 Poll::Ready(Ok(response))
             }
-            KindProj::Error { response } => Poll::Ready(Ok(response.take().unwrap())),
+            KindProj::InvalidCorsCall => {
+                let response = Response::builder()
+                    .status(StatusCode::OK)
+                    .body(B::default())
+                    .unwrap();
+
+                Poll::Ready(Ok(response))
+            }
+            KindProj::InvalidOrigin => {
+                let response = Response::builder()
+                    .status(StatusCode::UNAUTHORIZED)
+                    .body(B::default())
+                    .unwrap();
+
+                Poll::Ready(Ok(response))
+            }
         }
     }
 }
@@ -833,8 +805,8 @@ fn apply_vary_headers(headers: &mut http::HeaderMap) {
     }
 }
 
-fn response_origin(allow_origin: AnyOr<Origin>, origin: &HeaderValue) -> HeaderValue {
-    if let AnyOrInner::Any = allow_origin.0 {
+fn response_origin(allow_origin: &AnyOr<Origin>, origin: &HeaderValue) -> HeaderValue {
+    if let AnyOrInner::Any = &allow_origin.0 {
         WILDCARD
     } else {
         origin.clone()
