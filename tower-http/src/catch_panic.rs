@@ -1,5 +1,8 @@
 //! Convert panics into responses.
 //!
+//! Note that using panics for error handling is _not_ recommended. Prefer instead to use `Result`
+//! whenever possible.
+//!
 //! # Example
 //!
 //! ```rust
