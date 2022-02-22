@@ -365,6 +365,19 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     ) -> ServiceBuilder<Stack<crate::request_id::PropagateRequestIdLayer, L>> {
         self.propagate_request_id(HeaderName::from_static(crate::request_id::X_REQUEST_ID))
     }
+
+    /// Catch panics and convert them into `500 Internal Server` responses.
+    ///
+    /// See [`tower_http::catch_panic`] for more details.
+    ///
+    /// [`tower_http::catch_panic`]: crate::catch_panic
+    #[cfg(feature = "catch-panic")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "catch-panic")))]
+    fn catch_panic(
+        self,
+    ) -> ServiceBuilder<
+        Stack<crate::catch_panic::CatchPanicLayer<crate::catch_panic::DefaultResponseForPanic>, L>,
+    >;
 }
 
 impl<L> crate::sealed::Sealed<L> for ServiceBuilder<L> {}
@@ -587,5 +600,15 @@ impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
         header_name: HeaderName,
     ) -> ServiceBuilder<Stack<crate::request_id::PropagateRequestIdLayer, L>> {
         self.layer(crate::request_id::PropagateRequestIdLayer::new(header_name))
+    }
+
+    #[cfg(feature = "catch-panic")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "catch-panic")))]
+    fn catch_panic(
+        self,
+    ) -> ServiceBuilder<
+        Stack<crate::catch_panic::CatchPanicLayer<crate::catch_panic::DefaultResponseForPanic>, L>,
+    > {
+        self.layer(crate::catch_panic::CatchPanicLayer::new())
     }
 }
