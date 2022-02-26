@@ -131,8 +131,10 @@ impl QValue {
         Self(1000)
     }
 
+    // Parse a q-value as specified in RFC 7231 section 5.3.1.
     fn parse(s: &str) -> Option<Self> {
         let mut c = s.chars();
+        // Parse "q=" (case-insensitively).
         match c.next() {
             Some('q') | Some('Q') => (),
             _ => return None,
@@ -142,32 +144,44 @@ impl QValue {
             _ => return None,
         };
 
+        // Parse leading digit. Since valid q-values are between 0.000 and 1.000, only "0" and "1"
+        // are allowed.
         let mut value = match c.next() {
             Some('0') => 0,
             Some('1') => 1000,
             _ => return None,
         };
+
+        // Parse optional decimal point.
         match c.next() {
             Some('.') => (),
             None => return Some(Self(value)),
             _ => return None,
         };
 
+        // Parse optional fractional digits. The value of each digit is multiplied by `factor`.
+        // Since the q-value is represented as an integer between 0 and 1000, `factor` is `100` for
+        // the first digit, `10` for the next, and `1` for the digit after that.
         let mut factor = 100;
         loop {
             match c.next() {
                 Some(n @ '0'..='9') => {
+                    // If `factor` is less than `1`, three digits have already been parsed. A
+                    // q-value having more than 3 fractional digits is invalid.
                     if factor < 1 {
                         return None;
                     }
+                    // Add the digit's value multiplied by `factor` to `value`.
                     value += factor * (n as u16 - '0' as u16);
                 }
                 None => {
+                    // No more characters to parse. Check that the value representing the q-value is
+                    // in the valid range.
                     return if value <= 1000 {
                         Some(Self(value))
                     } else {
                         None
-                    }
+                    };
                 }
                 _ => return None,
             };
