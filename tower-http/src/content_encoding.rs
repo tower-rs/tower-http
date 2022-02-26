@@ -134,7 +134,7 @@ impl QValue {
     fn parse(s: &str) -> Option<Self> {
         let mut c = s.chars();
         match c.next() {
-            Some('q' | 'Q') => (),
+            Some('q') | Some('Q') => (),
             _ => return None,
         };
         match c.next() {
