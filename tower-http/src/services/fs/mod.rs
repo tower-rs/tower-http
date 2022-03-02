@@ -24,7 +24,7 @@ mod serve_file;
 // default capacity 64KiB
 const DEFAULT_CAPACITY: usize = 65536;
 
-use crate::content_encoding::{Encoding, SupportedEncodings};
+use crate::content_encoding::{Encoding, QValue, SupportedEncodings};
 
 pub use self::{
     serve_dir::{
@@ -61,7 +61,7 @@ impl SupportedEncodings for PrecompressedVariants {
 // to the corresponding file extension for the encoding.
 fn preferred_encoding(
     path: &mut PathBuf,
-    negotiated_encoding: &[(Encoding, f32)],
+    negotiated_encoding: &[(Encoding, QValue)],
 ) -> Option<Encoding> {
     let preferred_encoding = Encoding::preferred_encoding(negotiated_encoding);
     if let Some(file_extension) =
@@ -85,7 +85,7 @@ fn preferred_encoding(
 // file the uncompressed file is used as a fallback.
 async fn open_file_with_fallback(
     mut path: PathBuf,
-    mut negotiated_encoding: Vec<(Encoding, f32)>,
+    mut negotiated_encoding: Vec<(Encoding, QValue)>,
 ) -> io::Result<(File, Option<Encoding>)> {
     let (file, encoding) = loop {
         // Get the preferred encoding among the negotiated ones.
@@ -112,7 +112,7 @@ async fn open_file_with_fallback(
 // file the uncompressed file is used as a fallback.
 async fn file_metadata_with_fallback(
     mut path: PathBuf,
-    mut negotiated_encoding: Vec<(Encoding, f32)>,
+    mut negotiated_encoding: Vec<(Encoding, QValue)>,
 ) -> io::Result<(Metadata, Option<Encoding>)> {
     let (file, encoding) = loop {
         // Get the preferred encoding among the negotiated ones.
