@@ -25,8 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # 0.2.4 (March 5, 2022)
 
+## Added
+
 - Added `CatchPanic` middleware which catches panics and converts them
   into `500 Internal Server` responses ([#214])
+
+## Fixed
+
 - Make parsing of `Accept-Encoding` more robust ([#220])
 
 [#214]: https://github.com/tower-rs/tower-http/pull/214
