@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Fixed
 
+- None.
+
+# 0.2.5 (March 11, 2022)
+
+## Fixed
+
 - Fix content-length calculation on range requests ([#228])
 
 [#228]: https://github.com/tower-rs/tower-http/pull/228
