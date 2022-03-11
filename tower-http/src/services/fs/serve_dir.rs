@@ -512,8 +512,7 @@ impl Future for ResponseFuture {
                         };
                         let mut builder = Response::builder()
                             .header(header::CONTENT_TYPE, file_request.mime_header_value)
-                            .header(header::ACCEPT_RANGES, "bytes")
-                            .header(header::CONTENT_LENGTH, size.to_string());
+                            .header(header::ACCEPT_RANGES, "bytes");
                         if let Some(encoding) = file_request.maybe_encoding {
                             builder = builder
                                 .header(header::CONTENT_ENCODING, encoding.into_header_value());
@@ -597,6 +596,7 @@ fn handle_file_request(
                             header::CONTENT_RANGE,
                             format!("bytes {}-{}/{}", range.start(), range.end(), size),
                         )
+                        .header(header::CONTENT_LENGTH, range.end() - range.start() + 1)
                         .status(StatusCode::PARTIAL_CONTENT)
                         .body(body)
                 }
@@ -621,7 +621,9 @@ fn handle_file_request(
             } else {
                 empty_body()
             };
-            builder.body(body)
+            builder
+                .header(header::CONTENT_LENGTH, size.to_string())
+                .body(body)
         }
     }
 }
@@ -1083,7 +1085,7 @@ mod tests {
         assert_eq!(res.status(), StatusCode::PARTIAL_CONTENT);
         assert_eq!(
             res.headers()["content-length"],
-            file_contents.len().to_string()
+            (bytes_end_incl - bytes_start_incl + 1).to_string()
         );
         assert!(res.headers()["content-range"]
             .to_str()
