@@ -20,6 +20,7 @@ use tokio_util::io::ReaderStream;
 
 mod serve_dir;
 mod serve_file;
+mod spa;
 
 // default capacity 64KiB
 const DEFAULT_CAPACITY: usize = 65536;
@@ -34,6 +35,7 @@ pub use self::{
         ServeDir,
     },
     serve_file::ServeFile,
+    spa::{ResponseFuture as SpaResponseFuture, Spa},
 };
 
 #[derive(Clone, Copy, Debug, Default)]

@@ -22,4 +22,4 @@ pub mod fs;
 #[cfg(feature = "fs")]
 #[cfg_attr(docsrs, doc(cfg(feature = "fs")))]
 #[doc(inline)]
-pub use self::fs::{ServeDir, ServeFile};
+pub use self::fs::{ServeDir, ServeFile, Spa};
