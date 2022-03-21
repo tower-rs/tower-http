@@ -538,6 +538,8 @@ impl<S> Cors<S> {
             headers.insert(header::ACCESS_CONTROL_EXPOSE_HEADERS, expose_headers);
         }
 
+        apply_vary_headers(&mut headers);
+
         headers
     }
 
@@ -688,8 +690,6 @@ where
             response_origin(self.layer.allow_origin.as_ref().unwrap(), &origin),
         );
 
-        apply_vary_headers(&mut headers);
-
         ResponseFuture {
             inner: Kind::CorsCall {
                 future: self.inner.call(req),
@@ -742,8 +742,6 @@ where
             }
             KindProj::NonCorsCall { future } => future.poll(cx),
             KindProj::PreflightCall { headers } => {
-                apply_vary_headers(headers);
-
                 let mut response = Response::new(B::default());
                 mem::swap(response.headers_mut(), headers);
 
