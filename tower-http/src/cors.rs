@@ -53,7 +53,7 @@ use futures_core::ready;
 use http::{
     header::{self, HeaderName, HeaderValue},
     request::Parts,
-    HeaderMap, Method, Request, Response, StatusCode,
+    HeaderMap, Method, Request, Response,
 };
 use pin_project_lite::pin_project;
 use std::{
@@ -524,22 +524,6 @@ impl<S> Cors<S> {
         self
     }
 
-    fn is_valid_request_method(&self, method: &HeaderValue) -> bool {
-        if let Some(allow_methods) = &self.layer.allow_methods {
-            #[allow(clippy::borrow_interior_mutable_const)]
-            if allow_methods == WILDCARD {
-                return true;
-            }
-
-            allow_methods
-                .as_bytes()
-                .split(|&byte| byte == b',')
-                .any(|bytes| bytes == method.as_bytes())
-        } else {
-            false
-        }
-    }
-
     fn make_response_header_map(&self) -> HeaderMap {
         #[allow(clippy::declare_interior_mutable_const)]
         const TRUE: HeaderValue = HeaderValue::from_static("true");
@@ -689,16 +673,6 @@ where
 
         // Return results immediately upon preflight request
         if parts.method == Method::OPTIONS {
-            // the method the real request will be made with
-            match parts.headers.get(header::ACCESS_CONTROL_REQUEST_METHOD) {
-                Some(request_method) if self.is_valid_request_method(request_method) => {}
-                _ => {
-                    return ResponseFuture {
-                        inner: Kind::InvalidCorsCall,
-                    };
-                }
-            }
-
             return ResponseFuture {
                 inner: Kind::PreflightCall {
                     headers: self.make_preflight_header_map(origin, &parts),
@@ -748,7 +722,6 @@ pin_project! {
         PreflightCall {
             headers: HeaderMap,
         },
-        InvalidCorsCall,
     }
 }
 
@@ -776,14 +749,6 @@ where
 
                 Poll::Ready(Ok(response))
             }
-            KindProj::InvalidCorsCall => {
-                let response = Response::builder()
-                    .status(StatusCode::OK)
-                    .body(B::default())
-                    .unwrap();
-
-                Poll::Ready(Ok(response))
-            }
         }
     }
 }
@@ -805,33 +770,5 @@ fn response_origin(allow_origin: &AnyOr<Origin>, origin: &HeaderValue) -> Header
         WILDCARD
     } else {
         origin.clone()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #[allow(unused_imports)]
-    use super::*;
-
-    #[test]
-    fn test_is_valid_request_method() {
-        let cors = Cors::new(()).allow_methods(vec![Method::GET, Method::POST]);
-        assert!(cors.is_valid_request_method(&HeaderValue::from_static("GET")));
-        assert!(cors.is_valid_request_method(&HeaderValue::from_static("POST")));
-
-        let cors = Cors::new(());
-        assert!(!cors.is_valid_request_method(&HeaderValue::from_static("GET")));
-        assert!(!cors.is_valid_request_method(&HeaderValue::from_static("POST")));
-        assert!(!cors.is_valid_request_method(&HeaderValue::from_static("OPTIONS")));
-
-        let cors = Cors::new(()).allow_methods(Any);
-        assert!(cors.is_valid_request_method(&HeaderValue::from_static("GET")));
-        assert!(cors.is_valid_request_method(&HeaderValue::from_static("POST")));
-        assert!(cors.is_valid_request_method(&HeaderValue::from_static("OPTIONS")));
-
-        let cors = Cors::new(()).allow_methods(Any);
-        assert!(cors.is_valid_request_method(&HeaderValue::from_static("GET")));
-        assert!(cors.is_valid_request_method(&HeaderValue::from_static("POST")));
-        assert!(cors.is_valid_request_method(&HeaderValue::from_static("OPTIONS")));
     }
 }
