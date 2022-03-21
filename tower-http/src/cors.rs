@@ -538,7 +538,9 @@ impl<S> Cors<S> {
             headers.insert(header::ACCESS_CONTROL_EXPOSE_HEADERS, expose_headers);
         }
 
-        apply_vary_headers(&mut headers);
+        headers.append(header::VARY, header::ORIGIN.into());
+        headers.append(header::VARY, header::ACCESS_CONTROL_REQUEST_METHOD.into());
+        headers.append(header::VARY, header::ACCESS_CONTROL_REQUEST_HEADERS.into());
 
         headers
     }
@@ -748,18 +750,6 @@ where
                 Poll::Ready(Ok(response))
             }
         }
-    }
-}
-
-fn apply_vary_headers(headers: &mut http::HeaderMap) {
-    const VARY_HEADERS: [HeaderName; 3] = [
-        header::ORIGIN,
-        header::ACCESS_CONTROL_REQUEST_METHOD,
-        header::ACCESS_CONTROL_REQUEST_HEADERS,
-    ];
-
-    for h in &VARY_HEADERS {
-        headers.append(header::VARY, HeaderValue::from_static(h.as_str()));
     }
 }
 
