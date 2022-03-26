@@ -11,6 +11,7 @@ use super::{separated_by_commas, Any, WILDCARD};
 /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Origin
 /// [`CorsLayer::allow_origin`]: super::CorsLayer::allow_origin
 #[derive(Clone, Default)]
+#[must_use]
 pub struct AllowOrigin(OriginInner);
 
 impl AllowOrigin {

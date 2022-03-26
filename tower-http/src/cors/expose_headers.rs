@@ -14,6 +14,7 @@ use super::{separated_by_commas, Any, WILDCARD};
 /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Expose-Headers
 /// [`CorsLayer::expose_headers`]: super::CorsLayer::expose_headers
 #[derive(Clone, Default)]
+#[must_use]
 pub struct ExposeHeaders(ExposeHeadersInner);
 
 impl ExposeHeaders {

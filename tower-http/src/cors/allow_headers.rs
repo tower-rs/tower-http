@@ -15,6 +15,7 @@ use super::{separated_by_commas, Any, WILDCARD};
 /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Headers
 /// [`CorsLayer::allow_headers`]: super::CorsLayer::allow_headers
 #[derive(Clone, Default)]
+#[must_use]
 pub struct AllowHeaders(AllowHeadersInner);
 
 impl AllowHeaders {

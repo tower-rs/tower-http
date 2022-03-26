@@ -9,6 +9,7 @@ use http::{request::Parts as RequestParts, HeaderValue};
 /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Credentials
 /// [`CorsLayer::allow_credentials`]: super::CorsLayer::allow_credentials
 #[derive(Clone, Default)]
+#[must_use]
 pub struct AllowCredentials(AllowCredentialsInner);
 
 impl AllowCredentials {

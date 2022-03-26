@@ -11,6 +11,7 @@ use super::{separated_by_commas, Any, WILDCARD};
 /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Methods
 /// [`CorsLayer::allow_methods`]: super::CorsLayer::allow_methods
 #[derive(Clone, Default)]
+#[must_use]
 pub struct AllowMethods(AllowMethodsInner);
 
 impl AllowMethods {

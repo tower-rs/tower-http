@@ -8,6 +8,7 @@ use http::{request::Parts as RequestParts, HeaderValue};
 ///
 /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Max-Age
 #[derive(Clone, Default)]
+#[must_use]
 pub struct MaxAge(MaxAgeInner);
 
 impl MaxAge {

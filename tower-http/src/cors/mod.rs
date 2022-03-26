@@ -80,6 +80,7 @@ pub use self::{
 ///
 /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
 #[derive(Debug, Clone)]
+#[must_use]
 pub struct CorsLayer {
     allow_credentials: AllowCredentials,
     allow_headers: AllowHeaders,
@@ -343,6 +344,7 @@ impl CorsLayer {
 /// Represents a wildcard value (`*`) used with some CORS headers such as
 /// [`CorsLayer::allow_methods`].
 #[derive(Debug, Clone, Copy)]
+#[must_use]
 pub struct Any;
 
 /// Represents a wildcard value (`*`) used with some CORS headers such as
@@ -394,6 +396,7 @@ impl<S> Layer<S> for CorsLayer {
 ///
 /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
 #[derive(Debug, Clone)]
+#[must_use]
 pub struct Cors<S> {
     inner: S,
     layer: CorsLayer,
