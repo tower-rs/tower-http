@@ -34,6 +34,10 @@ impl AllowCredentials {
         Self(AllowCredentialsInner::Predicate(Arc::new(f)))
     }
 
+    pub(super) fn is_true(&self) -> bool {
+        matches!(&self.0, AllowCredentialsInner::Yes)
+    }
+
     pub(super) fn to_header_val(
         &self,
         origin: &HeaderValue,

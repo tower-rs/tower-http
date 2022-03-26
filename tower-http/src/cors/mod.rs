@@ -395,6 +395,8 @@ impl<S> Layer<S> for CorsLayer {
     type Service = Cors<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
+        ensure_usable_cors_rules(self);
+
         Cors {
             inner,
             layer: self.clone(),
@@ -545,6 +547,7 @@ where
     type Future = ResponseFuture<S::Future>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        ensure_usable_cors_rules(&self.layer);
         self.inner.poll_ready(cx)
     }
 
@@ -665,5 +668,33 @@ where
                 Poll::Ready(Ok(response))
             }
         }
+    }
+}
+
+fn ensure_usable_cors_rules(layer: &CorsLayer) {
+    if layer.allow_credentials.is_true() {
+        assert!(
+            !layer.allow_headers.is_wildcard(),
+            "Invalid CORS configuration: Cannot combine `Access-Control-Allow-Credentials: true` \
+             with `Access-Control-Allow-Headers: *`"
+        );
+
+        assert!(
+            !layer.allow_methods.is_wildcard(),
+            "Invalid CORS configuration: Cannot combine `Access-Control-Allow-Credentials: true` \
+             with `Access-Control-Allow-Methods: *`"
+        );
+
+        assert!(
+            !layer.allow_origin.is_wildcard(),
+            "Invalid CORS configuration: Cannot combine `Access-Control-Allow-Credentials: true` \
+             with `Access-Control-Allow-Origin: *`"
+        );
+
+        assert!(
+            !layer.expose_headers.is_wildcard(),
+            "Invalid CORS configuration: Cannot combine `Access-Control-Allow-Credentials: true` \
+             with `Access-Control-Expose-Headers: *`"
+        );
     }
 }

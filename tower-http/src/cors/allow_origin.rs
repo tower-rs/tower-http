@@ -71,6 +71,11 @@ impl AllowOrigin {
         Self::predicate(|_, _| true)
     }
 
+    #[allow(clippy::borrow_interior_mutable_const)]
+    pub(super) fn is_wildcard(&self) -> bool {
+        matches!(&self.0, OriginInner::Const(Some(v)) if v == WILDCARD)
+    }
+
     pub(super) fn to_header_val(
         &self,
         origin: &HeaderValue,

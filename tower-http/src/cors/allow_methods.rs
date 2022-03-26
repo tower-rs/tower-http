@@ -63,6 +63,11 @@ impl AllowMethods {
         Self(AllowMethodsInner::MirrorRequest)
     }
 
+    #[allow(clippy::borrow_interior_mutable_const)]
+    pub(super) fn is_wildcard(&self) -> bool {
+        matches!(&self.0, AllowMethodsInner::Const(Some(v)) if v == WILDCARD)
+    }
+
     pub(super) fn to_header_val(&self, parts: &RequestParts) -> Option<HeaderValue> {
         match &self.0 {
             AllowMethodsInner::Const(v) => v.clone(),
