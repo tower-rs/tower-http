@@ -46,6 +46,8 @@
 //!
 //! [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
 
+#![allow(clippy::enum_variant_names)]
+
 use bytes::{BufMut, BytesMut};
 use futures_core::ready;
 use http::{
@@ -747,7 +749,6 @@ pin_project! {
             headers: HeaderMap,
         },
         InvalidCorsCall,
-        InvalidOrigin,
     }
 }
 
@@ -778,14 +779,6 @@ where
             KindProj::InvalidCorsCall => {
                 let response = Response::builder()
                     .status(StatusCode::OK)
-                    .body(B::default())
-                    .unwrap();
-
-                Poll::Ready(Ok(response))
-            }
-            KindProj::InvalidOrigin => {
-                let response = Response::builder()
-                    .status(StatusCode::UNAUTHORIZED)
                     .body(B::default())
                     .unwrap();
 
