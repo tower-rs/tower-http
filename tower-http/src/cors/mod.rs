@@ -57,7 +57,6 @@ use std::{
     mem,
     pin::Pin,
     task::{Context, Poll},
-    time::Duration,
 };
 use tower_layer::Layer;
 use tower_service::Service;
@@ -96,8 +95,11 @@ const WILDCARD: HeaderValue = HeaderValue::from_static("*");
 impl CorsLayer {
     /// Create a new `CorsLayer`.
     ///
-    /// This creates a restrictive configuration. Use the builder methods to
-    /// customize the behavior.
+    /// No headers are sent by default. Use the builder methods to customize
+    /// the behavior.
+    ///
+    /// You need to set at least an allowed origin for browsers to make
+    /// successful cross-origin requests to your service.
     pub fn new() -> Self {
         Self {
             allow_credentials: Default::default(),
@@ -109,24 +111,34 @@ impl CorsLayer {
         }
     }
 
-    /// A very permissive configuration suitable for development:
+    /// A permissive configuration:
     ///
-    /// - Credentials allowed.
     /// - All request headers allowed.
     /// - All methods allowed.
     /// - All origins allowed.
     /// - All headers exposed.
-    /// - Max age set to 1 hour.
-    ///
-    /// Note this is not recommended for production use.
     pub fn permissive() -> Self {
         Self::new()
-            .allow_credentials(true)
             .allow_headers(Any)
             .allow_methods(Any)
             .allow_origin(Any)
             .expose_headers(Any)
-            .max_age(Duration::from_secs(60 * 60))
+    }
+
+    /// A very permissive configuration:
+    ///
+    /// - **Credentials allowed.**
+    /// - The method received in `Access-Control-Request-Method` is sent back
+    ///   as an allowed method.
+    /// - The origin of the preflight request is sent back as an allowed origin.
+    /// - The header names received in `Access-Control-Request-Headers` are sent
+    ///   back as allowed headers.
+    /// - No headers are currently exposed, but this may change in the future.
+    pub fn very_permissive() -> Self {
+        Self::new()
+            .allow_headers(AllowHeaders::mirror_request())
+            .allow_methods(AllowMethods::mirror_request())
+            .allow_origin(AllowOrigin::mirror_request())
     }
 
     /// Set the [`Access-Control-Allow-Credentials`][mdn] header.
@@ -405,8 +417,7 @@ pub struct Cors<S> {
 impl<S> Cors<S> {
     /// Create a new `Cors`.
     ///
-    /// This creates a restrictive configuration. Use the builder methods to
-    /// customize the behavior.
+    /// See [`CorsLayer::new`] for more details.
     pub fn new(inner: S) -> Self {
         Self {
             inner,
@@ -414,13 +425,23 @@ impl<S> Cors<S> {
         }
     }
 
-    /// A very permissive configuration suitable for development.
+    /// A permissive configuration.
     ///
     /// See [`CorsLayer::permissive`] for more details.
     pub fn permissive(inner: S) -> Self {
         Self {
             inner,
             layer: CorsLayer::permissive(),
+        }
+    }
+
+    /// A very permissive configuration.
+    ///
+    /// See [`CorsLayer::very_permissive`] for more details.
+    pub fn very_permissive(inner: S) -> Self {
+        Self {
+            inner,
+            layer: CorsLayer::very_permissive(),
         }
     }
 
