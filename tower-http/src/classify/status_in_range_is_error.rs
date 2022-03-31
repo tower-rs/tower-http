@@ -38,7 +38,7 @@ pub struct StatusInRangeAsFailures {
 }
 
 impl StatusInRangeAsFailures {
-    /// Createa a new `StatusInRangeAsFailures`.
+    /// Creates a new `StatusInRangeAsFailures`.
     ///
     /// # Panics
     ///
@@ -59,7 +59,7 @@ impl StatusInRangeAsFailures {
         Self { range }
     }
 
-    /// Createa a new `StatusInRangeAsFailures` that classifies client and server responses as
+    /// Creates a new `StatusInRangeAsFailures` that classifies client and server responses as
     /// failures.
     ///
     /// This is a convenience for `StatusInRangeAsFailures::new(400..=599)`.
