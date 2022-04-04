@@ -92,7 +92,10 @@ impl ServeFile {
     }
 }
 
-impl<ReqBody> Service<Request<ReqBody>> for ServeFile {
+impl<ReqBody> Service<Request<ReqBody>> for ServeFile
+where
+    ReqBody: Send + 'static,
+{
     type Error = <ServeDir as Service<Request<ReqBody>>>::Error;
     type Response = <ServeDir as Service<Request<ReqBody>>>::Response;
     type Future = <ServeDir as Service<Request<ReqBody>>>::Future;
@@ -102,6 +105,7 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeFile {
         Poll::Ready(Ok(()))
     }
 
+    #[inline]
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
         self.0.call(req)
     }
@@ -109,10 +113,6 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeFile {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Read;
-    use std::str::FromStr;
-
-    #[allow(unused_imports)]
     use super::*;
     use brotli::BrotliDecompress;
     use flate2::bufread::DeflateDecoder;
@@ -122,6 +122,8 @@ mod tests {
     use http::{Request, StatusCode};
     use http_body::Body as _;
     use hyper::Body;
+    use std::io::Read;
+    use std::str::FromStr;
     use tower::ServiceExt;
 
     #[tokio::test]

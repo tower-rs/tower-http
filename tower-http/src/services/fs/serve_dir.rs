@@ -2,34 +2,31 @@ use super::{
     check_modified_headers, open_file_with_fallback, AsyncReadBody, IfModifiedSince,
     IfUnmodifiedSince, LastModified, PrecompressedVariants,
 };
-use crate::services::fs::file_metadata_with_fallback;
-use crate::BoxError;
 use crate::{
     content_encoding::{encodings, Encoding},
-    services::fs::DEFAULT_CAPACITY,
+    services::fs::{file_metadata_with_fallback, DEFAULT_CAPACITY},
+    BoxError,
 };
 use bytes::Bytes;
 use futures_util::ready;
 use http::response::Builder;
 use http::{header, HeaderValue, Method, Request, Response, StatusCode, Uri};
-use http_body::{combinators::BoxBody, Body, Empty, Full};
+use http_body::{combinators::UnsyncBoxBody, Body, Empty, Full};
 use http_range_header::RangeUnsatisfiableError;
 use percent_encoding::percent_decode;
 use pin_project_lite::pin_project;
-use std::convert::Infallible;
-use std::fs::Metadata;
-use std::io::SeekFrom;
-use std::ops::RangeInclusive;
-use std::path::Component;
 use std::{
+    convert::Infallible,
+    fs::Metadata,
     future::Future,
     io,
-    path::{Path, PathBuf},
+    io::SeekFrom,
+    ops::RangeInclusive,
+    path::{Component, Path, PathBuf},
     pin::Pin,
     task::{Context, Poll},
 };
-use tokio::fs::File;
-use tokio::io::AsyncSeekExt;
+use tokio::{fs::File, io::AsyncSeekExt};
 use tower_service::Service;
 
 /// Service that serves files from a given directory and all its sub directories.
@@ -328,15 +325,15 @@ async fn maybe_redirect_or_append_path(
 
 impl<ReqBody, F, FResBody> Service<Request<ReqBody>> for ServeDir<F>
 where
-    F: Service<Request<Empty<Bytes>>, Response = Response<FResBody>> + Clone,
+    F: Service<Request<ReqBody>, Response = Response<FResBody>> + Clone,
     F::Error: Into<io::Error>,
-    F::Future: Send + Sync + 'static,
-    FResBody: http_body::Body<Data = Bytes> + Send + Sync + 'static,
+    F::Future: Send + 'static,
+    FResBody: http_body::Body<Data = Bytes> + Send + 'static,
     FResBody::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
 {
     type Response = Response<ResponseBody>;
     type Error = io::Error;
-    type Future = ResponseFuture<F>;
+    type Future = ResponseFuture<ReqBody, F>;
 
     #[inline]
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -348,6 +345,15 @@ where
     }
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
+        // `ServeDir` doesn't care about the request body but the fallback might. So move out the
+        // body and pass it to the fallback, leaving an empty body in its place
+        //
+        // this is necessary because we cannot clone bodies
+        let (mut parts, body) = req.into_parts();
+        // same goes for extensions
+        let extensions = std::mem::take(&mut parts.extensions);
+        let req = Request::from_parts(parts, Empty::<Bytes>::new());
+
         let mut full_path = match self
             .variant
             .build_and_validate_path(&self.base, req.uri().path())
@@ -361,10 +367,11 @@ where
         };
 
         let fallback_and_request = self.fallback.as_mut().map(|fallback| {
-            let mut req = Request::new(Empty::<Bytes>::new());
+            let mut req = Request::new(body);
             *req.method_mut() = req.method().clone();
             *req.uri_mut() = req.uri().clone();
             *req.headers_mut() = req.headers().clone();
+            *req.extensions_mut() = extensions;
 
             // get the ready fallback and leave a non-ready clone in its place
             let clone = fallback.clone();
@@ -558,23 +565,24 @@ enum FileRequestExtent {
     Head(Metadata),
 }
 
-type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + Sync + 'static>>;
+type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 
+// TODO(david): shouldn't need pin projection here since `BoxFuture` is already pinned
 pin_project! {
     /// Response future of [`ServeDir`].
-    pub struct ResponseFuture<F = DefaultServeDirFallback> {
+    pub struct ResponseFuture<ReqBody, F = DefaultServeDirFallback> {
         #[pin]
-        inner: ResponseFutureInner<F>,
+        inner: ResponseFutureInner<ReqBody, F>,
     }
 }
 
 pin_project! {
     #[project = ResponseFutureInnerProj]
-    enum ResponseFutureInner<F> {
+    enum ResponseFutureInner<ReqBody, F> {
         OpenFileFuture {
             #[pin]
             future: BoxFuture<io::Result<Output>>,
-            fallback_and_request: Option<(F, Request<Empty<Bytes>>)>,
+            fallback_and_request: Option<(F, Request<ReqBody>)>,
         },
         FallbackFuture {
             future: BoxFuture<io::Result<Response<ResponseBody>>>,
@@ -583,13 +591,13 @@ pin_project! {
     }
 }
 
-impl<F, FResBody> Future for ResponseFuture<F>
+impl<F, ReqBody, ResBody> Future for ResponseFuture<ReqBody, F>
 where
-    F: Service<Request<Empty<Bytes>>, Response = Response<FResBody>> + Clone,
+    F: Service<Request<ReqBody>, Response = Response<ResBody>> + Clone,
     F::Error: Into<io::Error>,
-    F::Future: Send + Sync + 'static,
-    FResBody: http_body::Body<Data = Bytes> + Send + Sync + 'static,
-    FResBody::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+    F::Future: Send + 'static,
+    ResBody: http_body::Body<Data = Bytes> + Send + 'static,
+    ResBody::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
 {
     type Output = io::Result<Response<ResponseBody>>;
 
@@ -597,7 +605,7 @@ where
         loop {
             let mut this = self.as_mut().project();
 
-            let new_state: ResponseFutureInner<_> = match this.inner.as_mut().project() {
+            let new_state = match this.inner.as_mut().project() {
                 ResponseFutureInnerProj::OpenFileFuture {
                     future: open_file_future,
                     fallback_and_request,
@@ -692,7 +700,7 @@ fn handle_file_request(
                     let body = if let Some(file) = maybe_file {
                         let body =
                             AsyncReadBody::with_capacity_limited(file, chunk_size, range_size)
-                                .boxed();
+                                .boxed_unsync();
                         ResponseBody::new(body)
                     } else {
                         empty_body()
@@ -722,7 +730,7 @@ fn handle_file_request(
         // Not a range request
         None => {
             let body = if let Some(file) = maybe_file {
-                let box_body = AsyncReadBody::with_capacity(file, chunk_size).boxed();
+                let box_body = AsyncReadBody::with_capacity(file, chunk_size).boxed_unsync();
                 ResponseBody::new(box_body)
             } else {
                 empty_body()
@@ -735,28 +743,31 @@ fn handle_file_request(
 }
 
 fn empty_body() -> ResponseBody {
-    let body = Empty::new().map_err(|err| match err {}).boxed();
+    let body = Empty::new().map_err(|err| match err {}).boxed_unsync();
     ResponseBody::new(body)
 }
 
 fn body_from_bytes(bytes: Bytes) -> ResponseBody {
-    let body = Full::from(bytes).map_err(|err| match err {}).boxed();
+    let body = Full::from(bytes).map_err(|err| match err {}).boxed_unsync();
     ResponseBody::new(body)
 }
 
 opaque_body! {
     /// Response body for [`ServeDir`] and [`ServeFile`].
-    pub type ResponseBody = BoxBody<Bytes, io::Error>;
+    pub type ResponseBody = UnsyncBoxBody<Bytes, io::Error>;
 }
 
 /// The default fallback service used with [`ServeDir`].
 #[derive(Debug, Clone, Copy)]
 pub struct DefaultServeDirFallback(Infallible);
 
-impl<ReqBody> Service<Request<ReqBody>> for DefaultServeDirFallback {
+impl<ReqBody> Service<Request<ReqBody>> for DefaultServeDirFallback
+where
+    ReqBody: Send + 'static,
+{
     type Response = Response<ResponseBody>;
     type Error = io::Error;
-    type Future = ResponseFuture;
+    type Future = ResponseFuture<ReqBody>;
 
     fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         // contains `Infallible` so can never be called
@@ -777,18 +788,15 @@ fn not_found() -> io::Result<Response<ResponseBody>> {
     Ok(res)
 }
 
-fn call_fallback<F, FResBody>(
-    fallback: &mut F,
-    req: Request<Empty<Bytes>>,
-) -> ResponseFutureInner<F>
+fn call_fallback<F, B, FResBody>(fallback: &mut F, req: Request<B>) -> ResponseFutureInner<B, F>
 where
-    F: Service<Request<Empty<Bytes>>, Response = Response<FResBody>> + Clone,
+    F: Service<Request<B>, Response = Response<FResBody>> + Clone,
     F::Error: Into<io::Error>,
-    F::Future: Send + Sync + 'static,
-    FResBody: http_body::Body<Data = Bytes> + Send + Sync + 'static,
+    F::Future: Send + 'static,
+    FResBody: http_body::Body<Data = Bytes> + Send + 'static,
     FResBody::Error: Into<BoxError>,
 {
-    let future = fallback.call(req.map(|_| Empty::new()));
+    let future = fallback.call(req);
     let future = async move {
         let response = future.await.map_err(Into::into)?;
         let response = response
@@ -797,7 +805,7 @@ where
                     Ok(err) => *err,
                     Err(err) => io::Error::new(io::ErrorKind::Other, err),
                 })
-                .boxed()
+                .boxed_unsync()
             })
             .map(ResponseBody::new);
         Ok(response)
