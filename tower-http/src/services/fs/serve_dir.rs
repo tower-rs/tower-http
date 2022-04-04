@@ -351,7 +351,7 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
                     let guess = mime_guess::from_path(&full_path);
                     guess
                         .first_raw()
-                        .map(|mime| HeaderValue::from_static(mime))
+                        .map(HeaderValue::from_static)
                         .unwrap_or_else(|| {
                             HeaderValue::from_str(mime::APPLICATION_OCTET_STREAM.as_ref()).unwrap()
                         })
@@ -466,6 +466,7 @@ fn append_slash_on_path(uri: Uri) -> Uri {
     builder.build().unwrap()
 }
 
+#[allow(clippy::large_enum_variant)]
 enum Output {
     File(FileRequest),
     Redirect(HeaderValue),
@@ -504,7 +505,7 @@ impl Future for ResponseFuture {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match &mut self.inner {
             Inner::Valid(open_file_future) => {
-                return match ready!(Pin::new(open_file_future).poll(cx)) {
+                match ready!(Pin::new(open_file_future).poll(cx)) {
                     Ok(Output::File(file_request)) => {
                         let (maybe_file, size) = match file_request.extent {
                             FileRequestExtent::Full(file, meta) => (Some(file), meta.len()),
@@ -550,7 +551,7 @@ impl Future for ResponseFuture {
                     Err(err) => Poll::Ready(
                         super::response_from_io_error(err).map(|res| res.map(ResponseBody::new)),
                     ),
-                };
+                }
             }
             Inner::Invalid => {
                 let res = Response::builder()
