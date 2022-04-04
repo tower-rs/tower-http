@@ -28,6 +28,7 @@ use crate::content_encoding::{Encoding, QValue, SupportedEncodings};
 
 pub use self::{
     serve_dir::{
+        DefaultServeDirFallback,
         // The response body and future are used for both ServeDir and ServeFile
         ResponseBody as ServeFileSystemResponseBody,
         ResponseFuture as ServeFileSystemResponseFuture,
@@ -186,22 +187,6 @@ where
         _cx: &mut Context<'_>,
     ) -> Poll<Result<Option<HeaderMap>, Self::Error>> {
         Poll::Ready(Ok(None))
-    }
-}
-
-fn response_from_io_error(
-    err: io::Error,
-) -> Result<Response<BoxBody<Bytes, io::Error>>, io::Error> {
-    match err.kind() {
-        io::ErrorKind::NotFound | io::ErrorKind::PermissionDenied => {
-            let res = Response::builder()
-                .status(StatusCode::NOT_FOUND)
-                .body(Empty::new().map_err(|err| match err {}).boxed())
-                .unwrap();
-
-            Ok(res)
-        }
-        _ => Err(err),
     }
 }
 

@@ -12,6 +12,7 @@ use tower_service::Service;
 /// Service that serves a file.
 #[derive(Clone, Debug)]
 pub struct ServeFile(ServeDir);
+
 // Note that this is just a special case of ServeDir
 impl ServeFile {
     /// Create a new [`ServeFile`].
@@ -21,7 +22,7 @@ impl ServeFile {
         let guess = mime_guess::from_path(path.as_ref());
         let mime = guess
             .first_raw()
-            .map(|mime| HeaderValue::from_static(mime))
+            .map(HeaderValue::from_static)
             .unwrap_or_else(|| {
                 HeaderValue::from_str(mime::APPLICATION_OCTET_STREAM.as_ref()).unwrap()
             });

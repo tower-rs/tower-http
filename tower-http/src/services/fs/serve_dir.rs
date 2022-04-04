@@ -3,6 +3,7 @@ use super::{
     IfUnmodifiedSince, LastModified, PrecompressedVariants,
 };
 use crate::services::fs::file_metadata_with_fallback;
+use crate::BoxError;
 use crate::{
     content_encoding::{encodings, Encoding},
     services::fs::DEFAULT_CAPACITY,
@@ -14,6 +15,8 @@ use http::{header, HeaderValue, Method, Request, Response, StatusCode, Uri};
 use http_body::{combinators::BoxBody, Body, Empty, Full};
 use http_range_header::RangeUnsatisfiableError;
 use percent_encoding::percent_decode;
+use pin_project_lite::pin_project;
+use std::convert::Infallible;
 use std::fs::Metadata;
 use std::io::SeekFrom;
 use std::ops::RangeInclusive;
@@ -98,13 +101,14 @@ use tower_service::Service;
 /// # };
 /// ```
 #[derive(Clone, Debug)]
-pub struct ServeDir {
+pub struct ServeDir<F = DefaultServeDirFallback> {
     base: PathBuf,
     buf_chunk_size: usize,
     precompressed_variants: Option<PrecompressedVariants>,
     // This is used to specialise implementation for
     // single files
     variant: ServeVariant,
+    fallback: Option<F>,
 }
 
 // Allow the ServeDir service to be used in the ServeFile service
@@ -120,12 +124,36 @@ enum ServeVariant {
 }
 
 impl ServeVariant {
-    fn full_path(&self, base_path: &Path, requested_path: &str) -> Option<PathBuf> {
+    fn build_and_validate_path(&self, base_path: &Path, requested_path: &str) -> Option<PathBuf> {
         match self {
             ServeVariant::Directory {
                 append_index_html_on_directories: _,
             } => {
-                let full_path = build_and_validate_path(base_path, requested_path)?;
+                let path = requested_path.trim_start_matches('/');
+
+                let path_decoded = percent_decode(path.as_ref()).decode_utf8().ok()?;
+                let path_decoded = Path::new(&*path_decoded);
+
+                let mut full_path = base_path.to_path_buf();
+                for component in path_decoded.components() {
+                    match component {
+                        Component::Normal(comp) => {
+                            // protect against paths like `/foo/c:/bar/baz` (#204)
+                            if Path::new(&comp)
+                                .components()
+                                .all(|c| matches!(c, Component::Normal(_)))
+                            {
+                                full_path.push(comp)
+                            } else {
+                                return None;
+                            }
+                        }
+                        Component::CurDir => {}
+                        Component::Prefix(_) | Component::RootDir | Component::ParentDir => {
+                            return None
+                        }
+                    }
+                }
                 Some(full_path)
             }
             ServeVariant::SingleFile { mime: _ } => Some(base_path.to_path_buf()),
@@ -133,34 +161,7 @@ impl ServeVariant {
     }
 }
 
-fn build_and_validate_path(base_path: &Path, requested_path: &str) -> Option<PathBuf> {
-    let path = requested_path.trim_start_matches('/');
-
-    let path_decoded = percent_decode(path.as_ref()).decode_utf8().ok()?;
-    let path_decoded = Path::new(&*path_decoded);
-
-    let mut full_path = base_path.to_path_buf();
-    for component in path_decoded.components() {
-        match component {
-            Component::Normal(comp) => {
-                // protect against paths like `/foo/c:/bar/baz` (#204)
-                if Path::new(&comp)
-                    .components()
-                    .all(|c| matches!(c, Component::Normal(_)))
-                {
-                    full_path.push(comp)
-                } else {
-                    return None;
-                }
-            }
-            Component::CurDir => {}
-            Component::Prefix(_) | Component::RootDir | Component::ParentDir => return None,
-        }
-    }
-    Some(full_path)
-}
-
-impl ServeDir {
+impl ServeDir<DefaultServeDirFallback> {
     /// Create a new [`ServeDir`].
     pub fn new<P: AsRef<Path>>(path: P) -> Self {
         let mut base = PathBuf::from(".");
@@ -173,6 +174,7 @@ impl ServeDir {
             variant: ServeVariant::Directory {
                 append_index_html_on_directories: true,
             },
+            fallback: None,
         }
     }
 
@@ -182,9 +184,12 @@ impl ServeDir {
             buf_chunk_size: DEFAULT_CAPACITY,
             precompressed_variants: None,
             variant: ServeVariant::SingleFile { mime },
+            fallback: None,
         }
     }
+}
 
+impl<F> ServeDir<F> {
     /// If the requested path is a directory append `index.html`.
     ///
     /// This is useful for static sites.
@@ -260,6 +265,42 @@ impl ServeDir {
             .deflate = true;
         self
     }
+
+    /// Set the fallback service.
+    ///
+    /// This service will be called if there is no file at the path of the request.
+    ///
+    /// # Example
+    ///
+    /// This can be used to respond with a different file:
+    ///
+    /// ```rust
+    /// use tower_http::services::{ServeDir, ServeFile};
+    ///
+    /// let service = ServeDir::new("assets")
+    ///     // respond with `index.html` for missing files
+    ///     .fallback(ServeFile::new("assets/index.html"));
+    ///
+    /// # async {
+    /// // Run our service using `hyper`
+    /// let addr = std::net::SocketAddr::from(([127, 0, 0, 1], 3000));
+    /// hyper::Server::bind(&addr)
+    ///     .serve(tower::make::Shared::new(service))
+    ///     .await
+    ///     .expect("server error");
+    /// # };
+    /// ```
+    ///
+    /// Setups like this are often found in single page applications.
+    pub fn fallback<F2>(self, new_fallback: F2) -> ServeDir<F2> {
+        ServeDir {
+            base: self.base,
+            buf_chunk_size: self.buf_chunk_size,
+            precompressed_variants: self.precompressed_variants,
+            variant: self.variant,
+            fallback: Some(new_fallback),
+        }
+    }
 }
 
 async fn maybe_redirect_or_append_path(
@@ -285,25 +326,52 @@ async fn maybe_redirect_or_append_path(
     None
 }
 
-impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
+impl<ReqBody, F, FResBody> Service<Request<ReqBody>> for ServeDir<F>
+where
+    F: Service<Request<Empty<Bytes>>, Response = Response<FResBody>> + Clone,
+    F::Error: Into<io::Error>,
+    F::Future: Send + Sync + 'static,
+    FResBody: http_body::Body<Data = Bytes> + Send + Sync + 'static,
+    FResBody::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+{
     type Response = Response<ResponseBody>;
     type Error = io::Error;
-    type Future = ResponseFuture;
+    type Future = ResponseFuture<F>;
 
     #[inline]
-    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        if let Some(fallback) = &mut self.fallback {
+            fallback.poll_ready(cx).map_err(Into::into)
+        } else {
+            Poll::Ready(Ok(()))
+        }
     }
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
-        let mut full_path = match self.variant.full_path(&self.base, req.uri().path()) {
+        let mut full_path = match self
+            .variant
+            .build_and_validate_path(&self.base, req.uri().path())
+        {
             Some(full_path) => full_path,
             None => {
                 return ResponseFuture {
-                    inner: Inner::Invalid,
-                }
+                    inner: ResponseFutureInner::InvalidPath,
+                };
             }
         };
+
+        let fallback_and_request = self.fallback.as_mut().map(|fallback| {
+            let mut req = Request::new(Empty::<Bytes>::new());
+            *req.method_mut() = req.method().clone();
+            *req.uri_mut() = req.uri().clone();
+            *req.headers_mut() = req.headers().clone();
+
+            // get the ready fallback and leave a non-ready clone in its place
+            let clone = fallback.clone();
+            let fallback = std::mem::replace(fallback, clone);
+
+            (fallback, req)
+        });
 
         let buf_chunk_size = self.buf_chunk_size;
         let uri = req.uri().clone();
@@ -416,7 +484,10 @@ impl<ReqBody> Service<Request<ReqBody>> for ServeDir {
         });
 
         ResponseFuture {
-            inner: Inner::Valid(open_file_future),
+            inner: ResponseFutureInner::OpenFileFuture {
+                future: open_file_future,
+                fallback_and_request,
+            },
         }
     }
 }
@@ -489,23 +560,48 @@ enum FileRequestExtent {
 
 type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + Sync + 'static>>;
 
-enum Inner {
-    Valid(BoxFuture<io::Result<Output>>),
-    Invalid,
+pin_project! {
+    /// Response future of [`ServeDir`].
+    pub struct ResponseFuture<F = DefaultServeDirFallback> {
+        #[pin]
+        inner: ResponseFutureInner<F>,
+    }
 }
 
-/// Response future of [`ServeDir`].
-pub struct ResponseFuture {
-    inner: Inner,
+pin_project! {
+    #[project = ResponseFutureInnerProj]
+    enum ResponseFutureInner<F> {
+        OpenFileFuture {
+            #[pin]
+            future: BoxFuture<io::Result<Output>>,
+            fallback_and_request: Option<(F, Request<Empty<Bytes>>)>,
+        },
+        FallbackFuture {
+            future: BoxFuture<io::Result<Response<ResponseBody>>>,
+        },
+        InvalidPath,
+    }
 }
 
-impl Future for ResponseFuture {
+impl<F, FResBody> Future for ResponseFuture<F>
+where
+    F: Service<Request<Empty<Bytes>>, Response = Response<FResBody>> + Clone,
+    F::Error: Into<io::Error>,
+    F::Future: Send + Sync + 'static,
+    FResBody: http_body::Body<Data = Bytes> + Send + Sync + 'static,
+    FResBody::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+{
     type Output = io::Result<Response<ResponseBody>>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        match &mut self.inner {
-            Inner::Valid(open_file_future) => {
-                match ready!(Pin::new(open_file_future).poll(cx)) {
+        loop {
+            let mut this = self.as_mut().project();
+
+            let new_state: ResponseFutureInner<_> = match this.inner.as_mut().project() {
+                ResponseFutureInnerProj::OpenFileFuture {
+                    future: open_file_future,
+                    fallback_and_request,
+                } => match ready!(open_file_future.poll(cx)) {
                     Ok(Output::File(file_request)) => {
                         let (maybe_file, size) = match file_request.extent {
                             FileRequestExtent::Full(file, meta) => (Some(file), meta.len()),
@@ -530,7 +626,7 @@ impl Future for ResponseFuture {
                             file_request.chunk_size,
                             size,
                         );
-                        Poll::Ready(Ok(res.unwrap()))
+                        return Poll::Ready(Ok(res.unwrap()));
                     }
 
                     Ok(Output::Redirect(location)) => {
@@ -539,28 +635,37 @@ impl Future for ResponseFuture {
                             .status(StatusCode::TEMPORARY_REDIRECT)
                             .body(empty_body())
                             .unwrap();
-                        Poll::Ready(Ok(res))
+                        return Poll::Ready(Ok(res));
                     }
 
                     Ok(Output::StatusCode(code)) => {
                         let res = Response::builder().status(code).body(empty_body()).unwrap();
 
-                        Poll::Ready(Ok(res))
+                        return Poll::Ready(Ok(res));
                     }
 
-                    Err(err) => Poll::Ready(
-                        super::response_from_io_error(err).map(|res| res.map(ResponseBody::new)),
-                    ),
-                }
-            }
-            Inner::Invalid => {
-                let res = Response::builder()
-                    .status(StatusCode::NOT_FOUND)
-                    .body(empty_body())
-                    .unwrap();
+                    Err(err) => match err.kind() {
+                        io::ErrorKind::NotFound | io::ErrorKind::PermissionDenied => {
+                            if let Some((mut fallback, request)) = fallback_and_request.take() {
+                                call_fallback(&mut fallback, request)
+                            } else {
+                                return Poll::Ready(not_found());
+                            }
+                        }
+                        _ => return Poll::Ready(Err(err)),
+                    },
+                },
 
-                Poll::Ready(Ok(res))
-            }
+                ResponseFutureInnerProj::FallbackFuture { future } => {
+                    return Pin::new(future).poll(cx)
+                }
+
+                ResponseFutureInnerProj::InvalidPath => {
+                    return Poll::Ready(not_found());
+                }
+            };
+
+            this.inner.set(new_state);
         }
     }
 }
@@ -644,17 +749,74 @@ opaque_body! {
     pub type ResponseBody = BoxBody<Bytes, io::Error>;
 }
 
+/// The default fallback service used with [`ServeDir`].
+#[derive(Debug, Clone, Copy)]
+pub struct DefaultServeDirFallback(Infallible);
+
+impl<ReqBody> Service<Request<ReqBody>> for DefaultServeDirFallback {
+    type Response = Response<ResponseBody>;
+    type Error = io::Error;
+    type Future = ResponseFuture;
+
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        // contains `Infallible` so can never be called
+        unreachable!()
+    }
+
+    fn call(&mut self, _req: Request<ReqBody>) -> Self::Future {
+        // contains `Infallible` so can never be called
+        unreachable!()
+    }
+}
+
+fn not_found() -> io::Result<Response<ResponseBody>> {
+    let res = Response::builder()
+        .status(StatusCode::NOT_FOUND)
+        .body(empty_body())
+        .unwrap();
+    Ok(res)
+}
+
+fn call_fallback<F, FResBody>(
+    fallback: &mut F,
+    req: Request<Empty<Bytes>>,
+) -> ResponseFutureInner<F>
+where
+    F: Service<Request<Empty<Bytes>>, Response = Response<FResBody>> + Clone,
+    F::Error: Into<io::Error>,
+    F::Future: Send + Sync + 'static,
+    FResBody: http_body::Body<Data = Bytes> + Send + Sync + 'static,
+    FResBody::Error: Into<BoxError>,
+{
+    let future = fallback.call(req.map(|_| Empty::new()));
+    let future = async move {
+        let response = future.await.map_err(Into::into)?;
+        let response = response
+            .map(|body| {
+                body.map_err(|err| match err.into().downcast::<io::Error>() {
+                    Ok(err) => *err,
+                    Err(err) => io::Error::new(io::ErrorKind::Other, err),
+                })
+                .boxed()
+            })
+            .map(ResponseBody::new);
+        Ok(response)
+    };
+    let future = Box::pin(future);
+    ResponseFutureInner::FallbackFuture { future }
+}
+
 #[cfg(test)]
 mod tests {
-    use std::io::Read;
+    use crate::services::ServeFile;
 
-    #[allow(unused_imports)]
     use super::*;
     use brotli::BrotliDecompress;
     use flate2::bufread::{DeflateDecoder, GzDecoder};
     use http::{Request, StatusCode};
     use http_body::Body as HttpBody;
     use hyper::Body;
+    use std::io::Read;
     use tower::ServiceExt;
 
     #[tokio::test]
@@ -1229,5 +1391,44 @@ mod tests {
         assert_eq!(res.status(), StatusCode::PRECONDITION_FAILED);
         let body = res.into_body().data().await;
         assert!(body.is_none());
+    }
+
+    #[tokio::test]
+    async fn with_fallback_svc() {
+        async fn fallback<B>(_: Request<B>) -> io::Result<Response<Body>> {
+            Ok(Response::new(Body::from("from fallback")))
+        }
+
+        let svc = ServeDir::new("..").fallback(tower::service_fn(fallback));
+
+        let req = Request::builder()
+            .uri("/doesnt-exist")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::OK);
+
+        let body = body_into_text(res.into_body()).await;
+        assert_eq!(body, "from fallback");
+    }
+
+    #[tokio::test]
+    async fn with_fallback_serve_file() {
+        let svc = ServeDir::new("..").fallback(ServeFile::new("../README.md"));
+
+        let req = Request::builder()
+            .uri("/doesnt-exist")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(res.headers()["content-type"], "text/markdown");
+
+        let body = body_into_text(res.into_body()).await;
+
+        let contents = std::fs::read_to_string("../README.md").unwrap();
+        assert_eq!(body, contents);
     }
 }
