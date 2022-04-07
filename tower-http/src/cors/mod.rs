@@ -50,9 +50,13 @@
 
 use bytes::{BufMut, BytesMut};
 use futures_core::ready;
-use http::{header, HeaderMap, HeaderValue, Method, Request, Response};
+use http::{
+    header::{self, HeaderName},
+    HeaderMap, HeaderValue, Method, Request, Response,
+};
 use pin_project_lite::pin_project;
 use std::{
+    array,
     future::Future,
     mem,
     pin::Pin,
@@ -67,10 +71,11 @@ mod allow_methods;
 mod allow_origin;
 mod expose_headers;
 mod max_age;
+mod vary;
 
 pub use self::{
     allow_credentials::AllowCredentials, allow_headers::AllowHeaders, allow_methods::AllowMethods,
-    allow_origin::AllowOrigin, expose_headers::ExposeHeaders, max_age::MaxAge,
+    allow_origin::AllowOrigin, expose_headers::ExposeHeaders, max_age::MaxAge, vary::Vary,
 };
 
 /// Layer that applies the [`Cors`] middleware which adds headers for [CORS][mdn].
@@ -87,6 +92,7 @@ pub struct CorsLayer {
     allow_origin: AllowOrigin,
     expose_headers: ExposeHeaders,
     max_age: MaxAge,
+    vary: Vary,
 }
 
 #[allow(clippy::declare_interior_mutable_const)]
@@ -108,6 +114,7 @@ impl CorsLayer {
             allow_origin: Default::default(),
             expose_headers: Default::default(),
             max_age: Default::default(),
+            vary: Default::default(),
         }
     }
 
@@ -351,6 +358,24 @@ impl CorsLayer {
         self.expose_headers = headers.into();
         self
     }
+
+    /// Set the value(s) of the [`Vary`][mdn] header.
+    ///
+    /// In contrast to the other headers, this one has a non-empty default of
+    /// [`preflight_request_headers()`].
+    ///
+    /// You only need to set this is you want to remove some of these defaults,
+    /// or if you use a closure for one of the other headers and want to add a
+    /// vary header accordingly.
+    ///
+    /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Vary
+    pub fn vary<T>(mut self, headers: T) -> Self
+    where
+        T: Into<Vary>,
+    {
+        self.vary = headers.into();
+        self
+    }
 }
 
 /// Represents a wildcard value (`*`) used with some CORS headers such as
@@ -559,12 +584,23 @@ where
 
         // These headers are applied to both preflight and subsequent regular CORS requests:
         // https://fetch.spec.whatwg.org/#http-responses
+
         headers.extend(self.layer.allow_origin.to_header(origin, &parts));
         headers.extend(self.layer.allow_credentials.to_header(origin, &parts));
 
-        headers.append(header::VARY, header::ORIGIN.into());
-        headers.append(header::VARY, header::ACCESS_CONTROL_REQUEST_METHOD.into());
-        headers.append(header::VARY, header::ACCESS_CONTROL_REQUEST_HEADERS.into());
+        let mut vary_headers = self.layer.vary.values();
+        if let Some(first) = vary_headers.next() {
+            let mut header = match headers.entry(header::VARY) {
+                header::Entry::Occupied(_) => {
+                    unreachable!("no vary header inserted up to this point")
+                }
+                header::Entry::Vacant(v) => v.insert_entry(first),
+            };
+
+            for val in vary_headers {
+                header.append(val);
+            }
+        }
 
         // Return results immediately upon preflight request
         if parts.method == Method::OPTIONS {
@@ -664,4 +700,16 @@ fn ensure_usable_cors_rules(layer: &CorsLayer) {
              with `Access-Control-Expose-Headers: *`"
         );
     }
+}
+
+/// Returns an iterator over the three request headers that may be involved in a CORS preflight request.
+///
+/// This is the default set of header names returned in the `vary` header
+pub fn preflight_request_headers() -> impl Iterator<Item = HeaderName> {
+    #[allow(deprecated)] // Can be changed when MSRV >= 1.53
+    array::IntoIter::new([
+        header::ORIGIN,
+        header::ACCESS_CONTROL_REQUEST_METHOD,
+        header::ACCESS_CONTROL_REQUEST_HEADERS,
+    ])
 }
