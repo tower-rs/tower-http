@@ -1,6 +1,10 @@
 use std::{array, fmt};
 
-use http::{header, request::Parts as RequestParts, HeaderValue, Method};
+use http::{
+    header::{self, HeaderName, HeaderValue},
+    request::Parts as RequestParts,
+    Method,
+};
 
 use super::{separated_by_commas, Any, WILDCARD};
 
@@ -68,14 +72,16 @@ impl AllowMethods {
         matches!(&self.0, AllowMethodsInner::Const(Some(v)) if v == WILDCARD)
     }
 
-    pub(super) fn to_header_val(&self, parts: &RequestParts) -> Option<HeaderValue> {
-        match &self.0 {
-            AllowMethodsInner::Const(v) => v.clone(),
+    pub(super) fn to_header(&self, parts: &RequestParts) -> Option<(HeaderName, HeaderValue)> {
+        let allow_methods = match &self.0 {
+            AllowMethodsInner::Const(v) => v.clone()?,
             AllowMethodsInner::MirrorRequest => parts
                 .headers
-                .get(header::ACCESS_CONTROL_REQUEST_METHOD)
-                .cloned(),
-        }
+                .get(header::ACCESS_CONTROL_REQUEST_METHOD)?
+                .clone(),
+        };
+
+        Some((header::ACCESS_CONTROL_ALLOW_METHODS, allow_methods))
     }
 }
 

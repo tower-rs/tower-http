@@ -572,13 +572,8 @@ where
 
         // These headers are applied to both preflight and subsequent regular CORS requests:
         // https://fetch.spec.whatwg.org/#http-responses
-        if let Some(value) = self.layer.allow_origin.to_header_val(&origin, &parts) {
-            headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, value);
-        }
-
-        if let Some(value) = self.layer.allow_credentials.to_header_val(&origin, &parts) {
-            headers.insert(header::ACCESS_CONTROL_ALLOW_CREDENTIALS, value);
-        }
+        headers.extend(self.layer.allow_origin.to_header(&origin, &parts));
+        headers.extend(self.layer.allow_credentials.to_header(&origin, &parts));
 
         headers.append(header::VARY, header::ORIGIN.into());
         headers.append(header::VARY, header::ACCESS_CONTROL_REQUEST_METHOD.into());
@@ -587,26 +582,16 @@ where
         // Return results immediately upon preflight request
         if parts.method == Method::OPTIONS {
             // These headers are applied only to preflight requests
-            if let Some(value) = self.layer.allow_methods.to_header_val(&parts) {
-                headers.insert(header::ACCESS_CONTROL_ALLOW_METHODS, value);
-            }
-
-            if let Some(value) = self.layer.allow_headers.to_header_val(&parts) {
-                headers.insert(header::ACCESS_CONTROL_ALLOW_HEADERS, value);
-            }
-
-            if let Some(value) = self.layer.max_age.to_header_val(&origin, &parts) {
-                headers.insert(header::ACCESS_CONTROL_MAX_AGE, value);
-            }
+            headers.extend(self.layer.allow_methods.to_header(&parts));
+            headers.extend(self.layer.allow_headers.to_header(&parts));
+            headers.extend(self.layer.max_age.to_header(&origin, &parts));
 
             ResponseFuture {
                 inner: Kind::PreflightCall { headers },
             }
         } else {
             // This header is applied only to non-preflight requests
-            if let Some(value) = self.layer.expose_headers.to_header_val(&parts) {
-                headers.insert(header::ACCESS_CONTROL_EXPOSE_HEADERS, value);
-            }
+            headers.extend(self.layer.expose_headers.to_header(&parts));
 
             let req = Request::from_parts(parts, body);
             ResponseFuture {

@@ -1,6 +1,9 @@
 use std::{fmt, sync::Arc, time::Duration};
 
-use http::{request::Parts as RequestParts, HeaderValue};
+use http::{
+    header::{self, HeaderName, HeaderValue},
+    request::Parts as RequestParts,
+};
 
 /// Holds configuration for how to set the [`Access-Control-Max-Age`][mdn] header.
 ///
@@ -29,15 +32,17 @@ impl MaxAge {
         Self(MaxAgeInner::Fn(Arc::new(f)))
     }
 
-    pub(super) fn to_header_val(
+    pub(super) fn to_header(
         &self,
         origin: &HeaderValue,
         parts: &RequestParts,
-    ) -> Option<HeaderValue> {
-        match &self.0 {
-            MaxAgeInner::Exact(v) => v.clone(),
-            MaxAgeInner::Fn(c) => Some(c(origin, parts).as_secs().into()),
-        }
+    ) -> Option<(HeaderName, HeaderValue)> {
+        let max_age = match &self.0 {
+            MaxAgeInner::Exact(v) => v.clone()?,
+            MaxAgeInner::Fn(c) => c(origin, parts).as_secs().into(),
+        };
+
+        Some((header::ACCESS_CONTROL_MAX_AGE, max_age))
     }
 }
 

@@ -1,7 +1,7 @@
 use std::{array, fmt};
 
 use http::{
-    header::{HeaderName, HeaderValue},
+    header::{self, HeaderName, HeaderValue},
     request::Parts as RequestParts,
 };
 
@@ -46,10 +46,12 @@ impl ExposeHeaders {
         matches!(&self.0, ExposeHeadersInner::Const(Some(v)) if v == WILDCARD)
     }
 
-    pub(super) fn to_header_val(&self, _parts: &RequestParts) -> Option<HeaderValue> {
-        match &self.0 {
-            ExposeHeadersInner::Const(v) => v.clone(),
-        }
+    pub(super) fn to_header(&self, _parts: &RequestParts) -> Option<(HeaderName, HeaderValue)> {
+        let expose_headers = match &self.0 {
+            ExposeHeadersInner::Const(v) => v.clone()?,
+        };
+
+        Some((header::ACCESS_CONTROL_EXPOSE_HEADERS, expose_headers))
     }
 }
 

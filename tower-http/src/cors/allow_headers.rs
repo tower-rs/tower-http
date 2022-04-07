@@ -1,9 +1,8 @@
 use std::{array, fmt};
 
 use http::{
-    header::{self, HeaderName},
+    header::{self, HeaderName, HeaderValue},
     request::Parts as RequestParts,
-    HeaderValue,
 };
 
 use super::{separated_by_commas, Any, WILDCARD};
@@ -59,14 +58,16 @@ impl AllowHeaders {
         matches!(&self.0, AllowHeadersInner::Const(Some(v)) if v == WILDCARD)
     }
 
-    pub(super) fn to_header_val(&self, parts: &RequestParts) -> Option<HeaderValue> {
-        match &self.0 {
-            AllowHeadersInner::Const(v) => v.clone(),
+    pub(super) fn to_header(&self, parts: &RequestParts) -> Option<(HeaderName, HeaderValue)> {
+        let allow_headers = match &self.0 {
+            AllowHeadersInner::Const(v) => v.clone()?,
             AllowHeadersInner::MirrorRequest => parts
                 .headers
-                .get(header::ACCESS_CONTROL_REQUEST_HEADERS)
-                .cloned(),
-        }
+                .get(header::ACCESS_CONTROL_REQUEST_HEADERS)?
+                .clone(),
+        };
+
+        Some((header::ACCESS_CONTROL_ALLOW_HEADERS, allow_headers))
     }
 }
 

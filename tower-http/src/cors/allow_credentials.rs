@@ -1,6 +1,9 @@
 use std::{fmt, sync::Arc};
 
-use http::{request::Parts as RequestParts, HeaderValue};
+use http::{
+    header::{self, HeaderName, HeaderValue},
+    request::Parts as RequestParts,
+};
 
 /// Holds configuration for how to set the [`Access-Control-Allow-Credentials`][mdn] header.
 ///
@@ -38,11 +41,11 @@ impl AllowCredentials {
         matches!(&self.0, AllowCredentialsInner::Yes)
     }
 
-    pub(super) fn to_header_val(
+    pub(super) fn to_header(
         &self,
         origin: &HeaderValue,
         parts: &RequestParts,
-    ) -> Option<HeaderValue> {
+    ) -> Option<(HeaderName, HeaderValue)> {
         #[allow(clippy::declare_interior_mutable_const)]
         const TRUE: HeaderValue = HeaderValue::from_static("true");
 
@@ -52,7 +55,7 @@ impl AllowCredentials {
             AllowCredentialsInner::Predicate(c) => c(origin, parts),
         };
 
-        allow_creds.then(|| TRUE)
+        allow_creds.then(|| (header::ACCESS_CONTROL_ALLOW_CREDENTIALS, TRUE))
     }
 }
 

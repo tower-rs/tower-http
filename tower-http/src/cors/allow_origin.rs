@@ -1,6 +1,9 @@
 use std::{array, fmt, sync::Arc};
 
-use http::{request::Parts as RequestParts, HeaderValue};
+use http::{
+    header::{self, HeaderName, HeaderValue},
+    request::Parts as RequestParts,
+};
 
 use super::{separated_by_commas, Any, WILDCARD};
 
@@ -76,15 +79,17 @@ impl AllowOrigin {
         matches!(&self.0, OriginInner::Const(Some(v)) if v == WILDCARD)
     }
 
-    pub(super) fn to_header_val(
+    pub(super) fn to_header(
         &self,
         origin: &HeaderValue,
         parts: &RequestParts,
-    ) -> Option<HeaderValue> {
-        match &self.0 {
-            OriginInner::Const(v) => v.clone(),
-            OriginInner::Predicate(c) => c(origin, parts).then(|| origin.to_owned()),
-        }
+    ) -> Option<(HeaderName, HeaderValue)> {
+        let allow_origin = match &self.0 {
+            OriginInner::Const(v) => v.clone()?,
+            OriginInner::Predicate(c) => c(origin, parts).then(|| origin.to_owned())?,
+        };
+
+        Some((header::ACCESS_CONTROL_ALLOW_ORIGIN, allow_origin))
     }
 }
 
