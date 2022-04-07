@@ -43,7 +43,7 @@ impl AllowCredentials {
 
     pub(super) fn to_header(
         &self,
-        origin: &HeaderValue,
+        origin: Option<&HeaderValue>,
         parts: &RequestParts,
     ) -> Option<(HeaderName, HeaderValue)> {
         #[allow(clippy::declare_interior_mutable_const)]
@@ -52,7 +52,7 @@ impl AllowCredentials {
         let allow_creds = match &self.0 {
             AllowCredentialsInner::Yes => true,
             AllowCredentialsInner::No => false,
-            AllowCredentialsInner::Predicate(c) => c(origin, parts),
+            AllowCredentialsInner::Predicate(c) => c(origin?, parts),
         };
 
         allow_creds.then(|| (header::ACCESS_CONTROL_ALLOW_CREDENTIALS, TRUE))

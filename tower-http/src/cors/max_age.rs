@@ -34,12 +34,12 @@ impl MaxAge {
 
     pub(super) fn to_header(
         &self,
-        origin: &HeaderValue,
+        origin: Option<&HeaderValue>,
         parts: &RequestParts,
     ) -> Option<(HeaderName, HeaderValue)> {
         let max_age = match &self.0 {
             MaxAgeInner::Exact(v) => v.clone()?,
-            MaxAgeInner::Fn(c) => c(origin, parts).as_secs().into(),
+            MaxAgeInner::Fn(c) => c(origin?, parts).as_secs().into(),
         };
 
         Some((header::ACCESS_CONTROL_MAX_AGE, max_age))

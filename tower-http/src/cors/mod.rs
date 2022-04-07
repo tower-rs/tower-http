@@ -552,28 +552,15 @@ where
     }
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
-        let origin = req.headers().get(&header::ORIGIN).cloned();
-
-        // Only requests with an origin can be considered CORS requests:
-        // https://fetch.spec.whatwg.org/#http-requests
-        let origin = if let Some(origin) = origin {
-            origin
-        } else {
-            return ResponseFuture {
-                inner: Kind::NonCorsCall {
-                    future: self.inner.call(req),
-                },
-            };
-        };
-
         let (parts, body) = req.into_parts();
+        let origin = parts.headers.get(&header::ORIGIN);
 
         let mut headers = HeaderMap::new();
 
         // These headers are applied to both preflight and subsequent regular CORS requests:
         // https://fetch.spec.whatwg.org/#http-responses
-        headers.extend(self.layer.allow_origin.to_header(&origin, &parts));
-        headers.extend(self.layer.allow_credentials.to_header(&origin, &parts));
+        headers.extend(self.layer.allow_origin.to_header(origin, &parts));
+        headers.extend(self.layer.allow_credentials.to_header(origin, &parts));
 
         headers.append(header::VARY, header::ORIGIN.into());
         headers.append(header::VARY, header::ACCESS_CONTROL_REQUEST_METHOD.into());
@@ -584,7 +571,7 @@ where
             // These headers are applied only to preflight requests
             headers.extend(self.layer.allow_methods.to_header(&parts));
             headers.extend(self.layer.allow_headers.to_header(&parts));
-            headers.extend(self.layer.max_age.to_header(&origin, &parts));
+            headers.extend(self.layer.max_age.to_header(origin, &parts));
 
             ResponseFuture {
                 inner: Kind::PreflightCall { headers },
@@ -615,10 +602,6 @@ pin_project! {
 pin_project! {
     #[project = KindProj]
     enum Kind<F> {
-        NonCorsCall {
-            #[pin]
-            future: F,
-        },
         CorsCall {
             #[pin]
             future: F,
@@ -645,7 +628,6 @@ where
 
                 Poll::Ready(Ok(response))
             }
-            KindProj::NonCorsCall { future } => future.poll(cx),
             KindProj::PreflightCall { headers } => {
                 let mut response = Response::new(B::default());
                 mem::swap(response.headers_mut(), headers);

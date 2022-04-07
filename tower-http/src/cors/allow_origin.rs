@@ -81,12 +81,12 @@ impl AllowOrigin {
 
     pub(super) fn to_header(
         &self,
-        origin: &HeaderValue,
+        origin: Option<&HeaderValue>,
         parts: &RequestParts,
     ) -> Option<(HeaderName, HeaderValue)> {
         let allow_origin = match &self.0 {
             OriginInner::Const(v) => v.clone()?,
-            OriginInner::Predicate(c) => c(origin, parts).then(|| origin.to_owned())?,
+            OriginInner::Predicate(c) => origin.filter(|origin| c(origin, parts))?.clone(),
         };
 
         Some((header::ACCESS_CONTROL_ALLOW_ORIGIN, allow_origin))
