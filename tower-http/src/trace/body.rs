@@ -28,6 +28,25 @@ pin_project! {
     }
 }
 
+impl<B, C, OnBodyChunk, OnEos, OnFailure> Default
+    for ResponseBody<B, C, OnBodyChunk, OnEos, OnFailure>
+where
+    B: Default,
+    OnBodyChunk: Default,
+{
+    fn default() -> Self {
+        Self {
+            inner: Default::default(),
+            classify_eos: None,
+            on_eos: None,
+            on_body_chunk: Default::default(),
+            on_failure: None,
+            start: Instant::now(),
+            span: Span::current(),
+        }
+    }
+}
+
 impl<B, C, OnBodyChunkT, OnEosT, OnFailureT> Body
     for ResponseBody<B, C, OnBodyChunkT, OnEosT, OnFailureT>
 where

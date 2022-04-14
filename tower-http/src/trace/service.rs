@@ -280,7 +280,6 @@ where
     ResBody::Error: fmt::Display + 'static,
     S::Error: fmt::Display + 'static,
     M: MakeClassifier,
-    M::Classifier: Clone,
     MakeSpanT: MakeSpan<ReqBody>,
     OnRequestT: OnRequest<ReqBody>,
     OnResponseT: OnResponse<ResBody> + Clone,
