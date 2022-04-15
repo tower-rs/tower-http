@@ -1,42 +1,45 @@
 pub(crate) trait SupportedEncodings: Copy {
+    fn br(&self) -> bool;
     fn gzip(&self) -> bool;
     fn deflate(&self) -> bool;
-    fn br(&self) -> bool;
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+// The order of the variants is important: If the client has equal highest preference for multiple
+// encodings, the first of these is chosen. If the client prefers the `*` encoding, the first
+// variant not explicitly mentioned by the client is chosen.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum Encoding {
+    #[allow(dead_code)]
+    Identity,
+    #[cfg(any(feature = "fs", feature = "compression-br"))]
+    Brotli,
     #[cfg(any(feature = "fs", feature = "compression-gzip"))]
     Gzip,
     #[cfg(any(feature = "fs", feature = "compression-deflate"))]
     Deflate,
-    #[cfg(any(feature = "fs", feature = "compression-br"))]
-    Brotli,
-    #[allow(dead_code)]
-    Identity,
 }
 
 impl Encoding {
     #[allow(dead_code)]
     fn to_str(self) -> &'static str {
         match self {
+            Encoding::Identity => "identity",
+            #[cfg(any(feature = "fs", feature = "compression-br"))]
+            Encoding::Brotli => "br",
             #[cfg(any(feature = "fs", feature = "compression-gzip"))]
             Encoding::Gzip => "gzip",
             #[cfg(any(feature = "fs", feature = "compression-deflate"))]
             Encoding::Deflate => "deflate",
-            #[cfg(any(feature = "fs", feature = "compression-br"))]
-            Encoding::Brotli => "br",
-            Encoding::Identity => "identity",
         }
     }
 
     #[cfg(feature = "fs")]
     pub(crate) fn to_file_extension(self) -> Option<&'static std::ffi::OsStr> {
         match self {
+            Encoding::Identity => None,
+            Encoding::Brotli => Some(std::ffi::OsStr::new(".br")),
             Encoding::Gzip => Some(std::ffi::OsStr::new(".gz")),
             Encoding::Deflate => Some(std::ffi::OsStr::new(".zz")),
-            Encoding::Brotli => Some(std::ffi::OsStr::new(".br")),
-            Encoding::Identity => None,
         }
     }
 
@@ -52,6 +55,11 @@ impl Encoding {
         feature = "fs",
     ))]
     fn parse(s: &str, _supported_encoding: impl SupportedEncodings) -> Option<Encoding> {
+        #[cfg(any(feature = "fs", feature = "compression-br"))]
+        if s.eq_ignore_ascii_case("br") && _supported_encoding.br() {
+            return Some(Encoding::Brotli);
+        }
+
         #[cfg(any(feature = "fs", feature = "compression-gzip"))]
         if s.eq_ignore_ascii_case("gzip") && _supported_encoding.gzip() {
             return Some(Encoding::Gzip);
@@ -60,11 +68,6 @@ impl Encoding {
         #[cfg(any(feature = "fs", feature = "compression-deflate"))]
         if s.eq_ignore_ascii_case("deflate") && _supported_encoding.deflate() {
             return Some(Encoding::Deflate);
-        }
-
-        #[cfg(any(feature = "fs", feature = "compression-br"))]
-        if s.eq_ignore_ascii_case("br") && _supported_encoding.br() {
-            return Some(Encoding::Brotli);
         }
 
         if s.eq_ignore_ascii_case("identity") {
@@ -201,32 +204,57 @@ pub(crate) fn encodings(
     headers: &http::HeaderMap,
     supported_encoding: impl SupportedEncodings,
 ) -> Vec<(Encoding, QValue)> {
-    headers
+    // Mapping of encodings to corresponding qvalues.
+    let mut encodings = std::collections::BTreeMap::default();
+
+    // Qvalue corresponding to the wildcard (`*`) encoding.
+    let mut wildcard_qval = None;
+
+    for v in headers
         .get_all(http::header::ACCEPT_ENCODING)
         .iter()
         .filter_map(|hval| hval.to_str().ok())
         .flat_map(|s| s.split(','))
-        .filter_map(|v| {
-            let mut v = v.splitn(2, ';');
+    {
+        let mut v = v.splitn(2, ';');
+        let encoding = v.next().unwrap().trim();
 
-            let encoding = match Encoding::parse(v.next().unwrap().trim(), supported_encoding) {
-                Some(encoding) => encoding,
-                None => return None, // ignore unknown encodings
-            };
-
-            let qval = if let Some(qval) = v.next() {
-                if let Some(qval) = QValue::parse(qval.trim()) {
-                    qval
-                } else {
-                    return None;
-                }
+        let qval = if let Some(qval) = v.next() {
+            if let Some(qval) = QValue::parse(qval.trim()) {
+                qval
             } else {
-                QValue::one()
+                continue; // ignore invalid qvalues
+            }
+        } else {
+            QValue::one()
+        };
+
+        if encoding == "*" {
+            wildcard_qval = Some(qval);
+        } else {
+            let encoding = match Encoding::parse(encoding, supported_encoding) {
+                Some(encoding) => encoding,
+                None => continue, // ignore unknown encodings
             };
 
-            Some((encoding, qval))
-        })
-        .collect::<Vec<(Encoding, QValue)>>()
+            encodings.insert(encoding, qval);
+        }
+    }
+
+    // The wildcard encoding (`*`) means all encodings not mentioned explicitly. If a wildcard
+    // encoding has been specified, set the qvalues of all unset encodings accordingly.
+    if wildcard_qval.is_some() {
+        let wildcard_qval = wildcard_qval.unwrap();
+        encodings.entry(Encoding::Identity).or_insert(wildcard_qval);
+        #[cfg(any(feature = "fs", feature = "compression-br"))]
+        encodings.entry(Encoding::Brotli).or_insert(wildcard_qval);
+        #[cfg(any(feature = "fs", feature = "compression-gzip"))]
+        encodings.entry(Encoding::Gzip).or_insert(wildcard_qval);
+        #[cfg(any(feature = "fs", feature = "compression-deflate"))]
+        encodings.entry(Encoding::Deflate).or_insert(wildcard_qval);
+    }
+
+    encodings.into_iter().collect()
 }
 
 #[cfg(all(
@@ -281,6 +309,22 @@ mod tests {
             http::HeaderValue::from_static("gzip,br"),
         );
         let encoding = Encoding::from_headers(&headers, SupportedEncodingsAll::default());
+        assert_eq!(Encoding::Brotli, encoding);
+
+        let mut headers = http::HeaderMap::new();
+        headers.append(
+            http::header::ACCEPT_ENCODING,
+            http::HeaderValue::from_static("br,gzip"),
+        );
+        let encoding = Encoding::from_headers(&headers, SupportedEncodingsAll::default());
+        assert_eq!(Encoding::Brotli, encoding);
+
+        let mut headers = http::HeaderMap::new();
+        headers.append(
+            http::header::ACCEPT_ENCODING,
+            http::HeaderValue::from_static("deflate,gzip"),
+        );
+        let encoding = Encoding::from_headers(&headers, SupportedEncodingsAll::default());
         assert_eq!(Encoding::Gzip, encoding);
     }
 
@@ -292,7 +336,7 @@ mod tests {
             http::HeaderValue::from_static("gzip,deflate,br"),
         );
         let encoding = Encoding::from_headers(&headers, SupportedEncodingsAll::default());
-        assert_eq!(Encoding::Gzip, encoding);
+        assert_eq!(Encoding::Brotli, encoding);
     }
 
     #[test]
@@ -314,7 +358,7 @@ mod tests {
             http::HeaderValue::from_static("gzip;q=0.5,deflate,br"),
         );
         let encoding = Encoding::from_headers(&headers, SupportedEncodingsAll::default());
-        assert_eq!(Encoding::Deflate, encoding);
+        assert_eq!(Encoding::Brotli, encoding);
     }
 
     #[test]
@@ -344,7 +388,7 @@ mod tests {
             http::HeaderValue::from_static("br"),
         );
         let encoding = Encoding::from_headers(&headers, SupportedEncodingsAll::default());
-        assert_eq!(Encoding::Deflate, encoding);
+        assert_eq!(Encoding::Brotli, encoding);
     }
 
     #[test]
@@ -363,7 +407,7 @@ mod tests {
             http::HeaderValue::from_static("br"),
         );
         let encoding = Encoding::from_headers(&headers, SupportedEncodingsAll::default());
-        assert_eq!(Encoding::Deflate, encoding);
+        assert_eq!(Encoding::Brotli, encoding);
     }
 
     #[test]
@@ -564,5 +608,24 @@ mod tests {
         );
         let encoding = Encoding::from_headers(&headers, SupportedEncodingsAll::default());
         assert_eq!(Encoding::Identity, encoding);
+    }
+
+    #[test]
+    fn accept_encoding_header_with_wildcard() {
+        let mut headers = http::HeaderMap::new();
+        headers.append(
+            http::header::ACCEPT_ENCODING,
+            http::HeaderValue::from_static("*;q=0.8,gzip;q=0.5"),
+        );
+        let encoding = Encoding::from_headers(&headers, SupportedEncodingsAll::default());
+        assert_eq!(Encoding::Identity, encoding);
+
+        let mut headers = http::HeaderMap::new();
+        headers.append(
+            http::header::ACCEPT_ENCODING,
+            http::HeaderValue::from_static("*;q=0.5,gzip;q=0.8"),
+        );
+        let encoding = Encoding::from_headers(&headers, SupportedEncodingsAll::default());
+        assert_eq!(Encoding::Gzip, encoding);
     }
 }
