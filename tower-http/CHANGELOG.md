@@ -9,11 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Added
 
-- None.
+- **cors**: Added `CorsLayer::very_permissive` which is like
+  `CorsLayer::permissive` except it (truly) allows credentials. This is made
+  possible by mirroring the request's origin as well as method and headers
+  back as CORS-whitelisted ones
+* **cors**: Allow customizing the value(s) for the `Vary` header
 
 ## Changed
 
-- None.
+- **cors**: Removed `allow-credentials: true` from `CorsLayer::permissive`.
+  It never actually took effect in compliant browsers because it is mutually
+  exclusive with the `*` wildcard (`Any`) on origins, methods and headers
+- **cors**: Rewrote the CORS middleware. Almost all existing usage patterns
+  will continue to work. (BREAKING)
+- **cors**: The CORS middleware will now panic if you try to use `Any` in
+  combination with `.allow_credentials(true)`. This configuration worked
+  before, but resulted in browsers ignoring the `allow-credentials` header,
+  which defeats the purpose of setting it and can be very annoying to debug.
 
 ## Removed
 
