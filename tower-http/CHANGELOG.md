@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add `ServeDir::{fallback, not_found_service}` for calling another service if
   the file cannot be found.
 - Add `SetStatus` to override status codes.
+- `ServeDir` and `ServeFile` now respond with `405 Method Not Allowed` to requests where the
+  method isn't `GET` or `HEAD`.
 - **cors**: Added `CorsLayer::very_permissive` which is like
   `CorsLayer::permissive` except it (truly) allows credentials. This is made
   possible by mirroring the request's origin as well as method and headers

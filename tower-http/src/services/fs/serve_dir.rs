@@ -338,6 +338,12 @@ where
     }
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
+        if req.method() != Method::GET && req.method() != Method::HEAD {
+            return ResponseFuture {
+                inner: ResponseFutureInner::MethodNotAllowed,
+            };
+        }
+
         // `ServeDir` doesn't care about the request body but the fallback might. So move out the
         // body and pass it to the fallback, leaving an empty body in its place
         //
@@ -580,6 +586,7 @@ pin_project! {
             future: BoxFuture<io::Result<Response<ResponseBody>>>,
         },
         InvalidPath,
+        MethodNotAllowed,
     }
 }
 
@@ -662,6 +669,10 @@ where
 
                 ResponseFutureInnerProj::InvalidPath => {
                     return Poll::Ready(not_found());
+                }
+
+                ResponseFutureInnerProj::MethodNotAllowed => {
+                    return Poll::Ready(method_not_allowed());
                 }
             };
 
@@ -773,6 +784,14 @@ where
 fn not_found() -> io::Result<Response<ResponseBody>> {
     let res = Response::builder()
         .status(StatusCode::NOT_FOUND)
+        .body(empty_body())
+        .unwrap();
+    Ok(res)
+}
+
+fn method_not_allowed() -> io::Result<Response<ResponseBody>> {
+    let res = Response::builder()
+        .status(StatusCode::METHOD_NOT_ALLOWED)
         .body(empty_body())
         .unwrap();
     Ok(res)
@@ -1428,5 +1447,19 @@ mod tests {
 
         let contents = std::fs::read_to_string("../README.md").unwrap();
         assert_eq!(body, contents);
+    }
+
+    #[tokio::test]
+    async fn method_not_allowed() {
+        let svc = ServeDir::new("..");
+
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri("/README.md")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::METHOD_NOT_ALLOWED);
     }
 }
