@@ -21,6 +21,9 @@ use tokio_util::io::ReaderStream;
 mod serve_dir;
 mod serve_file;
 
+#[cfg(test)]
+mod tests;
+
 // default capacity 64KiB
 const DEFAULT_CAPACITY: usize = 65536;
 
