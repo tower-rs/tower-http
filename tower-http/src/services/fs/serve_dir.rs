@@ -229,8 +229,8 @@ impl<F> ServeDir<F> {
     ///
     /// This service will be called if there is no file at the path of the request.
     ///
-    /// The status code returned by the fallback will not be altered. Use [`not_found_service`] to
-    /// set a fallback and always respond with `404 Not Found`.
+    /// The status code returned by the fallback will not be altered. Use
+    /// [`ServeDir::not_found_service`] to set a fallback and always respond with `404 Not Found`.
     ///
     /// # Example
     ///
