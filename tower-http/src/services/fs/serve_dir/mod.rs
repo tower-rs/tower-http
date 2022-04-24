@@ -1,36 +1,29 @@
-use super::{
-    check_modified_headers, open_file_with_fallback, AsyncReadBody, IfModifiedSince,
-    IfUnmodifiedSince, LastModified, PrecompressedVariants,
-};
+use self::future::ResponseFuture;
 use crate::{
-    content_encoding::{encodings, Encoding, QValue},
-    services::fs::{file_metadata_with_fallback, DEFAULT_CAPACITY},
+    content_encoding::{encodings, SupportedEncodings},
     set_status::SetStatus,
-    BoxError,
 };
 use bytes::Bytes;
-use futures_util::ready;
-use http::response::Builder;
-use http::{header, HeaderValue, Method, Request, Response, StatusCode, Uri};
-use http_body::{combinators::UnsyncBoxBody, Body, Empty, Full};
-use http_range_header::RangeUnsatisfiableError;
+use http::{header, HeaderValue, Method, Request, Response, StatusCode};
+use http_body::{combinators::UnsyncBoxBody, Empty};
 use percent_encoding::percent_decode;
-use pin_project_lite::pin_project;
 use std::{
     convert::Infallible,
-    fs::Metadata,
-    future::Future,
     io,
-    io::SeekFrom,
-    ops::RangeInclusive,
     path::{Component, Path, PathBuf},
-    pin::Pin,
     task::{Context, Poll},
 };
-use tokio::{fs::File, io::AsyncSeekExt};
 use tower_service::Service;
 
-mod future;
+pub(crate) mod future;
+mod headers;
+mod open_file;
+
+#[cfg(test)]
+mod tests;
+
+// default capacity 64KiB
+const DEFAULT_CAPACITY: usize = 65536;
 
 /// Service that serves files from a given directory and all its sub directories.
 ///
@@ -72,59 +65,12 @@ pub struct ServeDir<F = DefaultServeDirFallback> {
     fallback: Option<F>,
 }
 
-// Allow the ServeDir service to be used in the ServeFile service
-// with almost no overhead
-#[derive(Clone, Debug)]
-enum ServeVariant {
-    Directory {
-        append_index_html_on_directories: bool,
-    },
-    SingleFile {
-        mime: HeaderValue,
-    },
-}
-
-impl ServeVariant {
-    fn build_and_validate_path(&self, base_path: &Path, requested_path: &str) -> Option<PathBuf> {
-        match self {
-            ServeVariant::Directory {
-                append_index_html_on_directories: _,
-            } => {
-                let path = requested_path.trim_start_matches('/');
-
-                let path_decoded = percent_decode(path.as_ref()).decode_utf8().ok()?;
-                let path_decoded = Path::new(&*path_decoded);
-
-                let mut full_path = base_path.to_path_buf();
-                for component in path_decoded.components() {
-                    match component {
-                        Component::Normal(comp) => {
-                            // protect against paths like `/foo/c:/bar/baz` (#204)
-                            if Path::new(&comp)
-                                .components()
-                                .all(|c| matches!(c, Component::Normal(_)))
-                            {
-                                full_path.push(comp)
-                            } else {
-                                return None;
-                            }
-                        }
-                        Component::CurDir => {}
-                        Component::Prefix(_) | Component::RootDir | Component::ParentDir => {
-                            return None;
-                        }
-                    }
-                }
-                Some(full_path)
-            }
-            ServeVariant::SingleFile { mime: _ } => Some(base_path.to_path_buf()),
-        }
-    }
-}
-
 impl ServeDir<DefaultServeDirFallback> {
     /// Create a new [`ServeDir`].
-    pub fn new<P: AsRef<Path>>(path: P) -> Self {
+    pub fn new<P>(path: P) -> Self
+    where
+        P: AsRef<Path>,
+    {
         let mut base = PathBuf::from(".");
         base.push(path.as_ref());
 
@@ -139,7 +85,10 @@ impl ServeDir<DefaultServeDirFallback> {
         }
     }
 
-    pub(crate) fn new_single_file<P: AsRef<Path>>(path: P, mime: HeaderValue) -> Self {
+    pub(crate) fn new_single_file<P>(path: P, mime: HeaderValue) -> Self
+    where
+        P: AsRef<Path>,
+    {
         Self {
             base: path.as_ref().to_owned(),
             buf_chunk_size: DEFAULT_CAPACITY,
@@ -295,33 +244,6 @@ impl<F> ServeDir<F> {
     }
 }
 
-async fn maybe_redirect_or_append_path(
-    full_path: &mut PathBuf,
-    uri: &Uri,
-    append_index_html_on_directories: bool,
-) -> Option<Output> {
-    if !uri.path().ends_with('/') {
-        if is_dir(full_path).await {
-            let location =
-                HeaderValue::from_str(&append_slash_on_path(uri.clone()).to_string()).unwrap();
-            Some(Output::Redirect { location })
-        } else {
-            None
-        }
-    } else if is_dir(full_path).await {
-        if append_index_html_on_directories {
-            full_path.push("index.html");
-            None
-        } else {
-            Some(Output::StatusCode {
-                status_code: StatusCode::NOT_FOUND,
-            })
-        }
-    } else {
-        None
-    }
-}
-
 impl<ReqBody, F, FResBody> Service<Request<ReqBody>> for ServeDir<F>
 where
     F: Service<Request<ReqBody>, Response = Response<FResBody>> + Clone,
@@ -345,9 +267,7 @@ where
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
         if req.method() != Method::GET && req.method() != Method::HEAD {
-            return ResponseFuture {
-                inner: ResponseFutureInner::MethodNotAllowed,
-            };
+            return ResponseFuture::method_not_allowed();
         }
 
         // `ServeDir` doesn't care about the request body but the fallback might. So move out the
@@ -359,15 +279,13 @@ where
         let extensions = std::mem::take(&mut parts.extensions);
         let req = Request::from_parts(parts, Empty::<Bytes>::new());
 
-        let mut full_path = match self
+        let path_to_file = match self
             .variant
             .build_and_validate_path(&self.base, req.uri().path())
         {
-            Some(full_path) => full_path,
+            Some(path_to_file) => path_to_file,
             None => {
-                return ResponseFuture {
-                    inner: ResponseFutureInner::InvalidPath,
-                };
+                return ResponseFuture::invalid_path();
             }
         };
 
@@ -386,405 +304,80 @@ where
         });
 
         let buf_chunk_size = self.buf_chunk_size;
-        let uri = req.uri().clone();
         let range_header = req
             .headers()
             .get(header::RANGE)
-            .and_then(|value| value.to_str().ok().map(|s| s.to_owned()));
+            .and_then(|value| value.to_str().ok())
+            .map(|s| s.to_owned());
 
         let negotiated_encodings = encodings(
             req.headers(),
             self.precompressed_variants.unwrap_or_default(),
         );
 
-        let if_unmodified_since = req
-            .headers()
-            .get(header::IF_UNMODIFIED_SINCE)
-            .and_then(IfUnmodifiedSince::from_header_value);
-
-        let if_modified_since = req
-            .headers()
-            .get(header::IF_MODIFIED_SINCE)
-            .and_then(IfModifiedSince::from_header_value);
-
-        let request_method = req.method().clone();
         let variant = self.variant.clone();
 
-        let open_file_future = Box::pin(open_file(
+        let open_file_future = Box::pin(open_file::open_file(
             variant,
-            full_path,
+            path_to_file,
             req,
             negotiated_encodings,
             range_header,
             buf_chunk_size,
-            if_unmodified_since,
-            if_modified_since,
         ));
 
-        ResponseFuture {
-            inner: ResponseFutureInner::OpenFileFuture {
-                future: open_file_future,
-                fallback_and_request,
-            },
-        }
+        ResponseFuture::open_file_future(open_file_future, fallback_and_request)
     }
 }
 
-// can we move more things into this function?
-#[allow(clippy::too_many_arguments)]
-async fn open_file(
-    variant: ServeVariant,
-    mut full_path: PathBuf,
-    req: Request<Empty<Bytes>>,
-    negotiated_encodings: Vec<(Encoding, QValue)>,
-    range_header: Option<String>,
-    buf_chunk_size: usize,
-    if_unmodified_since: Option<IfUnmodifiedSince>,
-    if_modified_since: Option<IfModifiedSince>,
-) -> io::Result<Output> {
-    let mime = match variant {
-        ServeVariant::Directory {
-            append_index_html_on_directories,
-        } => {
-            // Might already at this point know a redirect or not found result should be
-            // returned which corresponds to a Some(output). Otherwise the path might be
-            // modified and proceed to the open file/metadata future.
-            if let Some(output) = maybe_redirect_or_append_path(
-                &mut full_path,
-                req.uri(),
-                append_index_html_on_directories,
-            )
-            .await
-            {
-                return Ok(output);
-            }
-            let guess = mime_guess::from_path(&full_path);
-            guess
-                .first_raw()
-                .map(HeaderValue::from_static)
-                .unwrap_or_else(|| {
-                    HeaderValue::from_str(mime::APPLICATION_OCTET_STREAM.as_ref()).unwrap()
-                })
-        }
-        ServeVariant::SingleFile { mime } => mime,
-    };
-
-    if req.method() == Method::HEAD {
-        let (meta, maybe_encoding) =
-            file_metadata_with_fallback(full_path, negotiated_encodings).await?;
-
-        let last_modified = meta.modified().ok().map(LastModified::from);
-        if let Some(status_code) = check_modified_headers(
-            last_modified.as_ref(),
-            if_unmodified_since,
-            if_modified_since,
-        ) {
-            return Ok(Output::StatusCode { status_code });
-        }
-
-        let maybe_range = try_parse_range(range_header.as_deref(), meta.len());
-
-        Ok(Output::File {
-            file_output: FileOutput {
-                extent: FileRequestExtent::Head(meta),
-                chunk_size: buf_chunk_size,
-                mime_header_value: mime,
-                maybe_encoding,
-                maybe_range,
-                last_modified,
-            },
-        })
-    } else {
-        let (mut file, maybe_encoding) =
-            open_file_with_fallback(full_path, negotiated_encodings).await?;
-        let meta = file.metadata().await?;
-        let last_modified = meta.modified().ok().map(LastModified::from);
-        if let Some(status_code) = check_modified_headers(
-            last_modified.as_ref(),
-            if_unmodified_since,
-            if_modified_since,
-        ) {
-            return Ok(Output::StatusCode { status_code });
-        }
-
-        let maybe_range = try_parse_range(range_header.as_deref(), meta.len());
-        if let Some(Ok(ranges)) = maybe_range.as_ref() {
-            // if there is any other amount of ranges than 1 we'll return an
-            // unsatisfiable later as there isn't yet support for multipart ranges
-            if ranges.len() == 1 {
-                file.seek(SeekFrom::Start(*ranges[0].start())).await?;
-            }
-        }
-
-        Ok(Output::File {
-            file_output: FileOutput {
-                extent: FileRequestExtent::Full(file, meta),
-                chunk_size: buf_chunk_size,
-                mime_header_value: mime,
-                maybe_encoding,
-                maybe_range,
-                last_modified,
-            },
-        })
-    }
+// Allow the ServeDir service to be used in the ServeFile service
+// with almost no overhead
+#[derive(Clone, Debug)]
+enum ServeVariant {
+    Directory {
+        append_index_html_on_directories: bool,
+    },
+    SingleFile {
+        mime: HeaderValue,
+    },
 }
 
-fn try_parse_range(
-    maybe_range_ref: Option<&str>,
-    file_size: u64,
-) -> Option<Result<Vec<RangeInclusive<u64>>, RangeUnsatisfiableError>> {
-    maybe_range_ref.map(|header_value| {
-        http_range_header::parse_range_header(header_value)
-            .and_then(|first_pass| first_pass.validate(file_size))
-    })
-}
+impl ServeVariant {
+    fn build_and_validate_path(&self, base_path: &Path, requested_path: &str) -> Option<PathBuf> {
+        match self {
+            ServeVariant::Directory {
+                append_index_html_on_directories: _,
+            } => {
+                let path = requested_path.trim_start_matches('/');
 
-async fn is_dir(full_path: &Path) -> bool {
-    tokio::fs::metadata(full_path)
-        .await
-        .map(|m| m.is_dir())
-        .unwrap_or(false)
-}
+                let path_decoded = percent_decode(path.as_ref()).decode_utf8().ok()?;
+                let path_decoded = Path::new(&*path_decoded);
 
-fn append_slash_on_path(uri: Uri) -> Uri {
-    let http::uri::Parts {
-        scheme,
-        authority,
-        path_and_query,
-        ..
-    } = uri.into_parts();
-
-    let mut builder = Uri::builder();
-    if let Some(scheme) = scheme {
-        builder = builder.scheme(scheme);
-    }
-    if let Some(authority) = authority {
-        builder = builder.authority(authority);
-    }
-    if let Some(path_and_query) = path_and_query {
-        if let Some(query) = path_and_query.query() {
-            builder = builder.path_and_query(format!("{}/?{}", path_and_query.path(), query));
-        } else {
-            builder = builder.path_and_query(format!("{}/", path_and_query.path()));
-        }
-    } else {
-        builder = builder.path_and_query("/");
-    }
-
-    builder.build().unwrap()
-}
-
-type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
-
-pin_project! {
-    /// Response future of [`ServeDir`].
-    pub struct ResponseFuture<ReqBody, F = DefaultServeDirFallback> {
-        #[pin]
-        inner: ResponseFutureInner<ReqBody, F>,
-    }
-}
-
-pin_project! {
-    #[project = ResponseFutureInnerProj]
-    enum ResponseFutureInner<ReqBody, F> {
-        OpenFileFuture {
-            #[pin]
-            future: BoxFuture<io::Result<Output>>,
-            fallback_and_request: Option<(F, Request<ReqBody>)>,
-        },
-        FallbackFuture {
-            future: BoxFuture<io::Result<Response<ResponseBody>>>,
-        },
-        InvalidPath,
-        MethodNotAllowed,
-    }
-}
-
-impl<F, ReqBody, ResBody> Future for ResponseFuture<ReqBody, F>
-where
-    F: Service<Request<ReqBody>, Response = Response<ResBody>> + Clone,
-    F::Error: Into<io::Error>,
-    F::Future: Send + 'static,
-    ResBody: http_body::Body<Data = Bytes> + Send + 'static,
-    ResBody::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
-{
-    type Output = io::Result<Response<ResponseBody>>;
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        loop {
-            let mut this = self.as_mut().project();
-
-            let new_state = match this.inner.as_mut().project() {
-                ResponseFutureInnerProj::OpenFileFuture {
-                    future: open_file_future,
-                    fallback_and_request,
-                } => match ready!(open_file_future.poll(cx)) {
-                    Ok(Output::File { file_output }) => {
-                        let res = file_output.build_response();
-                        return Poll::Ready(Ok(res));
-                    }
-
-                    Ok(Output::Redirect { location }) => {
-                        let mut res = response_with_status(StatusCode::TEMPORARY_REDIRECT);
-                        res.headers_mut().insert(http::header::LOCATION, location);
-                        return Poll::Ready(Ok(res));
-                    }
-
-                    Ok(Output::StatusCode { status_code }) => {
-                        let res = response_with_status(status_code);
-                        return Poll::Ready(Ok(res));
-                    }
-
-                    Err(err) => match err.kind() {
-                        io::ErrorKind::NotFound | io::ErrorKind::PermissionDenied => {
-                            if let Some((mut fallback, request)) = fallback_and_request.take() {
-                                call_fallback(&mut fallback, request)
+                let mut path_to_file = base_path.to_path_buf();
+                for component in path_decoded.components() {
+                    match component {
+                        Component::Normal(comp) => {
+                            // protect against paths like `/foo/c:/bar/baz` (#204)
+                            if Path::new(&comp)
+                                .components()
+                                .all(|c| matches!(c, Component::Normal(_)))
+                            {
+                                path_to_file.push(comp)
                             } else {
-                                return Poll::Ready(Ok(not_found()));
+                                return None;
                             }
                         }
-                        _ => return Poll::Ready(Err(err)),
-                    },
-                },
-
-                ResponseFutureInnerProj::FallbackFuture { future } => {
-                    return Pin::new(future).poll(cx)
-                }
-
-                ResponseFutureInnerProj::InvalidPath => {
-                    return Poll::Ready(Ok(not_found()));
-                }
-
-                ResponseFutureInnerProj::MethodNotAllowed => {
-                    return Poll::Ready(Ok(method_not_allowed()));
-                }
-            };
-
-            this.inner.set(new_state);
-        }
-    }
-}
-
-#[allow(clippy::large_enum_variant)]
-enum Output {
-    File { file_output: FileOutput },
-    Redirect { location: HeaderValue },
-    StatusCode { status_code: StatusCode },
-}
-
-struct FileOutput {
-    extent: FileRequestExtent,
-    chunk_size: usize,
-    mime_header_value: HeaderValue,
-    maybe_encoding: Option<Encoding>,
-    maybe_range: Option<Result<Vec<RangeInclusive<u64>>, RangeUnsatisfiableError>>,
-    last_modified: Option<LastModified>,
-}
-
-enum FileRequestExtent {
-    Full(File, Metadata),
-    Head(Metadata),
-}
-
-impl FileOutput {
-    fn build_response(self) -> Response<ResponseBody> {
-        let (maybe_file, size) = match self.extent {
-            FileRequestExtent::Full(file, meta) => (Some(file), meta.len()),
-            FileRequestExtent::Head(meta) => (None, meta.len()),
-        };
-
-        let mut builder = Response::builder()
-            .header(header::CONTENT_TYPE, self.mime_header_value)
-            .header(header::ACCEPT_RANGES, "bytes");
-
-        if let Some(encoding) = self.maybe_encoding {
-            builder = builder.header(header::CONTENT_ENCODING, encoding.into_header_value());
-        }
-
-        if let Some(last_modified) = self.last_modified {
-            builder = builder.header(header::LAST_MODIFIED, last_modified.0.to_string());
-        }
-
-        match self.maybe_range {
-            Some(Ok(ranges)) => {
-                if let Some(range) = ranges.first() {
-                    if ranges.len() > 1 {
-                        builder
-                            .header(header::CONTENT_RANGE, format!("bytes */{}", size))
-                            .status(StatusCode::RANGE_NOT_SATISFIABLE)
-                            .body(body_from_bytes(Bytes::from(
-                                "Cannot serve multipart range requests",
-                            )))
-                            .unwrap()
-                    } else {
-                        let body = if let Some(file) = maybe_file {
-                            let range_size = range.end() - range.start() + 1;
-                            ResponseBody::new(
-                                AsyncReadBody::with_capacity_limited(
-                                    file,
-                                    self.chunk_size,
-                                    range_size,
-                                )
-                                .boxed_unsync(),
-                            )
-                        } else {
-                            empty_body()
-                        };
-
-                        builder
-                            .header(
-                                header::CONTENT_RANGE,
-                                format!("bytes {}-{}/{}", range.start(), range.end(), size),
-                            )
-                            .header(header::CONTENT_LENGTH, range.end() - range.start() + 1)
-                            .status(StatusCode::PARTIAL_CONTENT)
-                            .body(body)
-                            .unwrap()
+                        Component::CurDir => {}
+                        Component::Prefix(_) | Component::RootDir | Component::ParentDir => {
+                            return None;
+                        }
                     }
-                } else {
-                    builder
-                        .header(header::CONTENT_RANGE, format!("bytes */{}", size))
-                        .status(StatusCode::RANGE_NOT_SATISFIABLE)
-                        .body(body_from_bytes(Bytes::from(
-                            "No range found after parsing range header, please file an issue",
-                        )))
-                        .unwrap()
                 }
+                Some(path_to_file)
             }
-
-            Some(Err(_)) => builder
-                .header(header::CONTENT_RANGE, format!("bytes */{}", size))
-                .status(StatusCode::RANGE_NOT_SATISFIABLE)
-                .body(empty_body())
-                .unwrap(),
-
-            // Not a range request
-            None => {
-                let body = if let Some(file) = maybe_file {
-                    ResponseBody::new(
-                        AsyncReadBody::with_capacity(file, self.chunk_size).boxed_unsync(),
-                    )
-                } else {
-                    empty_body()
-                };
-
-                builder
-                    .header(header::CONTENT_LENGTH, size.to_string())
-                    .body(body)
-                    .unwrap()
-            }
+            ServeVariant::SingleFile { mime: _ } => Some(base_path.to_path_buf()),
         }
     }
-}
-
-fn empty_body() -> ResponseBody {
-    let body = Empty::new().map_err(|err| match err {}).boxed_unsync();
-    ResponseBody::new(body)
-}
-
-fn body_from_bytes(bytes: Bytes) -> ResponseBody {
-    let body = Full::from(bytes).map_err(|err| match err {}).boxed_unsync();
-    ResponseBody::new(body)
 }
 
 opaque_body! {
@@ -813,43 +406,23 @@ where
     }
 }
 
-fn response_with_status(status: StatusCode) -> Response<ResponseBody> {
-    Response::builder()
-        .status(status)
-        .body(empty_body())
-        .unwrap()
+#[derive(Clone, Copy, Debug, Default)]
+struct PrecompressedVariants {
+    gzip: bool,
+    deflate: bool,
+    br: bool,
 }
 
-fn not_found() -> Response<ResponseBody> {
-    response_with_status(StatusCode::NOT_FOUND)
-}
+impl SupportedEncodings for PrecompressedVariants {
+    fn gzip(&self) -> bool {
+        self.gzip
+    }
 
-fn method_not_allowed() -> Response<ResponseBody> {
-    response_with_status(StatusCode::METHOD_NOT_ALLOWED)
-}
+    fn deflate(&self) -> bool {
+        self.deflate
+    }
 
-fn call_fallback<F, B, FResBody>(fallback: &mut F, req: Request<B>) -> ResponseFutureInner<B, F>
-where
-    F: Service<Request<B>, Response = Response<FResBody>> + Clone,
-    F::Error: Into<io::Error>,
-    F::Future: Send + 'static,
-    FResBody: http_body::Body<Data = Bytes> + Send + 'static,
-    FResBody::Error: Into<BoxError>,
-{
-    let future = fallback.call(req);
-    let future = async move {
-        let response = future.await.map_err(Into::into)?;
-        let response = response
-            .map(|body| {
-                body.map_err(|err| match err.into().downcast::<io::Error>() {
-                    Ok(err) => *err,
-                    Err(err) => io::Error::new(io::ErrorKind::Other, err),
-                })
-                .boxed_unsync()
-            })
-            .map(ResponseBody::new);
-        Ok(response)
-    };
-    let future = Box::pin(future);
-    ResponseFutureInner::FallbackFuture { future }
+    fn br(&self) -> bool {
+        self.br
+    }
 }
