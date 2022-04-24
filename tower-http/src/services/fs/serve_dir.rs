@@ -768,8 +768,7 @@ where
     }
 
     fn call(&mut self, _req: Request<ReqBody>) -> Self::Future {
-        // contains `Infallible` so can never be called
-        unreachable!()
+        match self.0 {}
     }
 }
 
