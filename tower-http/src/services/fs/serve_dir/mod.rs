@@ -3,7 +3,7 @@ use super::{
     IfUnmodifiedSince, LastModified, PrecompressedVariants,
 };
 use crate::{
-    content_encoding::{encodings, Encoding},
+    content_encoding::{encodings, Encoding, QValue},
     services::fs::{file_metadata_with_fallback, DEFAULT_CAPACITY},
     set_status::SetStatus,
     BoxError,
@@ -29,6 +29,8 @@ use std::{
 };
 use tokio::{fs::File, io::AsyncSeekExt};
 use tower_service::Service;
+
+mod future;
 
 /// Service that serves files from a given directory and all its sub directories.
 ///
@@ -295,25 +297,29 @@ impl<F> ServeDir<F> {
 
 async fn maybe_redirect_or_append_path(
     full_path: &mut PathBuf,
-    uri: Uri,
+    uri: &Uri,
     append_index_html_on_directories: bool,
 ) -> Option<Output> {
     if !uri.path().ends_with('/') {
         if is_dir(full_path).await {
-            let location = HeaderValue::from_str(&append_slash_on_path(uri).to_string()).unwrap();
-            return Some(Output::Redirect(location));
+            let location =
+                HeaderValue::from_str(&append_slash_on_path(uri.clone()).to_string()).unwrap();
+            Some(Output::Redirect { location })
         } else {
-            return None;
+            None
         }
     } else if is_dir(full_path).await {
         if append_index_html_on_directories {
             full_path.push("index.html");
-            return None;
+            None
         } else {
-            return Some(Output::StatusCode(StatusCode::NOT_FOUND));
+            Some(Output::StatusCode {
+                status_code: StatusCode::NOT_FOUND,
+            })
         }
+    } else {
+        None
     }
-    None
 }
 
 impl<ReqBody, F, FResBody> Service<Request<ReqBody>> for ServeDir<F>
@@ -386,8 +392,6 @@ where
             .get(header::RANGE)
             .and_then(|value| value.to_str().ok().map(|s| s.to_owned()));
 
-        // The negotiated encodings based on the Accept-Encoding header and
-        // precompressed variants
         let negotiated_encodings = encodings(
             req.headers(),
             self.precompressed_variants.unwrap_or_default(),
@@ -397,6 +401,7 @@ where
             .headers()
             .get(header::IF_UNMODIFIED_SINCE)
             .and_then(IfUnmodifiedSince::from_header_value);
+
         let if_modified_since = req
             .headers()
             .get(header::IF_MODIFIED_SINCE)
@@ -405,89 +410,16 @@ where
         let request_method = req.method().clone();
         let variant = self.variant.clone();
 
-        let open_file_future = Box::pin(async move {
-            let mime = match variant {
-                ServeVariant::Directory {
-                    append_index_html_on_directories,
-                } => {
-                    // Might already at this point know a redirect or not found result should be
-                    // returned which corresponds to a Some(output). Otherwise the path might be
-                    // modified and proceed to the open file/metadata future.
-                    if let Some(output) = maybe_redirect_or_append_path(
-                        &mut full_path,
-                        uri,
-                        append_index_html_on_directories,
-                    )
-                    .await
-                    {
-                        return Ok(output);
-                    }
-                    let guess = mime_guess::from_path(&full_path);
-                    guess
-                        .first_raw()
-                        .map(HeaderValue::from_static)
-                        .unwrap_or_else(|| {
-                            HeaderValue::from_str(mime::APPLICATION_OCTET_STREAM.as_ref()).unwrap()
-                        })
-                }
-                ServeVariant::SingleFile { mime } => mime,
-            };
-
-            match request_method {
-                Method::HEAD => {
-                    let (meta, maybe_encoding) =
-                        file_metadata_with_fallback(full_path, negotiated_encodings).await?;
-
-                    let last_modified = meta.modified().ok().map(LastModified::from);
-                    if let Some(status_code) = check_modified_headers(
-                        last_modified.as_ref(),
-                        if_unmodified_since,
-                        if_modified_since,
-                    ) {
-                        return Ok(Output::StatusCode(status_code));
-                    }
-
-                    let maybe_range = try_parse_range(range_header.as_ref(), meta.len());
-                    Ok(Output::File(FileRequest {
-                        extent: FileRequestExtent::Head(meta),
-                        chunk_size: buf_chunk_size,
-                        mime_header_value: mime,
-                        maybe_encoding,
-                        maybe_range,
-                        last_modified,
-                    }))
-                }
-                _ => {
-                    let (mut file, maybe_encoding) =
-                        open_file_with_fallback(full_path, negotiated_encodings).await?;
-                    let meta = file.metadata().await?;
-                    let last_modified = meta.modified().ok().map(LastModified::from);
-                    if let Some(status_code) = check_modified_headers(
-                        last_modified.as_ref(),
-                        if_unmodified_since,
-                        if_modified_since,
-                    ) {
-                        return Ok(Output::StatusCode(status_code));
-                    }
-
-                    let maybe_range = try_parse_range(range_header.as_ref(), meta.len());
-                    if let Some(Ok(ranges)) = maybe_range.as_ref() {
-                        // If there is any other amount of ranges than 1 we'll return an unsatisfiable later as there isn't yet support for multipart ranges
-                        if ranges.len() == 1 {
-                            file.seek(SeekFrom::Start(*ranges[0].start())).await?;
-                        }
-                    }
-                    Ok(Output::File(FileRequest {
-                        extent: FileRequestExtent::Full(file, meta),
-                        chunk_size: buf_chunk_size,
-                        mime_header_value: mime,
-                        maybe_encoding,
-                        maybe_range,
-                        last_modified,
-                    }))
-                }
-            }
-        });
+        let open_file_future = Box::pin(open_file(
+            variant,
+            full_path,
+            req,
+            negotiated_encodings,
+            range_header,
+            buf_chunk_size,
+            if_unmodified_since,
+            if_modified_since,
+        ));
 
         ResponseFuture {
             inner: ResponseFutureInner::OpenFileFuture {
@@ -498,8 +430,107 @@ where
     }
 }
 
+// can we move more things into this function?
+#[allow(clippy::too_many_arguments)]
+async fn open_file(
+    variant: ServeVariant,
+    mut full_path: PathBuf,
+    req: Request<Empty<Bytes>>,
+    negotiated_encodings: Vec<(Encoding, QValue)>,
+    range_header: Option<String>,
+    buf_chunk_size: usize,
+    if_unmodified_since: Option<IfUnmodifiedSince>,
+    if_modified_since: Option<IfModifiedSince>,
+) -> io::Result<Output> {
+    let mime = match variant {
+        ServeVariant::Directory {
+            append_index_html_on_directories,
+        } => {
+            // Might already at this point know a redirect or not found result should be
+            // returned which corresponds to a Some(output). Otherwise the path might be
+            // modified and proceed to the open file/metadata future.
+            if let Some(output) = maybe_redirect_or_append_path(
+                &mut full_path,
+                req.uri(),
+                append_index_html_on_directories,
+            )
+            .await
+            {
+                return Ok(output);
+            }
+            let guess = mime_guess::from_path(&full_path);
+            guess
+                .first_raw()
+                .map(HeaderValue::from_static)
+                .unwrap_or_else(|| {
+                    HeaderValue::from_str(mime::APPLICATION_OCTET_STREAM.as_ref()).unwrap()
+                })
+        }
+        ServeVariant::SingleFile { mime } => mime,
+    };
+
+    if req.method() == Method::HEAD {
+        let (meta, maybe_encoding) =
+            file_metadata_with_fallback(full_path, negotiated_encodings).await?;
+
+        let last_modified = meta.modified().ok().map(LastModified::from);
+        if let Some(status_code) = check_modified_headers(
+            last_modified.as_ref(),
+            if_unmodified_since,
+            if_modified_since,
+        ) {
+            return Ok(Output::StatusCode { status_code });
+        }
+
+        let maybe_range = try_parse_range(range_header.as_deref(), meta.len());
+
+        Ok(Output::File {
+            file_output: FileOutput {
+                extent: FileRequestExtent::Head(meta),
+                chunk_size: buf_chunk_size,
+                mime_header_value: mime,
+                maybe_encoding,
+                maybe_range,
+                last_modified,
+            },
+        })
+    } else {
+        let (mut file, maybe_encoding) =
+            open_file_with_fallback(full_path, negotiated_encodings).await?;
+        let meta = file.metadata().await?;
+        let last_modified = meta.modified().ok().map(LastModified::from);
+        if let Some(status_code) = check_modified_headers(
+            last_modified.as_ref(),
+            if_unmodified_since,
+            if_modified_since,
+        ) {
+            return Ok(Output::StatusCode { status_code });
+        }
+
+        let maybe_range = try_parse_range(range_header.as_deref(), meta.len());
+        if let Some(Ok(ranges)) = maybe_range.as_ref() {
+            // if there is any other amount of ranges than 1 we'll return an
+            // unsatisfiable later as there isn't yet support for multipart ranges
+            if ranges.len() == 1 {
+                file.seek(SeekFrom::Start(*ranges[0].start())).await?;
+            }
+        }
+
+        Ok(Output::File {
+            file_output: FileOutput {
+                extent: FileRequestExtent::Full(file, meta),
+                chunk_size: buf_chunk_size,
+                mime_header_value: mime,
+                maybe_encoding,
+                maybe_range,
+                last_modified,
+            },
+        })
+    }
+}
+
 fn try_parse_range(
-    maybe_range_ref: Option<&String>,
+    maybe_range_ref: Option<&str>,
     file_size: u64,
 ) -> Option<Result<Vec<RangeInclusive<u64>>, RangeUnsatisfiableError>> {
     maybe_range_ref.map(|header_value| {
@@ -541,27 +572,6 @@ fn append_slash_on_path(uri: Uri) -> Uri {
     }
 
     builder.build().unwrap()
-}
-
-#[allow(clippy::large_enum_variant)]
-enum Output {
-    File(FileRequest),
-    Redirect(HeaderValue),
-    StatusCode(StatusCode),
-}
-
-struct FileRequest {
-    extent: FileRequestExtent,
-    chunk_size: usize,
-    mime_header_value: HeaderValue,
-    maybe_encoding: Option<Encoding>,
-    maybe_range: Option<Result<Vec<RangeInclusive<u64>>, RangeUnsatisfiableError>>,
-    last_modified: Option<LastModified>,
-}
-
-enum FileRequestExtent {
-    Full(File, Metadata),
-    Head(Metadata),
 }
 
 type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
@@ -609,45 +619,19 @@ where
                     future: open_file_future,
                     fallback_and_request,
                 } => match ready!(open_file_future.poll(cx)) {
-                    Ok(Output::File(file_request)) => {
-                        let (maybe_file, size) = match file_request.extent {
-                            FileRequestExtent::Full(file, meta) => (Some(file), meta.len()),
-                            FileRequestExtent::Head(meta) => (None, meta.len()),
-                        };
-                        let mut builder = Response::builder()
-                            .header(header::CONTENT_TYPE, file_request.mime_header_value)
-                            .header(header::ACCEPT_RANGES, "bytes");
-                        if let Some(encoding) = file_request.maybe_encoding {
-                            builder = builder
-                                .header(header::CONTENT_ENCODING, encoding.into_header_value());
-                        }
-                        if let Some(last_modified) = file_request.last_modified {
-                            builder =
-                                builder.header(header::LAST_MODIFIED, last_modified.0.to_string());
-                        }
-
-                        let res = handle_file_request(
-                            builder,
-                            maybe_file,
-                            file_request.maybe_range,
-                            file_request.chunk_size,
-                            size,
-                        );
-                        return Poll::Ready(Ok(res.unwrap()));
-                    }
-
-                    Ok(Output::Redirect(location)) => {
-                        let res = Response::builder()
-                            .header(http::header::LOCATION, location)
-                            .status(StatusCode::TEMPORARY_REDIRECT)
-                            .body(empty_body())
-                            .unwrap();
+                    Ok(Output::File { file_output }) => {
+                        let res = file_output.build_response();
                         return Poll::Ready(Ok(res));
                     }
 
-                    Ok(Output::StatusCode(code)) => {
-                        let res = Response::builder().status(code).body(empty_body()).unwrap();
+                    Ok(Output::Redirect { location }) => {
+                        let mut res = response_with_status(StatusCode::TEMPORARY_REDIRECT);
+                        res.headers_mut().insert(http::header::LOCATION, location);
+                        return Poll::Ready(Ok(res));
+                    }
 
+                    Ok(Output::StatusCode { status_code }) => {
+                        let res = response_with_status(status_code);
                         return Poll::Ready(Ok(res));
                     }
 
@@ -656,7 +640,7 @@ where
                             if let Some((mut fallback, request)) = fallback_and_request.take() {
                                 call_fallback(&mut fallback, request)
                             } else {
-                                return Poll::Ready(not_found());
+                                return Poll::Ready(Ok(not_found()));
                             }
                         }
                         _ => return Poll::Ready(Err(err)),
@@ -668,11 +652,11 @@ where
                 }
 
                 ResponseFutureInnerProj::InvalidPath => {
-                    return Poll::Ready(not_found());
+                    return Poll::Ready(Ok(not_found()));
                 }
 
                 ResponseFutureInnerProj::MethodNotAllowed => {
-                    return Poll::Ready(method_not_allowed());
+                    return Poll::Ready(Ok(method_not_allowed()));
                 }
             };
 
@@ -681,66 +665,114 @@ where
     }
 }
 
-fn handle_file_request(
-    builder: Builder,
-    maybe_file: Option<File>,
-    maybe_range: Option<Result<Vec<RangeInclusive<u64>>, RangeUnsatisfiableError>>,
+#[allow(clippy::large_enum_variant)]
+enum Output {
+    File { file_output: FileOutput },
+    Redirect { location: HeaderValue },
+    StatusCode { status_code: StatusCode },
+}
+
+struct FileOutput {
+    extent: FileRequestExtent,
     chunk_size: usize,
-    size: u64,
-) -> Result<Response<ResponseBody>, http::Error> {
-    match maybe_range {
-        Some(Ok(ranges)) => {
-            if let Some(range) = ranges.first() {
-                if ranges.len() > 1 {
+    mime_header_value: HeaderValue,
+    maybe_encoding: Option<Encoding>,
+    maybe_range: Option<Result<Vec<RangeInclusive<u64>>, RangeUnsatisfiableError>>,
+    last_modified: Option<LastModified>,
+}
+
+enum FileRequestExtent {
+    Full(File, Metadata),
+    Head(Metadata),
+}
+
+impl FileOutput {
+    fn build_response(self) -> Response<ResponseBody> {
+        let (maybe_file, size) = match self.extent {
+            FileRequestExtent::Full(file, meta) => (Some(file), meta.len()),
+            FileRequestExtent::Head(meta) => (None, meta.len()),
+        };
+
+        let mut builder = Response::builder()
+            .header(header::CONTENT_TYPE, self.mime_header_value)
+            .header(header::ACCEPT_RANGES, "bytes");
+
+        if let Some(encoding) = self.maybe_encoding {
+            builder = builder.header(header::CONTENT_ENCODING, encoding.into_header_value());
+        }
+
+        if let Some(last_modified) = self.last_modified {
+            builder = builder.header(header::LAST_MODIFIED, last_modified.0.to_string());
+        }
+
+        match self.maybe_range {
+            Some(Ok(ranges)) => {
+                if let Some(range) = ranges.first() {
+                    if ranges.len() > 1 {
+                        builder
+                            .header(header::CONTENT_RANGE, format!("bytes */{}", size))
+                            .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                            .body(body_from_bytes(Bytes::from(
+                                "Cannot serve multipart range requests",
+                            )))
+                            .unwrap()
+                    } else {
+                        let body = if let Some(file) = maybe_file {
+                            let range_size = range.end() - range.start() + 1;
+                            ResponseBody::new(
+                                AsyncReadBody::with_capacity_limited(
+                                    file,
+                                    self.chunk_size,
+                                    range_size,
+                                )
+                                .boxed_unsync(),
+                            )
+                        } else {
+                            empty_body()
+                        };
+
+                        builder
+                            .header(
+                                header::CONTENT_RANGE,
+                                format!("bytes {}-{}/{}", range.start(), range.end(), size),
+                            )
+                            .header(header::CONTENT_LENGTH, range.end() - range.start() + 1)
+                            .status(StatusCode::PARTIAL_CONTENT)
+                            .body(body)
+                            .unwrap()
+                    }
+                } else {
                     builder
                         .header(header::CONTENT_RANGE, format!("bytes */{}", size))
                         .status(StatusCode::RANGE_NOT_SATISFIABLE)
                         .body(body_from_bytes(Bytes::from(
-                            "Cannot serve multipart range requests",
+                            "No range found after parsing range header, please file an issue",
                         )))
-                } else {
-                    let range_size = range.end() - range.start() + 1;
-                    let body = if let Some(file) = maybe_file {
-                        let body =
-                            AsyncReadBody::with_capacity_limited(file, chunk_size, range_size)
-                                .boxed_unsync();
-                        ResponseBody::new(body)
-                    } else {
-                        empty_body()
-                    };
-                    builder
-                        .header(
-                            header::CONTENT_RANGE,
-                            format!("bytes {}-{}/{}", range.start(), range.end(), size),
-                        )
-                        .header(header::CONTENT_LENGTH, range.end() - range.start() + 1)
-                        .status(StatusCode::PARTIAL_CONTENT)
-                        .body(body)
+                        .unwrap()
                 }
-            } else {
-                builder
-                    .header(header::CONTENT_RANGE, format!("bytes */{}", size))
-                    .status(StatusCode::RANGE_NOT_SATISFIABLE)
-                    .body(body_from_bytes(Bytes::from(
-                        "No range found after parsing range header, please file an issue",
-                    )))
             }
-        }
-        Some(Err(_)) => builder
-            .header(header::CONTENT_RANGE, format!("bytes */{}", size))
-            .status(StatusCode::RANGE_NOT_SATISFIABLE)
-            .body(empty_body()),
-        // Not a range request
-        None => {
-            let body = if let Some(file) = maybe_file {
-                let box_body = AsyncReadBody::with_capacity(file, chunk_size).boxed_unsync();
-                ResponseBody::new(box_body)
-            } else {
-                empty_body()
-            };
-            builder
-                .header(header::CONTENT_LENGTH, size.to_string())
-                .body(body)
+
+            Some(Err(_)) => builder
+                .header(header::CONTENT_RANGE, format!("bytes */{}", size))
+                .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                .body(empty_body())
+                .unwrap(),
+
+            // Not a range request
+            None => {
+                let body = if let Some(file) = maybe_file {
+                    ResponseBody::new(
+                        AsyncReadBody::with_capacity(file, self.chunk_size).boxed_unsync(),
+                    )
+                } else {
+                    empty_body()
+                };
+
+                builder
+                    .header(header::CONTENT_LENGTH, size.to_string())
+                    .body(body)
+                    .unwrap()
+            }
         }
     }
 }
@@ -781,20 +813,19 @@ where
     }
 }
 
-fn not_found() -> io::Result<Response<ResponseBody>> {
-    let res = Response::builder()
-        .status(StatusCode::NOT_FOUND)
+fn response_with_status(status: StatusCode) -> Response<ResponseBody> {
+    Response::builder()
+        .status(status)
         .body(empty_body())
-        .unwrap();
-    Ok(res)
+        .unwrap()
 }
 
-fn method_not_allowed() -> io::Result<Response<ResponseBody>> {
-    let res = Response::builder()
-        .status(StatusCode::METHOD_NOT_ALLOWED)
-        .body(empty_body())
-        .unwrap();
-    Ok(res)
+fn not_found() -> Response<ResponseBody> {
+    response_with_status(StatusCode::NOT_FOUND)
+}
+
+fn method_not_allowed() -> Response<ResponseBody> {
+    response_with_status(StatusCode::METHOD_NOT_ALLOWED)
 }
 
 fn call_fallback<F, B, FResBody>(fallback: &mut F, req: Request<B>) -> ResponseFutureInner<B, F>
