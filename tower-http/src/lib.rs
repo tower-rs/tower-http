@@ -326,6 +326,10 @@ pub mod request_id;
 #[cfg_attr(docsrs, doc(cfg(feature = "catch-panic")))]
 pub mod catch_panic;
 
+#[cfg(feature = "set-status")]
+#[cfg_attr(docsrs, doc(cfg(feature = "set-status")))]
+pub mod set_status;
+
 pub mod classify;
 pub mod services;
 
