@@ -562,7 +562,6 @@ enum FileRequestExtent {
 
 type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 
-// TODO(david): shouldn't need pin projection here since `BoxFuture` is already pinned
 pin_project! {
     /// Response future of [`ServeDir`].
     pub struct ResponseFuture<ReqBody, F = DefaultServeDirFallback> {
