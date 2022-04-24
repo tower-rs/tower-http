@@ -2,8 +2,8 @@
 
 use bytes::Bytes;
 use futures_util::Stream;
-use http::{HeaderMap, Response, StatusCode};
-use http_body::{combinators::BoxBody, Body, Empty};
+use http::{HeaderMap, StatusCode};
+use http_body::Body;
 use httpdate::HttpDate;
 use pin_project_lite::pin_project;
 use std::fs::Metadata;
