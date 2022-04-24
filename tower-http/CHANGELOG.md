@@ -9,11 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Added
 
+- Add `SetStatus` to override status codes.
 - **cors**: Added `CorsLayer::very_permissive` which is like
   `CorsLayer::permissive` except it (truly) allows credentials. This is made
   possible by mirroring the request's origin as well as method and headers
   back as CORS-whitelisted ones
-* **cors**: Allow customizing the value(s) for the `Vary` header
+- **cors**: Allow customizing the value(s) for the `Vary` header
 
 ## Changed
 
