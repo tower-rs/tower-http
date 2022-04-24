@@ -240,8 +240,8 @@ impl<F> ServeDir<F> {
     /// use tower_http::services::{ServeDir, ServeFile};
     ///
     /// let service = ServeDir::new("assets")
-    ///     // respond with `index.html` for missing files
-    ///     .fallback(ServeFile::new("assets/index.html"));
+    ///     // respond with `not_found.html` for missing files
+    ///     .fallback(ServeFile::new("assets/not_found.html"));
     ///
     /// # async {
     /// // Run our service using `hyper`
@@ -252,8 +252,6 @@ impl<F> ServeDir<F> {
     ///     .expect("server error");
     /// # };
     /// ```
-    ///
-    /// Setups like this are often found in single page applications.
     pub fn fallback<F2>(self, new_fallback: F2) -> ServeDir<F2> {
         ServeDir {
             base: self.base,
@@ -276,8 +274,8 @@ impl<F> ServeDir<F> {
     /// use tower_http::services::{ServeDir, ServeFile};
     ///
     /// let service = ServeDir::new("assets")
-    ///     // respond with `404 Not Found` and the contents of `index.html` for missing files
-    ///     .not_found_service(ServeFile::new("assets/index.html"));
+    ///     // respond with `404 Not Found` and the contents of `not_found.html` for missing files
+    ///     .not_found_service(ServeFile::new("assets/not_found.html"));
     ///
     /// # async {
     /// // Run our service using `hyper`
