@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Added
 
-- None.
+- Add `ServeDir::fallback` for calling another service if the file cannot be
+  found.
 
 ## Changed
 
