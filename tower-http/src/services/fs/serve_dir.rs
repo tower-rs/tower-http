@@ -5,6 +5,7 @@ use super::{
 use crate::{
     content_encoding::{encodings, Encoding},
     services::fs::{file_metadata_with_fallback, DEFAULT_CAPACITY},
+    set_status::SetStatus,
     BoxError,
 };
 use bytes::Bytes;
@@ -56,45 +57,6 @@ use tower_service::Service;
 ///     .serve(tower::make::Shared::new(service))
 ///     .await
 ///     .expect("server error");
-/// # };
-/// ```
-///
-/// # Handling files not found
-///
-/// By default `ServeDir` will return an empty `404 Not Found` response if there
-/// is no file at the requested path. That can be customized by using
-/// [`and_then`](tower::ServiceBuilder::and_then) to change the response:
-///
-/// ```
-/// use tower_http::services::fs::{ServeDir, ServeFileSystemResponseBody};
-/// use tower::ServiceBuilder;
-/// use http::{StatusCode, Response};
-/// use http_body::{Body as _, Full};
-/// use std::io;
-///
-/// let service = ServiceBuilder::new()
-///     .and_then(|response: Response<ServeFileSystemResponseBody>| async move {
-///         let response = if response.status() == StatusCode::NOT_FOUND {
-///             let body = Full::from("Not Found")
-///                 .map_err(|err| match err {})
-///                 .boxed();
-///             Response::builder()
-///                 .status(StatusCode::NOT_FOUND)
-///                 .body(body)
-///                 .unwrap()
-///         } else {
-///             response.map(|body| body.boxed())
-///         };
-///
-///         Ok::<_, io::Error>(response)
-///     })
-///     .service(ServeDir::new("assets"));
-/// # async {
-/// # let addr = std::net::SocketAddr::from(([127, 0, 0, 1], 3000));
-/// # hyper::Server::bind(&addr)
-/// #     .serve(tower::make::Shared::new(service))
-/// #     .await
-/// #     .expect("server error");
 /// # };
 /// ```
 #[derive(Clone, Debug)]
@@ -267,6 +229,9 @@ impl<F> ServeDir<F> {
     ///
     /// This service will be called if there is no file at the path of the request.
     ///
+    /// The status code returned by the fallback will not be altered. Use [`not_found_service`] to
+    /// set a fallback and always respond with `404 Not Found`.
+    ///
     /// # Example
     ///
     /// This can be used to respond with a different file:
@@ -297,6 +262,36 @@ impl<F> ServeDir<F> {
             variant: self.variant,
             fallback: Some(new_fallback),
         }
+    }
+
+    /// Set the fallback service and override the fallback's status code to `404 Not Found`.
+    ///
+    /// This service will be called if there is no file at the path of the request.
+    ///
+    /// # Example
+    ///
+    /// This can be used to respond with a different file:
+    ///
+    /// ```rust
+    /// use tower_http::services::{ServeDir, ServeFile};
+    ///
+    /// let service = ServeDir::new("assets")
+    ///     // respond with `404 Not Found` and the contents of `index.html` for missing files
+    ///     .not_found_service(ServeFile::new("assets/index.html"));
+    ///
+    /// # async {
+    /// // Run our service using `hyper`
+    /// let addr = std::net::SocketAddr::from(([127, 0, 0, 1], 3000));
+    /// hyper::Server::bind(&addr)
+    ///     .serve(tower::make::Shared::new(service))
+    ///     .await
+    ///     .expect("server error");
+    /// # };
+    /// ```
+    ///
+    /// Setups like this are often found in single page applications.
+    pub fn not_found_service<F2>(self, new_fallback: F2) -> ServeDir<SetStatus<F2>> {
+        self.fallback(SetStatus::new(new_fallback, StatusCode::NOT_FOUND))
     }
 }
 
