@@ -109,7 +109,7 @@ impl ServeVariant {
                         }
                         Component::CurDir => {}
                         Component::Prefix(_) | Component::RootDir | Component::ParentDir => {
-                            return None
+                            return None;
                         }
                     }
                 }
@@ -764,8 +764,7 @@ where
     type Future = ResponseFuture<ReqBody>;
 
     fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        // contains `Infallible` so can never be called
-        unreachable!()
+        match self.0 {}
     }
 
     fn call(&mut self, _req: Request<ReqBody>) -> Self::Future {
