@@ -113,7 +113,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::services::ServeFile;
     use brotli::BrotliDecompress;
     use flate2::bufread::DeflateDecoder;
     use flate2::bufread::GzDecoder;
@@ -122,6 +122,7 @@ mod tests {
     use http::{Request, StatusCode};
     use http_body::Body as _;
     use hyper::Body;
+    use mime::Mime;
     use std::io::Read;
     use std::str::FromStr;
     use tower::ServiceExt;
@@ -449,6 +450,7 @@ mod tests {
         assert_eq!(res.status(), StatusCode::NOT_FOUND);
         assert!(res.headers().get(header::CONTENT_TYPE).is_none());
     }
+
     #[tokio::test]
     async fn last_modified() {
         let svc = ServeFile::new("../README.md");
