@@ -217,22 +217,19 @@
     clippy::type_complexity
 )]
 #![forbid(unsafe_code)]
-#![cfg_attr(docsrs, feature(doc_cfg))]
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![cfg_attr(test, allow(clippy::float_cmp))]
 
 #[macro_use]
 pub(crate) mod macros;
 
 #[cfg(feature = "auth")]
-#[cfg_attr(docsrs, doc(cfg(feature = "auth")))]
 pub mod auth;
 
 #[cfg(feature = "set-header")]
-#[cfg_attr(docsrs, doc(cfg(feature = "set-header")))]
 pub mod set_header;
 
 #[cfg(feature = "propagate-header")]
-#[cfg_attr(docsrs, doc(cfg(feature = "propagate-header")))]
 pub mod propagate_header;
 
 #[cfg(any(
@@ -240,22 +237,12 @@ pub mod propagate_header;
     feature = "compression-deflate",
     feature = "compression-gzip"
 ))]
-#[cfg_attr(
-    docsrs,
-    doc(cfg(any(
-        feature = "compression-br",
-        feature = "compression-deflate",
-        feature = "compression-gzip"
-    )))
-)]
 pub mod compression;
 
 #[cfg(feature = "add-extension")]
-#[cfg_attr(docsrs, doc(cfg(feature = "add-extension")))]
 pub mod add_extension;
 
 #[cfg(feature = "sensitive-headers")]
-#[cfg_attr(docsrs, doc(cfg(feature = "sensitive-headers")))]
 pub mod sensitive_headers;
 
 #[cfg(any(
@@ -263,14 +250,6 @@ pub mod sensitive_headers;
     feature = "decompression-deflate",
     feature = "decompression-gzip"
 ))]
-#[cfg_attr(
-    docsrs,
-    doc(cfg(any(
-        feature = "decompression-br",
-        feature = "decompression-deflate",
-        feature = "decompression-gzip"
-    )))
-)]
 pub mod decompression;
 
 #[cfg(any(
@@ -295,39 +274,30 @@ mod content_encoding;
 mod compression_utils;
 
 #[cfg(feature = "map-response-body")]
-#[cfg_attr(docsrs, doc(cfg(feature = "map-response-body")))]
 pub mod map_response_body;
 
 #[cfg(feature = "map-request-body")]
-#[cfg_attr(docsrs, doc(cfg(feature = "map-request-body")))]
 pub mod map_request_body;
 
 #[cfg(feature = "trace")]
-#[cfg_attr(docsrs, doc(cfg(feature = "trace")))]
 pub mod trace;
 
 #[cfg(feature = "follow-redirect")]
-#[cfg_attr(docsrs, doc(cfg(feature = "follow-redirect")))]
 pub mod follow_redirect;
 
 #[cfg(feature = "metrics")]
-#[cfg_attr(docsrs, doc(cfg(feature = "metrics")))]
 pub mod metrics;
 
 #[cfg(feature = "cors")]
-#[cfg_attr(docsrs, doc(cfg(feature = "cors")))]
 pub mod cors;
 
 #[cfg(feature = "request-id")]
-#[cfg_attr(docsrs, doc(cfg(feature = "request-id")))]
 pub mod request_id;
 
 #[cfg(feature = "catch-panic")]
-#[cfg_attr(docsrs, doc(cfg(feature = "catch-panic")))]
 pub mod catch_panic;
 
 #[cfg(feature = "set-status")]
-#[cfg_attr(docsrs, doc(cfg(feature = "set-status")))]
 pub mod set_status;
 
 pub mod classify;
@@ -337,7 +307,6 @@ pub mod services;
 mod builder;
 
 #[cfg(feature = "util")]
-#[cfg_attr(docsrs, doc(cfg(feature = "util")))]
 #[doc(inline)]
 pub use self::builder::ServiceBuilderExt;
 

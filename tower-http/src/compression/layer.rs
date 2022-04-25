@@ -38,7 +38,6 @@ impl CompressionLayer {
 
     /// Sets whether to enable the gzip encoding.
     #[cfg(feature = "compression-gzip")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "compression-gzip")))]
     pub fn gzip(mut self, enable: bool) -> Self {
         self.accept.set_gzip(enable);
         self
@@ -46,7 +45,6 @@ impl CompressionLayer {
 
     /// Sets whether to enable the Deflate encoding.
     #[cfg(feature = "compression-deflate")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "compression-deflate")))]
     pub fn deflate(mut self, enable: bool) -> Self {
         self.accept.set_deflate(enable);
         self
@@ -54,7 +52,6 @@ impl CompressionLayer {
 
     /// Sets whether to enable the Brotli encoding.
     #[cfg(feature = "compression-br")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "compression-br")))]
     pub fn br(mut self, enable: bool) -> Self {
         self.accept.set_br(enable);
         self
