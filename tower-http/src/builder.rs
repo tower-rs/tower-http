@@ -40,6 +40,8 @@ use tower_layer::Stack;
 /// # service.ready().await.unwrap().call(Request::new(Body::empty())).await.unwrap();
 /// # }
 /// ```
+#[cfg(feature = "util")]
+// ^ work around rustdoc not inferring doc(cfg)s for cfg's from surrounding scopes
 pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     /// Propagate a header from the request to the response.
     ///
@@ -47,7 +49,6 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     ///
     /// [`tower_http::propagate_header`]: crate::propagate_header
     #[cfg(feature = "propagate-header")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "propagate-header")))]
     fn propagate_header(
         self,
         header: HeaderName,
@@ -60,7 +61,6 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     /// [`tower_http::add_extension`]: crate::add_extension
     /// [request extensions]: https://docs.rs/http/latest/http/struct.Extensions.html
     #[cfg(feature = "add-extension")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "add-extension")))]
     fn add_extension<T>(
         self,
         value: T,
@@ -72,7 +72,6 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     ///
     /// [`tower_http::map_request_body`]: crate::map_request_body
     #[cfg(feature = "map-request-body")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "map-request-body")))]
     fn map_request_body<F>(
         self,
         f: F,
@@ -84,7 +83,6 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     ///
     /// [`tower_http::map_response_body`]: crate::map_response_body
     #[cfg(feature = "map-response-body")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "map-response-body")))]
     fn map_response_body<F>(
         self,
         f: F,
@@ -100,14 +98,6 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
         feature = "compression-deflate",
         feature = "compression-gzip"
     ))]
-    #[cfg_attr(
-        docsrs,
-        doc(cfg(any(
-            feature = "compression-br",
-            feature = "compression-deflate",
-            feature = "compression-gzip"
-        )))
-    )]
     fn compression(self) -> ServiceBuilder<Stack<crate::compression::CompressionLayer, L>>;
 
     /// Decompress response bodies.
@@ -120,14 +110,6 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
         feature = "decompression-deflate",
         feature = "decompression-gzip"
     ))]
-    #[cfg_attr(
-        docsrs,
-        doc(cfg(any(
-            feature = "decompression-br",
-            feature = "decompression-deflate",
-            feature = "decompression-gzip"
-        )))
-    )]
     fn decompression(self) -> ServiceBuilder<Stack<crate::decompression::DecompressionLayer, L>>;
 
     /// High level tracing that classifies responses using HTTP status codes.
@@ -140,7 +122,6 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     /// [`tower_http::trace`]: crate::trace
     /// [`TraceLayer`]: crate::trace::TraceLayer
     #[cfg(feature = "trace")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "trace")))]
     fn trace_for_http(
         self,
     ) -> ServiceBuilder<Stack<crate::trace::TraceLayer<SharedClassifier<ServerErrorsAsFailures>>, L>>;
@@ -155,7 +136,6 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     /// [`tower_http::trace`]: crate::trace
     /// [`TraceLayer`]: crate::trace::TraceLayer
     #[cfg(feature = "trace")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "trace")))]
     fn trace_for_grpc(
         self,
     ) -> ServiceBuilder<Stack<crate::trace::TraceLayer<SharedClassifier<GrpcErrorsAsFailures>>, L>>;
@@ -167,7 +147,6 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     /// [`tower_http::follow_redirect`]: crate::follow_redirect
     /// [`Standard`]: crate::follow_redirect::policy::Standard
     #[cfg(feature = "follow-redirect")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "follow-redirect")))]
     fn follow_redirects(
         self,
     ) -> ServiceBuilder<
@@ -184,7 +163,6 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     /// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
     /// [`tower_http::sensitive_headers`]: crate::sensitive_headers
     #[cfg(feature = "sensitive-headers")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "sensitive-headers")))]
     fn sensitive_headers<I>(
         self,
         headers: I,
@@ -199,7 +177,6 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     /// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
     /// [`tower_http::sensitive_headers`]: crate::sensitive_headers
     #[cfg(feature = "sensitive-headers")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "sensitive-headers")))]
     fn sensitive_request_headers(
         self,
         headers: std::sync::Arc<[HeaderName]>,
@@ -212,7 +189,6 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     /// [sensitive]: https://docs.rs/http/latest/http/header/struct.HeaderValue.html#method.set_sensitive
     /// [`tower_http::sensitive_headers`]: crate::sensitive_headers
     #[cfg(feature = "sensitive-headers")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "sensitive-headers")))]
     fn sensitive_response_headers(
         self,
         headers: std::sync::Arc<[HeaderName]>,
@@ -227,7 +203,6 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     ///
     /// [`tower_http::set_header`]: crate::set_header
     #[cfg(feature = "set-header")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "set-header")))]
     fn override_request_header<M>(
         self,
         header_name: HeaderName,
@@ -242,7 +217,6 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     ///
     /// [`tower_http::set_header`]: crate::set_header
     #[cfg(feature = "set-header")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "set-header")))]
     fn append_request_header<M>(
         self,
         header_name: HeaderName,
@@ -255,7 +229,6 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     ///
     /// [`tower_http::set_header`]: crate::set_header
     #[cfg(feature = "set-header")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "set-header")))]
     fn insert_request_header_if_not_present<M>(
         self,
         header_name: HeaderName,
@@ -271,7 +244,6 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     ///
     /// [`tower_http::set_header`]: crate::set_header
     #[cfg(feature = "set-header")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "set-header")))]
     fn override_response_header<M>(
         self,
         header_name: HeaderName,
@@ -286,7 +258,6 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     ///
     /// [`tower_http::set_header`]: crate::set_header
     #[cfg(feature = "set-header")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "set-header")))]
     fn append_response_header<M>(
         self,
         header_name: HeaderName,
@@ -299,7 +270,6 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     ///
     /// [`tower_http::set_header`]: crate::set_header
     #[cfg(feature = "set-header")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "set-header")))]
     fn insert_response_header_if_not_present<M>(
         self,
         header_name: HeaderName,
@@ -312,7 +282,6 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     ///
     /// [`tower_http::request_id`]: crate::request_id
     #[cfg(feature = "request-id")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "request-id")))]
     fn set_request_id<M>(
         self,
         header_name: HeaderName,
@@ -327,7 +296,6 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     ///
     /// [`tower_http::request_id`]: crate::request_id
     #[cfg(feature = "request-id")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "request-id")))]
     fn set_x_request_id<M>(
         self,
         make_request_id: M,
@@ -347,7 +315,6 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     ///
     /// [`tower_http::request_id`]: crate::request_id
     #[cfg(feature = "request-id")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "request-id")))]
     fn propagate_request_id(
         self,
         header_name: HeaderName,
@@ -359,7 +326,6 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     ///
     /// [`tower_http::request_id`]: crate::request_id
     #[cfg(feature = "request-id")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "request-id")))]
     fn propagate_x_request_id(
         self,
     ) -> ServiceBuilder<Stack<crate::request_id::PropagateRequestIdLayer, L>> {
@@ -372,7 +338,6 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     ///
     /// [`tower_http::catch_panic`]: crate::catch_panic
     #[cfg(feature = "catch-panic")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "catch-panic")))]
     fn catch_panic(
         self,
     ) -> ServiceBuilder<
@@ -420,14 +385,6 @@ impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
         feature = "compression-deflate",
         feature = "compression-gzip"
     ))]
-    #[cfg_attr(
-        docsrs,
-        doc(cfg(any(
-            feature = "compression-br",
-            feature = "compression-deflate",
-            feature = "compression-gzip"
-        )))
-    )]
     fn compression(self) -> ServiceBuilder<Stack<crate::compression::CompressionLayer, L>> {
         self.layer(crate::compression::CompressionLayer::new())
     }
@@ -437,14 +394,6 @@ impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
         feature = "decompression-deflate",
         feature = "decompression-gzip"
     ))]
-    #[cfg_attr(
-        docsrs,
-        doc(cfg(any(
-            feature = "decompression-br",
-            feature = "decompression-deflate",
-            feature = "decompression-gzip"
-        )))
-    )]
     fn decompression(self) -> ServiceBuilder<Stack<crate::decompression::DecompressionLayer, L>> {
         self.layer(crate::decompression::DecompressionLayer::new())
     }
@@ -466,7 +415,6 @@ impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
     }
 
     #[cfg(feature = "follow-redirect")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "follow-redirect")))]
     fn follow_redirects(
         self,
     ) -> ServiceBuilder<
@@ -603,7 +551,6 @@ impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
     }
 
     #[cfg(feature = "catch-panic")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "catch-panic")))]
     fn catch_panic(
         self,
     ) -> ServiceBuilder<

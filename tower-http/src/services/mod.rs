@@ -7,19 +7,15 @@
 //! [tree]: https://en.wikipedia.org/wiki/Tree_(data_structure)
 
 #[cfg(feature = "redirect")]
-#[cfg_attr(docsrs, doc(cfg(feature = "redirect")))]
 pub mod redirect;
 
 #[cfg(feature = "redirect")]
-#[cfg_attr(docsrs, doc(cfg(feature = "redirect")))]
 #[doc(inline)]
 pub use self::redirect::Redirect;
 
 #[cfg(feature = "fs")]
-#[cfg_attr(docsrs, doc(cfg(feature = "fs")))]
 pub mod fs;
 
 #[cfg(feature = "fs")]
-#[cfg_attr(docsrs, doc(cfg(feature = "fs")))]
 #[doc(inline)]
 pub use self::fs::{ServeDir, ServeFile};
