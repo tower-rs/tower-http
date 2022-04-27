@@ -21,7 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Fixed
 
-- None.
+- **cors**: Only send a single origin in `Access-Control-Allow-Origin` header when a list of
+  allowed origins is configured (the previous behavior of sending a comma-separated list like for
+  allowed methods and allowed headers is not allowed by any standard)
 
 # 0.3.0 (April 25, 2022)
 
