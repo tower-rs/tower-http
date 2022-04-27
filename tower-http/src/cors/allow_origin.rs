@@ -5,7 +5,7 @@ use http::{
     request::Parts as RequestParts,
 };
 
-use super::{separated_by_commas, Any, WILDCARD};
+use super::{Any, WILDCARD};
 
 /// Holds configuration for how to set the [`Access-Control-Allow-Origin`][mdn] header.
 ///
@@ -24,7 +24,7 @@ impl AllowOrigin {
     ///
     /// [`CorsLayer::allow_origin`]: super::CorsLayer::allow_origin
     pub fn any() -> Self {
-        Self(OriginInner::Const(Some(WILDCARD)))
+        Self(OriginInner::Const(WILDCARD))
     }
 
     /// Set a single allowed origin
@@ -33,7 +33,7 @@ impl AllowOrigin {
     ///
     /// [`CorsLayer::allow_origin`]: super::CorsLayer::allow_origin
     pub fn exact(origin: HeaderValue) -> Self {
-        Self(OriginInner::Const(Some(origin)))
+        Self(OriginInner::Const(origin))
     }
 
     /// Set multiple allowed origins
@@ -45,9 +45,7 @@ impl AllowOrigin {
     where
         I: IntoIterator<Item = HeaderValue>,
     {
-        Self(OriginInner::Const(separated_by_commas(
-            origins.into_iter().map(Into::into),
-        )))
+        Self(OriginInner::List(origins.into_iter().collect()))
     }
 
     /// Set the allowed origins from a predicate
@@ -76,7 +74,7 @@ impl AllowOrigin {
 
     #[allow(clippy::borrow_interior_mutable_const)]
     pub(super) fn is_wildcard(&self) -> bool {
-        matches!(&self.0, OriginInner::Const(Some(v)) if v == WILDCARD)
+        matches!(&self.0, OriginInner::Const(v) if v == WILDCARD)
     }
 
     pub(super) fn to_header(
@@ -85,7 +83,8 @@ impl AllowOrigin {
         parts: &RequestParts,
     ) -> Option<(HeaderName, HeaderValue)> {
         let allow_origin = match &self.0 {
-            OriginInner::Const(v) => v.clone()?,
+            OriginInner::Const(v) => v.clone(),
+            OriginInner::List(l) => origin.filter(|o| l.contains(o))?.clone(),
             OriginInner::Predicate(c) => origin.filter(|origin| c(origin, parts))?.clone(),
         };
 
@@ -97,6 +96,7 @@ impl fmt::Debug for AllowOrigin {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.0 {
             OriginInner::Const(inner) => f.debug_tuple("Const").field(inner).finish(),
+            OriginInner::List(inner) => f.debug_tuple("List").field(inner).finish(),
             OriginInner::Predicate(_) => f.debug_tuple("Predicate").finish(),
         }
     }
@@ -129,7 +129,8 @@ impl From<Vec<HeaderValue>> for AllowOrigin {
 
 #[derive(Clone)]
 enum OriginInner {
-    Const(Option<HeaderValue>),
+    Const(HeaderValue),
+    List(Vec<HeaderValue>),
     Predicate(
         Arc<dyn for<'a> Fn(&'a HeaderValue, &'a RequestParts) -> bool + Send + Sync + 'static>,
     ),
@@ -137,6 +138,6 @@ enum OriginInner {
 
 impl Default for OriginInner {
     fn default() -> Self {
-        Self::Const(None)
+        Self::List(Vec::new())
     }
 }
