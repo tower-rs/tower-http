@@ -585,8 +585,11 @@ async fn last_modified() {
 
 #[tokio::test]
 async fn with_fallback_svc() {
-    async fn fallback<B>(_: Request<B>) -> io::Result<Response<Body>> {
-        Ok(Response::new(Body::from("from fallback")))
+    async fn fallback<B>(req: Request<B>) -> io::Result<Response<Body>> {
+        Ok(Response::new(Body::from(format!(
+            "from fallback {}",
+            req.uri().path()
+        ))))
     }
 
     let svc = ServeDir::new("..").fallback(tower::service_fn(fallback));
@@ -600,7 +603,7 @@ async fn with_fallback_svc() {
     assert_eq!(res.status(), StatusCode::OK);
 
     let body = body_into_text(res.into_body()).await;
-    assert_eq!(body, "from fallback");
+    assert_eq!(body, "from fallback /doesnt-exist");
 }
 
 #[tokio::test]
