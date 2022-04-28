@@ -290,17 +290,17 @@ where
         };
 
         let fallback_and_request = self.fallback.as_mut().map(|fallback| {
-            let mut req = Request::new(body);
-            *req.method_mut() = req.method().clone();
-            *req.uri_mut() = req.uri().clone();
-            *req.headers_mut() = req.headers().clone();
-            *req.extensions_mut() = extensions;
+            let mut fallback_req = Request::new(body);
+            *fallback_req.method_mut() = req.method().clone();
+            *fallback_req.uri_mut() = req.uri().clone();
+            *fallback_req.headers_mut() = req.headers().clone();
+            *fallback_req.extensions_mut() = extensions;
 
             // get the ready fallback and leave a non-ready clone in its place
             let clone = fallback.clone();
             let fallback = std::mem::replace(fallback, clone);
 
-            (fallback, req)
+            (fallback, fallback_req)
         });
 
         let buf_chunk_size = self.buf_chunk_size;
