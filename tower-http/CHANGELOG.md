@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - None.
 
+## Fixes
+
+- None
+
+# 0.3.1 (April 28, 2022)
+
 ## Fixed
 
 - **cors**: Only send a single origin in `Access-Control-Allow-Origin` header when a list of
