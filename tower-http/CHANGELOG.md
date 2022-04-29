@@ -27,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Fixed
 
-- **serve_dir**: Properly clone the request for `ServeDir`'s fallback ([#258])
+- **serve_dir**: Fix empty request parts being passed to `ServeDir`'s fallback instead of the actual ones ([#258])
 
 [#258]: https://github.com/tower-rs/tower-http/pull/258
 
