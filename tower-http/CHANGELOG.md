@@ -19,9 +19,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - None.
 
-## Fixes
+## Fixed
 
-- None
+- None.
+
+# 0.3.2 (April 29, 2022)
+
+## Fixed
+
+- **serve_dir**: Properly clone the request for `ServeDir`'s fallback ([#258])
+
+[#258]: https://github.com/tower-rs/tower-http/pull/258
 
 # 0.3.1 (April 28, 2022)
 
