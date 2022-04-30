@@ -7,13 +7,13 @@ use axum::{
     routing::get,
     BoxError, Router,
 };
+use clap::Parser;
 use std::{
     collections::HashMap,
     net::SocketAddr,
     sync::{Arc, RwLock},
     time::Duration,
 };
-use structopt::StructOpt;
 use tower::ServiceBuilder;
 use tower_http::{
     trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
@@ -21,10 +21,10 @@ use tower_http::{
 };
 
 /// Simple key/value store with an HTTP API
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 struct Config {
     /// The port to listen on
-    #[structopt(long, short = "p", default_value = "3000")]
+    #[clap(short = 'p', long, default_value = "3000")]
     port: u16,
 }
 
@@ -39,7 +39,7 @@ async fn main() {
     tracing_subscriber::fmt::init();
 
     // Parse command line arguments
-    let config = Config::from_args();
+    let config = Config::parse();
 
     // Run our service
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
