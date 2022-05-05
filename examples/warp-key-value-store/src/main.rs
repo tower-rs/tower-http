@@ -1,4 +1,5 @@
 use bytes::Bytes;
+use clap::Parser;
 use hyper::{
     body::HttpBody,
     header::{self, HeaderValue},
@@ -9,7 +10,6 @@ use std::net::SocketAddr;
 use std::net::TcpListener;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
-use structopt::StructOpt;
 use tower::{make::Shared, ServiceBuilder};
 use tower_http::{
     add_extension::AddExtensionLayer,
@@ -23,10 +23,10 @@ use warp::{filters, path};
 use warp::{Filter, Rejection, Reply};
 
 /// Simple key/value store with an HTTP API
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 struct Config {
     /// The port to listen on
-    #[structopt(long, short = "p", default_value = "3000")]
+    #[clap(short = 'p', long, default_value = "3000")]
     port: u16,
 }
 
@@ -41,7 +41,7 @@ async fn main() {
     tracing_subscriber::fmt::init();
 
     // Parse command line arguments
-    let config = Config::from_args();
+    let config = Config::parse();
 
     // Create a `TcpListener`
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));

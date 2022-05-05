@@ -10,7 +10,6 @@ license = "MIT"
 bytes = "1"
 hyper = { version = "0.14.4", features = ["full"] }
 prost = "0.8"
-structopt = "0.3.21"
 tokio = { version = "1.2.0", features = ["full"] }
 futures = "0.3"
 tokio-stream = { version = "0.1", features = ["sync", "net"] }
@@ -19,6 +18,7 @@ tower = { version = "0.4.5", features = ["full"] }
 tower-http = { path = "../../tower-http", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap = { version = "3.1.13", features = ["derive"] }
 
 [build-dependencies]
 tonic-build = "0.5"

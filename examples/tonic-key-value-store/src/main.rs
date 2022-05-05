@@ -1,4 +1,5 @@
 use bytes::Bytes;
+use clap::Parser;
 use futures::StreamExt;
 use hyper::{
     body::HttpBody,
@@ -16,7 +17,6 @@ use std::{
     sync::{Arc, RwLock},
     time::Duration,
 };
-use structopt::StructOpt;
 use tokio::{
     io::AsyncReadExt,
     net::TcpListener,
@@ -42,30 +42,30 @@ mod proto {
 }
 
 /// Simple key/value store with an HTTP API
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 struct Config {
     /// The port to listen on
-    #[structopt(long, short = "p", default_value = "3000")]
+    #[clap(short = 'p', long, default_value = "3000")]
     port: u16,
 
-    #[structopt(subcommand)]
+    #[clap(subcommand)]
     command: Command,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 enum Command {
     /// Run the gRPC server
     Server,
     /// Get the value at some key
     Get {
-        #[structopt(long, short = "k")]
+        #[clap(short = 'k', long)]
         key: String,
     },
     /// Set a value at some key.
     ///
     /// The value will be read from stdin.
     Set {
-        #[structopt(long, short = "k")]
+        #[structopt(short = 'k', long)]
         key: String,
     },
     /// Subscribe to a stream of inserted keys
@@ -78,7 +78,7 @@ async fn main() {
     tracing_subscriber::fmt::init();
 
     // Parse command line arguments
-    let config = Config::from_args();
+    let config = Config::parse();
 
     // The server address
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
