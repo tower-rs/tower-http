@@ -61,6 +61,9 @@ where
             #[cfg(feature = "compression-br")]
             (_, Encoding::Brotli) => CompressionBody::new(BodyInner::brotli(WrapBody::new(body))),
             #[cfg(feature = "fs")]
+            #[cfg(not(feature = "compression-gzip"))]
+            #[cfg(not(feature = "compression-deflate"))]
+            #[cfg(not(feature = "compression-br"))]
             (true, _) => {
                 // This should never happen because the `AcceptEncoding` struct which is used to determine
                 // `self.encoding` will only enable the different compression algorithms if the
