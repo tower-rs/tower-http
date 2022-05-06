@@ -3,3 +3,6 @@ members = [
   "tower-http",
   "examples/*",
 ]
+
+[patch.crates-io]
+tower-http = { version = "0.3", path = "tower-http" }
