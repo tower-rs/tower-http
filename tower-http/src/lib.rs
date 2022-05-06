@@ -305,6 +305,9 @@ pub mod set_status;
 #[cfg(feature = "timeout")]
 pub mod timeout;
 
+#[cfg(feature = "gateway")]
+pub mod gateway;
+
 pub mod classify;
 pub mod services;
 
