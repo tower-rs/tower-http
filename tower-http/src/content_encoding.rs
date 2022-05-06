@@ -136,7 +136,7 @@ impl QValue {
         let mut c = s.chars();
         // Parse "q=" (case-insensitively).
         match c.next() {
-            Some('q') | Some('Q') => (),
+            Some('q' | 'Q') => (),
             _ => return None,
         };
         match c.next() {
@@ -215,11 +215,7 @@ pub(crate) fn encodings(
             };
 
             let qval = if let Some(qval) = v.next() {
-                if let Some(qval) = QValue::parse(qval.trim()) {
-                    qval
-                } else {
-                    return None;
-                }
+                QValue::parse(qval.trim())?
             } else {
                 QValue::one()
             };

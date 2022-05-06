@@ -63,7 +63,7 @@ where
             #[cfg(feature = "fs")]
             (true, _) => {
                 // This should never happen because the `AcceptEncoding` struct which is used to determine
-                // `self.encoding` will only enable the different compression algorightms if the
+                // `self.encoding` will only enable the different compression algorithms if the
                 // corresponding crate feature has been enabled. This means
                 // Encoding::[Gzip|Brotli|Deflate] should be impossible at this point without the
                 // features enabled.
