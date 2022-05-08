@@ -249,7 +249,7 @@ impl<F> ServeDir<F> {
 
     /// Customize whether or not to call the fallback for requests that aren't `GET` or `HEAD`.
     ///
-    /// Defaults not calling the fallback and instead returning `405 Method Not Allowed`.
+    /// Defaults to not calling the fallback and instead returning `405 Method Not Allowed`.
     pub fn call_fallback_on_method_not_allowed(mut self, call_fallback: bool) -> Self {
         self.call_fallback_on_method_not_allowed = call_fallback;
         self
