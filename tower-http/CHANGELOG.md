@@ -9,7 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Added
 
-- **request_id:** Add `MakeRequestUuid` for generating request ids using UUIDs
+- **request_id:** Add `MakeRequestUuid` for generating request ids using UUIDs ([#266])
+
+[#266]: https://github.com/tower-rs/tower-http/pull/266
 
 ## Changed
 
