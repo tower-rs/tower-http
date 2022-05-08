@@ -21,7 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Fixed
 
-- None.
+- **serve_dir:** Include `Allow` header for `405 Method Not Allowed` responses ([#263])
+
+[#263]: https://github.com/tower-rs/tower-http/pull/263
 
 # 0.3.2 (April 29, 2022)
 
