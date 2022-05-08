@@ -19,7 +19,7 @@ use tokio::{fs::File, io::AsyncSeekExt};
 pub(super) enum OpenFileOutput {
     FileOpened(Box<FileOpened>),
     Redirect { location: HeaderValue },
-    NotFound,
+    FileNotFound,
     PreconditionFailed,
     NotModified,
 }
@@ -268,7 +268,7 @@ async fn maybe_redirect_or_append_path(
             path_to_file.push("index.html");
             None
         } else {
-            Some(OpenFileOutput::NotFound)
+            Some(OpenFileOutput::FileNotFound)
         }
     } else {
         None
