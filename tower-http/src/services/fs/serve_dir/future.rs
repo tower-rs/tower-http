@@ -98,8 +98,12 @@ where
                         break Poll::Ready(Ok(res));
                     }
 
-                    Ok(OpenFileOutput::NotFound) => {
-                        break Poll::Ready(Ok(not_found()));
+                    Ok(OpenFileOutput::FileNotFound) => {
+                        if let Some((mut fallback, request)) = fallback_and_request.take() {
+                            call_fallback(&mut fallback, request)
+                        } else {
+                            break Poll::Ready(Ok(not_found()));
+                        }
                     }
 
                     Ok(OpenFileOutput::PreconditionFailed) => {
