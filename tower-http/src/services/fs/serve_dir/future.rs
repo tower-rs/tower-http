@@ -26,7 +26,7 @@ pin_project! {
     /// Response future of [`ServeDir`].
     pub struct ResponseFuture<ReqBody, F = DefaultServeDirFallback> {
         #[pin]
-        inner: ResponseFutureInner<ReqBody, F>,
+        pub(super) inner: ResponseFutureInner<ReqBody, F>,
     }
 }
 
@@ -58,7 +58,7 @@ impl<ReqBody, F> ResponseFuture<ReqBody, F> {
 
 pin_project! {
     #[project = ResponseFutureInnerProj]
-    enum ResponseFutureInner<ReqBody, F> {
+    pub(super) enum ResponseFutureInner<ReqBody, F> {
         OpenFileFuture {
             #[pin]
             future: BoxFuture<'static, io::Result<OpenFileOutput>>,
@@ -166,7 +166,10 @@ fn not_found() -> Response<ResponseBody> {
     response_with_status(StatusCode::NOT_FOUND)
 }
 
-fn call_fallback<F, B, FResBody>(fallback: &mut F, req: Request<B>) -> ResponseFutureInner<B, F>
+pub(super) fn call_fallback<F, B, FResBody>(
+    fallback: &mut F,
+    req: Request<B>,
+) -> ResponseFutureInner<B, F>
 where
     F: Service<Request<B>, Response = Response<FResBody>> + Clone,
     F::Error: Into<io::Error>,

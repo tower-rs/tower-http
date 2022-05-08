@@ -63,6 +63,7 @@ pub struct ServeDir<F = DefaultServeDirFallback> {
     // single files
     variant: ServeVariant,
     fallback: Option<F>,
+    call_fallback_on_method_not_allowed: bool,
 }
 
 impl ServeDir<DefaultServeDirFallback> {
@@ -82,6 +83,7 @@ impl ServeDir<DefaultServeDirFallback> {
                 append_index_html_on_directories: true,
             },
             fallback: None,
+            call_fallback_on_method_not_allowed: false,
         }
     }
 
@@ -95,6 +97,7 @@ impl ServeDir<DefaultServeDirFallback> {
             precompressed_variants: None,
             variant: ServeVariant::SingleFile { mime },
             fallback: None,
+            call_fallback_on_method_not_allowed: false,
         }
     }
 }
@@ -210,6 +213,7 @@ impl<F> ServeDir<F> {
             precompressed_variants: self.precompressed_variants,
             variant: self.variant,
             fallback: Some(new_fallback),
+            call_fallback_on_method_not_allowed: self.call_fallback_on_method_not_allowed,
         }
     }
 
@@ -242,6 +246,14 @@ impl<F> ServeDir<F> {
     pub fn not_found_service<F2>(self, new_fallback: F2) -> ServeDir<SetStatus<F2>> {
         self.fallback(SetStatus::new(new_fallback, StatusCode::NOT_FOUND))
     }
+
+    /// Customize whether or not to call the fallback for requests that aren't `GET` or `HEAD`.
+    ///
+    /// Defaults to not calling the fallback and instead returning `405 Method Not Allowed`.
+    pub fn call_fallback_on_method_not_allowed(mut self, call_fallback: bool) -> Self {
+        self.call_fallback_on_method_not_allowed = call_fallback;
+        self
+    }
 }
 
 impl<ReqBody, F, FResBody> Service<Request<ReqBody>> for ServeDir<F>
@@ -267,7 +279,15 @@ where
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
         if req.method() != Method::GET && req.method() != Method::HEAD {
-            return ResponseFuture::method_not_allowed();
+            if self.call_fallback_on_method_not_allowed {
+                if let Some(fallback) = &mut self.fallback {
+                    return ResponseFuture {
+                        inner: future::call_fallback(fallback, req),
+                    };
+                }
+            } else {
+                return ResponseFuture::method_not_allowed();
+            }
         }
 
         // `ServeDir` doesn't care about the request body but the fallback might. So move out the
