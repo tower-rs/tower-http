@@ -8,7 +8,10 @@ use futures_util::{
     future::{BoxFuture, FutureExt, TryFutureExt},
     ready,
 };
-use http::{header, Request, Response, StatusCode};
+use http::{
+    header::{self, ALLOW},
+    HeaderValue, Request, Response, StatusCode,
+};
 use http_body::{Body, Empty, Full};
 use pin_project_lite::pin_project;
 use std::{
@@ -136,7 +139,10 @@ where
                 }
 
                 ResponseFutureInnerProj::MethodNotAllowed => {
-                    break Poll::Ready(Ok(response_with_status(StatusCode::METHOD_NOT_ALLOWED)));
+                    let mut res = response_with_status(StatusCode::METHOD_NOT_ALLOWED);
+                    res.headers_mut()
+                        .insert(ALLOW, HeaderValue::from_static("GET,HEAD"));
+                    break Poll::Ready(Ok(res));
                 }
             };
 

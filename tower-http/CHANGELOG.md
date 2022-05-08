@@ -11,8 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **serve_dir:** Add `ServeDir::call_fallback_on_method_not_allowed` to allow calling the fallback
   for requests that aren't `GET` or `HEAD` ([#264])
+- **request_id:** Add `MakeRequestUuid` for generating request ids using UUIDs ([#266])
 
 [#264]: https://github.com/tower-rs/tower-http/pull/264
+[#266]: https://github.com/tower-rs/tower-http/pull/266
 
 ## Changed
 
@@ -24,7 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Fixed
 
-- None.
+- **serve_dir:** Include `Allow` header for `405 Method Not Allowed` responses ([#263])
+
+[#263]: https://github.com/tower-rs/tower-http/pull/263
 
 # 0.3.2 (April 29, 2022)
 

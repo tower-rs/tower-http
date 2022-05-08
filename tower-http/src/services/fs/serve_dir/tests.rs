@@ -2,6 +2,7 @@ use crate::services::{ServeDir, ServeFile};
 use brotli::BrotliDecompress;
 use bytes::Bytes;
 use flate2::bufread::{DeflateDecoder, GzDecoder};
+use http::header::ALLOW;
 use http::{header, Method, Response};
 use http::{Request, StatusCode};
 use http_body::Body as HttpBody;
@@ -637,6 +638,7 @@ async fn method_not_allowed() {
     let res = svc.oneshot(req).await.unwrap();
 
     assert_eq!(res.status(), StatusCode::METHOD_NOT_ALLOWED);
+    assert_eq!(res.headers()[ALLOW], "GET,HEAD");
 }
 
 #[tokio::test]

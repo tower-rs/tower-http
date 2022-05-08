@@ -8,10 +8,10 @@ license = "MIT"
 
 [dependencies]
 hyper = { version = "0.14.15", features = ["full"] }
-structopt = "0.3.21"
 tokio = { version = "1.2.0", features = ["full"] }
 tower = { version = "0.4.5", features = ["full"] }
 tower-http = { path = "../../tower-http", features = ["full"] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.11", features = ["env-filter"] }
 axum = "0.4"
+clap = { version = "3.1.13", features = ["derive"] }

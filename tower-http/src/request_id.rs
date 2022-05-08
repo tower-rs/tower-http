@@ -157,52 +157,6 @@
 //! # }
 //! ```
 //!
-//! # Using `UUID`s
-//!
-//! Generating request ids from [`Uuid`]s can be done like so:
-//!
-//! ```
-//! use tower_http::ServiceBuilderExt;
-//! use http::{Request, Response, header::HeaderName};
-//! use tower::{Service, ServiceExt, ServiceBuilder};
-//! use tower_http::request_id::{
-//!     SetRequestIdLayer, PropagateRequestIdLayer, MakeRequestId, RequestId,
-//! };
-//! use uuid::Uuid;
-//! # use hyper::Body;
-//! # #[tokio::main]
-//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! # let handler = tower::service_fn(|request: Request<Body>| async move {
-//! #     Ok::<_, std::convert::Infallible>(Response::new(request.into_body()))
-//! # });
-//!
-//! #[derive(Clone, Copy)]
-//! struct MakeRequestUuid;
-//!
-//! impl MakeRequestId for MakeRequestUuid {
-//!     fn make_request_id<B>(&mut self, request: &Request<B>) -> Option<RequestId> {
-//!         let request_id = Uuid::new_v4()
-//!             .to_string()
-//!             .parse()
-//!             .unwrap();
-//!         Some(RequestId::new(request_id))
-//!     }
-//! }
-//!
-//! let mut svc = ServiceBuilder::new()
-//!     .set_x_request_id(MakeRequestUuid)
-//!     .propagate_x_request_id()
-//!     .service(handler);
-//!
-//! let request = Request::new(Body::empty());
-//! let response = svc.ready().await?.call(request).await?;
-//!
-//! assert!(response.headers().get("x-request-id").is_some());
-//! #
-//! # Ok(())
-//! # }
-//! ```
-//!
 //! # Doesn't override existing headers
 //!
 //! [`SetRequestId`] and [`PropagateRequestId`] wont override request ids if its already present on
@@ -213,9 +167,6 @@
 //! [`Uuid`]: https://crates.io/crates/uuid
 //! [`Trace`]: crate::trace::Trace
 
-// NOTE: when uuid 1.0 is shipped we can include a `MakeRequestId` that uses that
-// See https://github.com/uuid-rs/uuid/issues/113
-
 use http::{
     header::{HeaderName, HeaderValue},
     Request, Response,
@@ -225,6 +176,7 @@ use std::task::{Context, Poll};
 use std::{future::Future, pin::Pin};
 use tower_layer::Layer;
 use tower_service::Service;
+use uuid::Uuid;
 
 pub(crate) const X_REQUEST_ID: &str = "x-request-id";
 
@@ -516,6 +468,17 @@ where
     }
 }
 
+/// A [`MakeRequestId`] that generates `UUID`s.
+#[derive(Clone, Copy)]
+pub struct MakeRequestUuid;
+
+impl MakeRequestId for MakeRequestUuid {
+    fn make_request_id<B>(&mut self, _request: &Request<B>) -> Option<RequestId> {
+        let request_id = Uuid::new_v4().to_string().parse().unwrap();
+        Some(RequestId::new(request_id))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::ServiceBuilderExt as _;
@@ -623,5 +586,19 @@ mod tests {
 
     async fn handler(_: Request<Body>) -> Result<Response<Body>, Infallible> {
         Ok(Response::new(Body::empty()))
+    }
+
+    #[tokio::test]
+    async fn uuid() {
+        let svc = ServiceBuilder::new()
+            .set_x_request_id(MakeRequestUuid)
+            .propagate_x_request_id()
+            .service_fn(handler);
+
+        // header on response
+        let req = Request::builder().body(Body::empty()).unwrap();
+        let mut res = svc.clone().oneshot(req).await.unwrap();
+        let id = res.headers_mut().remove("x-request-id").unwrap();
+        id.to_str().unwrap().parse::<Uuid>().unwrap();
     }
 }
