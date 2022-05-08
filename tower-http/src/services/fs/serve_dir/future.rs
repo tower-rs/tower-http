@@ -51,12 +51,6 @@ impl<ReqBody, F> ResponseFuture<ReqBody, F> {
             inner: ResponseFutureInner::MethodNotAllowed,
         }
     }
-
-    pub(super) fn fallback(future: BoxFuture<'static, io::Result<Response<ResponseBody>>>) -> Self {
-        Self {
-            inner: ResponseFutureInner::FallbackFuture { future },
-        }
-    }
 }
 
 pin_project! {
