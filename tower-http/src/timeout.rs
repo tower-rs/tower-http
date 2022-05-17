@@ -9,7 +9,7 @@
 //! it changes the error type to [`BoxError`](tower::BoxError). For HTTP services that is rarely
 //! what you want as returning errors will terminate the connection without sending a response.
 //!
-//! Instead this middleware wont change the error type and instead return a `408 Request Timeout`
+//! This middleware won't change the error type and instead return a `408 Request Timeout`
 //! response. That means if your service's error type is [`Infallible`] it will still be
 //! [`Infallible`] after applying this middleware.
 //!
