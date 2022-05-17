@@ -9,7 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Added
 
-- Add `Timeout` middleware.
+- Add `Timeout` middleware ([#270])
+
+[#270]: https://github.com/tower-rs/tower-http/pull/270
 
 ## Changed
 
