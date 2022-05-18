@@ -71,6 +71,7 @@ full = [
     "sensitive-headers",
     "set-header",
     "set-status",
+    "timeout",
     "trace",
     "util",
 ]
@@ -90,6 +91,7 @@ request-id = ["uuid"]
 sensitive-headers = []
 set-header = []
 set-status = []
+timeout = ["tokio/time"]
 trace = ["tracing"]
 util = ["tower"]
 

@@ -300,6 +300,9 @@ pub mod catch_panic;
 #[cfg(feature = "set-status")]
 pub mod set_status;
 
+#[cfg(feature = "timeout")]
+pub mod timeout;
+
 pub mod classify;
 pub mod services;
 
