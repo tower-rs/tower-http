@@ -5,12 +5,10 @@
 //! ```rust
 //! use bytes::Bytes;
 //! use http::{Request, Response, StatusCode};
-//! use std::convert::Infallible;
-//! use tower::{Service, ServiceExt, ServiceBuilder};
+//! use tower::{Service, ServiceExt, ServiceBuilder, BoxError};
 //! use tower_http::limit::RequestBodyLimitLayer;
+//! use http_body::{Limited, LengthLimitError};
 //! use hyper::Body;
-//! use http_body::Limited;
-//! use tower_http::BoxError;
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), BoxError> {
@@ -24,8 +22,74 @@
 //!     .layer(RequestBodyLimitLayer::new(4096))
 //!     .service_fn(handle);
 //!
-//! fn test_svc<S: Service<Request<Body>>>(s: &S) {}
-//! test_svc(&svc);
+//! // Call the service.
+//! let request = Request::new(Body::empty());
+//!
+//! let response = svc.ready().await?.call(request).await?;
+//!
+//! assert_eq!(response.status(), 200);
+//!
+//! // Call the service with a body that is too large.
+//! let request = Request::new(Body::from(Bytes::from(vec![0u8; 4097])));
+//!
+//! let response = svc.ready().await?.call(request).await?;
+//!
+//! assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+//!
+//! #
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! Using a custom error type:
+//!
+//! ```rust
+//! use bytes::Bytes;
+//! use http::{Request, Response, StatusCode};
+//! use tower::{Service, ServiceExt, ServiceBuilder, BoxError};
+//! use tower_http::limit::RequestBodyLimitLayer;
+//! use http_body::{Limited, LengthLimitError};
+//! use hyper::Body;
+//!
+//! #[derive(Debug)]
+//! enum MyError {
+//!     MySpecificError,
+//!     Unknown(BoxError),
+//! }
+//!
+//! impl std::fmt::Display for MyError {
+//!     // ...
+//! #    fn fmt(&self, _: &mut std::fmt::Formatter) -> std::fmt::Result {
+//! #        Ok(())
+//! #    }
+//! }
+//!
+//! impl std::error::Error for MyError {
+//!     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+//!         match self {
+//!             Self::Unknown(err) => Some(&**err),
+//!             Self::MySpecificError => None,
+//!         }
+//!     }
+//! }
+//!
+//! impl From<BoxError> for MyError {
+//!     fn from(err: BoxError) -> Self {
+//!         Self::Unknown(err)
+//!     }
+//! }
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), BoxError> {
+//! async fn handle(req: Request<Limited<Body>>) -> Result<Response<Body>, MyError> {
+//!     hyper::body::to_bytes(req.into_body()).await?;
+//!     Ok(Response::new(Body::empty()))
+//! }
+//!
+//! let mut svc = ServiceBuilder::new()
+//!     // Limit incoming requests to 4096 bytes.
+//!     .layer(RequestBodyLimitLayer::new(4096))
+//!     .service_fn(handle);
 //!
 //! // Call the service.
 //! let request = Request::new(Body::empty());
@@ -46,6 +110,7 @@
 //! # }
 //! ```
 
+use crate::BoxError;
 use bytes::Bytes;
 use http::{HeaderValue, Request, Response, StatusCode};
 use http_body::{combinators::UnsyncBoxBody, Body, Full, LengthLimitError, Limited};
@@ -148,11 +213,11 @@ impl<S> fmt::Debug for RequestBodyLimit<S> {
 impl<ReqBody, ResBody, S> Service<Request<ReqBody>> for RequestBodyLimit<S>
 where
     S: Service<Request<Limited<ReqBody>>, Response = Response<ResBody>>,
-    S::Error: StdError + 'static,
+    S::Error: Into<BoxError>,
     ResBody: Body<Data = Bytes> + Send + 'static,
 {
     type Response = Response<UnsyncBoxBody<Bytes, ResBody::Error>>;
-    type Error = S::Error;
+    type Error = BoxError;
     type Future = ResponseFuture<S::Future>;
 
     #[inline]
@@ -182,10 +247,10 @@ pin_project! {
 impl<F, ResBody, E> Future for ResponseFuture<F>
 where
     F: Future<Output = Result<Response<ResBody>, E>>,
-    E: StdError + 'static,
+    E: Into<BoxError>,
     ResBody: Body<Data = Bytes> + Send + 'static,
 {
-    type Output = Result<Response<UnsyncBoxBody<Bytes, ResBody::Error>>, E>;
+    type Output = Result<Response<UnsyncBoxBody<Bytes, ResBody::Error>>, BoxError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match self.project().future.poll(cx) {
@@ -198,7 +263,8 @@ where
                 Poll::Ready(Ok(resp))
             }
             Poll::Ready(Err(err)) => {
-                let mut source = Some(&err as &(dyn StdError + 'static));
+                let err = err.into();
+                let mut source = Some(&*err as &(dyn StdError + 'static));
                 while let Some(err) = source {
                     if let Some(_) = err.downcast_ref::<LengthLimitError>() {
                         let mut res = Response::new(
