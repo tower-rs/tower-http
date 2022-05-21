@@ -14,8 +14,7 @@
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), BoxError> {
-//!  async fn handle(req: Request<Limited<Body>>) -> Result<Response<Body>, BoxError>
-//! {
+//! async fn handle(req: Request<Limited<Body>>) -> Result<Response<Body>, BoxError> {
 //!     hyper::body::to_bytes(req.into_body()).await?;
 //!     Ok(Response::new(Body::empty()))
 //! }
@@ -50,15 +49,12 @@
 use crate::BoxError;
 use bytes::Bytes;
 use http::{HeaderValue, Request, Response, StatusCode};
-use http_body::combinators::UnsyncBoxBody;
-use http_body::{Body, Full, LengthLimitError, Limited};
+use http_body::{combinators::UnsyncBoxBody, Body, Full, LengthLimitError, Limited};
 use pin_project_lite::pin_project;
-use std::error::Error;
-use std::future::Future;
-use std::pin::Pin;
 use std::{
     any, fmt,
-    marker::PhantomData,
+    future::Future,
+    pin::Pin,
     task::{Context, Poll},
 };
 use tower_layer::Layer;
@@ -69,49 +65,40 @@ use tower_service::Service;
 /// `413 Payload Too Large` responses.
 ///
 /// See the [module docs](self) for an example.
-pub struct RequestBodyLimitLayer<B> {
+pub struct RequestBodyLimitLayer {
     limit: usize,
-    _ty: PhantomData<fn() -> B>,
 }
 
-impl<B> RequestBodyLimitLayer<B> {
+impl RequestBodyLimitLayer {
     /// Create a new `RequestBodyLimitLayer` with the given body length limit.
     pub fn new(limit: usize) -> Self {
-        Self {
-            limit,
-            _ty: PhantomData,
-        }
+        Self { limit }
     }
 }
 
-impl<B> Clone for RequestBodyLimitLayer<B> {
+impl Clone for RequestBodyLimitLayer {
     fn clone(&self) -> Self {
-        Self {
-            limit: self.limit,
-            _ty: PhantomData,
-        }
+        Self { limit: self.limit }
     }
 }
 
-impl<B> Copy for RequestBodyLimitLayer<B> {}
+impl Copy for RequestBodyLimitLayer {}
 
-impl<B> fmt::Debug for RequestBodyLimitLayer<B> {
+impl fmt::Debug for RequestBodyLimitLayer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("RequestBodyLimitLayer")
-            .field("body", &any::type_name::<B>())
             .field("limit", &self.limit)
             .finish()
     }
 }
 
-impl<B, S> Layer<S> for RequestBodyLimitLayer<B> {
-    type Service = RequestBodyLimit<S, B>;
+impl<S> Layer<S> for RequestBodyLimitLayer {
+    type Service = RequestBodyLimit<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
         RequestBodyLimit {
             inner,
             limit: self.limit,
-            _ty: PhantomData,
         }
     }
 }
@@ -120,26 +107,21 @@ impl<B, S> Layer<S> for RequestBodyLimitLayer<B> {
 /// configured limit and converts them into `413 Payload Too Large` responses.
 ///
 /// See the [module docs](self) for an example.
-pub struct RequestBodyLimit<S, B> {
+pub struct RequestBodyLimit<S> {
     inner: S,
     limit: usize,
-    _ty: PhantomData<fn() -> B>,
 }
 
-impl<S, B> RequestBodyLimit<S, B> {
+impl<S> RequestBodyLimit<S> {
     define_inner_service_accessors!();
 
     /// Create a new `RequestBodyLimit` with the given body length limit.
     pub fn new(inner: S, limit: usize) -> Self {
-        Self {
-            inner,
-            limit,
-            _ty: PhantomData,
-        }
+        Self { inner, limit }
     }
 }
 
-impl<S, B> Clone for RequestBodyLimit<S, B>
+impl<S> Clone for RequestBodyLimit<S>
 where
     S: Clone,
 {
@@ -147,26 +129,22 @@ where
         Self {
             inner: self.inner.clone(),
             limit: self.limit,
-            _ty: PhantomData,
         }
     }
 }
 
-impl<S, B> Copy for LengthLimited<S, B> where S: Copy {}
+impl<S> Copy for RequestBodyLimit<S> where S: Copy {}
 
-impl<S, B> fmt::Debug for LengthLimited<S, B>
-where
-    S: fmt::Debug,
-{
+impl<S> fmt::Debug for RequestBodyLimit<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("LengthLimited")
-            .field("inner", &self.inner)
-            .field("service", &format_args!("{}", any::type_name::<B>()))
+        f.debug_struct("RequestBodyLimit")
+            .field("service", &format_args!("{}", any::type_name::<S>()))
+            .field("limit", &self.limit)
             .finish()
     }
 }
 
-impl<ReqBody, ResBody, S> Service<Request<ReqBody>> for LengthLimited<S, ReqBody>
+impl<ReqBody, ResBody, S> Service<Request<ReqBody>> for RequestBodyLimit<S>
 where
     S: Service<Request<Limited<ReqBody>>, Response = Response<ResBody>>,
     S::Error: Into<BoxError>,
