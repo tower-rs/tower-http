@@ -46,13 +46,14 @@
 //! # }
 //! ```
 
-use crate::BoxError;
 use bytes::Bytes;
 use http::{HeaderValue, Request, Response, StatusCode};
 use http_body::{combinators::UnsyncBoxBody, Body, Full, LengthLimitError, Limited};
 use pin_project_lite::pin_project;
 use std::{
-    any, fmt,
+    any,
+    error::Error as StdError,
+    fmt,
     future::Future,
     pin::Pin,
     task::{Context, Poll},
@@ -147,12 +148,11 @@ impl<S> fmt::Debug for RequestBodyLimit<S> {
 impl<ReqBody, ResBody, S> Service<Request<ReqBody>> for RequestBodyLimit<S>
 where
     S: Service<Request<Limited<ReqBody>>, Response = Response<ResBody>>,
-    S::Error: Into<BoxError>,
+    S::Error: StdError + 'static,
     ResBody: Body<Data = Bytes> + Send + 'static,
-    ResBody::Error: Into<BoxError>,
 {
-    type Response = Response<UnsyncBoxBody<Bytes, BoxError>>;
-    type Error = BoxError;
+    type Response = Response<UnsyncBoxBody<Bytes, ResBody::Error>>;
+    type Error = S::Error;
     type Future = ResponseFuture<S::Future>;
 
     #[inline]
@@ -182,42 +182,43 @@ pin_project! {
 impl<F, ResBody, E> Future for ResponseFuture<F>
 where
     F: Future<Output = Result<Response<ResBody>, E>>,
-    E: Into<BoxError>,
+    E: StdError + 'static,
     ResBody: Body<Data = Bytes> + Send + 'static,
-    ResBody::Error: Into<BoxError>,
 {
-    type Output = Result<Response<UnsyncBoxBody<Bytes, BoxError>>, BoxError>;
+    type Output = Result<Response<UnsyncBoxBody<Bytes, ResBody::Error>>, E>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match self.project().future.poll(cx) {
             Poll::Pending => Poll::Pending,
             Poll::Ready(Ok(data)) => {
                 let (parts, body) = data.into_parts();
-                let body = body.map_err(|err| err.into()).boxed_unsync();
+                let body = body.boxed_unsync();
                 let resp = Response::from_parts(parts, body);
 
                 Poll::Ready(Ok(resp))
             }
             Poll::Ready(Err(err)) => {
-                let err = err.into();
-                if let Some(_) = err.downcast_ref::<LengthLimitError>() {
-                    let mut res = Response::new(
-                        Full::from("length limit exceeded")
-                            .map_err(|err| err.into())
-                            .boxed_unsync(),
-                    );
-                    *res.status_mut() = StatusCode::PAYLOAD_TOO_LARGE;
+                let mut source = Some(&err as &(dyn StdError + 'static));
+                while let Some(err) = source {
+                    if let Some(_) = err.downcast_ref::<LengthLimitError>() {
+                        let mut res = Response::new(
+                            Full::from("length limit exceeded")
+                                .map_err(|err| match err {})
+                                .boxed_unsync(),
+                        );
+                        *res.status_mut() = StatusCode::PAYLOAD_TOO_LARGE;
 
-                    #[allow(clippy::declare_interior_mutable_const)]
-                    const TEXT_PLAIN: HeaderValue =
-                        HeaderValue::from_static("text/plain; charset=utf-8");
-                    res.headers_mut()
-                        .insert(http::header::CONTENT_TYPE, TEXT_PLAIN);
+                        #[allow(clippy::declare_interior_mutable_const)]
+                        const TEXT_PLAIN: HeaderValue =
+                            HeaderValue::from_static("text/plain; charset=utf-8");
+                        res.headers_mut()
+                            .insert(http::header::CONTENT_TYPE, TEXT_PLAIN);
 
-                    Poll::Ready(Ok(res))
-                } else {
-                    Poll::Ready(Err(err))
+                        return Poll::Ready(Ok(res));
+                    }
+                    source = err.source();
                 }
+                Poll::Ready(Err(err))
             }
         }
     }
