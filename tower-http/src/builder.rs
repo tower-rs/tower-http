@@ -351,10 +351,10 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     ///
     /// [`tower_http::limit`]: crate::limit
     #[cfg(feature = "limit")]
-    fn length_limit<B>(
+    fn request_body_limit<B>(
         self,
         limit: usize,
-    ) -> ServiceBuilder<Stack<crate::limit::LengthLimitedLayer<B>, L>>;
+    ) -> ServiceBuilder<Stack<crate::limit::RequestBodyLimitLayer<B>, L>>;
 }
 
 impl<L> crate::sealed::Sealed<L> for ServiceBuilder<L> {}
@@ -572,10 +572,10 @@ impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
     }
 
     #[cfg(feature = "limit")]
-    fn length_limit<B>(
+    fn request_body_limit<B>(
         self,
         limit: usize,
-    ) -> ServiceBuilder<Stack<crate::limit::LengthLimitedLayer<B>, L>> {
-        self.layer(crate::limit::LengthLimitedLayer::new(limit))
+    ) -> ServiceBuilder<Stack<crate::limit::RequestBodyLimitLayer<B>, L>> {
+        self.layer(crate::limit::RequestBodyLimitLayer::new(limit))
     }
 }

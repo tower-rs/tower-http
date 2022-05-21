@@ -6,8 +6,8 @@
 //! use bytes::Bytes;
 //! use http::{Request, Response, StatusCode};
 //! use std::convert::Infallible;
-//! use tower::{Service, ServiceExt, ServiceBuilder, service_fn};
-//! use tower_http::limit::LengthLimitedLayer;
+//! use tower::{Service, ServiceExt, ServiceBuilder};
+//! use tower_http::limit::RequestBodyLimitLayer;
 //! use hyper::Body;
 //! use http_body::Limited;
 //! use tower_http::BoxError;
@@ -22,7 +22,7 @@
 //!
 //! let mut svc = ServiceBuilder::new()
 //!     // Limit incoming requests to 4096 bytes.
-//!     .layer(LengthLimitedLayer::new(4096))
+//!     .layer(RequestBodyLimitLayer::new(4096))
 //!     .service_fn(handle);
 //!
 //! fn test_svc<S: Service<Request<Body>>>(s: &S) {}
@@ -69,13 +69,13 @@ use tower_service::Service;
 /// `413 Payload Too Large` responses.
 ///
 /// See the [module docs](self) for an example.
-pub struct LengthLimitedLayer<B> {
+pub struct RequestBodyLimitLayer<B> {
     limit: usize,
     _ty: PhantomData<fn() -> B>,
 }
 
-impl<B> LengthLimitedLayer<B> {
-    /// Create a new `LengthLimitedLayer` with the given body length limit.
+impl<B> RequestBodyLimitLayer<B> {
+    /// Create a new `RequestBodyLimitLayer` with the given body length limit.
     pub fn new(limit: usize) -> Self {
         Self {
             limit,
@@ -84,7 +84,7 @@ impl<B> LengthLimitedLayer<B> {
     }
 }
 
-impl<B> Clone for LengthLimitedLayer<B> {
+impl<B> Clone for RequestBodyLimitLayer<B> {
     fn clone(&self) -> Self {
         Self {
             limit: self.limit,
@@ -93,22 +93,22 @@ impl<B> Clone for LengthLimitedLayer<B> {
     }
 }
 
-impl<B> Copy for LengthLimitedLayer<B> {}
+impl<B> Copy for RequestBodyLimitLayer<B> {}
 
-impl<B> fmt::Debug for LengthLimitedLayer<B> {
+impl<B> fmt::Debug for RequestBodyLimitLayer<B> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("LengthLimitedLayer")
+        f.debug_struct("RequestBodyLimitLayer")
             .field("body", &any::type_name::<B>())
             .field("limit", &self.limit)
             .finish()
     }
 }
 
-impl<B, S> Layer<S> for LengthLimitedLayer<B> {
-    type Service = LengthLimited<S, B>;
+impl<B, S> Layer<S> for RequestBodyLimitLayer<B> {
+    type Service = RequestBodyLimit<S, B>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        LengthLimited {
+        RequestBodyLimit {
             inner,
             limit: self.limit,
             _ty: PhantomData,
@@ -120,16 +120,16 @@ impl<B, S> Layer<S> for LengthLimitedLayer<B> {
 /// configured limit and converts them into `413 Payload Too Large` responses.
 ///
 /// See the [module docs](self) for an example.
-pub struct LengthLimited<S, B> {
+pub struct RequestBodyLimit<S, B> {
     inner: S,
     limit: usize,
     _ty: PhantomData<fn() -> B>,
 }
 
-impl<S, B> LengthLimited<S, B> {
+impl<S, B> RequestBodyLimit<S, B> {
     define_inner_service_accessors!();
 
-    /// Create a new `LengthLimited` with the given body length limit.
+    /// Create a new `RequestBodyLimit` with the given body length limit.
     pub fn new(inner: S, limit: usize) -> Self {
         Self {
             inner,
@@ -139,7 +139,7 @@ impl<S, B> LengthLimited<S, B> {
     }
 }
 
-impl<S, B> Clone for LengthLimited<S, B>
+impl<S, B> Clone for RequestBodyLimit<S, B>
 where
     S: Clone,
 {
