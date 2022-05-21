@@ -164,6 +164,68 @@
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! If the automatic `413 Payload Too Large` response and handling
+//! of `Content-Length` headers is not desired, consider directly using
+//! [`MapRequestBody`] to wrap the request body with [`http_body::Limited`].
+//!
+//! [`MapRequestBody`]: crate::map_request_body
+//!
+//! ```rust
+//! # use bytes::Bytes;
+//! # use http::{Request, Response, StatusCode};
+//! # use tower::{Service, ServiceExt, ServiceBuilder, BoxError};
+//! # use tower_http::limit::RequestBodyLimitLayer;
+//! # use http_body::{Limited, LengthLimitError};
+//! # use hyper::Body;
+//! # use std::convert::Infallible;
+//! use tower_http::map_request_body::MapRequestBodyLayer;
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), BoxError> {
+//! async fn handle(req: Request<Limited<Body>>) -> Result<Response<Body>, Infallible> {
+//!     let data = hyper::body::to_bytes(req.into_body()).await;
+//!     let resp = match data {
+//!         Ok(data) => Response::new(Body::from(data)),
+//!         Err(err) => {
+//!             if err.downcast_ref::<LengthLimitError>().is_some() {
+//!                 let body = Body::from("Whoa there! Too much data! Teapot mode!");
+//!                 let mut resp = Response::new(body);
+//!                 *resp.status_mut() = StatusCode::IM_A_TEAPOT;
+//!                 resp
+//!             } else {
+//!                 let mut resp = Response::new(Body::from(err.to_string()));
+//!                 *resp.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+//!                 resp
+//!             }
+//!         }
+//!     };
+//!     Ok(resp)
+//! }
+//!
+//! let mut svc = ServiceBuilder::new()
+//!     // Limit incoming requests to 4096 bytes, but no automatic response.
+//!     .layer(MapRequestBodyLayer::new(|b| Limited::new(b, 4096)))
+//!     .service_fn(handle);
+//!
+//! // Call the service.
+//! let request = Request::new(Body::empty());
+//!
+//! let response = svc.ready().await?.call(request).await?;
+//!
+//! assert_eq!(response.status(), 200);
+//!
+//! // Call the service with a body that is too large.
+//! let request = Request::new(Body::from(Bytes::from(vec![0u8; 4097])));
+//!
+//! let response = svc.ready().await?.call(request).await?;
+//!
+//! assert_eq!(response.status(), StatusCode::IM_A_TEAPOT);
+//!
+//! #
+//! # Ok(())
+//! # }
+//! ```
 
 use crate::BoxError;
 use bytes::Bytes;
