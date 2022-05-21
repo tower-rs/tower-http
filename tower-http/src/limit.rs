@@ -1,6 +1,17 @@
 //! Imposes a length limit on request bodies.
 //!
-//! # Example
+//! This layer will also intercept requests with a `Content-Length` header
+//! larger than the allowable limit and return an immediate error before
+//! reading any of the body.
+//!
+//! Handling of any unread payload beyond the length limit depends on the
+//! underlying server implementation.
+//!
+//! # Examples
+//!
+//! If the `Content-Length` header indicates a payload that is larger than
+//! the acceptable limit, then the response will be rejected whether or not
+//! the body is read.
 //!
 //! ```rust
 //! use bytes::Bytes;
@@ -10,6 +21,49 @@
 //! use http_body::{Limited, LengthLimitError};
 //! use hyper::Body;
 //!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), BoxError> {
+//! async fn handle(req: Request<Limited<Body>>) -> Result<Response<Body>, BoxError> {
+//!     Ok(Response::new(Body::empty()))
+//! }
+//!
+//! let mut svc = ServiceBuilder::new()
+//!     // Limit incoming requests to 4096 bytes.
+//!     .layer(RequestBodyLimitLayer::new(4096))
+//!     .service_fn(handle);
+//!
+//! // Call the service with a header that indicates the body is too large.
+//! let mut request = Request::new(Body::empty());
+//! request.headers_mut().insert(
+//!     http::header::CONTENT_LENGTH,
+//!     http::HeaderValue::from_static("5000"),
+//! );
+//!
+//! let response = svc.ready().await?.call(request).await?;
+//!
+//! assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+//!
+//! #
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! If no `Content-Length` header is present, then the body will be read
+//! until the length limit has been reached. If it is reached, the body
+//! will return an error. If this error is bubbled up, then this layer
+//! will return an appropriate `413 Payload Too Large` response.
+//!
+//! Note that if the body is never read, or never attempts to consume the
+//! body beyond the length limit, then no error will be generated.
+//!
+//! ```rust
+//! # use bytes::Bytes;
+//! # use http::{Request, Response, StatusCode};
+//! # use tower::{Service, ServiceExt, ServiceBuilder, BoxError};
+//! # use tower_http::limit::RequestBodyLimitLayer;
+//! # use http_body::{Limited, LengthLimitError};
+//! # use hyper::Body;
+//! #
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), BoxError> {
 //! async fn handle(req: Request<Limited<Body>>) -> Result<Response<Body>, BoxError> {
@@ -41,16 +95,17 @@
 //! # }
 //! ```
 //!
-//! Using a custom error type:
+//! This automatic error response mechanism will also work if the error
+//! returned by the body is available in the source chain.
 //!
 //! ```rust
-//! use bytes::Bytes;
-//! use http::{Request, Response, StatusCode};
-//! use tower::{Service, ServiceExt, ServiceBuilder, BoxError};
-//! use tower_http::limit::RequestBodyLimitLayer;
-//! use http_body::{Limited, LengthLimitError};
-//! use hyper::Body;
-//!
+//! # use bytes::Bytes;
+//! # use http::{Request, Response, StatusCode};
+//! # use tower::{Service, ServiceExt, ServiceBuilder, BoxError};
+//! # use tower_http::limit::RequestBodyLimitLayer;
+//! # use http_body::{Limited, LengthLimitError};
+//! # use hyper::Body;
+//! #
 //! #[derive(Debug)]
 //! enum MyError {
 //!     MySpecificError,
@@ -119,14 +174,14 @@ use std::{
     any,
     error::Error as StdError,
     fmt,
-    future::Future,
+    future::{ready, Future},
     pin::Pin,
     task::{Context, Poll},
 };
 use tower_layer::Layer;
 use tower_service::Service;
 
-/// Layer that applies the [`LengthLimit`] middleware that intercepts requests
+/// Layer that applies the [`RequestBodyLimit`] middleware that intercepts requests
 /// with body lengths greater than the configured limit and converts them into
 /// `413 Payload Too Large` responses.
 ///
@@ -214,11 +269,12 @@ impl<ReqBody, ResBody, S> Service<Request<ReqBody>> for RequestBodyLimit<S>
 where
     S: Service<Request<Limited<ReqBody>>, Response = Response<ResBody>>,
     S::Error: Into<BoxError>,
+    S::Future: 'static,
     ResBody: Body<Data = Bytes> + Send + 'static,
 {
     type Response = Response<UnsyncBoxBody<Bytes, ResBody::Error>>;
     type Error = BoxError;
-    type Future = ResponseFuture<S::Future>;
+    type Future = ResponseFuture<ResBody, Self::Error>;
 
     #[inline]
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -227,26 +283,47 @@ where
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
         let (parts, body) = req.into_parts();
-        let body = Limited::new(body, self.limit);
-        let req = Request::from_parts(parts, body);
+        let content_length = parts
+            .headers
+            .get(http::header::CONTENT_LENGTH)
+            .and_then(|value| value.to_str().ok()?.parse::<usize>().ok());
 
-        ResponseFuture {
-            future: self.inner.call(req),
-        }
+        let future: Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>> =
+            match content_length {
+                Some(len) if len > self.limit => Box::pin(ready(Ok(create_error_response()))),
+                _ => {
+                    let body = Limited::new(body, self.limit);
+                    let req = Request::from_parts(parts, body);
+                    let fut = self.inner.call(req);
+                    Box::pin(async move {
+                        fut.await
+                            .map(|res| {
+                                let (parts, body) = res.into_parts();
+                                let body = body.boxed_unsync();
+                                Response::from_parts(parts, body)
+                            })
+                            .map_err(|err| err.into())
+                    })
+                }
+            };
+
+        ResponseFuture { future }
     }
 }
 
 pin_project! {
-    /// Response future for [`LengthLimit`].
-    pub struct ResponseFuture<F> {
+    /// Response future for [`RequestBodyLimit`].
+    pub struct ResponseFuture<ResBody, E>
+    where
+        ResBody: Body<Data = Bytes>
+    {
         #[pin]
-        future: F,
+        future: Pin<Box<dyn Future<Output = Result<Response<UnsyncBoxBody<Bytes, ResBody::Error>>, E>>>>,
     }
 }
 
-impl<F, ResBody, E> Future for ResponseFuture<F>
+impl<ResBody, E> Future for ResponseFuture<ResBody, E>
 where
-    F: Future<Output = Result<Response<ResBody>, E>>,
     E: Into<BoxError>,
     ResBody: Body<Data = Bytes> + Send + 'static,
 {
@@ -267,20 +344,7 @@ where
                 let mut source = Some(&*err as &(dyn StdError + 'static));
                 while let Some(err) = source {
                     if let Some(_) = err.downcast_ref::<LengthLimitError>() {
-                        let mut res = Response::new(
-                            Full::from("length limit exceeded")
-                                .map_err(|err| match err {})
-                                .boxed_unsync(),
-                        );
-                        *res.status_mut() = StatusCode::PAYLOAD_TOO_LARGE;
-
-                        #[allow(clippy::declare_interior_mutable_const)]
-                        const TEXT_PLAIN: HeaderValue =
-                            HeaderValue::from_static("text/plain; charset=utf-8");
-                        res.headers_mut()
-                            .insert(http::header::CONTENT_TYPE, TEXT_PLAIN);
-
-                        return Poll::Ready(Ok(res));
+                        return Poll::Ready(Ok(create_error_response()));
                     }
                     source = err.source();
                 }
@@ -288,4 +352,20 @@ where
             }
         }
     }
+}
+
+fn create_error_response<E>() -> Response<UnsyncBoxBody<Bytes, E>> {
+    let mut res = Response::new(
+        Full::from("length limit exceeded")
+            .map_err(|err| match err {})
+            .boxed_unsync(),
+    );
+    *res.status_mut() = StatusCode::PAYLOAD_TOO_LARGE;
+
+    #[allow(clippy::declare_interior_mutable_const)]
+    const TEXT_PLAIN: HeaderValue = HeaderValue::from_static("text/plain; charset=utf-8");
+    res.headers_mut()
+        .insert(http::header::CONTENT_TYPE, TEXT_PLAIN);
+
+    res
 }
