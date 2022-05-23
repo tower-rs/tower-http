@@ -1,7 +1,6 @@
 use super::{ResponseBody, ResponseFuture};
 use http::{Request, Response};
 use http_body::{Body, Limited};
-use std::error::Error as StdError;
 use std::task::{Context, Poll};
 use std::{any, fmt};
 use tower_service::Service;
@@ -38,7 +37,6 @@ impl<ReqBody, ResBody, S> Service<Request<ReqBody>> for RequestBodyLimit<S>
 where
     ResBody: Body,
     S: Service<Request<Limited<ReqBody>>, Response = Response<ResBody>>,
-    S::Error: StdError + 'static,
 {
     type Response = Response<ResponseBody<ResBody>>;
     type Error = S::Error;
@@ -56,15 +54,16 @@ where
             .get(http::header::CONTENT_LENGTH)
             .and_then(|value| value.to_str().ok()?.parse::<usize>().ok());
 
-        match content_length {
-            Some(len) if len > self.limit => ResponseFuture::payload_too_large(),
-            _ => {
-                let body = Limited::new(body, self.limit);
-                let req = Request::from_parts(parts, body);
-                let future = self.inner.call(req);
+        let body_limit = match content_length {
+            Some(len) if len > self.limit => return ResponseFuture::payload_too_large(),
+            Some(len) => self.limit.min(len),
+            None => self.limit,
+        };
 
-                ResponseFuture::new(future)
-            }
-        }
+        let body = Limited::new(body, body_limit);
+        let req = Request::from_parts(parts, body);
+        let future = self.inner.call(req);
+
+        ResponseFuture::new(future)
     }
 }

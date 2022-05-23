@@ -1,4 +1,4 @@
-use bytes::{Buf, Bytes};
+use bytes::Bytes;
 use http::{HeaderMap, HeaderValue, Response, StatusCode};
 use http_body::{Body, SizeHint};
 use pin_project_lite::pin_project;
@@ -81,14 +81,10 @@ where
 
     fn size_hint(&self) -> SizeHint {
         match &self.inner {
-            ResponseBodyInner::PayloadTooLarge { data } => data
-                .as_ref()
-                .map(|data| {
-                    // The static payload will always be small.
-                    let rem = u64::try_from(data.remaining()).unwrap();
-                    SizeHint::with_exact(rem)
-                })
-                .unwrap_or_else(|| SizeHint::with_exact(0)),
+            ResponseBodyInner::PayloadTooLarge { data: None } => SizeHint::with_exact(0),
+            ResponseBodyInner::PayloadTooLarge { data: Some(_) } => {
+                SizeHint::with_exact(u64::try_from(BODY.len()).unwrap())
+            }
             ResponseBodyInner::Body { body } => body.size_hint(),
         }
     }
@@ -96,7 +92,7 @@ where
 
 const BODY: &[u8] = b"length limit exceeded";
 
-pub(super) fn create_error_response<B>() -> Response<ResponseBody<B>>
+pub(crate) fn create_error_response<B>() -> Response<ResponseBody<B>>
 where
     B: Body,
 {
@@ -105,10 +101,8 @@ where
 
     #[allow(clippy::declare_interior_mutable_const)]
     const TEXT_PLAIN: HeaderValue = HeaderValue::from_static("text/plain; charset=utf-8");
-    const CLOSE: HeaderValue = HeaderValue::from_static("close");
     res.headers_mut()
         .insert(http::header::CONTENT_TYPE, TEXT_PLAIN);
-    res.headers_mut().insert(http::header::CONNECTION, CLOSE);
 
     res
 }

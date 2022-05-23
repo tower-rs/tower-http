@@ -2,9 +2,8 @@ use super::body::create_error_response;
 use super::ResponseBody;
 use futures_core::ready;
 use http::Response;
-use http_body::{Body, LengthLimitError};
+use http_body::Body;
 use pin_project_lite::pin_project;
-use std::error::Error as StdError;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -48,7 +47,6 @@ impl<ResBody, F, E> Future for ResponseFuture<F>
 where
     ResBody: Body,
     F: Future<Output = Result<Response<ResBody>, E>>,
-    E: StdError + 'static,
 {
     type Output = Result<Response<ResponseBody<ResBody>>, E>;
 
@@ -63,27 +61,10 @@ where
 
                     Ok(resp)
                 }
-                Err(err) => {
-                    if is_length_limit_error(&err) {
-                        Ok(create_error_response())
-                    } else {
-                        Err(err)
-                    }
-                }
+                Err(err) => Err(err),
             },
         };
 
         Poll::Ready(val)
     }
-}
-
-fn is_length_limit_error(err: &(dyn StdError + 'static)) -> bool {
-    let mut source = Some(err);
-    while let Some(err) = source {
-        if let Some(_) = err.downcast_ref::<LengthLimitError>() {
-            return true;
-        }
-        source = err.source();
-    }
-    false
 }
