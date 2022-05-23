@@ -2,10 +2,8 @@
 //!
 //! This layer will also intercept requests with a `Content-Length` header
 //! larger than the allowable limit and return an immediate error before
-//! reading any of the body.
-//!
-//! Handling of any unread payload beyond the length limit depends on the
-//! underlying server implementation.
+//! reading any of the body. The response returned will request that the
+//! connection be reset to prevent request smuggling attempts.
 //!
 //! # Examples
 //!
@@ -169,6 +167,9 @@
 //! of `Content-Length` headers is not desired, consider directly using
 //! [`MapRequestBody`] to wrap the request body with [`http_body::Limited`].
 //!
+//! Note: In order to prevent request smuggling, it is important to reset
+//! the connection using a `Connection: close` header.
+//!
 //! [`MapRequestBody`]: crate::map_request_body
 //!
 //! ```rust
@@ -192,6 +193,10 @@
 //!                 let body = Body::from("Whoa there! Too much data! Teapot mode!");
 //!                 let mut resp = Response::new(body);
 //!                 *resp.status_mut() = StatusCode::IM_A_TEAPOT;
+//!                 resp.headers_mut().insert(
+//!                     http::header::CONNECTION,
+//!                     http::HeaderValue::from_static("close"),
+//!                 );
 //!                 resp
 //!             } else {
 //!                 let mut resp = Response::new(Body::from(err.to_string()));
@@ -227,207 +232,13 @@
 //! # }
 //! ```
 
-use crate::BoxError;
-use bytes::Bytes;
-use http::{HeaderValue, Request, Response, StatusCode};
-use http_body::{combinators::UnsyncBoxBody, Body, Full, LengthLimitError, Limited};
-use pin_project_lite::pin_project;
-use std::{
-    any,
-    error::Error as StdError,
-    fmt,
-    future::{ready, Future},
-    pin::Pin,
-    task::{Context, Poll},
-};
-use tower_layer::Layer;
-use tower_service::Service;
+mod body;
+mod future;
+mod layer;
+mod service;
 
-/// Layer that applies the [`RequestBodyLimit`] middleware that intercepts requests
-/// with body lengths greater than the configured limit and converts them into
-/// `413 Payload Too Large` responses.
-///
-/// See the [module docs](self) for an example.
-pub struct RequestBodyLimitLayer {
-    limit: usize,
-}
-
-impl RequestBodyLimitLayer {
-    /// Create a new `RequestBodyLimitLayer` with the given body length limit.
-    pub fn new(limit: usize) -> Self {
-        Self { limit }
-    }
-}
-
-impl Clone for RequestBodyLimitLayer {
-    fn clone(&self) -> Self {
-        Self { limit: self.limit }
-    }
-}
-
-impl Copy for RequestBodyLimitLayer {}
-
-impl fmt::Debug for RequestBodyLimitLayer {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("RequestBodyLimitLayer")
-            .field("limit", &self.limit)
-            .finish()
-    }
-}
-
-impl<S> Layer<S> for RequestBodyLimitLayer {
-    type Service = RequestBodyLimit<S>;
-
-    fn layer(&self, inner: S) -> Self::Service {
-        RequestBodyLimit {
-            inner,
-            limit: self.limit,
-        }
-    }
-}
-
-/// Middleware that intercepts requests with body lengths greater than the
-/// configured limit and converts them into `413 Payload Too Large` responses.
-///
-/// See the [module docs](self) for an example.
-pub struct RequestBodyLimit<S> {
-    inner: S,
-    limit: usize,
-}
-
-impl<S> RequestBodyLimit<S> {
-    define_inner_service_accessors!();
-
-    /// Create a new `RequestBodyLimit` with the given body length limit.
-    pub fn new(inner: S, limit: usize) -> Self {
-        Self { inner, limit }
-    }
-}
-
-impl<S> Clone for RequestBodyLimit<S>
-where
-    S: Clone,
-{
-    fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-            limit: self.limit,
-        }
-    }
-}
-
-impl<S> Copy for RequestBodyLimit<S> where S: Copy {}
-
-impl<S> fmt::Debug for RequestBodyLimit<S> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("RequestBodyLimit")
-            .field("service", &format_args!("{}", any::type_name::<S>()))
-            .field("limit", &self.limit)
-            .finish()
-    }
-}
-
-impl<ReqBody, ResBody, S> Service<Request<ReqBody>> for RequestBodyLimit<S>
-where
-    S: Service<Request<Limited<ReqBody>>, Response = Response<ResBody>>,
-    S::Error: Into<BoxError>,
-    S::Future: 'static,
-    ResBody: Body<Data = Bytes> + Send + 'static,
-{
-    type Response = Response<UnsyncBoxBody<Bytes, ResBody::Error>>;
-    type Error = BoxError;
-    type Future = ResponseFuture<ResBody, Self::Error>;
-
-    #[inline]
-    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.inner.poll_ready(cx).map_err(|e| e.into())
-    }
-
-    fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
-        let (parts, body) = req.into_parts();
-        let content_length = parts
-            .headers
-            .get(http::header::CONTENT_LENGTH)
-            .and_then(|value| value.to_str().ok()?.parse::<usize>().ok());
-
-        let future: Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>> =
-            match content_length {
-                Some(len) if len > self.limit => Box::pin(ready(Ok(create_error_response()))),
-                _ => {
-                    let body = Limited::new(body, self.limit);
-                    let req = Request::from_parts(parts, body);
-                    let fut = self.inner.call(req);
-                    Box::pin(async move {
-                        fut.await
-                            .map(|res| {
-                                let (parts, body) = res.into_parts();
-                                let body = body.boxed_unsync();
-                                Response::from_parts(parts, body)
-                            })
-                            .map_err(|err| err.into())
-                    })
-                }
-            };
-
-        ResponseFuture { future }
-    }
-}
-
-pin_project! {
-    /// Response future for [`RequestBodyLimit`].
-    pub struct ResponseFuture<ResBody, E>
-    where
-        ResBody: Body<Data = Bytes>
-    {
-        #[pin]
-        future: Pin<Box<dyn Future<Output = Result<Response<UnsyncBoxBody<Bytes, ResBody::Error>>, E>>>>,
-    }
-}
-
-impl<ResBody, E> Future for ResponseFuture<ResBody, E>
-where
-    E: Into<BoxError>,
-    ResBody: Body<Data = Bytes> + Send + 'static,
-{
-    type Output = Result<Response<UnsyncBoxBody<Bytes, ResBody::Error>>, BoxError>;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        match self.project().future.poll(cx) {
-            Poll::Pending => Poll::Pending,
-            Poll::Ready(Ok(data)) => {
-                let (parts, body) = data.into_parts();
-                let body = body.boxed_unsync();
-                let resp = Response::from_parts(parts, body);
-
-                Poll::Ready(Ok(resp))
-            }
-            Poll::Ready(Err(err)) => {
-                let err = err.into();
-                let mut source = Some(&*err as &(dyn StdError + 'static));
-                while let Some(err) = source {
-                    if let Some(_) = err.downcast_ref::<LengthLimitError>() {
-                        return Poll::Ready(Ok(create_error_response()));
-                    }
-                    source = err.source();
-                }
-                Poll::Ready(Err(err))
-            }
-        }
-    }
-}
-
-fn create_error_response<E>() -> Response<UnsyncBoxBody<Bytes, E>> {
-    let mut res = Response::new(
-        Full::from("length limit exceeded")
-            .map_err(|err| match err {})
-            .boxed_unsync(),
-    );
-    *res.status_mut() = StatusCode::PAYLOAD_TOO_LARGE;
-
-    #[allow(clippy::declare_interior_mutable_const)]
-    const TEXT_PLAIN: HeaderValue = HeaderValue::from_static("text/plain; charset=utf-8");
-    res.headers_mut()
-        .insert(http::header::CONTENT_TYPE, TEXT_PLAIN);
-
-    res
-}
+pub use body::ResponseBody;
+pub use body::ResponseData;
+pub use future::ResponseFuture;
+pub use layer::RequestBodyLimitLayer;
+pub use service::RequestBodyLimit;
