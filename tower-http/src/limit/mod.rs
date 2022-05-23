@@ -76,7 +76,7 @@
 //!     match hyper::body::to_bytes(req.into_body()).await {
 //!         Ok(data) => Ok(Response::new(Body::empty())),
 //!         Err(err) => {
-//!             if let Some(_) = tower_http::limit::try_as_length_limit_error(&*err) {
+//!             if let Some(_) = err.downcast_ref::<LengthLimitError>() {
 //!                 let mut resp = Response::new(Body::empty());
 //!                 *resp.status_mut() = StatusCode::PAYLOAD_TOO_LARGE;
 //!                 Ok(resp)
@@ -134,7 +134,7 @@
 //!     let resp = match data {
 //!         Ok(data) => Response::new(Body::from(data)),
 //!         Err(err) => {
-//!             if let Some(_) = tower_http::limit::try_as_length_limit_error(&*err) {
+//!             if let Some(_) = err.downcast_ref::<LengthLimitError>() {
 //!                 let body = Body::from("Whoa there! Too much data! Teapot mode!");
 //!                 let mut resp = Response::new(body);
 //!                 *resp.status_mut() = StatusCode::IM_A_TEAPOT;
@@ -182,20 +182,3 @@ pub use body::ResponseBody;
 pub use future::ResponseFuture;
 pub use layer::RequestBodyLimitLayer;
 pub use service::RequestBodyLimit;
-
-use http_body::LengthLimitError;
-use std::error::Error as StdError;
-
-/// Identifies whether a given error is caused by a length limit error.
-pub fn try_as_length_limit_error<'err>(
-    err: &'err (dyn StdError + 'static),
-) -> Option<&'err LengthLimitError> {
-    let mut source = Some(err);
-    while let Some(err) = source {
-        if let Some(lle) = err.downcast_ref::<LengthLimitError>() {
-            return Some(lle);
-        }
-        source = err.source();
-    }
-    None
-}
