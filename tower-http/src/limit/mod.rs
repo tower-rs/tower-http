@@ -238,7 +238,6 @@ mod layer;
 mod service;
 
 pub use body::ResponseBody;
-pub use body::ResponseData;
 pub use future::ResponseFuture;
 pub use layer::RequestBodyLimitLayer;
 pub use service::RequestBodyLimit;

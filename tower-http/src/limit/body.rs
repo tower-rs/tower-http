@@ -1,5 +1,4 @@
-use bytes::Buf;
-use futures_core::ready;
+use bytes::{Buf, Bytes};
 use http::{HeaderMap, HeaderValue, Response, StatusCode};
 use http_body::{Body, SizeHint};
 use pin_project_lite::pin_project;
@@ -11,23 +10,17 @@ pin_project! {
     /// Response body for [`RequestBodyLimit`].
     ///
     /// [`RequestBodyLimit`]: super::RequestBodyLimit
-    pub struct ResponseBody<B>
-    where
-        B: Body,
-    {
+    pub struct ResponseBody<B> {
         #[pin]
         inner: ResponseBodyInner<B>
     }
 }
 
-impl<B> ResponseBody<B>
-where
-    B: Body,
-{
+impl<B> ResponseBody<B> {
     fn payload_too_large() -> Self {
         Self {
             inner: ResponseBodyInner::PayloadTooLarge {
-                data: Some(ResponseData::payload_too_large()),
+                data: Some(Bytes::from_static(BODY)),
             },
         }
     }
@@ -41,12 +34,9 @@ where
 
 pin_project! {
     #[project = BodyProj]
-    enum ResponseBodyInner<B>
-    where
-        B: Body,
-    {
+    enum ResponseBodyInner<B> {
         PayloadTooLarge {
-            data: Option<ResponseData<B>>,
+            data: Option<Bytes>,
         },
         Body {
             #[pin]
@@ -57,9 +47,9 @@ pin_project! {
 
 impl<B> Body for ResponseBody<B>
 where
-    B: Body,
+    B: Body<Data = Bytes>,
 {
-    type Data = ResponseData<B>;
+    type Data = Bytes;
     type Error = B::Error;
 
     fn poll_data(
@@ -68,10 +58,7 @@ where
     ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
         match self.project().inner.project() {
             BodyProj::PayloadTooLarge { data } => Poll::Ready(Ok(data.take()).transpose()),
-            BodyProj::Body { body } => {
-                let or_data = ready!(body.poll_data(cx));
-                Poll::Ready(or_data.map(|r_data| r_data.map(|data| ResponseData::new(data))))
-            }
+            BodyProj::Body { body } => body.poll_data(cx),
         }
     }
 
@@ -103,67 +90,6 @@ where
                 })
                 .unwrap_or_else(|| SizeHint::with_exact(0)),
             ResponseBodyInner::Body { body } => body.size_hint(),
-        }
-    }
-}
-
-/// Response data for [`RequestBodyLimit`].
-///
-/// [`RequestBodyLimit`]: super::RequestBodyLimit
-pub struct ResponseData<B>
-where
-    B: Body,
-{
-    inner: ResponseDataInner<B>,
-}
-
-enum ResponseDataInner<B>
-where
-    B: Body,
-{
-    PayloadTooLarge { sent: &'static [u8] },
-    Data { data: B::Data },
-}
-
-impl<B> ResponseData<B>
-where
-    B: Body,
-{
-    fn payload_too_large() -> Self {
-        Self {
-            inner: ResponseDataInner::PayloadTooLarge { sent: BODY },
-        }
-    }
-
-    fn new(data: B::Data) -> Self {
-        Self {
-            inner: ResponseDataInner::Data { data },
-        }
-    }
-}
-
-impl<B> Buf for ResponseData<B>
-where
-    B: Body,
-{
-    fn remaining(&self) -> usize {
-        match &self.inner {
-            ResponseDataInner::PayloadTooLarge { sent } => sent.remaining(),
-            ResponseDataInner::Data { data } => data.remaining(),
-        }
-    }
-
-    fn chunk(&self) -> &[u8] {
-        match &self.inner {
-            ResponseDataInner::PayloadTooLarge { sent } => sent.chunk(),
-            ResponseDataInner::Data { data } => data.chunk(),
-        }
-    }
-
-    fn advance(&mut self, cnt: usize) {
-        match &mut self.inner {
-            ResponseDataInner::PayloadTooLarge { sent } => sent.advance(cnt),
-            ResponseDataInner::Data { data } => data.advance(cnt),
         }
     }
 }
