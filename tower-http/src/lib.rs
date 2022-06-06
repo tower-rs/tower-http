@@ -285,6 +285,9 @@ pub mod trace;
 #[cfg(feature = "follow-redirect")]
 pub mod follow_redirect;
 
+#[cfg(feature = "limit")]
+pub mod limit;
+
 #[cfg(feature = "metrics")]
 pub mod metrics;
 

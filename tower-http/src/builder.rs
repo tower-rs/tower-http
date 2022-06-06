@@ -343,6 +343,18 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     ) -> ServiceBuilder<
         Stack<crate::catch_panic::CatchPanicLayer<crate::catch_panic::DefaultResponseForPanic>, L>,
     >;
+
+    /// Intercept requests with over-sized payloads and convert them into
+    /// `413 Payload Too Large` responses.
+    ///
+    /// See [`tower_http::limit`] for more details.
+    ///
+    /// [`tower_http::limit`]: crate::limit
+    #[cfg(feature = "limit")]
+    fn request_body_limit(
+        self,
+        limit: usize,
+    ) -> ServiceBuilder<Stack<crate::limit::RequestBodyLimitLayer, L>>;
 }
 
 impl<L> crate::sealed::Sealed<L> for ServiceBuilder<L> {}
@@ -557,5 +569,13 @@ impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
         Stack<crate::catch_panic::CatchPanicLayer<crate::catch_panic::DefaultResponseForPanic>, L>,
     > {
         self.layer(crate::catch_panic::CatchPanicLayer::new())
+    }
+
+    #[cfg(feature = "limit")]
+    fn request_body_limit(
+        self,
+        limit: usize,
+    ) -> ServiceBuilder<Stack<crate::limit::RequestBodyLimitLayer, L>> {
+        self.layer(crate::limit::RequestBodyLimitLayer::new(limit))
     }
 }
