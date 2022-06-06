@@ -9,7 +9,8 @@
 //! over-sized payload, servers should close the connection or resynchronize
 //! by optimistically consuming some data in an attempt to reach the end of
 //! the current HTTP frame. If the incoming stream cannot be resynchronized,
-//! then the connection should be closed.
+//! then the connection should be closed. If you're using [hyper] this is
+//! automatically handled for you.
 //!
 //! # Examples
 //!
@@ -126,6 +127,7 @@
 //! like in the previous example.
 //!
 //! [`MapRequestBody`]: crate::map_request_body
+//! [hyper]: https://crates.io/crates/hyper
 
 mod body;
 mod future;
