@@ -1,4 +1,4 @@
-use super::{ResponseBody, ResponseFuture};
+use super::{RequestBodyLimitLayer, ResponseBody, ResponseFuture};
 use http::{Request, Response};
 use http_body::{Body, Limited};
 use std::task::{Context, Poll};
@@ -21,6 +21,13 @@ impl<S> RequestBodyLimit<S> {
     }
 
     define_inner_service_accessors!();
+
+    /// Returns a new [`Layer`] that wraps services with a `RequestBodyLimit` middleware.
+    ///
+    /// [`Layer`]: tower_layer::Layer
+    pub fn layer(limit: usize) -> RequestBodyLimitLayer {
+        RequestBodyLimitLayer::new(limit)
+    }
 }
 
 impl<ReqBody, ResBody, S> Service<Request<ReqBody>> for RequestBodyLimit<S>
