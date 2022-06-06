@@ -15,12 +15,12 @@ pub struct RequestBodyLimit<S> {
 }
 
 impl<S> RequestBodyLimit<S> {
-    define_inner_service_accessors!();
-
     /// Create a new `RequestBodyLimit` with the given body length limit.
     pub fn new(inner: S, limit: usize) -> Self {
         Self { inner, limit }
     }
+
+    define_inner_service_accessors!();
 }
 
 impl<ReqBody, ResBody, S> Service<Request<ReqBody>> for RequestBodyLimit<S>
