@@ -2,14 +2,13 @@ use super::{ResponseBody, ResponseFuture};
 use http::{Request, Response};
 use http_body::{Body, Limited};
 use std::task::{Context, Poll};
-use std::{any, fmt};
 use tower_service::Service;
 
 /// Middleware that intercepts requests with body lengths greater than the
 /// configured limit and converts them into `413 Payload Too Large` responses.
 ///
 /// See the [module docs](crate::limit) for an example.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct RequestBodyLimit<S> {
     pub(crate) inner: S,
     pub(crate) limit: usize,
@@ -21,15 +20,6 @@ impl<S> RequestBodyLimit<S> {
     /// Create a new `RequestBodyLimit` with the given body length limit.
     pub fn new(inner: S, limit: usize) -> Self {
         Self { inner, limit }
-    }
-}
-
-impl<S> fmt::Debug for RequestBodyLimit<S> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("RequestBodyLimit")
-            .field("service", &format_args!("{}", any::type_name::<S>()))
-            .field("limit", &self.limit)
-            .finish()
     }
 }
 
