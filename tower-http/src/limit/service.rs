@@ -45,9 +45,8 @@ where
     }
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
-        let (parts, body) = req.into_parts();
-        let content_length = parts
-            .headers
+        let content_length = req
+            .headers()
             .get(http::header::CONTENT_LENGTH)
             .and_then(|value| value.to_str().ok()?.parse::<usize>().ok());
 
@@ -57,10 +56,8 @@ where
             None => self.limit,
         };
 
-        let body = Limited::new(body, body_limit);
-        let req = Request::from_parts(parts, body);
-        let future = self.inner.call(req);
+        let req = req.map(|body| Limited::new(body, body_limit));
 
-        ResponseFuture::new(future)
+        ResponseFuture::new(self.inner.call(req))
     }
 }

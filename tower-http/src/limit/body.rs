@@ -1,8 +1,7 @@
 use bytes::Bytes;
 use http::{HeaderMap, HeaderValue, Response, StatusCode};
-use http_body::{Body, SizeHint};
+use http_body::{Body, Full, SizeHint};
 use pin_project_lite::pin_project;
-use std::convert::TryFrom;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
@@ -20,7 +19,7 @@ impl<B> ResponseBody<B> {
     fn payload_too_large() -> Self {
         Self {
             inner: ResponseBodyInner::PayloadTooLarge {
-                data: Some(Bytes::from_static(BODY)),
+                body: Full::from(BODY),
             },
         }
     }
@@ -36,7 +35,8 @@ pin_project! {
     #[project = BodyProj]
     enum ResponseBodyInner<B> {
         PayloadTooLarge {
-            data: Option<Bytes>,
+            #[pin]
+            body: Full<Bytes>,
         },
         Body {
             #[pin]
@@ -57,7 +57,7 @@ where
         cx: &mut Context<'_>,
     ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
         match self.project().inner.project() {
-            BodyProj::PayloadTooLarge { data } => Poll::Ready(Ok(data.take()).transpose()),
+            BodyProj::PayloadTooLarge { body } => body.poll_data(cx).map_err(|err| match err {}),
             BodyProj::Body { body } => body.poll_data(cx),
         }
     }
@@ -67,24 +67,23 @@ where
         cx: &mut Context<'_>,
     ) -> Poll<Result<Option<HeaderMap>, Self::Error>> {
         match self.project().inner.project() {
-            BodyProj::PayloadTooLarge { .. } => Poll::Ready(Ok(None)),
+            BodyProj::PayloadTooLarge { body } => {
+                body.poll_trailers(cx).map_err(|err| match err {})
+            }
             BodyProj::Body { body } => body.poll_trailers(cx),
         }
     }
 
     fn is_end_stream(&self) -> bool {
         match &self.inner {
-            ResponseBodyInner::PayloadTooLarge { data } => data.is_none(),
+            ResponseBodyInner::PayloadTooLarge { body } => body.is_end_stream(),
             ResponseBodyInner::Body { body } => body.is_end_stream(),
         }
     }
 
     fn size_hint(&self) -> SizeHint {
         match &self.inner {
-            ResponseBodyInner::PayloadTooLarge { data: None } => SizeHint::with_exact(0),
-            ResponseBodyInner::PayloadTooLarge { data: Some(_) } => {
-                SizeHint::with_exact(u64::try_from(BODY.len()).unwrap())
-            }
+            ResponseBodyInner::PayloadTooLarge { body } => body.size_hint(),
             ResponseBodyInner::Body { body } => body.size_hint(),
         }
     }

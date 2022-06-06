@@ -51,20 +51,11 @@ where
     type Output = Result<Response<ResponseBody<ResBody>>, E>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let val = match self.project().inner.project() {
-            ResFutProj::PayloadTooLarge => Ok(create_error_response()),
-            ResFutProj::Future { future } => match ready!(future.poll(cx)) {
-                Ok(data) => {
-                    let (parts, body) = data.into_parts();
-                    let body = ResponseBody::new(body);
-                    let resp = Response::from_parts(parts, body);
-
-                    Ok(resp)
-                }
-                Err(err) => Err(err),
-            },
+        let res = match self.project().inner.project() {
+            ResFutProj::PayloadTooLarge => create_error_response(),
+            ResFutProj::Future { future } => ready!(future.poll(cx))?.map(ResponseBody::new),
         };
 
-        Poll::Ready(val)
+        Poll::Ready(Ok(res))
     }
 }
