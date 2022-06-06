@@ -1,4 +1,4 @@
-//! Imposes a length limit on request bodies.
+//! Middleware for limiting request bodies.
 //!
 //! This layer will also intercept requests with a `Content-Length` header
 //! larger than the allowable limit and return an immediate error response
@@ -13,6 +13,8 @@
 //!
 //! # Examples
 //!
+//! ## Limiting based on `Content-Length`
+//!
 //! If a `Content-Length` header is present and indicates a payload that is
 //! larger than the acceptable limit, then the underlying service will not
 //! be called and a `413 Payload Too Large` response will be generated.
@@ -20,7 +22,7 @@
 //! ```rust
 //! use bytes::Bytes;
 //! use std::convert::Infallible;
-//! use http::{Request, Response, StatusCode};
+//! use http::{Request, Response, StatusCode, HeaderValue, header::CONTENT_LENGTH};
 //! use http_body::{Limited, LengthLimitError};
 //! use tower::{Service, ServiceExt, ServiceBuilder};
 //! use tower_http::limit::RequestBodyLimitLayer;
@@ -38,25 +40,25 @@
 //!     .service_fn(handle);
 //!
 //! // Call the service with a header that indicates the body is too large.
-//! let mut request = Request::new(Body::empty());
-//! request.headers_mut().insert(
-//!     http::header::CONTENT_LENGTH,
-//!     http::HeaderValue::from_static("5000"),
-//! );
+//! let mut request = Request::builder()
+//!     .header(CONTENT_LENGTH, HeaderValue::from_static("5000"))
+//!     .body(Body::empty())
+//!     .unwrap();
 //!
 //! let response = svc.ready().await?.call(request).await?;
 //!
 //! assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
-//!
 //! #
 //! # Ok(())
 //! # }
 //! ```
 //!
+//! ## Limiting without known `Content-Length`
+//!
 //! If a `Content-Length` header is not present, then the body will be read
 //! until the configured limit has been reached. If the payload is larger than
 //! the limit, the [`http_body::Limited`] body will return an error. This
-//! error can be inspected to determine if is a [`http_body::LengthLimitError`]
+//! error can be inspected to determine if it is a [`http_body::LengthLimitError`]
 //! and return an appropriate response in such case.
 //!
 //! Note that no error will be generated if the body is never read. Similarly,
@@ -76,18 +78,20 @@
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), BoxError> {
 //! async fn handle(req: Request<Limited<Body>>) -> Result<Response<Body>, BoxError> {
-//!     match hyper::body::to_bytes(req.into_body()).await {
-//!         Ok(data) => Ok(Response::new(Body::empty())),
+//!     let data = match hyper::body::to_bytes(req.into_body()).await {
+//!         Ok(data) => data,
 //!         Err(err) => {
 //!             if let Some(_) = err.downcast_ref::<LengthLimitError>() {
 //!                 let mut resp = Response::new(Body::empty());
 //!                 *resp.status_mut() = StatusCode::PAYLOAD_TOO_LARGE;
-//!                 Ok(resp)
+//!                 return Ok(resp);
 //!             } else {
-//!                 Err(err)
+//!                 return Err(err);
 //!             }
 //!         }
-//!     }
+//!     };
+//!
+//!     Ok(Response::new(Body::empty()))
 //! }
 //!
 //! let mut svc = ServiceBuilder::new()
@@ -100,7 +104,7 @@
 //!
 //! let response = svc.ready().await?.call(request).await?;
 //!
-//! assert_eq!(response.status(), 200);
+//! assert_eq!(response.status(), StatusCode::OK);
 //!
 //! // Call the service with a body that is too large.
 //! let request = Request::new(Body::from(Bytes::from(vec![0u8; 4097])));
@@ -108,74 +112,20 @@
 //! let response = svc.ready().await?.call(request).await?;
 //!
 //! assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
-//!
 //! #
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! ## Limiting without `Content-Length`
 //!
 //! If enforcement of body size limits is desired without preemptively
 //! handling requests with a `Content-Length` header indicating an over-sized
 //! request, consider using [`MapRequestBody`] to wrap the request body with
-//! [`http_body::Limited`].
+//! [`http_body::Limited`] and checking for [`http_body::LengthLimitError`]
+//! like in the previous example.
 //!
 //! [`MapRequestBody`]: crate::map_request_body
-//!
-//! ```rust
-//! # use bytes::Bytes;
-//! # use http::{Request, Response, StatusCode};
-//! # use tower::{Service, ServiceExt, ServiceBuilder};
-//! # use tower_http::limit::RequestBodyLimitLayer;
-//! # use http_body::{Limited, LengthLimitError};
-//! # use hyper::Body;
-//! # use std::convert::Infallible;
-//! use tower_http::map_request_body::MapRequestBodyLayer;
-//!
-//! # #[tokio::main]
-//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! async fn handle(req: Request<Limited<Body>>) -> Result<Response<Body>, Infallible> {
-//!     let data = hyper::body::to_bytes(req.into_body()).await;
-//!     let resp = match data {
-//!         Ok(data) => Response::new(Body::from(data)),
-//!         Err(err) => {
-//!             if let Some(_) = err.downcast_ref::<LengthLimitError>() {
-//!                 let body = Body::from("Whoa there! Too much data! Teapot mode!");
-//!                 let mut resp = Response::new(body);
-//!                 *resp.status_mut() = StatusCode::IM_A_TEAPOT;
-//!                 resp
-//!             } else {
-//!                 let mut resp = Response::new(Body::from(err.to_string()));
-//!                 *resp.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
-//!                 resp
-//!             }
-//!         }
-//!     };
-//!     Ok(resp)
-//! }
-//!
-//! let mut svc = ServiceBuilder::new()
-//!     // Limit incoming requests to 4096 bytes, but no automatic response.
-//!     .layer(MapRequestBodyLayer::new(|b| Limited::new(b, 4096)))
-//!     .service_fn(handle);
-//!
-//! // Call the service.
-//! let request = Request::new(Body::empty());
-//!
-//! let response = svc.ready().await?.call(request).await?;
-//!
-//! assert_eq!(response.status(), 200);
-//!
-//! // Call the service with a body that is too large.
-//! let request = Request::new(Body::from(Bytes::from(vec![0u8; 4097])));
-//!
-//! let response = svc.ready().await?.call(request).await?;
-//!
-//! assert_eq!(response.status(), StatusCode::IM_A_TEAPOT);
-//!
-//! #
-//! # Ok(())
-//! # }
-//! ```
 
 mod body;
 mod future;
