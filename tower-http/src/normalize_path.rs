@@ -131,7 +131,9 @@ fn remove_trailing_slash(uri: &mut Uri) {
     };
 
     parts.path_and_query = new_path_and_query;
-    *uri = Uri::from_parts(parts).unwrap();
+    if let Ok(new_uri) = Uri::from_parts(parts) {
+        *uri = new_uri;
+    }
 }
 
 #[cfg(test)]
