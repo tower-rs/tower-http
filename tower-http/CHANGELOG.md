@@ -21,7 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Fixed
 
-- None.
+- **trace:** Correctly identify gRPC requests in default `on_response` callback ([#278])
+
+[#278]: https://github.com/tower-rs/tower-http/pull/278
 
 # 0.3.4 (June 06, 2022)
 
