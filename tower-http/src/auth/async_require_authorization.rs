@@ -274,7 +274,7 @@ where
 pub trait AsyncAuthorizeRequest<B> {
     /// The type of request body returned by `authorize`.
     ///
-    /// Set this to `B` if you need to change the request body type.
+    /// Set this to `B` unless you need to change the request body type.
     type RequestBody;
 
     /// The body type used for responses to unauthorized requests.
