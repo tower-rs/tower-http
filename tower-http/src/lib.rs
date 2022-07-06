@@ -253,6 +253,13 @@ pub mod sensitive_headers;
 pub mod decompression;
 
 #[cfg(any(
+feature = "decompression-br",
+feature = "decompression-deflate",
+feature = "decompression-gzip"
+))]
+pub mod decompression_request;
+
+#[cfg(any(
     feature = "compression-br",
     feature = "compression-deflate",
     feature = "compression-gzip",

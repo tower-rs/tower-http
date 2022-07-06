@@ -58,6 +58,8 @@ mod future;
 mod layer;
 mod service;
 
+pub(super) use self::body::BodyInner;
+
 pub use self::{
     body::DecompressionBody, future::ResponseFuture, layer::DecompressionLayer,
     service::Decompression,
