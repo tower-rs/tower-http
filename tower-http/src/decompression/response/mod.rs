@@ -24,7 +24,7 @@
 //! // Our HTTP client.
 //! let mut client = ServiceBuilder::new()
 //!     // Automatically decompress response bodies.
-//!     .layer(ResponseDecompressionLayer::new())
+//!     .layer(DecompressionLayer::new())
 //!     .service(service);
 //!
 //! // Call the service.
