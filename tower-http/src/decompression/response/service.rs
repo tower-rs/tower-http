@@ -1,5 +1,6 @@
-use super::{DecompressionBody, DecompressionLayer, ResponseFuture};
+use super::{future::ResponseFuture, layer::ResponseDecompressionLayer};
 use crate::compression_utils::AcceptEncoding;
+use crate::decompression::DecompressionBody;
 use http::{
     header::{self, ACCEPT_ENCODING},
     Request, Response,
@@ -15,12 +16,12 @@ use tower_service::Service;
 ///
 /// See the [module docs](crate::decompression) for more details.
 #[derive(Debug, Clone)]
-pub struct Decompression<S> {
+pub struct ResponseDecompression<S> {
     pub(crate) inner: S,
     pub(crate) accept: AcceptEncoding,
 }
 
-impl<S> Decompression<S> {
+impl<S> ResponseDecompression<S> {
     /// Creates a new `Decompression` wrapping the `service`.
     pub fn new(service: S) -> Self {
         Self {
@@ -34,8 +35,8 @@ impl<S> Decompression<S> {
     /// Returns a new [`Layer`] that wraps services with a `Decompression` middleware.
     ///
     /// [`Layer`]: tower_layer::Layer
-    pub fn layer() -> DecompressionLayer {
-        DecompressionLayer::new()
+    pub fn layer() -> ResponseDecompressionLayer {
+        ResponseDecompressionLayer::new()
     }
 
     /// Sets whether to request the gzip encoding.
@@ -84,7 +85,7 @@ impl<S> Decompression<S> {
     }
 }
 
-impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for Decompression<S>
+impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for ResponseDecompression<S>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
     ResBody: Body,

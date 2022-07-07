@@ -1,57 +1,54 @@
-use super::Decompression;
+use super::service::RequestDecompression;
 use crate::compression_utils::AcceptEncoding;
 use tower_layer::Layer;
 
-/// Decompresses response bodies of the underlying service.
-///
-/// This adds the `Accept-Encoding` header to requests and transparently decompresses response
-/// bodies based on the `Content-Encoding` header.
-///
-/// See the [module docs](crate::decompression) for more details.
 #[derive(Debug, Default, Clone)]
-pub struct DecompressionLayer {
+pub struct RequestDecompressionLayer {
     accept: AcceptEncoding,
 }
 
-impl<S> Layer<S> for DecompressionLayer {
-    type Service = Decompression<S>;
+impl<S> Layer<S> for RequestDecompressionLayer {
+    type Service = RequestDecompression<S>;
 
     fn layer(&self, service: S) -> Self::Service {
-        Decompression {
+        RequestDecompression {
             inner: service,
             accept: self.accept,
         }
     }
 }
 
-impl DecompressionLayer {
-    /// Creates a new `DecompressionLayer`.
+impl RequestDecompressionLayer {
+    /// Creates a new `RequestDecompressionLayer`.
     pub fn new() -> Self {
         Default::default()
     }
 
-    /// Sets whether to request the gzip encoding.
+    /// Sets whether to support
+    /// gzip encoding.
     #[cfg(feature = "decompression-gzip")]
     pub fn gzip(mut self, enable: bool) -> Self {
         self.accept.set_gzip(enable);
         self
     }
 
-    /// Sets whether to request the Deflate encoding.
+    /// Sets whether to support
+    /// Deflate encoding.
     #[cfg(feature = "decompression-deflate")]
     pub fn deflate(mut self, enable: bool) -> Self {
         self.accept.set_deflate(enable);
         self
     }
 
-    /// Sets whether to request the Brotli encoding.
+    /// Sets whether to support
+    /// Brotli encoding.
     #[cfg(feature = "decompression-br")]
     pub fn br(mut self, enable: bool) -> Self {
         self.accept.set_br(enable);
         self
     }
 
-    /// Disables the gzip encoding.
+    /// Disables support for gzip encoding.
     ///
     /// This method is available even if the `gzip` crate feature is disabled.
     pub fn no_gzip(mut self) -> Self {
@@ -59,7 +56,7 @@ impl DecompressionLayer {
         self
     }
 
-    /// Disables the Deflate encoding.
+    /// Disables support for Deflate encoding.
     ///
     /// This method is available even if the `deflate` crate feature is disabled.
     pub fn no_deflate(mut self) -> Self {
@@ -67,7 +64,7 @@ impl DecompressionLayer {
         self
     }
 
-    /// Disables the Brotli encoding.
+    /// Disables support for Brotli encoding.
     ///
     /// This method is available even if the `br` crate feature is disabled.
     pub fn no_br(mut self) -> Self {
