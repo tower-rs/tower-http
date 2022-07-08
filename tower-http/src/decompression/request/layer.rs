@@ -5,6 +5,7 @@ use tower_layer::Layer;
 #[derive(Debug, Default, Clone)]
 pub struct RequestDecompressionLayer {
     accept: AcceptEncoding,
+    pass_through_unaccepted: bool,
 }
 
 impl<S> Layer<S> for RequestDecompressionLayer {
@@ -14,6 +15,7 @@ impl<S> Layer<S> for RequestDecompressionLayer {
         RequestDecompression {
             inner: service,
             accept: self.accept,
+            pass_through_unaccepted: self.pass_through_unaccepted,
         }
     }
 }
@@ -69,6 +71,12 @@ impl RequestDecompressionLayer {
     /// This method is available even if the `br` crate feature is disabled.
     pub fn no_br(mut self) -> Self {
         self.accept.set_br(false);
+        self
+    }
+
+    /// Passes through unaccepted encodings
+    pub fn pass_through_unaccepted(mut self) -> Self {
+        self.pass_through_unaccepted = true;
         self
     }
 }

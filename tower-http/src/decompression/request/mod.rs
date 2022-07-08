@@ -1,64 +1,108 @@
-pub(super) mod layer;
-pub(super) mod service;
+pub mod future;
+pub mod layer;
+pub mod service;
 
 #[cfg(test)]
 mod tests {
     use super::service::RequestDecompression;
     use crate::decompression::DecompressionBody;
     use bytes::BytesMut;
-    use flate2::write::GzEncoder;
-    use flate2::Compression;
-    use http::{header, Response};
+    use flate2::{write::GzEncoder, Compression};
+    use http::{header, Response, StatusCode};
     use http_body::Body as _;
     use hyper::{Body, Error, Request, Server};
     use std::io::Write;
     use std::net::SocketAddr;
-    use tower::make::Shared;
-    use tower::{service_fn, Service, ServiceExt};
+    use tower::{make::Shared, service_fn, Service, ServiceExt};
 
     #[tokio::test]
-    async fn should_decode_gzip_encoded_body() {
+    async fn decompress_accepted_encoding() {
+        let req = request_gzip();
+        let mut svc = RequestDecompression::new(service_fn(assert_request_is_decompressed));
+        let _ = svc.ready().await.unwrap().call(req).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn support_unencoded_body() {
+        let req = Request::builder()
+            .body(Body::from("Hello, World?"))
+            .unwrap();
+        let mut svc = RequestDecompression::new(service_fn(assert_request_is_decompressed));
+        let _ = svc.ready().await.unwrap().call(req).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn unaccepted_content_encoding_returns_unsupported_media_type() {
+        let req = request_gzip();
+        let mut svc = RequestDecompression::new(service_fn(should_not_be_called));
+        svc.accept.set_gzip(false);
+        let res = svc.ready().await.unwrap().call(req).await.unwrap();
+        assert_eq!(StatusCode::UNSUPPORTED_MEDIA_TYPE, res.status());
+    }
+
+    #[tokio::test]
+    async fn pass_through_unsupported_encoding_when_configured() {
+        let req = request_gzip();
+        let mut svc = RequestDecompression::new(service_fn(assert_request_is_passed_through));
+        svc.accept.set_gzip(false);
+        svc.pass_through_unaccepted = true;
+        let _ = svc.ready().await.unwrap().call(req).await.unwrap();
+    }
+
+    async fn assert_request_is_decompressed(
+        req: Request<DecompressionBody<Body>>,
+    ) -> Result<Response<Body>, Error> {
+        let (parts, mut body) = req.into_parts();
+        let body = read_body(&mut body).await;
+
+        assert_eq!(body, b"Hello, World?");
+        assert!(!parts.headers.contains_key(header::CONTENT_ENCODING));
+
+        Ok(Response::new(Body::from("Hello, World!")))
+    }
+
+    async fn assert_request_is_passed_through(
+        req: Request<DecompressionBody<Body>>,
+    ) -> Result<Response<Body>, Error> {
+        let (parts, mut body) = req.into_parts();
+        let body = read_body(&mut body).await;
+
+        assert_ne!(body, b"Hello, World?");
+        assert!(parts.headers.contains_key(header::CONTENT_ENCODING));
+
+        Ok(Response::new(Body::empty()))
+    }
+
+    async fn should_not_be_called(
+        _: Request<DecompressionBody<Body>>,
+    ) -> Result<Response<Body>, Error> {
+        panic!("Inner service should not be called");
+    }
+
+    fn request_gzip() -> Request<Body> {
         let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-        encoder.write_all(b"Hello, World!").unwrap();
+        encoder.write_all(b"Hello, World?").unwrap();
         let body = encoder.finish().unwrap();
         let req = Request::builder()
             .header(header::CONTENT_ENCODING, "gzip")
             .body(Body::from(body))
             .unwrap();
-
-        let mut svc = RequestDecompression::new(service_fn(handle_asserts_on_body));
-        let _ = svc.ready().await.unwrap().call(req).await.unwrap();
+        req
     }
 
-    #[tokio::test]
-    async fn should_not_decode_unencoded_body() {
-        let req = Request::builder()
-            .body(Body::from("Hello, World!"))
-            .unwrap();
-
-        let mut svc = RequestDecompression::new(service_fn(handle_asserts_on_body));
-        let _ = svc.ready().await.unwrap().call(req).await.unwrap();
-    }
-
-    async fn handle_asserts_on_body(
-        req: Request<DecompressionBody<Body>>,
-    ) -> Result<Response<Body>, Error> {
-        let mut body = req.into_body();
+    async fn read_body(body: &mut DecompressionBody<Body>) -> Vec<u8> {
         let mut data = BytesMut::new();
         while let Some(chunk) = body.data().await {
             let chunk = chunk.unwrap();
             data.extend_from_slice(&chunk[..]);
         }
-        let decompressed_data = String::from_utf8(data.freeze().to_vec())
-            .expect("Data should be decoded and therefore valid utf-8");
-        assert_eq!(decompressed_data, "Hello, World!");
-
-        Ok(Response::new(Body::empty()))
+        let decompressed_data = data.freeze().to_vec();
+        decompressed_data
     }
 
     #[allow(dead_code)]
     async fn is_compatible_with_hyper() {
-        let svc = service_fn(handle_asserts_on_body);
+        let svc = service_fn(assert_request_is_decompressed);
         let svc = RequestDecompression::new(svc);
 
         let make_service = Shared::new(svc);

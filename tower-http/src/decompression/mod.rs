@@ -1,15 +1,17 @@
+//! Middleware for decompressing Requests and Responses
+
 mod body;
+pub mod request;
 mod response;
-mod request;
 
-pub use self::body::DecompressionBody;
-
-pub use self::response::{
-    future::ResponseFuture as ResponseFuture, layer::ResponseDecompressionLayer as DecompressionLayer,
-    service::ResponseDecompression as Decompression,
-};
-
-pub use self::request::{
-    layer::RequestDecompressionLayer,
-    service::RequestDecompression,
+pub use self::{
+    body::DecompressionBody,
+    request::{
+        layer::RequestDecompressionLayer,
+        service::RequestDecompression
+    },
+    response::{
+        future::ResponseFuture, layer::ResponseDecompressionLayer as DecompressionLayer,
+        service::ResponseDecompression as Decompression,
+    },
 };

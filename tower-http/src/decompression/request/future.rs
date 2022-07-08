@@ -1,0 +1,93 @@
+use crate::compression_utils::AcceptEncoding;
+use crate::BoxError;
+use bytes::Buf;
+use http::{header, Response, StatusCode};
+use http_body::{combinators::UnsyncBoxBody, Body, Empty};
+use pin_project_lite::pin_project;
+use std::future::Future;
+use std::pin::Pin;
+use std::task::Context;
+use std::task::Poll;
+
+pin_project! {
+    #[derive(Debug)]
+    pub struct ResponseFuture<F, B, E>
+    where
+        F: Future<Output = Result<Response<B>, E>>,
+        B: Body
+    {
+        #[pin]
+        kind: Kind<F, B, E>,
+    }
+}
+
+pin_project! {
+    #[derive(Debug)]
+    #[project = StateProj]
+    enum Kind<F, B, E>
+    where
+        F: Future<Output = Result<Response<B>, E>>,
+        B: Body
+    {
+        Inner {
+            #[pin]
+            fut: F
+        },
+        Unsupported {
+            #[pin]
+            accept: AcceptEncoding
+        },
+    }
+}
+
+impl<F, B, E> ResponseFuture<F, B, E>
+where
+    F: Future<Output = Result<Response<B>, E>>,
+    B: Body,
+{
+    #[must_use]
+    pub(super) fn unsupported_encoding(accept: AcceptEncoding) -> Self {
+        Self {
+            kind: Kind::Unsupported { accept },
+        }
+    }
+
+    #[must_use]
+    pub(super) fn inner(fut: F) -> Self {
+        Self {
+            kind: Kind::Inner { fut },
+        }
+    }
+}
+
+impl<F, B, E> Future for ResponseFuture<F, B, E>
+where
+    F: Future<Output = Result<Response<B>, E>>,
+    B: Body + Send + 'static,
+    <B as Body>::Data: Buf + 'static,
+    <B as Body>::Error: Into<BoxError> + 'static,
+    E: Into<BoxError>,
+{
+    type Output = Result<Response<UnsyncBoxBody<<B as Body>::Data, BoxError>>, BoxError>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        match self.project().kind.project() {
+            StateProj::Inner { fut } => fut
+                .poll(cx)
+                .map_ok(|res| res.map(|body| body.map_err(Into::into).boxed_unsync()))
+                .map_err(Into::into),
+            StateProj::Unsupported { accept } => {
+                let builder = if let Some(accept) = accept.to_header_value() {
+                    Response::builder().header(header::ACCEPT_ENCODING, accept)
+                } else {
+                    Response::builder()
+                };
+                let res = builder
+                    .status(StatusCode::UNSUPPORTED_MEDIA_TYPE)
+                    .body(Empty::new().map_err(Into::into).boxed_unsync())
+                    .map_err(Into::into);
+                Poll::Ready(res)
+            }
+        }
+    }
+}

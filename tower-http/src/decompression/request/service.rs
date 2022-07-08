@@ -1,31 +1,34 @@
-use super::layer::RequestDecompressionLayer;
-use crate::{
-    compression_utils::AcceptEncoding, compression_utils::WrapBody,
-    content_encoding::SupportedEncodings, decompression::body::BodyInner,
-    decompression::DecompressionBody,
-};
+use super::{future::ResponseFuture, layer::RequestDecompressionLayer};
+use crate::{BoxError, compression_utils::AcceptEncoding, compression_utils::WrapBody, content_encoding::SupportedEncodings, decompression::body::BodyInner, decompression::DecompressionBody};
 use http::{header, Request, Response};
 use http_body::Body;
 use std::task::{Context, Poll};
+use bytes::Buf;
+use http_body::combinators::UnsyncBoxBody;
 use tower_service::Service;
 
 #[derive(Debug, Clone)]
 pub struct RequestDecompression<S> {
     pub(super) inner: S,
     pub(super) accept: AcceptEncoding,
+    pub(super) pass_through_unaccepted: bool,
 }
 
-impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for RequestDecompression<S>
+impl<S, ReqBody, ResBody, D> Service<Request<ReqBody>> for RequestDecompression<S>
 where
     S: Service<Request<DecompressionBody<ReqBody>>, Response = Response<ResBody>>,
     ReqBody: Body,
+    ResBody: Body<Data = D> + Send + 'static,
+    S::Error: Into<BoxError>,
+    <ResBody as Body>::Error: Into<BoxError>,
+    D: Buf + 'static
 {
-    type Response = Response<ResBody>;
-    type Error = S::Error;
-    type Future = S::Future;
+    type Response = Response<UnsyncBoxBody<D, BoxError>>;
+    type Error = BoxError;
+    type Future = ResponseFuture<S::Future, ResBody, S::Error>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.inner.poll_ready(cx)
+        self.inner.poll_ready(cx).map_err(Into::into)
     }
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
@@ -46,11 +49,14 @@ where
                     b"br" if self.accept.br() => {
                         DecompressionBody::new(BodyInner::brotli(WrapBody::new(body)))
                     }
-                    _ => {
-                        return self.inner.call(Request::from_parts(
+                    _ if self.pass_through_unaccepted => {
+                        return ResponseFuture::inner(self.inner.call(Request::from_parts(
                             parts,
                             DecompressionBody::new(BodyInner::identity(body)),
-                        ))
+                        )))
+                    }
+                    _ => {
+                        return ResponseFuture::unsupported_encoding(self.accept)
                     }
                 };
 
@@ -62,7 +68,7 @@ where
                 Request::from_parts(parts, DecompressionBody::new(BodyInner::identity(body)))
             };
 
-        self.inner.call(req)
+        ResponseFuture::inner(self.inner.call(req))
     }
 }
 
@@ -72,6 +78,7 @@ impl<S> RequestDecompression<S> {
         Self {
             inner: service,
             accept: AcceptEncoding::default(),
+            pass_through_unaccepted: false,
         }
     }
 
@@ -82,6 +89,11 @@ impl<S> RequestDecompression<S> {
     /// [`Layer`]: tower_layer::Layer
     pub fn layer() -> RequestDecompressionLayer {
         RequestDecompressionLayer::new()
+    }
+
+    pub fn pass_through_unaccepted(mut self) -> Self {
+        self.pass_through_unaccepted = false;
+        self
     }
 
     /// Sets whether to support gzip encoding.
