@@ -1,4 +1,4 @@
-use super::service::ResponseDecompression;
+use super::Decompression;
 use crate::compression_utils::AcceptEncoding;
 use tower_layer::Layer;
 
@@ -9,22 +9,22 @@ use tower_layer::Layer;
 ///
 /// See the [module docs](crate::decompression) for more details.
 #[derive(Debug, Default, Clone)]
-pub struct ResponseDecompressionLayer {
+pub struct DecompressionLayer {
     accept: AcceptEncoding,
 }
 
-impl<S> Layer<S> for ResponseDecompressionLayer {
-    type Service = ResponseDecompression<S>;
+impl<S> Layer<S> for DecompressionLayer {
+    type Service = Decompression<S>;
 
     fn layer(&self, service: S) -> Self::Service {
-        ResponseDecompression {
+        Decompression {
             inner: service,
             accept: self.accept,
         }
     }
 }
 
-impl ResponseDecompressionLayer {
+impl DecompressionLayer {
     /// Creates a new `DecompressionLayer`.
     pub fn new() -> Self {
         Default::default()

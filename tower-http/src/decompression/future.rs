@@ -1,6 +1,6 @@
 #![allow(unused_imports)]
 
-use crate::decompression::{body::BodyInner, DecompressionBody};
+use super::{body::BodyInner, DecompressionBody};
 use crate::compression_utils::{AcceptEncoding, WrapBody};
 use crate::content_encoding::SupportedEncodings;
 use futures_util::ready;
