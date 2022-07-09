@@ -1,6 +1,6 @@
-pub mod future;
-pub mod layer;
-pub mod service;
+pub(super) mod future;
+pub(super) mod layer;
+pub(super) mod service;
 
 #[cfg(test)]
 mod tests {

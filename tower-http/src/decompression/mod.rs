@@ -53,15 +53,22 @@
 //! # }
 //! ```
 
+mod request;
+
 mod body;
 mod future;
 mod layer;
 mod service;
 
-pub use self::{
-    body::DecompressionBody, future::ResponseFuture, layer::DecompressionLayer,
-    service::Decompression,
-};
+pub use self::body::DecompressionBody;
+
+pub use self::future::ResponseFuture;
+pub use self::layer::DecompressionLayer;
+pub use self::service::Decompression;
+
+pub use self::request::future::RequestDecompressionResponseFuture;
+pub use self::request::layer::RequestDecompressionLayer;
+pub use self::request::service::RequestDecompression;
 
 #[cfg(test)]
 mod tests {

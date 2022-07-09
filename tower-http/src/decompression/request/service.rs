@@ -1,4 +1,5 @@
-use super::{future::ResponseFuture, layer::RequestDecompressionLayer};
+use super::future::RequestDecompressionResponseFuture as ResponseFuture;
+use super::layer::RequestDecompressionLayer;
 use crate::{
     compression_utils::AcceptEncoding, compression_utils::WrapBody,
     content_encoding::SupportedEncodings, decompression::body::BodyInner,

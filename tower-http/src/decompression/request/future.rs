@@ -11,7 +11,7 @@ use std::task::Poll;
 
 pin_project! {
     #[derive(Debug)]
-    pub struct ResponseFuture<F, B, E>
+    pub struct RequestDecompressionResponseFuture<F, B, E>
     where
         F: Future<Output = Result<Response<B>, E>>,
         B: Body
@@ -40,7 +40,7 @@ pin_project! {
     }
 }
 
-impl<F, B, E> ResponseFuture<F, B, E>
+impl<F, B, E> RequestDecompressionResponseFuture<F, B, E>
 where
     F: Future<Output = Result<Response<B>, E>>,
     B: Body,
@@ -60,7 +60,7 @@ where
     }
 }
 
-impl<F, B, E> Future for ResponseFuture<F, B, E>
+impl<F, B, E> Future for RequestDecompressionResponseFuture<F, B, E>
 where
     F: Future<Output = Result<Response<B>, E>>,
     B: Body + Send + 'static,
