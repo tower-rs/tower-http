@@ -34,8 +34,8 @@ mod tests {
     #[tokio::test]
     async fn unaccepted_content_encoding_returns_unsupported_media_type() {
         let req = request_gzip();
-        let mut svc = RequestDecompression::new(service_fn(should_not_be_called));
-        svc.accept.set_gzip(false);
+        let mut svc = RequestDecompression::new(service_fn(should_not_be_called))
+            .gzip(false);
         let res = svc.ready().await.unwrap().call(req).await.unwrap();
         assert_eq!(StatusCode::UNSUPPORTED_MEDIA_TYPE, res.status());
     }
@@ -43,9 +43,9 @@ mod tests {
     #[tokio::test]
     async fn pass_through_unsupported_encoding_when_configured() {
         let req = request_gzip();
-        let mut svc = RequestDecompression::new(service_fn(assert_request_is_passed_through));
-        svc.accept.set_gzip(false);
-        svc.pass_through_unaccepted = true;
+        let mut svc = RequestDecompression::new(service_fn(assert_request_is_passed_through))
+            .pass_through_unaccepted(true)
+            .gzip(false);
         let _ = svc.ready().await.unwrap().call(req).await.unwrap();
     }
 
@@ -83,11 +83,10 @@ mod tests {
         let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
         encoder.write_all(b"Hello, World?").unwrap();
         let body = encoder.finish().unwrap();
-        let req = Request::builder()
+        Request::builder()
             .header(header::CONTENT_ENCODING, "gzip")
             .body(Body::from(body))
-            .unwrap();
-        req
+            .unwrap()
     }
 
     async fn read_body(body: &mut DecompressionBody<Body>) -> Vec<u8> {
@@ -96,8 +95,7 @@ mod tests {
             let chunk = chunk.unwrap();
             data.extend_from_slice(&chunk[..]);
         }
-        let decompressed_data = data.freeze().to_vec();
-        decompressed_data
+        data.freeze().to_vec()
     }
 
     #[allow(dead_code)]

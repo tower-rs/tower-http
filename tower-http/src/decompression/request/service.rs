@@ -1,10 +1,14 @@
 use super::{future::ResponseFuture, layer::RequestDecompressionLayer};
-use crate::{BoxError, compression_utils::AcceptEncoding, compression_utils::WrapBody, content_encoding::SupportedEncodings, decompression::body::BodyInner, decompression::DecompressionBody};
+use crate::{
+    compression_utils::AcceptEncoding, compression_utils::WrapBody,
+    content_encoding::SupportedEncodings, decompression::body::BodyInner,
+    decompression::DecompressionBody, BoxError,
+};
+use bytes::Buf;
 use http::{header, Request, Response};
+use http_body::combinators::UnsyncBoxBody;
 use http_body::Body;
 use std::task::{Context, Poll};
-use bytes::Buf;
-use http_body::combinators::UnsyncBoxBody;
 use tower_service::Service;
 
 #[derive(Debug, Clone)]
@@ -21,7 +25,7 @@ where
     ResBody: Body<Data = D> + Send + 'static,
     S::Error: Into<BoxError>,
     <ResBody as Body>::Error: Into<BoxError>,
-    D: Buf + 'static
+    D: Buf + 'static,
 {
     type Response = Response<UnsyncBoxBody<D, BoxError>>;
     type Error = BoxError;
@@ -34,40 +38,35 @@ where
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
         let (mut parts, body) = req.into_parts();
 
-        let req =
+        let body =
             if let header::Entry::Occupied(entry) = parts.headers.entry(header::CONTENT_ENCODING) {
-                let body = match entry.get().as_bytes() {
+                match entry.get().as_bytes() {
                     #[cfg(feature = "decompression-gzip")]
                     b"gzip" if self.accept.gzip() => {
-                        DecompressionBody::new(BodyInner::gzip(WrapBody::new(body)))
+                        entry.remove();
+                        parts.headers.remove(header::CONTENT_LENGTH);
+                        BodyInner::gzip(WrapBody::new(body))
                     }
                     #[cfg(feature = "decompression-deflate")]
                     b"deflate" if self.accept.deflate() => {
-                        DecompressionBody::new(BodyInner::deflate(WrapBody::new(body)))
+                        entry.remove();
+                        parts.headers.remove(header::CONTENT_LENGTH);
+                        BodyInner::deflate(WrapBody::new(body))
                     }
                     #[cfg(feature = "decompression-br")]
                     b"br" if self.accept.br() => {
-                        DecompressionBody::new(BodyInner::brotli(WrapBody::new(body)))
+                        entry.remove();
+                        parts.headers.remove(header::CONTENT_LENGTH);
+                        BodyInner::brotli(WrapBody::new(body))
                     }
-                    _ if self.pass_through_unaccepted => {
-                        return ResponseFuture::inner(self.inner.call(Request::from_parts(
-                            parts,
-                            DecompressionBody::new(BodyInner::identity(body)),
-                        )))
-                    }
-                    _ => {
-                        return ResponseFuture::unsupported_encoding(self.accept)
-                    }
-                };
-
-                entry.remove();
-                parts.headers.remove(header::CONTENT_LENGTH);
-
-                Request::from_parts(parts, body)
+                    _ if self.pass_through_unaccepted => BodyInner::identity(body),
+                    _ => return ResponseFuture::unsupported_encoding(self.accept),
+                }
             } else {
-                Request::from_parts(parts, DecompressionBody::new(BodyInner::identity(body)))
+                BodyInner::identity(body)
             };
-
+        let body = DecompressionBody::new(body);
+        let req = Request::from_parts(parts, body);
         ResponseFuture::inner(self.inner.call(req))
     }
 }
@@ -91,8 +90,11 @@ impl<S> RequestDecompression<S> {
         RequestDecompressionLayer::new()
     }
 
-    pub fn pass_through_unaccepted(mut self) -> Self {
-        self.pass_through_unaccepted = false;
+    /// Passes through the request even when the encoding is not supported.
+    ///
+    /// By default pass-through is disabled.
+    pub fn pass_through_unaccepted(mut self, enabled: bool) -> Self {
+        self.pass_through_unaccepted = enabled;
         self
     }
 
