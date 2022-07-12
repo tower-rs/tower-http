@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **fs:** `ServeDir` and `ServeFile`'s error types are now `Infallible` and any IO errors
   will be converted into responses. Use `try_call` to generate error responses manually
+- **fs:** `ServeDir::fallback` and `ServeDir::not_found_service` now requires
+  the fallback service to use `Infallible` as its error type
 
 ## Removed
 
