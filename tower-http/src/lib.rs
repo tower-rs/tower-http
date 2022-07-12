@@ -306,6 +306,9 @@ pub mod set_status;
 #[cfg(feature = "timeout")]
 pub mod timeout;
 
+#[cfg(feature = "normalize-path")]
+pub mod normalize_path;
+
 pub mod classify;
 pub mod services;
 
