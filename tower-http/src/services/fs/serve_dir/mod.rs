@@ -444,6 +444,7 @@ where
 }
 
 opaque_future! {
+    /// Response future of [`ServeDir`].
     pub type InfallibleResponseFuture<ReqBody, F> =
         futures_util::future::Map<
             ResponseFuture<ReqBody, F>,
