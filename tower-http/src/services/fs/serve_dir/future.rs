@@ -15,6 +15,7 @@ use http::{
 use http_body::{Body, Empty, Full};
 use pin_project_lite::pin_project;
 use std::{
+    convert::Infallible,
     future::Future,
     io,
     pin::Pin,
@@ -65,7 +66,7 @@ pin_project! {
             fallback_and_request: Option<(F, Request<ReqBody>)>,
         },
         FallbackFuture {
-            future: BoxFuture<'static, io::Result<Response<ResponseBody>>>,
+            future: BoxFuture<'static, Result<Response<ResponseBody>, Infallible>>,
         },
         InvalidPath,
         MethodNotAllowed,
@@ -74,8 +75,7 @@ pin_project! {
 
 impl<F, ReqBody, ResBody> Future for ResponseFuture<ReqBody, F>
 where
-    F: Service<Request<ReqBody>, Response = Response<ResBody>> + Clone,
-    F::Error: Into<io::Error>,
+    F: Service<Request<ReqBody>, Response = Response<ResBody>, Error = Infallible> + Clone,
     F::Future: Send + 'static,
     ResBody: http_body::Body<Data = Bytes> + Send + 'static,
     ResBody::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
@@ -135,7 +135,7 @@ where
                 },
 
                 ResponseFutureInnerProj::FallbackFuture { future } => {
-                    break Pin::new(future).poll(cx)
+                    break Pin::new(future).poll(cx).map_err(|err| match err {})
                 }
 
                 ResponseFutureInnerProj::InvalidPath => {
@@ -171,15 +171,13 @@ pub(super) fn call_fallback<F, B, FResBody>(
     req: Request<B>,
 ) -> ResponseFutureInner<B, F>
 where
-    F: Service<Request<B>, Response = Response<FResBody>> + Clone,
-    F::Error: Into<io::Error>,
+    F: Service<Request<B>, Response = Response<FResBody>, Error = Infallible> + Clone,
     F::Future: Send + 'static,
     FResBody: http_body::Body<Data = Bytes> + Send + 'static,
     FResBody::Error: Into<BoxError>,
 {
     let future = fallback
         .call(req)
-        .err_into()
         .map_ok(|response| {
             response
                 .map(|body| {

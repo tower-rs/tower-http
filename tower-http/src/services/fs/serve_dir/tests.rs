@@ -7,6 +7,7 @@ use http::{header, Method, Response};
 use http::{Request, StatusCode};
 use http_body::Body as HttpBody;
 use hyper::Body;
+use std::convert::Infallible;
 use std::io::{self, Read};
 use tower::ServiceExt;
 
@@ -586,7 +587,7 @@ async fn last_modified() {
 
 #[tokio::test]
 async fn with_fallback_svc() {
-    async fn fallback<B>(req: Request<B>) -> io::Result<Response<Body>> {
+    async fn fallback<B>(req: Request<B>) -> Result<Response<Body>, Infallible> {
         Ok(Response::new(Body::from(format!(
             "from fallback {}",
             req.uri().path()
@@ -643,7 +644,7 @@ async fn method_not_allowed() {
 
 #[tokio::test]
 async fn calling_fallback_on_not_allowed() {
-    async fn fallback<B>(req: Request<B>) -> io::Result<Response<Body>> {
+    async fn fallback<B>(req: Request<B>) -> Result<Response<Body>, Infallible> {
         Ok(Response::new(Body::from(format!(
             "from fallback {}",
             req.uri().path()
@@ -669,7 +670,7 @@ async fn calling_fallback_on_not_allowed() {
 
 #[tokio::test]
 async fn with_fallback_svc_and_not_append_index_html_on_directories() {
-    async fn fallback<B>(req: Request<B>) -> io::Result<Response<Body>> {
+    async fn fallback<B>(req: Request<B>) -> Result<Response<Body>, Infallible> {
         Ok(Response::new(Body::from(format!(
             "from fallback {}",
             req.uri().path()
