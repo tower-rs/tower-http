@@ -20,8 +20,9 @@ use std::{io, marker::PhantomData, pin::Pin, task::Poll};
 use tokio_util::io::StreamReader;
 
 pin_project! {
-    /// Response body of [`Decompression`].
+    /// Response body of [`RequestDecompression`] and [`Decompression`].
     ///
+    /// [`RequestDecompression`]: super::RequestDecompression
     /// [`Decompression`]: super::Decompression
     pub struct DecompressionBody<B>
     where

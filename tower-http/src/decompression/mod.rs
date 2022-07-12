@@ -1,7 +1,13 @@
-//! Middleware that decompresses response bodies.
+//! Middleware that decompresses request and response bodies.
 //!
-//! # Example
+//! # Examples
 //!
+//! #### Request
+//! ```rust
+//!
+//! ```
+//!
+//! #### Response
 //! ```rust
 //! use bytes::BytesMut;
 //! use http::{Request, Response};
@@ -66,7 +72,7 @@ pub use self::future::ResponseFuture;
 pub use self::layer::DecompressionLayer;
 pub use self::service::Decompression;
 
-pub use self::request::future::RequestDecompressionResponseFuture;
+pub use self::request::future::RequestDecompressionFuture;
 pub use self::request::layer::RequestDecompressionLayer;
 pub use self::request::service::RequestDecompression;
 

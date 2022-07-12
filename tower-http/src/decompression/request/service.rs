@@ -1,4 +1,4 @@
-use super::future::RequestDecompressionResponseFuture as ResponseFuture;
+use super::future::RequestDecompressionFuture as ResponseFuture;
 use super::layer::RequestDecompressionLayer;
 use crate::{
     compression_utils::AcceptEncoding, compression_utils::WrapBody,
@@ -12,6 +12,13 @@ use http_body::Body;
 use std::task::{Context, Poll};
 use tower_service::Service;
 
+/// Decompresses request bodies and calls its underlying service.
+///
+/// Transparently decompresses request bodies based on the `Content-Encoding` header.
+/// When the encoding in the `Content-Encoding` header is not accepted an `Unsupported Media Type`
+/// status code will be returned with the accepted encodings in the `Accept-Encoding` header.
+///
+/// See the [module docs](crate::decompression) for more details.
 #[derive(Debug, Clone)]
 pub struct RequestDecompression<S> {
     pub(super) inner: S,
@@ -60,6 +67,7 @@ where
                         parts.headers.remove(header::CONTENT_LENGTH);
                         BodyInner::brotli(WrapBody::new(body))
                     }
+                    b"identity" => BodyInner::identity(body),
                     _ if self.pass_through_unaccepted => BodyInner::identity(body),
                     _ => return ResponseFuture::unsupported_encoding(self.accept),
                 }

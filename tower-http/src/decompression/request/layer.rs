@@ -2,6 +2,13 @@ use super::service::RequestDecompression;
 use crate::compression_utils::AcceptEncoding;
 use tower_layer::Layer;
 
+/// Decompresses request bodies and calls its underlying service.
+///
+/// Transparently decompresses request bodies based on the `Content-Encoding` header.
+/// When the encoding in the `Content-Encoding` header is not accepted an `Unsupported Media Type`
+/// status code will be returned with the accepted encodings in the `Accept-Encoding` header.
+///
+/// See the [module docs](crate::decompression) for more details.
 #[derive(Debug, Default, Clone)]
 pub struct RequestDecompressionLayer {
     accept: AcceptEncoding,
@@ -74,7 +81,7 @@ impl RequestDecompressionLayer {
         self
     }
 
-    /// Passes through unaccepted encodings
+    /// Passes through the request even when the encoding is not supported.
     pub fn pass_through_unaccepted(mut self) -> Self {
         self.pass_through_unaccepted = true;
         self

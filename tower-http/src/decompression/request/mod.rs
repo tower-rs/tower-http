@@ -41,7 +41,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn pass_through_unsupported_encoding_when_configured() {
+    async fn pass_through_unsupported_encoding_when_enabled() {
         let req = request_gzip();
         let mut svc = RequestDecompression::new(service_fn(assert_request_is_passed_through))
             .pass_through_unaccepted(true)
