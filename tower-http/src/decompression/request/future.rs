@@ -1,7 +1,7 @@
 use crate::compression_utils::AcceptEncoding;
 use crate::BoxError;
 use bytes::Buf;
-use http::{header, Response, StatusCode};
+use http::{header, HeaderValue, Response, StatusCode};
 use http_body::{combinators::UnsyncBoxBody, Body, Empty};
 use pin_project_lite::pin_project;
 use std::future::Future;
@@ -77,12 +77,13 @@ where
                 .map_ok(|res| res.map(|body| body.map_err(Into::into).boxed_unsync()))
                 .map_err(Into::into),
             StateProj::Unsupported { accept } => {
-                let builder = if let Some(accept) = accept.to_header_value() {
-                    Response::builder().header(header::ACCEPT_ENCODING, accept)
-                } else {
-                    Response::builder()
-                };
-                let res = builder
+                let res = Response::builder()
+                    .header(
+                        header::ACCEPT_ENCODING,
+                        accept
+                            .to_header_value()
+                            .unwrap_or(HeaderValue::from_static("identity")),
+                    )
                     .status(StatusCode::UNSUPPORTED_MEDIA_TYPE)
                     .body(Empty::new().map_err(Into::into).boxed_unsync())
                     .map_err(Into::into);
