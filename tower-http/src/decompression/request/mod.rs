@@ -25,7 +25,7 @@ mod tests {
     #[tokio::test]
     async fn support_unencoded_body() {
         let req = Request::builder()
-            .body(Body::from("Hello, World?"))
+            .body(Body::from("Hello?"))
             .unwrap();
         let mut svc = RequestDecompression::new(service_fn(assert_request_is_decompressed));
         let _ = svc.ready().await.unwrap().call(req).await.unwrap();
@@ -34,8 +34,7 @@ mod tests {
     #[tokio::test]
     async fn unaccepted_content_encoding_returns_unsupported_media_type() {
         let req = request_gzip();
-        let mut svc = RequestDecompression::new(service_fn(should_not_be_called))
-            .gzip(false);
+        let mut svc = RequestDecompression::new(service_fn(should_not_be_called)).gzip(false);
         let res = svc.ready().await.unwrap().call(req).await.unwrap();
         assert_eq!(StatusCode::UNSUPPORTED_MEDIA_TYPE, res.status());
     }
@@ -55,7 +54,7 @@ mod tests {
         let (parts, mut body) = req.into_parts();
         let body = read_body(&mut body).await;
 
-        assert_eq!(body, b"Hello, World?");
+        assert_eq!(body, b"Hello?");
         assert!(!parts.headers.contains_key(header::CONTENT_ENCODING));
 
         Ok(Response::new(Body::from("Hello, World!")))
@@ -67,7 +66,7 @@ mod tests {
         let (parts, mut body) = req.into_parts();
         let body = read_body(&mut body).await;
 
-        assert_ne!(body, b"Hello, World?");
+        assert_ne!(body, b"Hello?");
         assert!(parts.headers.contains_key(header::CONTENT_ENCODING));
 
         Ok(Response::new(Body::empty()))
@@ -81,7 +80,7 @@ mod tests {
 
     fn request_gzip() -> Request<Body> {
         let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-        encoder.write_all(b"Hello, World?").unwrap();
+        encoder.write_all(b"Hello?").unwrap();
         let body = encoder.finish().unwrap();
         Request::builder()
             .header(header::CONTENT_ENCODING, "gzip")

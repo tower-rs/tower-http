@@ -7,8 +7,7 @@ use crate::{
 };
 use bytes::Buf;
 use http::{header, Request, Response};
-use http_body::combinators::UnsyncBoxBody;
-use http_body::Body;
+use http_body::{combinators::UnsyncBoxBody, Body};
 use std::task::{Context, Poll};
 use tower_service::Service;
 
@@ -17,6 +16,10 @@ use tower_service::Service;
 /// Transparently decompresses request bodies based on the `Content-Encoding` header.
 /// When the encoding in the `Content-Encoding` header is not accepted an `Unsupported Media Type`
 /// status code will be returned with the accepted encodings in the `Accept-Encoding` header.
+///
+/// Enabling pass-through of unaccepted encodings will not return an `Unsupported Media Type` but
+/// will call the underlying service with the unmodified request if the encoding is not supported.
+/// This is disabled by default.
 ///
 /// See the [module docs](crate::decompression) for more details.
 #[derive(Debug, Clone)]

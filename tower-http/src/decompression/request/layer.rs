@@ -8,6 +8,10 @@ use tower_layer::Layer;
 /// When the encoding in the `Content-Encoding` header is not accepted an `Unsupported Media Type`
 /// status code will be returned with the accepted encodings in the `Accept-Encoding` header.
 ///
+/// Enabling pass-through of unaccepted encodings will not return an `Unsupported Media Type`. But
+/// will call the underlying service with the unmodified request if the encoding is not supported.
+/// This is disabled by default.
+///
 /// See the [module docs](crate::decompression) for more details.
 #[derive(Debug, Default, Clone)]
 pub struct RequestDecompressionLayer {
