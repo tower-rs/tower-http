@@ -40,6 +40,10 @@ impl AllowOrigin {
     ///
     /// See [`CorsLayer::allow_origin`] for more details.
     ///
+    /// # Panics
+    ///
+    /// If the iterator contains a wildcard (`*`).
+    ///
     /// [`CorsLayer::allow_origin`]: super::CorsLayer::allow_origin
     #[allow(clippy::borrow_interior_mutable_const)]
     pub fn list<I>(origins: I) -> Self
@@ -48,7 +52,7 @@ impl AllowOrigin {
     {
         let origins = origins.into_iter().collect::<Vec<_>>();
         if origins.iter().any(|o| o == WILDCARD) {
-            Self::any()
+            panic!("Wildcard origin (`*`) cannot be passed to `AllowOrigin::list`. Use `AllowOrigin::any()` instead");
         } else {
             Self(OriginInner::List(origins))
         }
