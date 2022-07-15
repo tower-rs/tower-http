@@ -41,11 +41,17 @@ impl AllowOrigin {
     /// See [`CorsLayer::allow_origin`] for more details.
     ///
     /// [`CorsLayer::allow_origin`]: super::CorsLayer::allow_origin
+    #[allow(clippy::borrow_interior_mutable_const)]
     pub fn list<I>(origins: I) -> Self
     where
         I: IntoIterator<Item = HeaderValue>,
     {
-        Self(OriginInner::List(origins.into_iter().collect()))
+        let origins = origins.into_iter().collect::<Vec<_>>();
+        if origins.iter().any(|o| o == WILDCARD) {
+            Self::any()
+        } else {
+            Self(OriginInner::List(origins))
+        }
     }
 
     /// Set the allowed origins from a predicate

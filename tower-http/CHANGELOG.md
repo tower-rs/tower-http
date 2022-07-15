@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Fixed
 
 - **trace:** Correctly identify gRPC requests in default `on_response` callback ([#278])
+- **cors:** Correctly handle `*` when constructing `AllowOrigin` via iterators such as
+  `.allow_origin(["*".parse().unwrap()])`
 
 [#278]: https://github.com/tower-rs/tower-http/pull/278
 
