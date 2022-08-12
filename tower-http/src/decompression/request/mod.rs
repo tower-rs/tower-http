@@ -24,9 +24,7 @@ mod tests {
 
     #[tokio::test]
     async fn support_unencoded_body() {
-        let req = Request::builder()
-            .body(Body::from("Hello?"))
-            .unwrap();
+        let req = Request::builder().body(Body::from("Hello?")).unwrap();
         let mut svc = RequestDecompression::new(service_fn(assert_request_is_decompressed));
         let _ = svc.ready().await.unwrap().call(req).await.unwrap();
     }
