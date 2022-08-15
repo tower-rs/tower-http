@@ -113,7 +113,7 @@
 //! ```
 
 use http::{
-    header::{self,HeaderValue},
+    header::{self, HeaderValue},
     Request, Response, StatusCode,
 };
 use http_body::Body;
@@ -192,7 +192,7 @@ impl<S, ResBody> ValidateRequestHeader<S, AcceptHeader<ResBody>> {
     where
         ResBody: Body + Default,
     {
-        Self::custom(inner,AcceptHeader::new(value))
+        Self::custom(inner, AcceptHeader::new(value))
     }
 }
 
@@ -345,18 +345,27 @@ where
 
     fn validate(&mut self, req: &mut Request<B>) -> Result<(), Response<Self::ResponseBody>> {
         if !req.headers().contains_key(header::ACCEPT) {
-            return Ok(())
+            return Ok(());
         }
-        if req.headers().get_all(header::ACCEPT)
+        if req
+            .headers()
+            .get_all(header::ACCEPT)
             .into_iter()
-            .flat_map(|header| header.to_str().ok().into_iter().flat_map(|s| s.split(",").map(|typ| typ.trim())))
+            .flat_map(|header| {
+                header
+                    .to_str()
+                    .ok()
+                    .into_iter()
+                    .flat_map(|s| s.split(",").map(|typ| typ.trim()))
+            })
             .any(|h| {
-                    let value = self.header_value.to_str().unwrap();
-                    let primary = format!("{}/*", value.split("/").nth(0).unwrap());
-                    h == "*/*" || h == primary || h == value
-                }) {
-                    return Ok(())
-                }
+                let value = self.header_value.to_str().unwrap();
+                let primary = format!("{}/*", value.split("/").nth(0).unwrap());
+                h == "*/*" || h == primary || h == value
+            })
+        {
+            return Ok(());
+        }
         let mut res = Response::new(ResBody::default());
         *res.status_mut() = StatusCode::NOT_ACCEPTABLE;
         Err(res)
@@ -378,10 +387,7 @@ mod tests {
             .service_fn(echo);
 
         let request = Request::get("/")
-            .header(
-                header::ACCEPT,
-                "application/json"
-            )
+            .header(header::ACCEPT, "application/json")
             .body(Body::empty())
             .unwrap();
 
@@ -397,10 +403,7 @@ mod tests {
             .service_fn(echo);
 
         let request = Request::get("/")
-            .header(
-                header::ACCEPT,
-                "application/*"
-            )
+            .header(header::ACCEPT, "application/*")
             .body(Body::empty())
             .unwrap();
 
@@ -416,10 +419,7 @@ mod tests {
             .service_fn(echo);
 
         let request = Request::get("/")
-            .header(
-                header::ACCEPT,
-                "*/*"
-            )
+            .header(header::ACCEPT, "*/*")
             .body(Body::empty())
             .unwrap();
 
@@ -435,10 +435,7 @@ mod tests {
             .service_fn(echo);
 
         let request = Request::get("/")
-            .header(
-                header::ACCEPT,
-                "invalid"
-            )
+            .header(header::ACCEPT, "invalid")
             .body(Body::empty())
             .unwrap();
 
@@ -453,10 +450,7 @@ mod tests {
             .service_fn(echo);
 
         let request = Request::get("/")
-            .header(
-                header::ACCEPT,
-                "text/strings"
-            )
+            .header(header::ACCEPT, "text/strings")
             .body(Body::empty())
             .unwrap();
 
@@ -472,14 +466,8 @@ mod tests {
             .service_fn(echo);
 
         let request = Request::get("/")
-            .header(
-                header::ACCEPT,
-                "text/strings"
-            )
-            .header(
-                header::ACCEPT,
-                "invalid, application/json"
-            )
+            .header(header::ACCEPT, "text/strings")
+            .header(header::ACCEPT, "invalid, application/json")
             .body(Body::empty())
             .unwrap();
 
@@ -495,10 +483,7 @@ mod tests {
             .service_fn(echo);
 
         let request = Request::get("/")
-            .header(
-                header::ACCEPT,
-                "text/strings, invalid, application/json"
-            )
+            .header(header::ACCEPT, "text/strings, invalid, application/json")
             .body(Body::empty())
             .unwrap();
 
