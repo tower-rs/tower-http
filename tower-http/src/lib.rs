@@ -319,6 +319,8 @@ mod builder;
 #[doc(inline)]
 pub use self::builder::ServiceBuilderExt;
 
+pub mod validate_request;
+
 /// The latency unit used to report latencies by middleware.
 #[non_exhaustive]
 #[derive(Copy, Clone, Debug)]
