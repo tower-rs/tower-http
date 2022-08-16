@@ -77,7 +77,7 @@
 //!     Ok(Response::new(Body::empty()))
 //! }
 //!
-//! 
+//!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let service = ServiceBuilder::new()
@@ -113,10 +113,7 @@
 //! # }
 //! ```
 
-use http::{
-    header::self,
-    Request, Response, StatusCode,
-};
+use http::{header, Request, Response, StatusCode};
 use http_body::Body;
 use mime::Mime;
 use pin_project_lite::pin_project;
@@ -131,7 +128,7 @@ use tower_layer::Layer;
 use tower_service::Service;
 
 /// Layer that applies [`ValidateRequestHeader`] which validates all requests.
-/// 
+///
 /// See the [module docs](crate::validate_request) for an example.
 #[derive(Debug, Clone)]
 pub struct ValidateRequestHeaderLayer<T> {
@@ -172,7 +169,7 @@ where
 }
 
 /// Middleware that validates requests.
-/// 
+///
 /// See the [module docs](crate::validate_request) for an example.
 #[derive(Clone, Debug)]
 pub struct ValidateRequestHeader<S, T> {
@@ -374,7 +371,7 @@ where
                             (t, s) if t == typ && s == subtype => true,
                             (t, mime::STAR) if t == typ => true,
                             (mime::STAR, mime::STAR) => true,
-                            _ => false
+                            _ => false,
                         }
                     })
                     .unwrap_or(false)
@@ -528,4 +525,3 @@ mod tests {
         Ok(Response::new(req.into_body()))
     }
 }
-
