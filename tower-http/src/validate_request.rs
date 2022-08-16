@@ -59,7 +59,7 @@
 //! use tower::{Service, ServiceExt, ServiceBuilder, service_fn};
 //!
 //! #[derive(Clone, Copy)]
-//! pub struct MyHeader { }
+//! pub struct MyHeader { /* ...  */ }
 //!
 //! impl<B> ValidateRequest<B> for MyHeader {
 //!     type ResponseBody = Body;
@@ -68,6 +68,7 @@
 //!         &mut self,
 //!         request: &mut Request<B>,
 //!     ) -> Result<(), Response<Self::ResponseBody>> {
+//!         // validate the request...
 //!         # unimplemented!()
 //!     }
 //! }
@@ -81,7 +82,7 @@
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let service = ServiceBuilder::new()
 //!     // Validate requests using `MyHeader`
-//!     .layer(ValidateRequestHeaderLayer::custom(MyHeader{}))
+//!     .layer(ValidateRequestHeaderLayer::custom(MyHeader { /* ... */ }))
 //!     .service_fn(handle);
 //! # Ok(())
 //! # }
@@ -128,11 +129,12 @@ use std::{
 use tower_layer::Layer;
 use tower_service::Service;
 
-/// Layer that applies [`ValidateRequestHeader`] which validates all requests using the
-/// [`ValidateRequest`] header.
+/// Layer that applies [`ValidateRequestHeader`] which validates all requests.
+/// 
+/// See the [module docs](crate::validate_request) for an example.
 #[derive(Debug, Clone)]
 pub struct ValidateRequestHeaderLayer<T> {
-    valid: T,
+    validate: T,
 }
 
 impl<ResBody> ValidateRequestHeaderLayer<AcceptHeader<ResBody>> {
@@ -152,8 +154,8 @@ impl<ResBody> ValidateRequestHeaderLayer<AcceptHeader<ResBody>> {
 
 impl<T> ValidateRequestHeaderLayer<T> {
     /// Validate requests using a custom method.
-    pub fn custom(valid: T) -> ValidateRequestHeaderLayer<T> {
-        Self { valid }
+    pub fn custom(validate: T) -> ValidateRequestHeaderLayer<T> {
+        Self { validate }
     }
 }
 
@@ -164,20 +166,22 @@ where
     type Service = ValidateRequestHeader<S, T>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        ValidateRequestHeader::new(inner, self.valid.clone())
+        ValidateRequestHeader::new(inner, self.validate.clone())
     }
 }
 
 /// Middleware that validates requests.
+/// 
+/// See the [module docs](crate::validate_request) for an example.
 #[derive(Clone, Debug)]
 pub struct ValidateRequestHeader<S, T> {
     inner: S,
-    valid: T,
+    validate: T,
 }
 
 impl<S, T> ValidateRequestHeader<S, T> {
-    fn new(inner: S, valid: T) -> Self {
-        Self { inner, valid }
+    fn new(inner: S, validate: T) -> Self {
+        Self::custom(inner, validate)
     }
 
     define_inner_service_accessors!();
@@ -198,8 +202,8 @@ impl<S, ResBody> ValidateRequestHeader<S, AcceptHeader<ResBody>> {
 
 impl<S, T> ValidateRequestHeader<S, T> {
     /// Validate requests using a custom method.
-    pub fn custom(inner: S, valid: T) -> ValidateRequestHeader<S, T> {
-        Self { inner, valid }
+    pub fn custom(inner: S, validate: T) -> ValidateRequestHeader<S, T> {
+        Self { inner, validate }
     }
 }
 
@@ -217,7 +221,7 @@ where
     }
 
     fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
-        match self.valid.validate(&mut req) {
+        match self.validate.validate(&mut req) {
             Ok(_) => ResponseFuture::future(self.inner.call(req)),
             Err(res) => ResponseFuture::invalid_header_value(res),
         }
@@ -271,6 +275,7 @@ where
         match self.project().kind.project() {
             KindProj::Future { future } => future.poll(cx),
             KindProj::Error { response } => {
+                /* Never panics unless polled after completion */
                 let response = response.take().unwrap();
                 Poll::Ready(Ok(response))
             }
@@ -303,18 +308,27 @@ where
 /// Type that performs validation of the Accept header.
 pub struct AcceptHeader<ResBody> {
     header_value: HeaderValue,
+    primary_type: String,
     _ty: PhantomData<fn() -> ResBody>,
 }
 
 impl<ResBody> AcceptHeader<ResBody> {
+    /// Panics if `header_value` is not in the form: `type/subtype`, such as `application/json`
     fn new(header_value: &str) -> Self
     where
         ResBody: Body + Default,
     {
+        let primary_type = format!(
+            "{}/*", header_value
+                .split("/")
+                .nth(0)
+                .expect("value is not valid for the Accept header of the form type/subtype")
+            );
         Self {
             header_value: header_value
                 .parse()
-                .expect("token is not a valid header value"),
+                .expect("value is not a valid header value"),
+            primary_type,
             _ty: PhantomData,
         }
     }
@@ -324,6 +338,7 @@ impl<ResBody> Clone for AcceptHeader<ResBody> {
     fn clone(&self) -> Self {
         Self {
             header_value: self.header_value.clone(),
+            primary_type: self.primary_type.clone(),
             _ty: PhantomData,
         }
     }
@@ -359,9 +374,8 @@ where
                     .flat_map(|s| s.split(",").map(|typ| typ.trim()))
             })
             .any(|h| {
-                let value = self.header_value.to_str().unwrap();
-                let primary = format!("{}/*", value.split("/").nth(0).unwrap());
-                h == "*/*" || h == primary || h == value
+                let value = self.header_value.to_str().unwrap(); /* cannot panic, checked at creation time */
+                h == "*/*" || h == self.primary_type || h == value
             })
         {
             return Ok(());
@@ -443,6 +457,22 @@ mod tests {
 
         assert_eq!(res.status(), StatusCode::NOT_ACCEPTABLE);
     }
+    #[tokio::test]
+    async fn not_accepted_accept_header_subtype() {
+        let mut service = ServiceBuilder::new()
+            .layer(ValidateRequestHeaderLayer::accept("application/json"))
+            .service_fn(echo);
+
+        let request = Request::get("/")
+            .header(header::ACCEPT, "application/strings")
+            .body(Body::empty())
+            .unwrap();
+
+        let res = service.ready().await.unwrap().call(request).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::NOT_ACCEPTABLE);
+    }
+
     #[tokio::test]
     async fn not_accepted_accept_header() {
         let mut service = ServiceBuilder::new()
