@@ -114,10 +114,11 @@
 //! ```
 
 use http::{
-    header::{self, HeaderValue},
+    header::self,
     Request, Response, StatusCode,
 };
 use http_body::Body;
+use mime::Mime;
 use pin_project_lite::pin_project;
 use std::{
     fmt,
@@ -307,8 +308,7 @@ where
 
 /// Type that performs validation of the Accept header.
 pub struct AcceptHeader<ResBody> {
-    header_value: HeaderValue,
-    primary_type: String,
+    header_value: Mime,
     _ty: PhantomData<fn() -> ResBody>,
 }
 
@@ -318,17 +318,10 @@ impl<ResBody> AcceptHeader<ResBody> {
     where
         ResBody: Body + Default,
     {
-        let primary_type = format!(
-            "{}/*", header_value
-                .split("/")
-                .nth(0)
-                .expect("value is not valid for the Accept header of the form type/subtype")
-            );
         Self {
             header_value: header_value
-                .parse()
+                .parse::<Mime>()
                 .expect("value is not a valid header value"),
-            primary_type,
             _ty: PhantomData,
         }
     }
@@ -338,7 +331,6 @@ impl<ResBody> Clone for AcceptHeader<ResBody> {
     fn clone(&self) -> Self {
         Self {
             header_value: self.header_value.clone(),
-            primary_type: self.primary_type.clone(),
             _ty: PhantomData,
         }
     }
@@ -374,8 +366,18 @@ where
                     .flat_map(|s| s.split(",").map(|typ| typ.trim()))
             })
             .any(|h| {
-                let value = self.header_value.to_str().unwrap(); /* cannot panic, checked at creation time */
-                h == "*/*" || h == self.primary_type || h == value
+                h.parse::<Mime>()
+                    .map(|mim| {
+                        let typ = self.header_value.type_();
+                        let subtype = self.header_value.subtype();
+                        match (mim.type_(), mim.subtype()) {
+                            (t, s) if t == typ && s == subtype => true,
+                            (t, mime::STAR) if t == typ => true,
+                            (mime::STAR, mime::STAR) => true,
+                            _ => false
+                        }
+                    })
+                    .unwrap_or(false)
             })
         {
             return Ok(());
