@@ -292,7 +292,6 @@ where
         match self.project().kind.project() {
             KindProj::Future { future } => future.poll(cx),
             KindProj::Error { response } => {
-                /* Never panics unless polled after completion */
                 let response = response.take().expect("future polled after completion");
                 Poll::Ready(Ok(response))
             }
