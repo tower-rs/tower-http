@@ -76,6 +76,7 @@ full = [
     "timeout",
     "trace",
     "util",
+    "validate-request",
 ]
 
 add-extension = []
@@ -83,7 +84,7 @@ auth = ["base64"]
 catch-panic = ["tracing", "futures-util/std"]
 cors = []
 follow-redirect = ["iri-string", "tower/util"]
-fs = ["tokio/fs", "tokio-util/io", "tokio/io-util", "mime_guess", "percent-encoding", "httpdate", "set-status", "futures-util/alloc"]
+fs = ["tokio/fs", "tokio-util/io", "tokio/io-util", "mime_guess", "mime", "percent-encoding", "httpdate", "set-status", "futures-util/alloc"]
 limit = []
 map-request-body = []
 map-response-body = []
@@ -98,6 +99,7 @@ set-status = []
 timeout = ["tokio/time"]
 trace = ["tracing"]
 util = ["tower"]
+validate-request = ["mime"]
 
 compression-br = ["async-compression/brotli", "tokio-util", "tokio"]
 compression-deflate = ["async-compression/zlib", "tokio-util", "tokio"]

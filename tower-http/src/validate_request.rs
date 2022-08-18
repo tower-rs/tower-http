@@ -1,4 +1,4 @@
-//! Middleware that validates the requests a service can handle.
+//! Middleware that validates requests.
 //!
 //! # Example
 //!
@@ -122,6 +122,7 @@ use std::{
     future::Future,
     marker::PhantomData,
     pin::Pin,
+    sync::Arc,
     task::{Context, Poll},
 };
 use tower_layer::Layer;
@@ -140,6 +141,20 @@ impl<ResBody> ValidateRequestHeaderLayer<AcceptHeader<ResBody>> {
     ///
     /// The `Accept` header is required to be `*/*`, `type/*` or `type/subtype`,
     /// as configured.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `header_value` is not in the form: `type/subtype`, such as `application/json`
+    /// See `AcceptHeader::new` for when this method panics.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use hyper::Body;
+    /// use tower_http::validate_request::{AcceptHeader, ValidateRequestHeaderLayer};
+    ///
+    /// let layer = ValidateRequestHeaderLayer::<AcceptHeader<Body>>::accept("application/json");
+    /// ```
     ///
     /// [`Accept`]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept
     pub fn accept(value: &str) -> Self
@@ -190,6 +205,10 @@ impl<S, ResBody> ValidateRequestHeader<S, AcceptHeader<ResBody>> {
     ///
     /// The `Accept` header is required to be `*/*`, `type/*` or `type/subtype`,
     /// as configured.
+    ///
+    /// # Panics
+    ///
+    /// See `AcceptHeader::new` for when this method panics.
     pub fn accept(inner: S, value: &str) -> Self
     where
         ResBody: Body + Default,
@@ -274,7 +293,7 @@ where
             KindProj::Future { future } => future.poll(cx),
             KindProj::Error { response } => {
                 /* Never panics unless polled after completion */
-                let response = response.take().unwrap();
+                let response = response.take().expect("future polled after completion");
                 Poll::Ready(Ok(response))
             }
         }
@@ -305,20 +324,25 @@ where
 
 /// Type that performs validation of the Accept header.
 pub struct AcceptHeader<ResBody> {
-    header_value: Mime,
+    header_value: Arc<Mime>,
     _ty: PhantomData<fn() -> ResBody>,
 }
 
 impl<ResBody> AcceptHeader<ResBody> {
+    /// Create a new `AcceptHeader`.
+    ///
+    /// # Panics
+    ///
     /// Panics if `header_value` is not in the form: `type/subtype`, such as `application/json`
     fn new(header_value: &str) -> Self
     where
         ResBody: Body + Default,
     {
         Self {
-            header_value: header_value
+            header_value: Arc::new(header_value
                 .parse::<Mime>()
-                .expect("value is not a valid header value"),
+                .expect("value is not a valid header value")
+            ),
             _ty: PhantomData,
         }
     }
