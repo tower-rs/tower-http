@@ -322,6 +322,7 @@ mod builder;
 #[doc(inline)]
 pub use self::builder::ServiceBuilderExt;
 
+#[cfg(feature = "validate-request")]
 pub mod validate_request;
 
 /// The latency unit used to report latencies by middleware.
