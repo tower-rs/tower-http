@@ -76,6 +76,7 @@ full = [
     "timeout",
     "trace",
     "util",
+    "validate-request",
 ]
 
 add-extension = []
@@ -98,6 +99,7 @@ set-status = []
 timeout = ["tokio/time"]
 trace = ["tracing"]
 util = ["tower"]
+validate-request = ["mime"]
 
 compression-br = ["async-compression/brotli", "tokio-util", "tokio"]
 compression-deflate = ["async-compression/zlib", "tokio-util", "tokio"]
