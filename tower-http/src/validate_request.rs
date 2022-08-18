@@ -338,9 +338,10 @@ impl<ResBody> AcceptHeader<ResBody> {
         ResBody: Body + Default,
     {
         Self {
-            header_value: Arc::new(header_value
-                .parse::<Mime>()
-                .expect("value is not a valid header value")
+            header_value: Arc::new(
+                header_value
+                    .parse::<Mime>()
+                    .expect("value is not a valid header value"),
             ),
             _ty: PhantomData,
         }
