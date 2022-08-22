@@ -5,6 +5,7 @@
 //! # Example
 //!
 //! ```
+//! use tower_http::validate_request::{ValidateRequestHeader, ValidateRequestHeaderLayer};
 //! use tower_http::auth::AddAuthorizationLayer;
 //! use hyper::{Request, Response, Body, Error};
 //! use http::{StatusCode, header::AUTHORIZATION};
@@ -15,7 +16,7 @@
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! # let service_that_requires_auth = tower_http::auth::RequireAuthorization::basic(
+//! # let service_that_requires_auth = ValidateRequestHeader::basic(
 //! #     tower::service_fn(handle),
 //! #     "username",
 //! #     "password",
@@ -183,9 +184,10 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::validate_request::ValidateRequestHeaderLayer;
+
     #[allow(unused_imports)]
     use super::*;
-    use crate::auth::RequireAuthorizationLayer;
     use http::{Response, StatusCode};
     use hyper::Body;
     use tower::{BoxError, Service, ServiceBuilder, ServiceExt};
@@ -194,7 +196,7 @@ mod tests {
     async fn basic() {
         // service that requires auth for all requests
         let svc = ServiceBuilder::new()
-            .layer(RequireAuthorizationLayer::basic("foo", "bar"))
+            .layer(ValidateRequestHeaderLayer::basic("foo", "bar"))
             .service_fn(echo);
 
         // make a client that adds auth
@@ -215,7 +217,7 @@ mod tests {
     async fn token() {
         // service that requires auth for all requests
         let svc = ServiceBuilder::new()
-            .layer(RequireAuthorizationLayer::bearer("foo"))
+            .layer(ValidateRequestHeaderLayer::bearer("foo"))
             .service_fn(echo);
 
         // make a client that adds auth
@@ -235,7 +237,7 @@ mod tests {
     #[tokio::test]
     async fn making_header_sensitive() {
         let svc = ServiceBuilder::new()
-            .layer(RequireAuthorizationLayer::bearer("foo"))
+            .layer(ValidateRequestHeaderLayer::bearer("foo"))
             .service_fn(|request: Request<Body>| async move {
                 let auth = request.headers().get(http::header::AUTHORIZATION).unwrap();
                 assert!(auth.is_sensitive());
