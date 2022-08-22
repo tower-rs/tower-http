@@ -60,10 +60,7 @@ use http::{
     Request, Response, StatusCode,
 };
 use http_body::Body;
-use std::{
-    fmt,
-    marker::PhantomData,
-};
+use std::{fmt, marker::PhantomData};
 
 impl<S, ResBody> ValidateRequestHeader<S, Basic<ResBody>> {
     /// Authorize requests using a username and password pair.
