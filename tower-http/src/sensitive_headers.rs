@@ -418,7 +418,7 @@ mod tests {
         let mut service = ServiceBuilder::new()
             .layer(SetSensitiveRequestHeadersLayer::new(vec![header::COOKIE]))
             .layer(SetSensitiveResponseHeadersLayer::new(vec![
-                header::SET_COOKIE
+                header::SET_COOKIE,
             ]))
             .service_fn(response_set_cookie);
 
