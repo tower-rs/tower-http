@@ -232,9 +232,12 @@ where
     }
 
     fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
+        let headers = req.headers_mut();
         for header in &*self.headers {
-            if let Some(value) = req.headers_mut().get_mut(header) {
-                value.set_sensitive(true);
+            if let http::header::Entry::Occupied(mut entry) = headers.entry(header) {
+                for value in entry.iter_mut() {
+                    value.set_sensitive(true);
+                }
             }
         }
 
@@ -361,9 +364,12 @@ where
         let this = self.project();
         let mut res = ready!(this.future.poll(cx)?);
 
+        let headers = res.headers_mut();
         for header in &**this.headers {
-            if let Some(value) = res.headers_mut().get_mut(header) {
-                value.set_sensitive(true);
+            if let http::header::Entry::Occupied(mut entry) = headers.entry(header) {
+                for value in entry.iter_mut() {
+                    value.set_sensitive(true);
+                }
             }
         }
 
