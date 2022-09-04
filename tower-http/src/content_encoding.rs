@@ -201,32 +201,78 @@ pub(crate) fn encodings(
     headers: &http::HeaderMap,
     supported_encoding: impl SupportedEncodings,
 ) -> Vec<(Encoding, QValue)> {
-    headers
+    // List of encodings and corresponding qvalues.
+    let mut encodings = Vec::with_capacity(4);
+
+    // Qvalue corresponding to the wildcard (`*`) encoding.
+    let mut wildcard_qval = None;
+
+    for v in headers
         .get_all(http::header::ACCEPT_ENCODING)
         .iter()
         .filter_map(|hval| hval.to_str().ok())
         .flat_map(|s| s.split(','))
-        .filter_map(|v| {
-            let mut v = v.splitn(2, ';');
+    {
+        let mut v = v.splitn(2, ';');
+        let encoding = v.next().unwrap().trim();
 
-            let encoding = match Encoding::parse(v.next().unwrap().trim(), supported_encoding) {
-                Some(encoding) => encoding,
-                None => return None, // ignore unknown encodings
-            };
-
-            let qval = if let Some(qval) = v.next() {
-                if let Some(qval) = QValue::parse(qval.trim()) {
-                    qval
-                } else {
-                    return None;
-                }
+        let qval = if let Some(qval) = v.next() {
+            if let Some(qval) = QValue::parse(qval.trim()) {
+                qval
             } else {
-                QValue::one()
+                continue; // ignore invalid qvalues
+            }
+        } else {
+            QValue::one()
+        };
+
+        if encoding == "*" {
+            if wildcard_qval.is_none() {
+                wildcard_qval = Some(qval);
+            }
+        } else {
+            let encoding = match Encoding::parse(encoding, supported_encoding) {
+                Some(encoding) => encoding,
+                None => continue, // ignore unknown encodings
             };
 
-            Some((encoding, qval))
-        })
-        .collect::<Vec<(Encoding, QValue)>>()
+            insert_non_duplicate_encoding(&mut encodings, encoding, qval); // ignore duplicate encodings
+        }
+    }
+
+    // The wildcard encoding (`*`) means all encodings not mentioned explicitly. If a wildcard
+    // encoding has been specified, set the qvalues of all unset encodings accordingly.
+    //
+    // The order in which the encodings are considered matters. If `*` is the most preferred option,
+    // the first one that does not have an explicit lower qvalue is chosen.
+    if let Some(wildcard_qval) = wildcard_qval {
+        insert_non_duplicate_encoding(&mut encodings, Encoding::Identity, wildcard_qval);
+        #[cfg(any(feature = "fs", feature = "compression-gzip"))]
+        insert_non_duplicate_encoding(&mut encodings, Encoding::Gzip, wildcard_qval);
+        #[cfg(any(feature = "fs", feature = "compression-deflate"))]
+        insert_non_duplicate_encoding(&mut encodings, Encoding::Deflate, wildcard_qval);
+        #[cfg(any(feature = "fs", feature = "compression-br"))]
+        insert_non_duplicate_encoding(&mut encodings, Encoding::Brotli, wildcard_qval);
+    }
+
+    encodings
+}
+
+// Insert an encoding and associated qvalue into a vector if the encoding is not yet included in the vector.
+#[cfg(any(
+    feature = "compression-gzip",
+    feature = "compression-br",
+    feature = "compression-deflate",
+    feature = "fs",
+))]
+fn insert_non_duplicate_encoding(
+    encodings: &mut Vec<(Encoding, QValue)>,
+    encoding: Encoding,
+    qval: QValue,
+) {
+    if !encodings.iter().any(|&(e, _)| e == encoding) {
+        encodings.push((encoding, qval));
+    }
 }
 
 #[cfg(all(
@@ -282,6 +328,22 @@ mod tests {
         );
         let encoding = Encoding::from_headers(&headers, SupportedEncodingsAll::default());
         assert_eq!(Encoding::Gzip, encoding);
+
+        let mut headers = http::HeaderMap::new();
+        headers.append(
+            http::header::ACCEPT_ENCODING,
+            http::HeaderValue::from_static("br,gzip"),
+        );
+        let encoding = Encoding::from_headers(&headers, SupportedEncodingsAll::default());
+        assert_eq!(Encoding::Brotli, encoding);
+
+        let mut headers = http::HeaderMap::new();
+        headers.append(
+            http::header::ACCEPT_ENCODING,
+            http::HeaderValue::from_static("deflate,gzip"),
+        );
+        let encoding = Encoding::from_headers(&headers, SupportedEncodingsAll::default());
+        assert_eq!(Encoding::Deflate, encoding);
     }
 
     #[test]
@@ -564,5 +626,32 @@ mod tests {
         );
         let encoding = Encoding::from_headers(&headers, SupportedEncodingsAll::default());
         assert_eq!(Encoding::Identity, encoding);
+    }
+
+    #[test]
+    fn accept_encoding_header_with_wildcard() {
+        let mut headers = http::HeaderMap::new();
+        headers.append(
+            http::header::ACCEPT_ENCODING,
+            http::HeaderValue::from_static("*;q=0.8,gzip;q=0.5"),
+        );
+        let encoding = Encoding::from_headers(&headers, SupportedEncodingsAll::default());
+        assert_eq!(Encoding::Identity, encoding);
+
+        let mut headers = http::HeaderMap::new();
+        headers.append(
+            http::header::ACCEPT_ENCODING,
+            http::HeaderValue::from_static("*;q=0.5,gzip;q=0.8"),
+        );
+        let encoding = Encoding::from_headers(&headers, SupportedEncodingsAll::default());
+        assert_eq!(Encoding::Gzip, encoding);
+
+        let mut headers = http::HeaderMap::new();
+        headers.append(
+            http::header::ACCEPT_ENCODING,
+            http::HeaderValue::from_static("*;q=0.5,gzip;q=0.3,identity;q=0.3"),
+        );
+        let encoding = Encoding::from_headers(&headers, SupportedEncodingsAll::default());
+        assert_eq!(Encoding::Deflate, encoding);
     }
 }
