@@ -81,7 +81,7 @@ jobs:
     - uses: actions/checkout@master
     - uses: actions-rs/toolchain@v1
       with:
-        toolchain: 1.51
+        toolchain: 1.56
         profile: minimal
         override: true
     - name: Run tests
