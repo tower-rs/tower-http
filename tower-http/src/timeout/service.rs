@@ -20,7 +20,7 @@
 //! use hyper::Body;
 //! use std::{convert::Infallible, time::Duration};
 //! use tower::ServiceBuilder;
-//! use tower_http::timeout::TimeoutLayer;
+//! use tower_http::timeout::service::TimeoutLayer;
 //!
 //! async fn handle(_: Request<Body>) -> Result<Response<Body>, Infallible> {
 //!     // ...
