@@ -60,7 +60,7 @@ pub struct TimeoutLayer {
 }
 
 impl TimeoutLayer {
-    /// Create a new [`TimeoutLayer`].
+    /// Creates a new [`TimeoutLayer`].
     pub fn new(timeout: Duration) -> Self {
         TimeoutLayer { timeout }
     }
@@ -87,7 +87,7 @@ pub struct Timeout<S> {
 }
 
 impl<S> Timeout<S> {
-    /// Create a new [`Timeout`].
+    /// Creates a new [`Timeout`].
     pub fn new(inner: S, timeout: Duration) -> Self {
         Self { inner, timeout }
     }

@@ -55,7 +55,7 @@ pin_project! {
 }
 
 impl<B> TimeoutBody<B> {
-    /// Create a new [`TimeoutBody`].
+    /// Creates a new [`TimeoutBody`].
     pub fn new(timeout: Duration, body: B) -> Self {
         TimeoutBody {
             timeout,
@@ -136,14 +136,14 @@ impl std::fmt::Display for TimeoutError {
     }
 }
 
-/// Apply a TimeoutBody to the request body.
+/// Applies a TimeoutBody to the request body.
 #[derive(Clone, Debug)]
 pub struct RequestBodyTimeoutLayer {
     timeout: Duration,
 }
 
 impl RequestBodyTimeoutLayer {
-    /// Create a new [`RequestBodyTimeoutLayer`].
+    /// Creates a new [`RequestBodyTimeoutLayer`].
     pub fn new(timeout: Duration) -> Self {
         Self { timeout }
     }
@@ -166,7 +166,7 @@ pub struct RequestBodyTimeout<S> {
 }
 
 impl<S> RequestBodyTimeout<S> {
-    /// Create a new [`RequestBodyTimeout`].
+    /// Creates a new [`RequestBodyTimeout`].
     pub fn new(service: S, timeout: Duration) -> Self {
         Self { inner: service, timeout }
     }
@@ -207,7 +207,7 @@ pub struct ResponseBodyTimeoutLayer {
 }
 
 impl ResponseBodyTimeoutLayer {
-    /// Create a new [`ResponseBodyTimeoutLayer`].
+    /// Creates a new [`ResponseBodyTimeoutLayer`].
     pub fn new(timeout: Duration) -> Self {
         Self { timeout }
     }
@@ -221,7 +221,7 @@ impl<S> Layer<S> for ResponseBodyTimeoutLayer {
     }
 }
 
-/// Apply a TimeoutBody to the response body.
+/// Applies a TimeoutBody to the response body.
 #[derive(Clone)]
 pub struct ResponseBodyTimeout<S> {
     inner: S,
@@ -229,7 +229,7 @@ pub struct ResponseBodyTimeout<S> {
 }
 
 impl<S> ResponseBodyTimeout<S> {
-    /// Create a new [`ResponseBodyTimeout`].
+    /// Creates a new [`ResponseBodyTimeout`].
     pub fn new(service: S, timeout: Duration) -> Self {
         Self { inner: service, timeout }
     }
