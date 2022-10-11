@@ -3,12 +3,12 @@
 //! Bodies must produce data at most within the specified timeout.
 //! If they are inactive, an error will be generated.
 //!
-//! # Differences from `tower_http::timeout::service::Timeout`
+//! # Differences from [`tower_http::timeout::service::Timeout`]
 //!
 //! [`tower_http::timeout::service::Timeout`] applies a timeout on the full request.
 //! That timeout is not reset when bytes are handled, whether the request is active or not.
 //!
-//! This middleware will return a `TimeoutError`.
+//! This middleware will return a [`TimeoutError`].
 //!
 //! # Example
 //!
@@ -44,7 +44,7 @@ use tower_layer::Layer;
 use tower_service::Service;
 
 pin_project! {
-    /// Wrapper around a `http_body::Body` to time out if data is not ready within the specified duration.
+    /// Wrapper around a [`http_body::Body`] to time out if data is not ready within the specified duration.
     pub struct TimeoutBody<B> {
         timeout: Duration,
         #[pin]
@@ -158,7 +158,7 @@ impl<S> Layer<S> for RequestBodyTimeoutLayer
     }
 }
 
-/// Apply a TimeoutBody to the request body.
+/// Applies a TimeoutBody to the request body.
 #[derive(Clone, Debug)]
 pub struct RequestBodyTimeout<S> {
     inner: S,
@@ -171,7 +171,7 @@ impl<S> RequestBodyTimeout<S> {
         Self { inner: service, timeout }
     }
 
-    /// Returns a new [`Layer`] that wraps services with a `RequestBodyTimeoutLayer` middleware.
+    /// Returns a new [`Layer`] that wraps services with a [`RequestBodyTimeoutLayer`] middleware.
     ///
     /// [`Layer`]: tower_layer::Layer
     pub fn layer(timeout: Duration) -> RequestBodyTimeoutLayer {
@@ -200,7 +200,7 @@ where
     }
 }
 
-/// Apply a TimeoutBody to the response body.
+/// Applies a TimeoutBody to the response body.
 #[derive(Clone)]
 pub struct ResponseBodyTimeoutLayer {
     timeout: Duration,
@@ -234,7 +234,7 @@ impl<S> ResponseBodyTimeout<S> {
         Self { inner: service, timeout }
     }
 
-    /// Returns a new [`Layer`] that wraps services with a `ResponseBodyTimeoutLayer` middleware.
+    /// Returns a new [`Layer`] that wraps services with a [`ResponseBodyTimeoutLayer`] middleware.
     ///
     /// [`Layer`]: tower_layer::Layer
     pub fn layer(timeout: Duration) -> ResponseBodyTimeoutLayer {
