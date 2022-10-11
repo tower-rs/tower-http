@@ -99,7 +99,9 @@ where
                 this.sleep.set(Some(sleep(*this.timeout)));
 
                 // ...then `poll` it to get awoken.
-                let _ = this.sleep.as_pin_mut().unwrap().poll(cx);
+                if let Poll::Ready(_) = this.sleep.as_pin_mut().unwrap().poll(cx) {
+                    return Poll::Ready(Some(Err(Box::new(TimeoutError))))
+                }
                 Poll::Ready(data.transpose().map_err(|_| Box::new(TimeoutError) as Self::Error).transpose())
             }
             Poll::Pending => Poll::Pending
