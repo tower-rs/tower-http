@@ -102,7 +102,7 @@ where
                 if let Poll::Ready(_) = this.sleep.as_pin_mut().unwrap().poll(cx) {
                     return Poll::Ready(Some(Err(Box::new(TimeoutError))))
                 }
-                Poll::Ready(data.transpose().map_err(|_| Box::new(TimeoutError) as Self::Error).transpose())
+                Poll::Ready(data.transpose().map_err(|_| Box::new(TimeoutError).into()).transpose())
             }
             Poll::Pending => Poll::Pending
         }
@@ -120,7 +120,7 @@ where
             Poll::Ready(()) => return Poll::Ready(Err(Box::new(TimeoutError))),
         }
 
-        this.body.poll_trailers(cx).map_err(|_| Box::new(TimeoutError) as Self::Error)
+        this.body.poll_trailers(cx).map_err(|_| Box::new(TimeoutError).into())
     }
 }
 
