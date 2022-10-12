@@ -3,9 +3,9 @@
 //! Bodies must produce data at most within the specified timeout.
 //! If they are inactive, an error will be generated.
 //!
-//! # Differences from [`tower_http::timeout::service::Timeout`]
+//! # Differences from `tower_http::timeout::service::Timeout`
 //!
-//! [`tower_http::timeout::service::Timeout`] applies a timeout on the full request.
+//! `tower_http::timeout::service::Timeout` applies a timeout on the full request.
 //! That timeout is not reset when bytes are handled, whether the request is active or not.
 //!
 //! This middleware will return a [`TimeoutError`].
@@ -17,29 +17,33 @@
 //! use hyper::Body;
 //! use std::time::Duration;
 //! use tower::ServiceBuilder;
-//! use tower_http::timeout::body::RequestTimeoutBodyLayer;
+//! use tower_http::timeout::body::RequestBodyTimeoutLayer;
 //!
-//! async fn handle(_: Request<Body>) -> Result<Response<Body>, Infallible> {
+//! async fn handle(_: Request<Body>) -> Result<Response<Body>, std::convert::Infallible> {
 //!     // ...
-//!     # Ok(Response::new(Body::empty()))
+//!     # todo!()
 //! }
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let svc = ServiceBuilder::new()
 //!     // Timeout bodies after 30 seconds of inactivity
-//!     .layer(RequestTimeoutBodyLayer::new(Duration::from_secs(30)))
+//!     .layer(RequestBodyTimeoutLayer::new(Duration::from_secs(30)))
 //!     .service_fn(handle);
 //! # Ok(())
 //! # }
 //! ```
 
-use std::{time::Duration, task::{Context, Poll}, pin::Pin};
-use http_body::Body;
 use futures_core::Future;
-use pin_project_lite::pin_project;
-use tokio::time::{Sleep, sleep};
 use http::{Request, Response};
+use http_body::Body;
+use pin_project_lite::pin_project;
+use std::{
+    pin::Pin,
+    task::{Context, Poll},
+    time::Duration,
+};
+use tokio::time::{sleep, Sleep};
 use tower_layer::Layer;
 use tower_service::Service;
 
@@ -77,7 +81,7 @@ where
         cx: &mut Context<'_>,
     ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
         let mut this = self.project();
-        
+
         // Start the `Sleep` if not active.
         let sleep_pinned = if let Some(some) = this.sleep.as_mut().as_pin_mut() {
             some
@@ -100,11 +104,15 @@ where
 
                 // ...then `poll` it to get awoken.
                 if let Poll::Ready(_) = this.sleep.as_pin_mut().unwrap().poll(cx) {
-                    return Poll::Ready(Some(Err(Box::new(TimeoutError))))
+                    return Poll::Ready(Some(Err(Box::new(TimeoutError))));
                 }
-                Poll::Ready(data.transpose().map_err(|_| Box::new(TimeoutError).into()).transpose())
+                Poll::Ready(
+                    data.transpose()
+                        .map_err(|_| Box::new(TimeoutError).into())
+                        .transpose(),
+                )
             }
-            Poll::Pending => Poll::Pending
+            Poll::Pending => Poll::Pending,
         }
     }
 
@@ -115,28 +123,35 @@ where
         let this = self.project();
 
         // Error if the timeout has expired.
-        match this.sleep.as_pin_mut().expect("poll_data was not called").poll(cx) {
+        match this
+            .sleep
+            .as_pin_mut()
+            .expect("poll_data was not called")
+            .poll(cx)
+        {
             Poll::Pending => (),
             Poll::Ready(()) => return Poll::Ready(Err(Box::new(TimeoutError))),
         }
 
-        this.body.poll_trailers(cx).map_err(|_| Box::new(TimeoutError).into())
+        this.body
+            .poll_trailers(cx)
+            .map_err(|_| Box::new(TimeoutError).into())
     }
 }
 
 /// Error for [`TimeoutBody`].
 #[derive(Debug)]
-pub struct TimeoutError;
+struct TimeoutError;
 
 impl std::error::Error for TimeoutError {}
 
 impl std::fmt::Display for TimeoutError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "TimeoutError")
+        write!(f, "data was not received within the designated timeout")
     }
 }
 
-/// Applies a TimeoutBody to the request body.
+/// Applies a [`TimeoutBody`] to the request body.
 #[derive(Clone, Debug)]
 pub struct RequestBodyTimeoutLayer {
     timeout: Duration,
@@ -149,8 +164,7 @@ impl RequestBodyTimeoutLayer {
     }
 }
 
-impl<S> Layer<S> for RequestBodyTimeoutLayer
-{
+impl<S> Layer<S> for RequestBodyTimeoutLayer {
     type Service = RequestBodyTimeout<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
@@ -158,7 +172,7 @@ impl<S> Layer<S> for RequestBodyTimeoutLayer
     }
 }
 
-/// Applies a TimeoutBody to the request body.
+/// Applies a [`TimeoutBody`] to the request body.
 #[derive(Clone, Debug)]
 pub struct RequestBodyTimeout<S> {
     inner: S,
@@ -168,7 +182,10 @@ pub struct RequestBodyTimeout<S> {
 impl<S> RequestBodyTimeout<S> {
     /// Creates a new [`RequestBodyTimeout`].
     pub fn new(service: S, timeout: Duration) -> Self {
-        Self { inner: service, timeout }
+        Self {
+            inner: service,
+            timeout,
+        }
     }
 
     /// Returns a new [`Layer`] that wraps services with a [`RequestBodyTimeoutLayer`] middleware.
@@ -200,7 +217,7 @@ where
     }
 }
 
-/// Applies a TimeoutBody to the response body.
+/// Applies a [`TimeoutBody`] to the response body.
 #[derive(Clone)]
 pub struct ResponseBodyTimeoutLayer {
     timeout: Duration,
@@ -221,7 +238,7 @@ impl<S> Layer<S> for ResponseBodyTimeoutLayer {
     }
 }
 
-/// Applies a TimeoutBody to the response body.
+/// Applies a [`TimeoutBody`] to the response body.
 #[derive(Clone)]
 pub struct ResponseBodyTimeout<S> {
     inner: S,
@@ -231,7 +248,10 @@ pub struct ResponseBodyTimeout<S> {
 impl<S> ResponseBodyTimeout<S> {
     /// Creates a new [`ResponseBodyTimeout`].
     pub fn new(service: S, timeout: Duration) -> Self {
-        Self { inner: service, timeout }
+        Self {
+            inner: service,
+            timeout,
+        }
     }
 
     /// Returns a new [`Layer`] that wraps services with a [`ResponseBodyTimeoutLayer`] middleware.
@@ -258,7 +278,10 @@ where
     }
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
-        ResponseBodyTimeoutFuture { inner: self.inner.call(req), timeout: self.timeout }
+        ResponseBodyTimeoutFuture {
+            inner: self.inner.call(req),
+            timeout: self.timeout,
+        }
     }
 }
 
@@ -274,7 +297,7 @@ pin_project! {
 use futures_core::ready;
 impl<Fut, ResBody, E> Future for ResponseBodyTimeoutFuture<Fut>
 where
-    Fut: Future<Output = Result<Response<ResBody>, E>>
+    Fut: Future<Output = Result<Response<ResBody>, E>>,
 {
     type Output = Result<Response<TimeoutBody<ResBody>>, E>;
 
@@ -285,7 +308,6 @@ where
         Poll::Ready(Ok(res.map(|body| TimeoutBody::new(timeout, body))))
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -308,9 +330,9 @@ mod tests {
         type Error = MockError;
 
         fn poll_data(
-                self: Pin<&mut Self>,
-                cx: &mut Context<'_>,
-            ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
+            self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+        ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
             let this = self.project();
             this.sleep.poll(cx).map(|_| Some(Ok(vec![].into())))
         }
@@ -328,18 +350,22 @@ mod tests {
         let mock_sleep = Duration::from_secs(1);
         let timeout_sleep = Duration::from_secs(2);
 
-        let mock_body = MockBody { sleep: sleep(mock_sleep) };
+        let mock_body = MockBody {
+            sleep: sleep(mock_sleep),
+        };
         let timeout_body = TimeoutBody::new(timeout_sleep, mock_body);
 
         assert!(timeout_body.boxed().data().await.unwrap().is_ok());
     }
-    
+
     #[tokio::test]
     async fn test_body_unavailable_within_timeout_error() {
         let mock_sleep = Duration::from_secs(2);
         let timeout_sleep = Duration::from_secs(1);
 
-        let mock_body = MockBody { sleep: sleep(mock_sleep) };
+        let mock_body = MockBody {
+            sleep: sleep(mock_sleep),
+        };
         let timeout_body = TimeoutBody::new(timeout_sleep, mock_body);
 
         assert!(timeout_body.boxed().data().await.unwrap().is_err());
