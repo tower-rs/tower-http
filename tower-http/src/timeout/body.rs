@@ -34,10 +34,11 @@
 //! # }
 //! ```
 
-use futures_core::Future;
+use futures_core::{ready, Future};
 use http::{Request, Response};
 use http_body::Body;
 use pin_project_lite::pin_project;
+use tower::BoxError;
 use std::{
     pin::Pin,
     task::{Context, Poll},
@@ -72,6 +73,7 @@ impl<B> TimeoutBody<B> {
 impl<B> Body for TimeoutBody<B>
 where
     B: Body,
+    B::Error: Into<BoxError>,
 {
     type Data = B::Data;
     type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -91,57 +93,49 @@ where
         };
 
         // Error if the timeout has expired.
-        match sleep_pinned.poll(cx) {
-            Poll::Pending => (),
-            Poll::Ready(()) => return Poll::Ready(Some(Err(Box::new(TimeoutError)))),
+        if let Poll::Ready(()) = sleep_pinned.poll(cx) {
+            return Poll::Ready(Some(Err(Box::new(TimeoutError(())))))
         }
 
         // Check for body data.
-        match this.body.poll_data(cx) {
-            Poll::Ready(data) => {
-                // Some data is ready. Reset the `Sleep`...
-                this.sleep.set(Some(sleep(*this.timeout)));
+        let data = ready!(this.body.poll_data(cx));
+        // Some data is ready. Reset the `Sleep`...
+        this.sleep.set(None);
 
-                // ...then `poll` it to get awoken.
-                if let Poll::Ready(_) = this.sleep.as_pin_mut().unwrap().poll(cx) {
-                    return Poll::Ready(Some(Err(Box::new(TimeoutError))));
-                }
-                Poll::Ready(
-                    data.transpose()
-                        .map_err(|_| Box::new(TimeoutError).into())
-                        .transpose(),
-                )
-            }
-            Poll::Pending => Poll::Pending,
-        }
+        Poll::Ready(
+            data.transpose()
+                .map_err(Into::into)
+                .transpose(),
+        )
     }
 
     fn poll_trailers(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Result<Option<http::HeaderMap>, Self::Error>> {
-        let this = self.project();
+        let mut this = self.project();
+
+        let sleep_pinned = if let Some(some) = this.sleep.as_mut().as_pin_mut() {
+            some
+        } else {
+            this.sleep.set(Some(sleep(*this.timeout)));
+            this.sleep.as_mut().as_pin_mut().unwrap()
+        };
 
         // Error if the timeout has expired.
-        match this
-            .sleep
-            .as_pin_mut()
-            .expect("poll_data was not called")
-            .poll(cx)
-        {
-            Poll::Pending => (),
-            Poll::Ready(()) => return Poll::Ready(Err(Box::new(TimeoutError))),
+        if let Poll::Ready(()) = sleep_pinned.poll(cx) {
+            return Poll::Ready(Err(Box::new(TimeoutError(()))))
         }
 
         this.body
             .poll_trailers(cx)
-            .map_err(|_| Box::new(TimeoutError).into())
+            .map_err(Into::into)
     }
 }
 
 /// Error for [`TimeoutBody`].
 #[derive(Debug)]
-struct TimeoutError;
+pub struct TimeoutError(());
 
 impl std::error::Error for TimeoutError {}
 
@@ -198,9 +192,9 @@ impl<S> RequestBodyTimeout<S> {
     define_inner_service_accessors!();
 }
 
-impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for RequestBodyTimeout<S>
+impl<S, ReqBody> Service<Request<ReqBody>> for RequestBodyTimeout<S>
 where
-    S: Service<Request<TimeoutBody<ReqBody>>, Response = Response<ResBody>>,
+    S: Service<Request<TimeoutBody<ReqBody>>>,
     S::Error: Into<Box<dyn std::error::Error>>,
 {
     type Response = S::Response;
@@ -294,7 +288,6 @@ pin_project! {
     }
 }
 
-use futures_core::ready;
 impl<Fut, ResBody, E> Future for ResponseBodyTimeoutFuture<Fut>
 where
     Fut: Future<Output = Result<Response<ResBody>, E>>,
@@ -304,7 +297,7 @@ where
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let timeout = self.timeout;
         let this = self.project();
-        let res = ready!(this.inner.poll(cx)?);
+        let res = ready!(this.inner.poll(cx))?;
         Poll::Ready(Ok(res.map(|body| TimeoutBody::new(timeout, body))))
     }
 }
@@ -315,8 +308,17 @@ mod tests {
 
     use bytes::Bytes;
     use pin_project_lite::pin_project;
+    use std::{error::Error, fmt::Display};
 
+    #[derive(Debug)]
     struct MockError;
+
+    impl Error for MockError {}
+    impl Display for MockError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            todo!()
+        }
+    }
 
     pin_project! {
         struct MockBody {
