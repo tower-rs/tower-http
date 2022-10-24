@@ -38,13 +38,13 @@ use futures_core::{ready, Future};
 use http::{Request, Response};
 use http_body::Body;
 use pin_project_lite::pin_project;
-use tower::BoxError;
 use std::{
     pin::Pin,
     task::{Context, Poll},
     time::Duration,
 };
 use tokio::time::{sleep, Sleep};
+use tower::BoxError;
 use tower_layer::Layer;
 use tower_service::Service;
 
@@ -94,7 +94,7 @@ where
 
         // Error if the timeout has expired.
         if let Poll::Ready(()) = sleep_pinned.poll(cx) {
-            return Poll::Ready(Some(Err(Box::new(TimeoutError(())))))
+            return Poll::Ready(Some(Err(Box::new(TimeoutError(())))));
         }
 
         // Check for body data.
@@ -102,11 +102,7 @@ where
         // Some data is ready. Reset the `Sleep`...
         this.sleep.set(None);
 
-        Poll::Ready(
-            data.transpose()
-                .map_err(Into::into)
-                .transpose(),
-        )
+        Poll::Ready(data.transpose().map_err(Into::into).transpose())
     }
 
     fn poll_trailers(
@@ -124,12 +120,10 @@ where
 
         // Error if the timeout has expired.
         if let Poll::Ready(()) = sleep_pinned.poll(cx) {
-            return Poll::Ready(Err(Box::new(TimeoutError(()))))
+            return Poll::Ready(Err(Box::new(TimeoutError(()))));
         }
 
-        this.body
-            .poll_trailers(cx)
-            .map_err(Into::into)
+        this.body.poll_trailers(cx).map_err(Into::into)
     }
 }
 
