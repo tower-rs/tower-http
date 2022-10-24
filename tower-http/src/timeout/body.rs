@@ -34,6 +34,7 @@
 //! # }
 //! ```
 
+use crate::BoxError;
 use futures_core::{ready, Future};
 use http::{Request, Response};
 use http_body::Body;
@@ -44,7 +45,6 @@ use std::{
     time::Duration,
 };
 use tokio::time::{sleep, Sleep};
-use tower::BoxError;
 use tower_layer::Layer;
 use tower_service::Service;
 
