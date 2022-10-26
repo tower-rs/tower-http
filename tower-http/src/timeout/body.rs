@@ -52,8 +52,13 @@ pin_project! {
     /// Wrapper around a [`http_body::Body`] to time out if data is not ready within the specified duration.
     pub struct TimeoutBody<B> {
         timeout: Duration,
+        // In http-body 1.0, `poll_*` will be merged into `poll_frame`.
+        // Merge the two `sleep_data` and `sleep_trailers` into one `sleep`.
+        // See: https://github.com/tower-rs/tower-http/pull/303#discussion_r1004834958
         #[pin]
-        sleep: Option<Sleep>,
+        sleep_data: Option<Sleep>,
+        #[pin]
+        sleep_trailers: Option<Sleep>,
         #[pin]
         body: B,
     }
@@ -64,7 +69,8 @@ impl<B> TimeoutBody<B> {
     pub fn new(timeout: Duration, body: B) -> Self {
         TimeoutBody {
             timeout,
-            sleep: None,
+            sleep_data: None,
+            sleep_trailers: None,
             body,
         }
     }
@@ -85,11 +91,11 @@ where
         let mut this = self.project();
 
         // Start the `Sleep` if not active.
-        let sleep_pinned = if let Some(some) = this.sleep.as_mut().as_pin_mut() {
+        let sleep_pinned = if let Some(some) = this.sleep_data.as_mut().as_pin_mut() {
             some
         } else {
-            this.sleep.set(Some(sleep(*this.timeout)));
-            this.sleep.as_mut().as_pin_mut().unwrap()
+            this.sleep_data.set(Some(sleep(*this.timeout)));
+            this.sleep_data.as_mut().as_pin_mut().unwrap()
         };
 
         // Error if the timeout has expired.
@@ -100,7 +106,7 @@ where
         // Check for body data.
         let data = ready!(this.body.poll_data(cx));
         // Some data is ready. Reset the `Sleep`...
-        this.sleep.set(None);
+        this.sleep_data.set(None);
 
         Poll::Ready(data.transpose().map_err(Into::into).transpose())
     }
@@ -111,11 +117,15 @@ where
     ) -> Poll<Result<Option<http::HeaderMap>, Self::Error>> {
         let mut this = self.project();
 
-        let sleep_pinned = if let Some(some) = this.sleep.as_mut().as_pin_mut() {
+        // In http-body 1.0, `poll_*` will be merged into `poll_frame`.
+        // Merge the two `sleep_data` and `sleep_trailers` into one `sleep`.
+        // See: https://github.com/tower-rs/tower-http/pull/303#discussion_r1004834958
+
+        let sleep_pinned = if let Some(some) = this.sleep_trailers.as_mut().as_pin_mut() {
             some
         } else {
-            this.sleep.set(Some(sleep(*this.timeout)));
-            this.sleep.as_mut().as_pin_mut().unwrap()
+            this.sleep_trailers.set(Some(sleep(*this.timeout)));
+            this.sleep_trailers.as_mut().as_pin_mut().unwrap()
         };
 
         // Error if the timeout has expired.
