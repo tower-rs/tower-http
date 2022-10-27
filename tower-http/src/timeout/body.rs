@@ -319,7 +319,7 @@ mod tests {
 
     impl Error for MockError {}
     impl Display for MockError {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             todo!()
         }
     }
