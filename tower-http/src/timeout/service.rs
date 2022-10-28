@@ -20,7 +20,7 @@
 //! use hyper::Body;
 //! use std::{convert::Infallible, time::Duration};
 //! use tower::ServiceBuilder;
-//! use tower_http::timeout::service::TimeoutLayer;
+//! use tower_http::timeout::TimeoutLayer;
 //!
 //! async fn handle(_: Request<Body>) -> Result<Response<Body>, Infallible> {
 //!     // ...
@@ -244,7 +244,6 @@ impl<S> Layer<S> for ResponseBodyTimeoutLayer {
     }
 }
 
-
 /// Applies a [`TimeoutBody`] to the response body.
 #[derive(Clone)]
 pub struct ResponseBodyTimeout<S> {
@@ -314,4 +313,3 @@ where
         Poll::Ready(Ok(res.map(|body| TimeoutBody::new(timeout, body))))
     }
 }
-

@@ -3,9 +3,9 @@
 //! Bodies must produce data at most within the specified timeout.
 //! If the body does not produce a requested data frame within the timeout period, it will return an error.
 //!
-//! # Differences from [`tower_http::timeout::Timeout`]
+//! # Differences from [`crate::timeout::Timeout`]
 //!
-//! [`tower_http::timeout::Timeout`] applies a timeout to the request future, not body.
+//! [`crate::timeout::Timeout`] applies a timeout to the request future, not body.
 //! That timeout is not reset when bytes are handled, whether the request is active or not.
 //! Bodies are handled asynchronously outside of the tower stack's future and thus needs an additional timeout.
 //!
@@ -18,7 +18,7 @@
 //! use hyper::Body;
 //! use std::time::Duration;
 //! use tower::ServiceBuilder;
-//! use tower_http::timeout::body::RequestBodyTimeoutLayer;
+//! use tower_http::timeout::RequestBodyTimeoutLayer;
 //!
 //! async fn handle(_: Request<Body>) -> Result<Response<Body>, std::convert::Infallible> {
 //!     // ...
