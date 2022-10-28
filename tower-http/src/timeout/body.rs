@@ -1,12 +1,13 @@
-//! Middleware that applies a timeout to bodies.
+//! Middleware that applies a timeout to request and response bodies.
 //!
 //! Bodies must produce data at most within the specified timeout.
-//! If they are inactive, an error will be generated.
+//! If the body does not produce a requested data frame within the timeout period, it will return an error.
 //!
-//! # Differences from `tower_http::timeout::service::Timeout`
+//! # Differences from [`tower_http::timeout::service::Timeout`]
 //!
-//! `tower_http::timeout::service::Timeout` applies a timeout on the full request.
+//! [`tower_http::timeout::service::Timeout`] applies a timeout to the request future, not body.
 //! That timeout is not reset when bytes are handled, whether the request is active or not.
+//! Bodies are handled asynchronously outside of the tower stack's future and thus needs an additional timeout.
 //!
 //! This middleware will return a [`TimeoutError`].
 //!
