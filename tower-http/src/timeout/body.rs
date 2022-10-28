@@ -3,9 +3,9 @@
 //! Bodies must produce data at most within the specified timeout.
 //! If the body does not produce a requested data frame within the timeout period, it will return an error.
 //!
-//! # Differences from [`tower_http::timeout::service::Timeout`]
+//! # Differences from [`tower_http::timeout::Timeout`]
 //!
-//! [`tower_http::timeout::service::Timeout`] applies a timeout to the request future, not body.
+//! [`tower_http::timeout::Timeout`] applies a timeout to the request future, not body.
 //! That timeout is not reset when bytes are handled, whether the request is active or not.
 //! Bodies are handled asynchronously outside of the tower stack's future and thus needs an additional timeout.
 //!
@@ -37,7 +37,6 @@
 
 use crate::BoxError;
 use futures_core::{ready, Future};
-use http::{Request, Response};
 use http_body::Body;
 use pin_project_lite::pin_project;
 use std::{
@@ -46,8 +45,6 @@ use std::{
     time::Duration,
 };
 use tokio::time::{sleep, Sleep};
-use tower_layer::Layer;
-use tower_service::Service;
 
 pin_project! {
     /// Wrapper around a [`http_body::Body`] to time out if data is not ready within the specified duration.
@@ -149,164 +146,6 @@ impl std::fmt::Display for TimeoutError {
         write!(f, "data was not received within the designated timeout")
     }
 }
-
-/// Applies a [`TimeoutBody`] to the request body.
-#[derive(Clone, Debug)]
-pub struct RequestBodyTimeoutLayer {
-    timeout: Duration,
-}
-
-impl RequestBodyTimeoutLayer {
-    /// Creates a new [`RequestBodyTimeoutLayer`].
-    pub fn new(timeout: Duration) -> Self {
-        Self { timeout }
-    }
-}
-
-impl<S> Layer<S> for RequestBodyTimeoutLayer {
-    type Service = RequestBodyTimeout<S>;
-
-    fn layer(&self, inner: S) -> Self::Service {
-        RequestBodyTimeout::new(inner, self.timeout)
-    }
-}
-
-/// Applies a [`TimeoutBody`] to the request body.
-#[derive(Clone, Debug)]
-pub struct RequestBodyTimeout<S> {
-    inner: S,
-    timeout: Duration,
-}
-
-impl<S> RequestBodyTimeout<S> {
-    /// Creates a new [`RequestBodyTimeout`].
-    pub fn new(service: S, timeout: Duration) -> Self {
-        Self {
-            inner: service,
-            timeout,
-        }
-    }
-
-    /// Returns a new [`Layer`] that wraps services with a [`RequestBodyTimeoutLayer`] middleware.
-    ///
-    /// [`Layer`]: tower_layer::Layer
-    pub fn layer(timeout: Duration) -> RequestBodyTimeoutLayer {
-        RequestBodyTimeoutLayer::new(timeout)
-    }
-
-    define_inner_service_accessors!();
-}
-
-impl<S, ReqBody> Service<Request<ReqBody>> for RequestBodyTimeout<S>
-where
-    S: Service<Request<TimeoutBody<ReqBody>>>,
-    S::Error: Into<Box<dyn std::error::Error>>,
-{
-    type Response = S::Response;
-    type Error = S::Error;
-    type Future = S::Future;
-
-    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.inner.poll_ready(cx)
-    }
-
-    fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
-        let req = req.map(|body| TimeoutBody::new(self.timeout, body));
-        self.inner.call(req)
-    }
-}
-
-/// Applies a [`TimeoutBody`] to the response body.
-#[derive(Clone)]
-pub struct ResponseBodyTimeoutLayer {
-    timeout: Duration,
-}
-
-impl ResponseBodyTimeoutLayer {
-    /// Creates a new [`ResponseBodyTimeoutLayer`].
-    pub fn new(timeout: Duration) -> Self {
-        Self { timeout }
-    }
-}
-
-impl<S> Layer<S> for ResponseBodyTimeoutLayer {
-    type Service = ResponseBodyTimeout<S>;
-
-    fn layer(&self, inner: S) -> Self::Service {
-        ResponseBodyTimeout::new(inner, self.timeout)
-    }
-}
-
-/// Applies a [`TimeoutBody`] to the response body.
-#[derive(Clone)]
-pub struct ResponseBodyTimeout<S> {
-    inner: S,
-    timeout: Duration,
-}
-
-impl<S> ResponseBodyTimeout<S> {
-    /// Creates a new [`ResponseBodyTimeout`].
-    pub fn new(service: S, timeout: Duration) -> Self {
-        Self {
-            inner: service,
-            timeout,
-        }
-    }
-
-    /// Returns a new [`Layer`] that wraps services with a [`ResponseBodyTimeoutLayer`] middleware.
-    ///
-    /// [`Layer`]: tower_layer::Layer
-    pub fn layer(timeout: Duration) -> ResponseBodyTimeoutLayer {
-        ResponseBodyTimeoutLayer::new(timeout)
-    }
-
-    define_inner_service_accessors!();
-}
-
-impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for ResponseBodyTimeout<S>
-where
-    S: Service<Request<ReqBody>, Response = Response<ResBody>>,
-    S::Error: Into<Box<dyn std::error::Error>>,
-{
-    type Response = Response<TimeoutBody<ResBody>>;
-    type Error = S::Error;
-    type Future = ResponseBodyTimeoutFuture<S::Future>;
-
-    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.inner.poll_ready(cx)
-    }
-
-    fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
-        ResponseBodyTimeoutFuture {
-            inner: self.inner.call(req),
-            timeout: self.timeout,
-        }
-    }
-}
-
-pin_project! {
-    /// Response future for [`ResponseBodyTimeout`].
-    pub struct ResponseBodyTimeoutFuture<Fut> {
-        #[pin]
-        inner: Fut,
-        timeout: Duration,
-    }
-}
-
-impl<Fut, ResBody, E> Future for ResponseBodyTimeoutFuture<Fut>
-where
-    Fut: Future<Output = Result<Response<ResBody>, E>>,
-{
-    type Output = Result<Response<TimeoutBody<ResBody>>, E>;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let timeout = self.timeout;
-        let this = self.project();
-        let res = ready!(this.inner.poll(cx))?;
-        Poll::Ready(Ok(res.map(|body| TimeoutBody::new(timeout, body))))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
