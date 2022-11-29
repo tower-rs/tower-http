@@ -1,11 +1,10 @@
 use axum::{
     body::Bytes,
-    error_handling::HandleErrorLayer,
     extract::{Path, State},
     http::{header, HeaderValue, StatusCode},
     response::IntoResponse,
     routing::get,
-    BoxError, Router,
+    Router,
 };
 use clap::Parser;
 use std::{
