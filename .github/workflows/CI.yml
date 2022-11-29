@@ -74,14 +74,13 @@ jobs:
         args: --workspace --all-features
 
   test-msrv:
-    # some examples don't compile on 1.46, so just test tower-http itself
     needs: check
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@master
     - uses: actions-rs/toolchain@v1
       with:
-        toolchain: 1.56
+        toolchain: 1.60
         profile: minimal
         override: true
     - name: Run tests

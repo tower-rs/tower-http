@@ -37,7 +37,7 @@ The [examples] folder contains various examples of how to use Tower HTTP:
 
 ## Minimum supported Rust version
 
-tower-http's MSRV is 1.56.
+tower-http's MSRV is 1.60.
 
 ## Getting Help
 
