@@ -299,16 +299,6 @@ where
         let extensions = std::mem::take(&mut parts.extensions);
         let req = Request::from_parts(parts, Empty::<Bytes>::new());
 
-        let path_to_file = match self
-            .variant
-            .build_and_validate_path(&self.base, req.uri().path())
-        {
-            Some(path_to_file) => path_to_file,
-            None => {
-                return ResponseFuture::invalid_path();
-            }
-        };
-
         let fallback_and_request = self.fallback.as_mut().map(|fallback| {
             let mut fallback_req = Request::new(body);
             *fallback_req.method_mut() = req.method().clone();
@@ -322,6 +312,16 @@ where
 
             (fallback, fallback_req)
         });
+
+        let path_to_file = match self
+            .variant
+            .build_and_validate_path(&self.base, req.uri().path())
+        {
+            Some(path_to_file) => path_to_file,
+            None => {
+                return ResponseFuture::invalid_path(fallback_and_request);
+            }
+        };
 
         let buf_chunk_size = self.buf_chunk_size;
         let range_header = req

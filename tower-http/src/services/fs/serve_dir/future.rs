@@ -43,9 +43,11 @@ impl<ReqBody, F> ResponseFuture<ReqBody, F> {
         }
     }
 
-    pub(super) fn invalid_path() -> Self {
+    pub(super) fn invalid_path(fallback_and_request: Option<(F, Request<ReqBody>)>) -> Self {
         Self {
-            inner: ResponseFutureInner::InvalidPath,
+            inner: ResponseFutureInner::InvalidPath {
+                fallback_and_request,
+            },
         }
     }
 
@@ -67,7 +69,9 @@ pin_project! {
         FallbackFuture {
             future: BoxFuture<'static, io::Result<Response<ResponseBody>>>,
         },
-        InvalidPath,
+        InvalidPath {
+            fallback_and_request: Option<(F, Request<ReqBody>)>,
+        },
         MethodNotAllowed,
     }
 }
@@ -138,8 +142,14 @@ where
                     break Pin::new(future).poll(cx)
                 }
 
-                ResponseFutureInnerProj::InvalidPath => {
-                    break Poll::Ready(Ok(not_found()));
+                ResponseFutureInnerProj::InvalidPath {
+                    fallback_and_request,
+                } => {
+                    if let Some((mut fallback, request)) = fallback_and_request.take() {
+                        call_fallback(&mut fallback, request)
+                    } else {
+                        break Poll::Ready(Ok(not_found()));
+                    }
                 }
 
                 ResponseFutureInnerProj::MethodNotAllowed => {

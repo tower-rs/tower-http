@@ -7,8 +7,9 @@ use http::{header, Method, Response};
 use http::{Request, StatusCode};
 use http_body::Body as HttpBody;
 use hyper::Body;
+use std::convert::Infallible;
 use std::io::{self, Read};
-use tower::ServiceExt;
+use tower::{service_fn, ServiceExt};
 
 #[tokio::test]
 async fn basic() {
@@ -687,4 +688,26 @@ async fn with_fallback_svc_and_not_append_index_html_on_directories() {
 
     let body = body_into_text(res.into_body()).await;
     assert_eq!(body, "from fallback /");
+}
+
+// https://github.com/tower-rs/tower-http/issues/308
+#[tokio::test]
+async fn calls_fallback_on_invalid_paths() {
+    async fn fallback<T>(_: T) -> Result<Response<Body>, std::io::Error> {
+        let mut res = Response::new(Body::empty());
+        res.headers_mut()
+            .insert("from-fallback", "1".parse().unwrap());
+        Ok(res)
+    }
+
+    let svc = ServeDir::new("..").fallback(service_fn(fallback));
+
+    let req = Request::builder()
+        .uri("/weird_%c3%28_path")
+        .body(Body::empty())
+        .unwrap();
+
+    let res = svc.oneshot(req).await.unwrap();
+
+    assert_eq!(res.headers()["from-fallback"], "1");
 }
