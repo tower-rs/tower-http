@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **trace:** Correctly identify gRPC requests in default `on_response` callback ([#278])
 - **cors:** Panic if a wildcard (`*`) is passed to `AllowOrigin::list`. Use
   `AllowOrigin::any()` instead ([#285])
+- **serve_dir:** Call the fallback on non-uft8 request paths
 
 [#278]: https://github.com/tower-rs/tower-http/pull/278
 [#285]: https://github.com/tower-rs/tower-http/pull/285
