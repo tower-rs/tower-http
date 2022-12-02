@@ -19,7 +19,6 @@
 //!     add_extension::AddExtensionLayer,
 //!     compression::CompressionLayer,
 //!     propagate_header::PropagateHeaderLayer,
-//!     auth::RequireAuthorizationLayer,
 //!     sensitive_headers::SetSensitiveRequestHeadersLayer,
 //!     set_header::SetResponseHeaderLayer,
 //!     trace::TraceLayer,
@@ -71,7 +70,7 @@
 //!         // If the response has a known size set the `Content-Length` header
 //!         .layer(SetResponseHeaderLayer::overriding(CONTENT_TYPE, content_length_from_response))
 //!         // Authorize requests using a token
-//!         .layer(RequireAuthorizationLayer::bearer("passwordlol"))
+//!         .layer(ValidateRequestHeaderLayer::bearer("passwordlol"))
 //!         // Accept only application/json, application/* and */* in a request's ACCEPT header
 //!         .layer(ValidateRequestHeaderLayer::accept("application/json"))
 //!         // Wrap a `Service` in our middleware stack
