@@ -90,6 +90,20 @@ impl ServeFile {
     pub fn with_buf_chunk_size(self, chunk_size: usize) -> Self {
         Self(self.0.with_buf_chunk_size(chunk_size))
     }
+
+    /// Call the service and get a future that contains any `std::io::Error` that might have
+    /// happened.
+    ///
+    /// See [`ServeDir::try_call`] for more details.
+    pub fn try_call<ReqBody>(
+        &mut self,
+        req: Request<ReqBody>,
+    ) -> super::serve_dir::future::ResponseFuture<ReqBody>
+    where
+        ReqBody: Send + 'static,
+    {
+        self.0.try_call(req)
+    }
 }
 
 impl<ReqBody> Service<Request<ReqBody>> for ServeFile
