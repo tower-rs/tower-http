@@ -9,12 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Added
 
-- Add `NormalizePath` middleware
-- Add `ValidateRequest` middleware
+- Add `NormalizePath` middleware ([#275])
+- Add `ValidateRequest` middleware ([#289])
+- Add `RequestBodyTimeout` middleware ([#303])
 
 ## Changed
 
-- None.
+- Bump Minimum Supported Rust Version to 1.60 ([#299])
 
 ## Removed
 
@@ -27,8 +28,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `AllowOrigin::any()` instead ([#285])
 - **serve_dir:** Call the fallback on non-uft8 request paths ([#310])
 
+[#275]: https://github.com/tower-rs/tower-http/pull/275
 [#278]: https://github.com/tower-rs/tower-http/pull/278
 [#285]: https://github.com/tower-rs/tower-http/pull/285
+[#289]: https://github.com/tower-rs/tower-http/pull/289
+[#299]: https://github.com/tower-rs/tower-http/pull/299
+[#303]: https://github.com/tower-rs/tower-http/pull/303
 [#310]: https://github.com/tower-rs/tower-http/pull/310
 
 # 0.3.4 (June 06, 2022)
