@@ -1,4 +1,4 @@
-//! Authorize requests using the [`ValidateRequest`] middleware.
+//! Authorize requests using [`ValidateRequest`].
 //!
 //! [`Authorization`]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Authorization
 //!
@@ -51,8 +51,7 @@
 //! # }
 //! ```
 //!
-//! Custom validation can be made by implementing [`ValidateRequest`]:
-//!
+//! Custom validation can be made by implementing [`ValidateRequest`].
 
 use crate::validate_request::{ValidateRequest, ValidateRequestHeader, ValidateRequestHeaderLayer};
 use http::{
@@ -102,11 +101,11 @@ impl<S, ResBody> ValidateRequestHeader<S, Bearer<ResBody>> {
     /// # Panics
     ///
     /// Panics if the token is not a valid [`HeaderValue`](http::header::HeaderValue).
-    pub fn bearer(inner: S, value: &str) -> Self
+    pub fn bearer(inner: S, token: &str) -> Self
     where
         ResBody: Body + Default,
     {
-        Self::custom(inner, Bearer::new(value))
+        Self::custom(inner, Bearer::new(token))
     }
 }
 
