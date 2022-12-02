@@ -422,21 +422,18 @@ where
     }
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
-        let future = self.try_call(req).map(|result| -> Result<_, Infallible> {
-            match result {
-                Ok(response) => Ok(response),
-                Err(err) => {
-                    tracing::error!(error = %err, "Failed to read file");
+        let future = self.try_call(req).map(|result: Result<_, _>| -> Result<_, Infallible> {
+            let response = result.unwrap_or_else(|err| {
+                tracing::error!(error = %err, "Failed to read file");
 
-                    let body =
-                        ResponseBody::new(Empty::new().map_err(|err| match err {}).boxed_unsync());
-                    let response = Response::builder()
-                        .status(StatusCode::INTERNAL_SERVER_ERROR)
-                        .body(body)
-                        .unwrap();
-                    Ok(response)
-                }
-            }
+                let body =
+                    ResponseBody::new(Empty::new().map_err(|err| match err {}).boxed_unsync());
+                Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .body(body)
+                    .unwrap()
+            });
+            Ok(response)
         } as _);
 
         InfallibleResponseFuture::new(future)
