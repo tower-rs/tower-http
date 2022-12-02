@@ -1,3 +1,4 @@
+use crate::services::fs::{self, Backend};
 use crate::services::{ServeDir, ServeFile};
 use brotli::BrotliDecompress;
 use bytes::Bytes;
@@ -7,8 +8,16 @@ use http::{header, Method, Response};
 use http::{Request, StatusCode};
 use http_body::Body as HttpBody;
 use hyper::Body;
+use std::borrow::Cow;
 use std::convert::Infallible;
-use std::io::{self, Read};
+use std::future::{ready, Ready};
+use std::io::{self, Cursor, Read};
+use std::path::Path;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::task::{Context, Poll};
+use std::time::SystemTime;
+use tokio::io::{AsyncRead, AsyncSeek, ReadBuf};
 use tower::{service_fn, ServiceExt};
 
 #[tokio::test]
@@ -710,4 +719,147 @@ async fn calls_fallback_on_invalid_paths() {
     let res = svc.oneshot(req).await.unwrap();
 
     assert_eq!(res.headers()["from-fallback"], "1");
+}
+
+#[tokio::test]
+async fn custom_backend() {
+    #[derive(Clone, rust_embed::RustEmbed)]
+    #[folder = "../test-files"]
+    struct RustEmbedFiles;
+
+    impl RustEmbedFiles {
+        fn get_file(&self, path: &Path) -> io::Result<rust_embed::EmbeddedFile> {
+            // TODO(david): we have to handle directories here which rust-embed does not
+
+            for file in Self::iter() {
+                dbg!(&file);
+            }
+
+            if path == Path::new("./.") {
+                todo!("bingo");
+            }
+
+            for filename in Self::iter() {
+                dbg!(filename);
+            }
+
+            if let Some(file) = Self::get(path.to_str().unwrap()) {
+                Ok(file)
+            } else {
+                Err(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("{} not found", path.display()),
+                ))
+            }
+        }
+    }
+
+    impl Backend for RustEmbedFiles {
+        type File = RustEmbedFile;
+        type Metadata = RustEmbedMetadata;
+
+        type OpenFuture = Ready<io::Result<Self::File>>;
+        type MetadataFuture = Ready<io::Result<Self::Metadata>>;
+
+        fn open<A>(&self, path: A) -> Self::OpenFuture
+        where
+            A: AsRef<Path>,
+        {
+            let path = path.as_ref();
+
+            let rust_embed::EmbeddedFile { data, metadata } = match self.get_file(path) {
+                Ok(file) => file,
+                Err(err) => return ready(Err(err)),
+            };
+
+            ready(Ok(RustEmbedFile {
+                metadata: Arc::new(metadata),
+                len: data.len() as u64,
+                cursor: Cursor::new(data),
+            }))
+        }
+
+        fn metadata<A>(&self, path: A) -> Self::MetadataFuture
+        where
+            A: AsRef<Path>,
+        {
+            let rust_embed::EmbeddedFile { metadata, data } = match self.get_file(path.as_ref()) {
+                Ok(file) => file,
+                Err(err) => return ready(Err(err)),
+            };
+
+            ready(Ok(RustEmbedMetadata {
+                metadata: Arc::new(metadata),
+                len: data.len() as u64,
+            }))
+        }
+    }
+
+    struct RustEmbedFile {
+        metadata: Arc<rust_embed::Metadata>,
+        cursor: std::io::Cursor<Cow<'static, [u8]>>,
+        len: u64,
+    }
+
+    impl AsyncRead for RustEmbedFile {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &mut ReadBuf<'_>,
+        ) -> Poll<io::Result<()>> {
+            Pin::new(&mut self.cursor).poll_read(cx, buf)
+        }
+    }
+
+    impl AsyncSeek for RustEmbedFile {
+        fn start_seek(self: Pin<&mut Self>, _position: io::SeekFrom) -> io::Result<()> {
+            unimplemented!()
+        }
+
+        fn poll_complete(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<u64>> {
+            unimplemented!()
+        }
+    }
+
+    impl fs::File for RustEmbedFile {
+        type Metadata = RustEmbedMetadata;
+        type MetadataFuture<'a> = Ready<io::Result<Self::Metadata>>;
+
+        fn metadata(&self) -> Self::MetadataFuture<'_> {
+            ready(Ok(RustEmbedMetadata {
+                metadata: Arc::clone(&self.metadata),
+                len: self.len,
+            }))
+        }
+    }
+
+    struct RustEmbedMetadata {
+        metadata: Arc<rust_embed::Metadata>,
+        len: u64,
+    }
+
+    impl fs::Metadata for RustEmbedMetadata {
+        fn is_dir(&self) -> bool {
+            false
+        }
+
+        fn modified(&self) -> io::Result<SystemTime> {
+            todo!()
+        }
+
+        fn len(&self) -> u64 {
+            self.len
+        }
+    }
+
+    let svc = ServeDir::new(".").backend(RustEmbedFiles);
+
+    let req = Request::builder().uri("/").body(Body::empty()).unwrap();
+
+    let res = svc.oneshot(req).await.unwrap();
+
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let body = body_into_text(res.into_body()).await;
+    assert_eq!(body, "<b>HTML!</b>\n");
 }

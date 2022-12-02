@@ -1,9 +1,11 @@
 //! Service that serves a file.
 
-use super::ServeDir;
-use http::{HeaderValue, Request};
+use super::{backend::TokioBackend, Backend, DefaultServeDirFallback, ServeDir};
+use bytes::Bytes;
+use http::{HeaderValue, Request, Response};
 use mime::Mime;
 use std::{
+    convert::Infallible,
     path::Path,
     task::{Context, Poll},
 };
@@ -11,10 +13,10 @@ use tower_service::Service;
 
 /// Service that serves a file.
 #[derive(Clone, Debug)]
-pub struct ServeFile(ServeDir);
+pub struct ServeFile<F = DefaultServeDirFallback<TokioBackend>, B = TokioBackend>(ServeDir<F, B>);
 
 // Note that this is just a special case of ServeDir
-impl ServeFile {
+impl ServeFile<DefaultServeDirFallback<TokioBackend>, TokioBackend> {
     /// Create a new [`ServeFile`].
     ///
     /// The `Content-Type` will be guessed from the file extension.
@@ -41,7 +43,9 @@ impl ServeFile {
         let mime = HeaderValue::from_str(mime.as_ref()).expect("mime isn't a valid header value");
         Self(ServeDir::new_single_file(path, mime))
     }
+}
 
+impl<F, B> ServeFile<F, B> {
     /// Informs the service that it should also look for a precompressed gzip
     /// version of the file.
     ///
@@ -91,28 +95,48 @@ impl ServeFile {
         Self(self.0.with_buf_chunk_size(chunk_size))
     }
 
+    /// TODO(david): docs
+    pub fn backend<B2>(self, new_backend: B2) -> ServeFile<F, B2>
+    where
+        B2: Backend,
+    {
+        ServeFile(self.0.backend(new_backend))
+    }
+}
+
+impl<F, B> ServeFile<F, B> {
     /// Call the service and get a future that contains any `std::io::Error` that might have
     /// happened.
     ///
     /// See [`ServeDir::try_call`] for more details.
-    pub fn try_call<ReqBody>(
+    pub fn try_call<ReqBody, FResBody>(
         &mut self,
         req: Request<ReqBody>,
-    ) -> super::serve_dir::future::ResponseFuture<ReqBody>
+    ) -> super::serve_dir::future::ResponseFuture<ReqBody, F, B>
     where
         ReqBody: Send + 'static,
+        F: Service<Request<ReqBody>, Response = Response<FResBody>, Error = Infallible> + Clone,
+        F::Future: Send + 'static,
+        FResBody: http_body::Body<Data = Bytes> + Send + 'static,
+        FResBody::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+        B: Backend,
     {
         self.0.try_call(req)
     }
 }
 
-impl<ReqBody> Service<Request<ReqBody>> for ServeFile
+impl<ReqBody, F, B, FResBody> Service<Request<ReqBody>> for ServeFile<F, B>
 where
     ReqBody: Send + 'static,
+    F: Service<Request<ReqBody>, Response = Response<FResBody>, Error = Infallible> + Clone,
+    F::Future: Send + 'static,
+    FResBody: http_body::Body<Data = Bytes> + Send + 'static,
+    FResBody::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+    B: Backend,
 {
-    type Error = <ServeDir as Service<Request<ReqBody>>>::Error;
-    type Response = <ServeDir as Service<Request<ReqBody>>>::Response;
-    type Future = <ServeDir as Service<Request<ReqBody>>>::Future;
+    type Error = <ServeDir<F, B> as Service<Request<ReqBody>>>::Error;
+    type Response = <ServeDir<F, B> as Service<Request<ReqBody>>>::Response;
+    type Future = <ServeDir<F, B> as Service<Request<ReqBody>>>::Future;
 
     #[inline]
     fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
