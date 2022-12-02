@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Added
 
+- None.
+
+## Changed
+
+- None.
+
+## Removed
+
+- None.
+
+## Fixed
+
+- None.
+
+# 0.3.5 (December 02, 2022)
+
+## Added
+
 - Add `NormalizePath` middleware ([#275])
 - Add `ValidateRequest` middleware ([#289])
 - Add `RequestBodyTimeout` middleware ([#303])
@@ -16,10 +34,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Changed
 
 - Bump Minimum Supported Rust Version to 1.60 ([#299])
-
-## Removed
-
-- None.
 
 ## Fixed
 
