@@ -14,17 +14,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Changed
 
 - **fs:** `ServeDir` and `ServeFile`'s error types are now `Infallible` and any IO errors
-  will be converted into responses. Use `try_call` to generate error responses manually
+  will be converted into responses. Use `try_call` to generate error responses manually ([#283])
 - **fs:** `ServeDir::fallback` and `ServeDir::not_found_service` now requires
-  the fallback service to use `Infallible` as its error type
+  the fallback service to use `Infallible` as its error type ([#283])
 
 ## Removed
 
-- Removed `RequireAuthorization` in favor of `ValidateRequest`
+- Removed `RequireAuthorization` in favor of `ValidateRequest` ([#290])
 
 ## Fixed
 
 - None.
+
+[#290]: https://github.com/tower-rs/tower-http/pull/290
+[#283]: https://github.com/tower-rs/tower-http/pull/283
 
 # 0.3.5 (December 02, 2022)
 
