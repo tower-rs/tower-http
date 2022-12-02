@@ -693,7 +693,7 @@ async fn with_fallback_svc_and_not_append_index_html_on_directories() {
 // https://github.com/tower-rs/tower-http/issues/308
 #[tokio::test]
 async fn calls_fallback_on_invalid_paths() {
-    async fn fallback<T>(_: T) -> Result<Response<Body>, std::io::Error> {
+    async fn fallback<T>(_: T) -> Result<Response<Body>, Infallible> {
         let mut res = Response::new(Body::empty());
         res.headers_mut()
             .insert("from-fallback", "1".parse().unwrap());
