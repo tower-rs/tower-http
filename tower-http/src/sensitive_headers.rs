@@ -232,9 +232,12 @@ where
     }
 
     fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
+        let headers = req.headers_mut();
         for header in &*self.headers {
-            if let Some(value) = req.headers_mut().get_mut(header) {
-                value.set_sensitive(true);
+            if let http::header::Entry::Occupied(mut entry) = headers.entry(header) {
+                for value in entry.iter_mut() {
+                    value.set_sensitive(true);
+                }
             }
         }
 
@@ -361,12 +364,84 @@ where
         let this = self.project();
         let mut res = ready!(this.future.poll(cx)?);
 
+        let headers = res.headers_mut();
         for header in &**this.headers {
-            if let Some(value) = res.headers_mut().get_mut(header) {
-                value.set_sensitive(true);
+            if let http::header::Entry::Occupied(mut entry) = headers.entry(header) {
+                for value in entry.iter_mut() {
+                    value.set_sensitive(true);
+                }
             }
         }
 
         Poll::Ready(Ok(res))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[allow(unused_imports)]
+    use super::*;
+    use http::header;
+    use tower::{ServiceBuilder, ServiceExt};
+
+    #[tokio::test]
+    async fn multiple_value_header() {
+        async fn response_set_cookie(req: http::Request<()>) -> Result<http::Response<()>, ()> {
+            let mut iter = req.headers().get_all(header::COOKIE).iter().peekable();
+
+            assert!(iter.peek().is_some());
+
+            for value in iter {
+                assert!(value.is_sensitive())
+            }
+
+            let mut resp = http::Response::new(());
+            resp.headers_mut().append(
+                header::CONTENT_TYPE,
+                http::HeaderValue::from_static("text/html"),
+            );
+            resp.headers_mut().append(
+                header::SET_COOKIE,
+                http::HeaderValue::from_static("cookie-1"),
+            );
+            resp.headers_mut().append(
+                header::SET_COOKIE,
+                http::HeaderValue::from_static("cookie-2"),
+            );
+            resp.headers_mut().append(
+                header::SET_COOKIE,
+                http::HeaderValue::from_static("cookie-3"),
+            );
+            Ok(resp)
+        }
+
+        let mut service = ServiceBuilder::new()
+            .layer(SetSensitiveRequestHeadersLayer::new(vec![header::COOKIE]))
+            .layer(SetSensitiveResponseHeadersLayer::new(vec![
+                header::SET_COOKIE,
+            ]))
+            .service_fn(response_set_cookie);
+
+        let mut req = http::Request::new(());
+        req.headers_mut()
+            .append(header::COOKIE, http::HeaderValue::from_static("cookie+1"));
+        req.headers_mut()
+            .append(header::COOKIE, http::HeaderValue::from_static("cookie+2"));
+
+        let resp = service.ready().await.unwrap().call(req).await.unwrap();
+
+        assert!(!resp
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .unwrap()
+            .is_sensitive());
+
+        let mut iter = resp.headers().get_all(header::SET_COOKIE).iter().peekable();
+
+        assert!(iter.peek().is_some());
+
+        for value in iter {
+            assert!(value.is_sensitive())
+        }
     }
 }
