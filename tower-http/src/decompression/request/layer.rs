@@ -82,9 +82,9 @@ impl RequestDecompressionLayer {
         self
     }
 
-    /// Passes through the request even when the encoding is not supported.
-    pub fn pass_through_unaccepted(mut self) -> Self {
-        self.pass_through_unaccepted = true;
+    /// Sets whether to pass through the request even when the encoding is not supported.
+    pub fn pass_through_unaccepted(mut self, enable: bool) -> Self {
+        self.pass_through_unaccepted = enable;
         self
     }
 }
