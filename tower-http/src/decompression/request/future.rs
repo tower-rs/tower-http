@@ -12,11 +12,6 @@ use std::task::Poll;
 pin_project! {
     #[derive(Debug)]
     /// Response future of [`RequestDecompression`]
-    ///
-    /// Can either poll its inner future or creates a `Response`
-    /// with an Unsupported Media Type status code.
-    ///
-    /// [`RequestDecompression`]: super::RequestDecompression
     pub struct RequestDecompressionFuture<F, B, E>
     where
         F: Future<Output = Result<Response<B>, E>>,

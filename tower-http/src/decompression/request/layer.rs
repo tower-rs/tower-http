@@ -37,24 +37,21 @@ impl RequestDecompressionLayer {
         Default::default()
     }
 
-    /// Sets whether to support
-    /// gzip encoding.
+    /// Sets whether to support gzip encoding.
     #[cfg(feature = "decompression-gzip")]
     pub fn gzip(mut self, enable: bool) -> Self {
         self.accept.set_gzip(enable);
         self
     }
 
-    /// Sets whether to support
-    /// Deflate encoding.
+    /// Sets whether to support Deflate encoding.
     #[cfg(feature = "decompression-deflate")]
     pub fn deflate(mut self, enable: bool) -> Self {
         self.accept.set_deflate(enable);
         self
     }
 
-    /// Sets whether to support
-    /// Brotli encoding.
+    /// Sets whether to support Brotli encoding.
     #[cfg(feature = "decompression-br")]
     pub fn br(mut self, enable: bool) -> Self {
         self.accept.set_br(enable);

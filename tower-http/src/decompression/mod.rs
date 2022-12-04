@@ -104,11 +104,10 @@ mod future;
 mod layer;
 mod service;
 
-pub use self::body::DecompressionBody;
-
-pub use self::future::ResponseFuture;
-pub use self::layer::DecompressionLayer;
-pub use self::service::Decompression;
+pub use self::{
+    body::DecompressionBody, future::ResponseFuture, layer::DecompressionLayer,
+    service::Decompression,
+};
 
 pub use self::request::future::RequestDecompressionFuture;
 pub use self::request::layer::RequestDecompressionLayer;
