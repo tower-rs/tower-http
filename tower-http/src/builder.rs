@@ -355,6 +355,16 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
         self,
         limit: usize,
     ) -> ServiceBuilder<Stack<crate::limit::RequestBodyLimitLayer, L>>;
+
+    /// Remove trailing slashes from paths.
+    ///
+    /// See [`tower_http::normalize_path`] for more details.
+    ///
+    /// [`tower_http::normalize_path`]: crate::normalize_path
+    #[cfg(feature = "normalize-path")]
+    fn trim_trailing_slash(
+        self,
+    ) -> ServiceBuilder<Stack<crate::normalize_path::NormalizePathLayer, L>>;
 }
 
 impl<L> crate::sealed::Sealed<L> for ServiceBuilder<L> {}
@@ -577,5 +587,12 @@ impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
         limit: usize,
     ) -> ServiceBuilder<Stack<crate::limit::RequestBodyLimitLayer, L>> {
         self.layer(crate::limit::RequestBodyLimitLayer::new(limit))
+    }
+
+    #[cfg(feature = "normalize-path")]
+    fn trim_trailing_slash(
+        self,
+    ) -> ServiceBuilder<Stack<crate::normalize_path::NormalizePathLayer, L>> {
+        self.layer(crate::normalize_path::NormalizePathLayer::trim_trailing_slash())
     }
 }
