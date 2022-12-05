@@ -65,11 +65,11 @@ impl<F, B, E> Future for RequestDecompressionFuture<F, B, E>
 where
     F: Future<Output = Result<Response<B>, E>>,
     B: Body + Send + 'static,
-    <B as Body>::Data: Buf + 'static,
-    <B as Body>::Error: Into<BoxError> + 'static,
+    B::Data: Buf + 'static,
+    B::Error: Into<BoxError> + 'static,
     E: Into<BoxError>,
 {
-    type Output = Result<Response<UnsyncBoxBody<<B as Body>::Data, BoxError>>, BoxError>;
+    type Output = Result<Response<UnsyncBoxBody<B::Data, BoxError>>, BoxError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match self.project().kind.project() {
@@ -87,8 +87,8 @@ where
                     )
                     .status(StatusCode::UNSUPPORTED_MEDIA_TYPE)
                     .body(Empty::new().map_err(Into::into).boxed_unsync())
-                    .map_err(Into::into);
-                Poll::Ready(res)
+                    .unwrap();
+                Poll::Ready(Ok(res))
             }
         }
     }
