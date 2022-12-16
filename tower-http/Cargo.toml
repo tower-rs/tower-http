@@ -25,7 +25,7 @@ tower-service = "0.3"
 
 # optional dependencies
 async-compression = { version = "0.3", optional = true, features = ["tokio"] }
-base64 = { version = "0.13", optional = true }
+base64 = { version = "0.20", optional = true }
 http-range-header = "0.3.0"
 iri-string = { version = "0.7.0", optional = true }
 mime = { version = "0.3", optional = true, default_features = false }
