@@ -13,10 +13,12 @@ use std::{
 use tokio::io::{AsyncRead, AsyncReadExt, Take};
 use tokio_util::io::ReaderStream;
 
+mod backend;
 mod serve_dir;
 mod serve_file;
 
 pub use self::{
+    backend::{Backend, File, Metadata},
     serve_dir::{
         future::ResponseFuture as ServeFileSystemResponseFuture,
         DefaultServeDirFallback,

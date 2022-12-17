@@ -8,13 +8,18 @@ use futures_util::FutureExt;
 use http::{header, HeaderValue, Method, Request, Response, StatusCode};
 use http_body::{combinators::UnsyncBoxBody, Body, Empty};
 use percent_encoding::percent_decode;
+use pin_project_lite::pin_project;
 use std::{
     convert::Infallible,
+    future::Future,
     io,
+    marker::PhantomData,
     path::{Component, Path, PathBuf},
     task::{Context, Poll},
 };
 use tower_service::Service;
+
+use super::{backend::TokioBackend, Backend};
 
 pub(crate) mod future;
 mod headers;
@@ -56,7 +61,7 @@ const DEFAULT_CAPACITY: usize = 65536;
 /// # };
 /// ```
 #[derive(Clone, Debug)]
-pub struct ServeDir<F = DefaultServeDirFallback> {
+pub struct ServeDir<F = DefaultServeDirFallback<TokioBackend>, B = TokioBackend> {
     base: PathBuf,
     buf_chunk_size: usize,
     precompressed_variants: Option<PrecompressedVariants>,
@@ -65,9 +70,10 @@ pub struct ServeDir<F = DefaultServeDirFallback> {
     variant: ServeVariant,
     fallback: Option<F>,
     call_fallback_on_method_not_allowed: bool,
+    backend: B,
 }
 
-impl ServeDir<DefaultServeDirFallback> {
+impl ServeDir<DefaultServeDirFallback<TokioBackend>, TokioBackend> {
     /// Create a new [`ServeDir`].
     pub fn new<P>(path: P) -> Self
     where
@@ -85,6 +91,7 @@ impl ServeDir<DefaultServeDirFallback> {
             },
             fallback: None,
             call_fallback_on_method_not_allowed: false,
+            backend: TokioBackend,
         }
     }
 
@@ -99,11 +106,12 @@ impl ServeDir<DefaultServeDirFallback> {
             variant: ServeVariant::SingleFile { mime },
             fallback: None,
             call_fallback_on_method_not_allowed: false,
+            backend: TokioBackend,
         }
     }
 }
 
-impl<F> ServeDir<F> {
+impl<F, B> ServeDir<F, B> {
     /// If the requested path is a directory append `index.html`.
     ///
     /// This is useful for static sites.
@@ -207,7 +215,7 @@ impl<F> ServeDir<F> {
     ///     .expect("server error");
     /// # };
     /// ```
-    pub fn fallback<F2>(self, new_fallback: F2) -> ServeDir<F2> {
+    pub fn fallback<F2>(self, new_fallback: F2) -> ServeDir<F2, B> {
         ServeDir {
             base: self.base,
             buf_chunk_size: self.buf_chunk_size,
@@ -215,6 +223,7 @@ impl<F> ServeDir<F> {
             variant: self.variant,
             fallback: Some(new_fallback),
             call_fallback_on_method_not_allowed: self.call_fallback_on_method_not_allowed,
+            backend: self.backend,
         }
     }
 
@@ -244,7 +253,7 @@ impl<F> ServeDir<F> {
     /// ```
     ///
     /// Setups like this are often found in single page applications.
-    pub fn not_found_service<F2>(self, new_fallback: F2) -> ServeDir<SetStatus<F2>> {
+    pub fn not_found_service<F2>(self, new_fallback: F2) -> ServeDir<SetStatus<F2>, B> {
         self.fallback(SetStatus::new(new_fallback, StatusCode::NOT_FOUND))
     }
 
@@ -254,6 +263,22 @@ impl<F> ServeDir<F> {
     pub fn call_fallback_on_method_not_allowed(mut self, call_fallback: bool) -> Self {
         self.call_fallback_on_method_not_allowed = call_fallback;
         self
+    }
+
+    /// TODO(david): docs
+    pub fn backend<B2>(self, new_backend: B2) -> ServeDir<F, B2>
+    where
+        B2: Backend,
+    {
+        ServeDir {
+            base: self.base,
+            buf_chunk_size: self.buf_chunk_size,
+            precompressed_variants: self.precompressed_variants,
+            variant: self.variant,
+            fallback: self.fallback,
+            call_fallback_on_method_not_allowed: self.call_fallback_on_method_not_allowed,
+            backend: new_backend,
+        }
     }
 
     /// Call the service and get a future that contains any `std::io::Error` that might have
@@ -322,12 +347,13 @@ impl<F> ServeDir<F> {
     pub fn try_call<ReqBody, FResBody>(
         &mut self,
         req: Request<ReqBody>,
-    ) -> ResponseFuture<ReqBody, F>
+    ) -> ResponseFuture<ReqBody, F, B>
     where
         F: Service<Request<ReqBody>, Response = Response<FResBody>, Error = Infallible> + Clone,
         F::Future: Send + 'static,
         FResBody: http_body::Body<Data = Bytes> + Send + 'static,
         FResBody::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+        B: Backend,
     {
         if req.method() != Method::GET && req.method() != Method::HEAD {
             if self.call_fallback_on_method_not_allowed {
@@ -395,22 +421,24 @@ impl<F> ServeDir<F> {
             negotiated_encodings,
             range_header,
             buf_chunk_size,
+            self.backend.clone(),
         ));
 
         ResponseFuture::open_file_future(open_file_future, fallback_and_request)
     }
 }
 
-impl<ReqBody, F, FResBody> Service<Request<ReqBody>> for ServeDir<F>
+impl<ReqBody, B, F, FResBody> Service<Request<ReqBody>> for ServeDir<F, B>
 where
     F: Service<Request<ReqBody>, Response = Response<FResBody>, Error = Infallible> + Clone,
     F::Future: Send + 'static,
     FResBody: http_body::Body<Data = Bytes> + Send + 'static,
     FResBody::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+    B: Backend,
 {
     type Response = Response<ResponseBody>;
     type Error = Infallible;
-    type Future = InfallibleResponseFuture<ReqBody, F>;
+    type Future = InfallibleResponseFuture<ReqBody, F, B>;
 
     #[inline]
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -438,17 +466,37 @@ where
                 Ok(response)
             } as _);
 
-        InfallibleResponseFuture::new(future)
+        InfallibleResponseFuture { future }
     }
 }
 
-opaque_future! {
+pin_project! {
     /// Response future of [`ServeDir`].
-    pub type InfallibleResponseFuture<ReqBody, F> =
-        futures_util::future::Map<
-            ResponseFuture<ReqBody, F>,
+    pub struct InfallibleResponseFuture<ReqBody, F, B: Backend> {
+        #[pin]
+        pub(crate) future: futures_util::future::Map<
+            ResponseFuture<ReqBody, F, B>,
             fn(Result<Response<ResponseBody>, io::Error>) -> Result<Response<ResponseBody>, Infallible>,
-        >;
+        >,
+    }
+}
+
+impl<ReqBody, F, FResBody, B: Backend> Future for InfallibleResponseFuture<ReqBody, F, B>
+where
+    F: Service<Request<ReqBody>, Response = Response<FResBody>, Error = Infallible> + Clone,
+    F::Future: Send + 'static,
+    FResBody: http_body::Body<Data = Bytes> + Send + 'static,
+    FResBody::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+    B: Backend,
+{
+    type Output = <futures_util::future::Map<
+        ResponseFuture<ReqBody, F, B>,
+        fn(Result<Response<ResponseBody>, io::Error>) -> Result<Response<ResponseBody>, Infallible>,
+    > as Future>::Output;
+
+    fn poll(self: std::pin::Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.project().future.poll(cx)
+    }
 }
 
 // Allow the ServeDir service to be used in the ServeFile service
@@ -507,16 +555,23 @@ opaque_body! {
 }
 
 /// The default fallback service used with [`ServeDir`].
-#[derive(Debug, Clone, Copy)]
-pub struct DefaultServeDirFallback(Infallible);
+#[derive(Debug, Copy)]
+pub struct DefaultServeDirFallback<B: Backend>(Infallible, PhantomData<fn() -> B::Metadata>);
 
-impl<ReqBody> Service<Request<ReqBody>> for DefaultServeDirFallback
+impl<B: Backend> Clone for DefaultServeDirFallback<B> {
+    fn clone(&self) -> Self {
+        Self(self.0, self.1)
+    }
+}
+
+impl<ReqBody, B> Service<Request<ReqBody>> for DefaultServeDirFallback<B>
 where
     ReqBody: Send + 'static,
+    B: Backend,
 {
     type Response = Response<ResponseBody>;
     type Error = Infallible;
-    type Future = InfallibleResponseFuture<ReqBody, Self>;
+    type Future = InfallibleResponseFuture<ReqBody, Self, B>;
 
     fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         match self.0 {}

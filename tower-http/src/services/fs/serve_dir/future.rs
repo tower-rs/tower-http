@@ -1,8 +1,11 @@
 use super::{
     open_file::{FileOpened, FileRequestExtent, OpenFileOutput},
-    DefaultServeDirFallback, ResponseBody,
+    ResponseBody,
 };
-use crate::{services::fs::AsyncReadBody, BoxError};
+use crate::{
+    services::fs::{AsyncReadBody, Backend, Metadata as _},
+    BoxError,
+};
 use bytes::Bytes;
 use futures_util::{
     future::{BoxFuture, FutureExt, TryFutureExt},
@@ -25,15 +28,15 @@ use tower_service::Service;
 
 pin_project! {
     /// Response future of [`ServeDir::try_call`].
-    pub struct ResponseFuture<ReqBody, F = DefaultServeDirFallback> {
+    pub struct ResponseFuture<ReqBody, F, B: Backend> {
         #[pin]
-        pub(super) inner: ResponseFutureInner<ReqBody, F>,
+        pub(super) inner: ResponseFutureInner<ReqBody, F, B>,
     }
 }
 
-impl<ReqBody, F> ResponseFuture<ReqBody, F> {
+impl<ReqBody, F, B: Backend> ResponseFuture<ReqBody, F, B> {
     pub(super) fn open_file_future(
-        future: BoxFuture<'static, io::Result<OpenFileOutput>>,
+        future: BoxFuture<'static, io::Result<OpenFileOutput<B>>>,
         fallback_and_request: Option<(F, Request<ReqBody>)>,
     ) -> Self {
         Self {
@@ -61,10 +64,10 @@ impl<ReqBody, F> ResponseFuture<ReqBody, F> {
 
 pin_project! {
     #[project = ResponseFutureInnerProj]
-    pub(super) enum ResponseFutureInner<ReqBody, F> {
+    pub(super) enum ResponseFutureInner<ReqBody, F, B: Backend> {
         OpenFileFuture {
             #[pin]
-            future: BoxFuture<'static, io::Result<OpenFileOutput>>,
+            future: BoxFuture<'static, io::Result<OpenFileOutput<B>>>,
             fallback_and_request: Option<(F, Request<ReqBody>)>,
         },
         FallbackFuture {
@@ -77,12 +80,13 @@ pin_project! {
     }
 }
 
-impl<F, ReqBody, ResBody> Future for ResponseFuture<ReqBody, F>
+impl<F, B, ReqBody, ResBody> Future for ResponseFuture<ReqBody, F, B>
 where
     F: Service<Request<ReqBody>, Response = Response<ResBody>, Error = Infallible> + Clone,
     F::Future: Send + 'static,
     ResBody: http_body::Body<Data = Bytes> + Send + 'static,
     ResBody::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+    B: Backend,
 {
     type Output = io::Result<Response<ResponseBody>>;
 
@@ -176,15 +180,16 @@ fn not_found() -> Response<ResponseBody> {
     response_with_status(StatusCode::NOT_FOUND)
 }
 
-pub(super) fn call_fallback<F, B, FResBody>(
+pub(super) fn call_fallback<F, ReqBody, FResBody, B>(
     fallback: &mut F,
-    req: Request<B>,
-) -> ResponseFutureInner<B, F>
+    req: Request<ReqBody>,
+) -> ResponseFutureInner<ReqBody, F, B>
 where
-    F: Service<Request<B>, Response = Response<FResBody>, Error = Infallible> + Clone,
+    F: Service<Request<ReqBody>, Response = Response<FResBody>, Error = Infallible> + Clone,
     F::Future: Send + 'static,
     FResBody: http_body::Body<Data = Bytes> + Send + 'static,
     FResBody::Error: Into<BoxError>,
+    B: Backend,
 {
     let future = fallback
         .call(req)
@@ -204,7 +209,10 @@ where
     ResponseFutureInner::FallbackFuture { future }
 }
 
-fn build_response(output: FileOpened) -> Response<ResponseBody> {
+fn build_response<B>(output: FileOpened<B>) -> Response<ResponseBody>
+where
+    B: Backend,
+{
     let (maybe_file, size) = match output.extent {
         FileRequestExtent::Full(file, meta) => (Some(file), meta.len()),
         FileRequestExtent::Head(meta) => (None, meta.len()),
