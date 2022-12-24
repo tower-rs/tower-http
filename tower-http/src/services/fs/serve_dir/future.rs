@@ -2,7 +2,7 @@ use super::{
     open_file::{FileOpened, FileRequestExtent, OpenFileOutput},
     DefaultServeDirFallback, ResponseBody,
 };
-use crate::{services::fs::AsyncReadBody, BoxError};
+use crate::{services::fs::AsyncReadBody, BoxError, content_encoding::Encoding};
 use bytes::Bytes;
 use futures_util::{
     future::{BoxFuture, FutureExt, TryFutureExt},
@@ -215,7 +215,10 @@ fn build_response(output: FileOpened) -> Response<ResponseBody> {
         .header(header::ACCEPT_RANGES, "bytes");
 
     if let Some(encoding) = output.maybe_encoding {
-        builder = builder.header(header::CONTENT_ENCODING, encoding.into_header_value());
+        // Identity encoding should not be included in the header
+        if encoding != Encoding::Identity {
+            builder = builder.header(header::CONTENT_ENCODING, encoding.into_header_value());
+        }
     }
 
     if let Some(last_modified) = output.last_modified {
