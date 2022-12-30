@@ -172,7 +172,7 @@ use http::{
     Request, Response,
 };
 use pin_project_lite::pin_project;
-use std::task::{Context, Poll};
+use std::{task::{Context, Poll}, fmt};
 use std::{future::Future, pin::Pin};
 use tower_layer::Layer;
 use tower_service::Service;
@@ -212,6 +212,12 @@ impl RequestId {
 impl From<HeaderValue> for RequestId {
     fn from(value: HeaderValue) -> Self {
         Self::new(value)
+    }
+}
+
+impl fmt::Display for RequestId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0.to_str().unwrap_or_default())
     }
 }
 
