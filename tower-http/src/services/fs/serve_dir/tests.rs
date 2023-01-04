@@ -516,6 +516,21 @@ async fn read_partial_errs_on_bad_range() {
         &format!("bytes */{}", file_contents.len())
     )
 }
+
+#[tokio::test]
+async fn accept_encoding_identity() {
+    let svc = ServeDir::new("..");
+    let req = Request::builder()
+        .uri("/README.md")
+        .header("Accept-Encoding", "identity")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    // Identity encoding should not be included in the response headers
+    assert!(res.headers().get("content-encoding").is_none());
+}
+
 #[tokio::test]
 async fn last_modified() {
     let svc = ServeDir::new("..");
