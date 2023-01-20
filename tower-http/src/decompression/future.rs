@@ -55,6 +55,11 @@ where
                         DecompressionBody::new(BodyInner::brotli(WrapBody::new(body)))
                     }
 
+                    #[cfg(feature = "decompression-zstd")]
+                    b"zstd" if self.accept.zstd() => {
+                        DecompressionBody::new(BodyInner::zstd(WrapBody::new(body)))
+                    }
+
                     _ => {
                         return Poll::Ready(Ok(Response::from_parts(
                             parts,

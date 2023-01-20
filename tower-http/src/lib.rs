@@ -237,7 +237,8 @@ pub mod propagate_header;
 #[cfg(any(
     feature = "compression-br",
     feature = "compression-deflate",
-    feature = "compression-gzip"
+    feature = "compression-gzip",
+    feature = "compression-zstd",
 ))]
 pub mod compression;
 
@@ -250,7 +251,8 @@ pub mod sensitive_headers;
 #[cfg(any(
     feature = "decompression-br",
     feature = "decompression-deflate",
-    feature = "decompression-gzip"
+    feature = "decompression-gzip",
+    feature = "decompression-zstd",
 ))]
 pub mod decompression;
 
@@ -258,9 +260,11 @@ pub mod decompression;
     feature = "compression-br",
     feature = "compression-deflate",
     feature = "compression-gzip",
+    feature = "compression-zstd",
     feature = "decompression-br",
     feature = "decompression-deflate",
     feature = "decompression-gzip",
+    feature = "decompression-zstd",
     feature = "fs" // Used for serving precompressed static files as well
 ))]
 mod content_encoding;
@@ -269,9 +273,11 @@ mod content_encoding;
     feature = "compression-br",
     feature = "compression-deflate",
     feature = "compression-gzip",
+    feature = "compression-zstd",
     feature = "decompression-br",
     feature = "decompression-deflate",
     feature = "decompression-gzip",
+    feature = "decompression-zstd",
 ))]
 mod compression_utils;
 

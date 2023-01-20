@@ -20,20 +20,29 @@ pub(crate) struct AcceptEncoding {
     pub(crate) gzip: bool,
     pub(crate) deflate: bool,
     pub(crate) br: bool,
+    pub(crate) zstd: bool,
 }
 
 impl AcceptEncoding {
     #[allow(dead_code)]
     pub(crate) fn to_header_value(self) -> Option<HeaderValue> {
-        let accept = match (self.gzip(), self.deflate(), self.br()) {
-            (true, true, true) => "gzip,deflate,br",
-            (true, true, false) => "gzip,deflate",
-            (true, false, true) => "gzip,br",
-            (true, false, false) => "gzip",
-            (false, true, true) => "deflate,br",
-            (false, true, false) => "deflate",
-            (false, false, true) => "br",
-            (false, false, false) => return None,
+        let accept = match (self.gzip(), self.deflate(), self.br(), self.zstd()) {
+            (true, true, true, false) => "gzip,deflate,br",
+            (true, true, false, false) => "gzip,deflate",
+            (true, false, true, false) => "gzip,br",
+            (true, false, false, false) => "gzip",
+            (false, true, true, false) => "deflate,br",
+            (false, true, false, false) => "deflate",
+            (false, false, true, false) => "br",
+            (true, true, true, true) => "gzip,deflate,br,zstd",
+            (true, true, false, true) => "gzip,deflate,zstd",
+            (true, false, true, true) => "gzip,br,zstd",
+            (true, false, false, true) => "gzip,zstd",
+            (false, true, true, true) => "deflate,br,zstd",
+            (false, true, false, true) => "deflate,zstd",
+            (false, false, true, true) => "br,zstd",
+            (false, false, false, true) => "zstd",
+            (false, false, false, false) => return None,
         };
         Some(HeaderValue::from_static(accept))
     }
@@ -51,6 +60,11 @@ impl AcceptEncoding {
     #[allow(dead_code)]
     pub(crate) fn set_br(&mut self, enable: bool) {
         self.br = enable;
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn set_zstd(&mut self, enable: bool) {
+        self.zstd = enable;
     }
 }
 
@@ -90,6 +104,18 @@ impl SupportedEncodings for AcceptEncoding {
             false
         }
     }
+
+    #[allow(dead_code)]
+    fn zstd(&self) -> bool {
+        #[cfg(any(feature = "decompression-zstd", feature = "compression-zstd"))]
+        {
+            self.zstd
+        }
+        #[cfg(not(any(feature = "decompression-zstd", feature = "compression-zstd")))]
+        {
+            false
+        }
+    }
 }
 
 impl Default for AcceptEncoding {
@@ -98,6 +124,7 @@ impl Default for AcceptEncoding {
             gzip: true,
             deflate: true,
             br: true,
+            zstd: true,
         }
     }
 }

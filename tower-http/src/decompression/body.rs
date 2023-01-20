@@ -10,6 +10,8 @@ use async_compression::tokio::bufread::BrotliDecoder;
 use async_compression::tokio::bufread::GzipDecoder;
 #[cfg(feature = "decompression-deflate")]
 use async_compression::tokio::bufread::ZlibDecoder;
+#[cfg(feature = "decompression-zstd")]
+use async_compression::tokio::bufread::ZstdDecoder;
 use bytes::{Buf, Bytes};
 use futures_util::ready;
 use http::HeaderMap;
@@ -49,6 +51,8 @@ where
             BodyInner::Deflate { inner } => inner.read.get_ref().get_ref().get_ref().get_ref(),
             #[cfg(feature = "decompression-br")]
             BodyInner::Brotli { inner } => inner.read.get_ref().get_ref().get_ref().get_ref(),
+            #[cfg(feature = "decompression-zstd")]
+            BodyInner::Zstd { inner } => inner.read.get_ref().get_ref().get_ref().get_ref(),
             BodyInner::Identity { inner } => inner,
 
             // FIXME: Remove once possible; see https://github.com/rust-lang/rust/issues/51085
@@ -58,6 +62,8 @@ where
             BodyInner::Deflate { inner } => match inner.0 {},
             #[cfg(not(feature = "decompression-br"))]
             BodyInner::Brotli { inner } => match inner.0 {},
+            #[cfg(not(feature = "decompression-zstd"))]
+            BodyInner::Zstd { inner } => match inner.0 {},
         }
     }
 
@@ -70,6 +76,8 @@ where
             BodyInner::Deflate { inner } => inner.read.get_mut().get_mut().get_mut().get_mut(),
             #[cfg(feature = "decompression-br")]
             BodyInner::Brotli { inner } => inner.read.get_mut().get_mut().get_mut().get_mut(),
+            #[cfg(feature = "decompression-zstd")]
+            BodyInner::Zstd { inner } => inner.read.get_mut().get_mut().get_mut().get_mut(),
             BodyInner::Identity { inner } => inner,
 
             #[cfg(not(feature = "decompression-gzip"))]
@@ -78,6 +86,8 @@ where
             BodyInner::Deflate { inner } => match inner.0 {},
             #[cfg(not(feature = "decompression-br"))]
             BodyInner::Brotli { inner } => match inner.0 {},
+            #[cfg(not(feature = "decompression-zstd"))]
+            BodyInner::Zstd { inner } => match inner.0 {},
         }
     }
 
@@ -108,6 +118,14 @@ where
                 .get_pin_mut()
                 .get_pin_mut()
                 .get_pin_mut(),
+            #[cfg(feature = "decompression-zstd")]
+            BodyInnerProj::Zstd { inner } => inner
+                .project()
+                .read
+                .get_pin_mut()
+                .get_pin_mut()
+                .get_pin_mut()
+                .get_pin_mut(),
             BodyInnerProj::Identity { inner } => inner,
 
             #[cfg(not(feature = "decompression-gzip"))]
@@ -116,6 +134,8 @@ where
             BodyInnerProj::Deflate { inner } => match inner.0 {},
             #[cfg(not(feature = "decompression-br"))]
             BodyInnerProj::Brotli { inner } => match inner.0 {},
+            #[cfg(not(feature = "decompression-zstd"))]
+            BodyInner::Zstd { inner } => match inner.0 {},
         }
     }
 
@@ -143,6 +163,13 @@ where
                 .into_inner()
                 .into_inner()
                 .into_inner(),
+            #[cfg(feature = "decompression-zstd")]
+            BodyInner::Zstd { inner } => inner
+                .read
+                .into_inner()
+                .into_inner()
+                .into_inner()
+                .into_inner(),
             BodyInner::Identity { inner } => inner,
 
             #[cfg(not(feature = "decompression-gzip"))]
@@ -151,6 +178,8 @@ where
             BodyInner::Deflate { inner } => match inner.0 {},
             #[cfg(not(feature = "decompression-br"))]
             BodyInner::Brotli { inner } => match inner.0 {},
+            #[cfg(not(feature = "decompression-zstd"))]
+            BodyInner::Zstd { inner } => match inner.0 {},
         }
     }
 }
@@ -158,7 +187,8 @@ where
 #[cfg(any(
     not(feature = "decompression-gzip"),
     not(feature = "decompression-deflate"),
-    not(feature = "decompression-br")
+    not(feature = "decompression-br"),
+    not(feature = "decompression-zstd")
 ))]
 pub(crate) enum Never {}
 
@@ -177,6 +207,11 @@ type BrotliBody<B> = WrapBody<BrotliDecoder<B>>;
 #[cfg(not(feature = "decompression-br"))]
 type BrotliBody<B> = (Never, PhantomData<B>);
 
+#[cfg(feature = "decompression-zstd")]
+type ZstdBody<B> = WrapBody<ZstdDecoder<B>>;
+#[cfg(not(feature = "decompression-zstd"))]
+type ZstdBody<B> = (Never, PhantomData<B>);
+
 pin_project! {
     #[project = BodyInnerProj]
     pub(crate) enum BodyInner<B>
@@ -194,6 +229,10 @@ pin_project! {
         Brotli {
             #[pin]
             inner: BrotliBody<B>,
+        },
+        Zstd {
+            #[pin]
+            inner: ZstdBody<B>,
         },
         Identity {
             #[pin]
@@ -216,6 +255,11 @@ impl<B: Body> BodyInner<B> {
     #[cfg(feature = "decompression-br")]
     pub(crate) fn brotli(inner: WrapBody<BrotliDecoder<B>>) -> Self {
         Self::Brotli { inner }
+    }
+
+    #[cfg(feature = "decompression-zstd")]
+    pub(crate) fn zstd(inner: WrapBody<ZstdDecoder<B>>) -> Self {
+        Self::Zstd { inner }
     }
 
     pub(crate) fn identity(inner: B) -> Self {
@@ -242,6 +286,8 @@ where
             BodyInnerProj::Deflate { inner } => inner.poll_data(cx),
             #[cfg(feature = "decompression-br")]
             BodyInnerProj::Brotli { inner } => inner.poll_data(cx),
+            #[cfg(feature = "decompression-zstd")]
+            BodyInnerProj::Zstd { inner } => inner.poll_data(cx),
             BodyInnerProj::Identity { inner } => match ready!(inner.poll_data(cx)) {
                 Some(Ok(mut buf)) => {
                     let bytes = buf.copy_to_bytes(buf.remaining());
@@ -257,6 +303,8 @@ where
             BodyInnerProj::Deflate { inner } => match inner.0 {},
             #[cfg(not(feature = "decompression-br"))]
             BodyInnerProj::Brotli { inner } => match inner.0 {},
+            #[cfg(not(feature = "decompression-zstd"))]
+            BodyInnerProj::Zstd { inner } => match inner.0 {},
         }
     }
 
@@ -271,6 +319,8 @@ where
             BodyInnerProj::Deflate { inner } => inner.poll_trailers(cx),
             #[cfg(feature = "decompression-br")]
             BodyInnerProj::Brotli { inner } => inner.poll_trailers(cx),
+            #[cfg(feature = "decompression-zstd")]
+            BodyInnerProj::Zstd { inner } => inner.poll_trailers(cx),
             BodyInnerProj::Identity { inner } => inner.poll_trailers(cx).map_err(Into::into),
 
             #[cfg(not(feature = "decompression-gzip"))]
@@ -279,6 +329,8 @@ where
             BodyInnerProj::Deflate { inner } => match inner.0 {},
             #[cfg(not(feature = "decompression-br"))]
             BodyInnerProj::Brotli { inner } => match inner.0 {},
+            #[cfg(not(feature = "decompression-zstd"))]
+            BodyInnerProj::Zstd { inner } => match inner.0 {},
         }
     }
 }
@@ -327,6 +379,23 @@ where
 
     fn apply(input: Self::Input) -> Self::Output {
         BrotliDecoder::new(input)
+    }
+
+    fn get_pin_mut(pinned: Pin<&mut Self::Output>) -> Pin<&mut Self::Input> {
+        pinned.get_pin_mut()
+    }
+}
+
+#[cfg(feature = "decompression-zstd")]
+impl<B> DecorateAsyncRead for ZstdDecoder<B>
+where
+    B: Body,
+{
+    type Input = AsyncReadBody<B>;
+    type Output = ZstdDecoder<Self::Input>;
+
+    fn apply(input: Self::Input) -> Self::Output {
+        ZstdDecoder::new(input)
     }
 
     fn get_pin_mut(pinned: Pin<&mut Self::Output>) -> Pin<&mut Self::Input> {

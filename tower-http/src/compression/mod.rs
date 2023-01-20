@@ -108,7 +108,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn works() {
+    async fn gzip_works() {
         let svc = service_fn(handle);
         let mut svc = Compression::new(svc).compress_when(Always);
 
@@ -134,6 +134,34 @@ mod tests {
         let mut decoder = GzDecoder::new(&compressed_data[..]);
         let mut decompressed = String::new();
         decoder.read_to_string(&mut decompressed).unwrap();
+
+        assert_eq!(decompressed, "Hello, World!");
+    }
+
+    #[tokio::test]
+    async fn zstd_works() {
+        let svc = service_fn(handle);
+        let mut svc = Compression::new(svc).compress_when(Always);
+
+        // call the service
+        let req = Request::builder()
+            .header("accept-encoding", "zstd")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.ready().await.unwrap().call(req).await.unwrap();
+
+        // read the compressed body
+        let mut body = res.into_body();
+        let mut data = BytesMut::new();
+        while let Some(chunk) = body.data().await {
+            let chunk = chunk.unwrap();
+            data.extend_from_slice(&chunk[..]);
+        }
+        let compressed_data = data.freeze().to_vec();
+
+        // decompress the body
+        let decompressed = zstd::stream::decode_all(std::io::Cursor::new(compressed_data)).unwrap();
+        let decompressed = String::from_utf8(decompressed).unwrap();
 
         assert_eq!(decompressed, "Hello, World!");
     }

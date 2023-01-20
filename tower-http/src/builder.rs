@@ -96,7 +96,8 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     #[cfg(any(
         feature = "compression-br",
         feature = "compression-deflate",
-        feature = "compression-gzip"
+        feature = "compression-gzip",
+        feature = "compression-zstd",
     ))]
     fn compression(self) -> ServiceBuilder<Stack<crate::compression::CompressionLayer, L>>;
 
@@ -108,7 +109,8 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     #[cfg(any(
         feature = "decompression-br",
         feature = "decompression-deflate",
-        feature = "decompression-gzip"
+        feature = "decompression-gzip",
+        feature = "decompression-zstd",
     ))]
     fn decompression(self) -> ServiceBuilder<Stack<crate::decompression::DecompressionLayer, L>>;
 
@@ -405,7 +407,8 @@ impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
     #[cfg(any(
         feature = "compression-br",
         feature = "compression-deflate",
-        feature = "compression-gzip"
+        feature = "compression-gzip",
+        feature = "compression-zstd",
     ))]
     fn compression(self) -> ServiceBuilder<Stack<crate::compression::CompressionLayer, L>> {
         self.layer(crate::compression::CompressionLayer::new())
@@ -414,7 +417,8 @@ impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
     #[cfg(any(
         feature = "decompression-br",
         feature = "decompression-deflate",
-        feature = "decompression-gzip"
+        feature = "decompression-gzip",
+        feature = "decompression-zstd",
     ))]
     fn decompression(self) -> ServiceBuilder<Stack<crate::decompression::DecompressionLayer, L>> {
         self.layer(crate::decompression::DecompressionLayer::new())
