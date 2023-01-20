@@ -83,10 +83,13 @@ pub use self::{
 
 #[cfg(test)]
 mod tests {
+    use crate::compression::predicate::SizeAbove;
+
     use super::*;
     use async_compression::tokio::write::{BrotliDecoder, BrotliEncoder};
     use bytes::BytesMut;
     use flate2::read::GzDecoder;
+    use http::header::{ACCEPT_ENCODING, CONTENT_ENCODING, CONTENT_TYPE};
     use http_body::Body as _;
     use hyper::{Body, Error, Request, Response, Server};
     use std::sync::{Arc, RwLock};
@@ -280,5 +283,55 @@ mod tests {
             data.extend_from_slice(&chunk[..]);
         }
         assert!(String::from_utf8(data.to_vec()).is_err());
+    }
+
+    #[tokio::test]
+    async fn doesnt_compress_images() {
+        async fn handle(_req: Request<Body>) -> Result<Response<Body>, Error> {
+            let mut res = Response::new(Body::from(
+                "a".repeat((SizeAbove::DEFAULT_MIN_SIZE * 2) as usize),
+            ));
+            res.headers_mut()
+                .insert(CONTENT_TYPE, "image/png".parse().unwrap());
+            Ok(res)
+        }
+
+        let svc = Compression::new(service_fn(handle));
+
+        let res = svc
+            .oneshot(
+                Request::builder()
+                    .header(ACCEPT_ENCODING, "gzip")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(res.headers().get(CONTENT_ENCODING).is_none());
+    }
+
+    #[tokio::test]
+    async fn does_compress_svg() {
+        async fn handle(_req: Request<Body>) -> Result<Response<Body>, Error> {
+            let mut res = Response::new(Body::from(
+                "a".repeat((SizeAbove::DEFAULT_MIN_SIZE * 2) as usize),
+            ));
+            res.headers_mut()
+                .insert(CONTENT_TYPE, "image/svg+xml".parse().unwrap());
+            Ok(res)
+        }
+
+        let svc = Compression::new(service_fn(handle));
+
+        let res = svc
+            .oneshot(
+                Request::builder()
+                    .header(ACCEPT_ENCODING, "gzip")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.headers()[CONTENT_ENCODING], "gzip");
     }
 }

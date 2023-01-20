@@ -25,10 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Fixed
 
 - Don't include identity in Content-Encoding header ([#317])
+- **compression:** Do compress SVGs ([#321])
 
 [#290]: https://github.com/tower-rs/tower-http/pull/290
 [#283]: https://github.com/tower-rs/tower-http/pull/283
 [#317]: https://github.com/tower-rs/tower-http/pull/317
+[#321]: https://github.com/tower-rs/tower-http/pull/321
 
 # 0.3.5 (December 02, 2022)
 
