@@ -135,7 +135,7 @@ where
             #[cfg(not(feature = "decompression-br"))]
             BodyInnerProj::Brotli { inner } => match inner.0 {},
             #[cfg(not(feature = "decompression-zstd"))]
-            BodyInner::Zstd { inner } => match inner.0 {},
+            BodyInnerProj::Zstd { inner } => match inner.0 {},
         }
     }
 
