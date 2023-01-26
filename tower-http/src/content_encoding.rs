@@ -4,16 +4,17 @@ pub(crate) trait SupportedEncodings: Copy {
     fn br(&self) -> bool;
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+// This enum's variants are ordered from least to most preferred.
+#[derive(Copy, Clone, Debug, Ord, PartialOrd, PartialEq, Eq)]
 pub(crate) enum Encoding {
-    #[cfg(any(feature = "fs", feature = "compression-gzip"))]
-    Gzip,
-    #[cfg(any(feature = "fs", feature = "compression-deflate"))]
-    Deflate,
-    #[cfg(any(feature = "fs", feature = "compression-br"))]
-    Brotli,
     #[allow(dead_code)]
     Identity,
+    #[cfg(any(feature = "fs", feature = "compression-deflate"))]
+    Deflate,
+    #[cfg(any(feature = "fs", feature = "compression-gzip"))]
+    Gzip,
+    #[cfg(any(feature = "fs", feature = "compression-br"))]
+    Brotli,
 }
 
 impl Encoding {
@@ -95,16 +96,11 @@ impl Encoding {
         feature = "fs",
     ))]
     pub(crate) fn preferred_encoding(accepted_encodings: &[(Encoding, QValue)]) -> Option<Self> {
-        let mut preferred_encoding = None;
-        let mut max_qval = 0;
-
-        for (encoding, qval) in accepted_encodings {
-            if qval.0 > max_qval {
-                preferred_encoding = Some(*encoding);
-                max_qval = qval.0;
-            }
-        }
-        preferred_encoding
+        accepted_encodings
+            .iter()
+            .filter(|(_, qvalue)| qvalue.0 > 0)
+            .max_by_key(|(encoding, qvalue)| (qvalue, encoding))
+            .map(|(encoding, _)| *encoding)
     }
 }
 
@@ -277,7 +273,7 @@ mod tests {
             http::HeaderValue::from_static("gzip,br"),
         );
         let encoding = Encoding::from_headers(&headers, SupportedEncodingsAll::default());
-        assert_eq!(Encoding::Gzip, encoding);
+        assert_eq!(Encoding::Brotli, encoding);
     }
 
     #[test]
@@ -288,7 +284,7 @@ mod tests {
             http::HeaderValue::from_static("gzip,deflate,br"),
         );
         let encoding = Encoding::from_headers(&headers, SupportedEncodingsAll::default());
-        assert_eq!(Encoding::Gzip, encoding);
+        assert_eq!(Encoding::Brotli, encoding);
     }
 
     #[test]
@@ -310,7 +306,7 @@ mod tests {
             http::HeaderValue::from_static("gzip;q=0.5,deflate,br"),
         );
         let encoding = Encoding::from_headers(&headers, SupportedEncodingsAll::default());
-        assert_eq!(Encoding::Deflate, encoding);
+        assert_eq!(Encoding::Brotli, encoding);
     }
 
     #[test]
@@ -340,7 +336,7 @@ mod tests {
             http::HeaderValue::from_static("br"),
         );
         let encoding = Encoding::from_headers(&headers, SupportedEncodingsAll::default());
-        assert_eq!(Encoding::Deflate, encoding);
+        assert_eq!(Encoding::Brotli, encoding);
     }
 
     #[test]
@@ -359,7 +355,7 @@ mod tests {
             http::HeaderValue::from_static("br"),
         );
         let encoding = Encoding::from_headers(&headers, SupportedEncodingsAll::default());
-        assert_eq!(Encoding::Deflate, encoding);
+        assert_eq!(Encoding::Brotli, encoding);
     }
 
     #[test]
