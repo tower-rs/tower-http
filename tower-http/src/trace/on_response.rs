@@ -1,6 +1,6 @@
 use super::{Latency, DEFAULT_MESSAGE_LEVEL};
 use crate::LatencyUnit;
-use http::Response;
+use http::{Request, Response};
 use std::time::Duration;
 use tracing::Level;
 use tracing::Span;
@@ -11,7 +11,7 @@ use tracing::Span;
 /// `on_response` callback is called.
 ///
 /// [`Trace`]: super::Trace
-pub trait OnResponse<B> {
+pub trait OnResponse<BodyResp, BodyReq> {
     /// Do the thing.
     ///
     /// `latency` is the duration since the request was received.
@@ -23,15 +23,18 @@ pub trait OnResponse<B> {
     /// [`Span`]: https://docs.rs/tracing/latest/tracing/span/index.html
     /// [record]: https://docs.rs/tracing/latest/tracing/span/struct.Span.html#method.record
     /// [`TraceLayer::make_span_with`]: crate::trace::TraceLayer::make_span_with
-    fn on_response(self, response: &Response<B>, latency: Duration, span: &Span);
+    fn on_response(self, response: &Response<BodyResp>, latency: Duration, span: &Span);
+
+    #[inline]
+    fn adapt(&mut self, _request: &Request<BodyReq>, _span: &Span) {}
 }
 
-impl<B> OnResponse<B> for () {
+impl<B, BodyReq> OnResponse<B, BodyReq> for () {
     #[inline]
     fn on_response(self, _: &Response<B>, _: Duration, _: &Span) {}
 }
 
-impl<B, F> OnResponse<B> for F
+impl<B, BodyReq, F> OnResponse<B, BodyReq> for F
 where
     F: FnOnce(&Response<B>, Duration, &Span),
 {
@@ -101,7 +104,7 @@ impl DefaultOnResponse {
     }
 }
 
-impl<B> OnResponse<B> for DefaultOnResponse {
+impl<B, A> OnResponse<B, A> for DefaultOnResponse {
     fn on_response(self, response: &Response<B>, latency: Duration, _: &Span) {
         let latency = Latency {
             unit: self.latency_unit,

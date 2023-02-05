@@ -1,3 +1,4 @@
+use http::Request;
 use std::time::Duration;
 use tracing::Span;
 
@@ -7,7 +8,7 @@ use tracing::Span;
 /// `on_body_chunk` callback is called.
 ///
 /// [`Trace`]: super::Trace
-pub trait OnBodyChunk<B> {
+pub trait OnBodyChunk<B, ReqBody> {
     /// Do the thing.
     ///
     /// `latency` is the duration since the response was sent or since the last body chunk as sent.
@@ -25,9 +26,12 @@ pub trait OnBodyChunk<B> {
     /// [`Bytes`]: https://docs.rs/bytes/latest/bytes/struct.Bytes.html
     /// [`TraceLayer::make_span_with`]: crate::trace::TraceLayer::make_span_with
     fn on_body_chunk(&mut self, chunk: &B, latency: Duration, span: &Span);
+
+    #[inline]
+    fn adapt(&mut self, _request: &Request<ReqBody>, _span: &Span) {}
 }
 
-impl<B, F> OnBodyChunk<B> for F
+impl<B, ReqBody, F> OnBodyChunk<B, ReqBody> for F
 where
     F: FnMut(&B, Duration, &Span),
 {
@@ -36,7 +40,7 @@ where
     }
 }
 
-impl<B> OnBodyChunk<B> for () {
+impl<B, ReqBody> OnBodyChunk<B, ReqBody> for () {
     #[inline]
     fn on_body_chunk(&mut self, _: &B, _: Duration, _: &Span) {}
 }
@@ -58,7 +62,7 @@ impl DefaultOnBodyChunk {
     }
 }
 
-impl<B> OnBodyChunk<B> for DefaultOnBodyChunk {
+impl<B, ReqBody> OnBodyChunk<B, ReqBody> for DefaultOnBodyChunk {
     #[inline]
     fn on_body_chunk(&mut self, _: &B, _: Duration, _: &Span) {}
 }

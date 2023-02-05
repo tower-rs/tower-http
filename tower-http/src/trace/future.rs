@@ -3,6 +3,7 @@ use crate::classify::{ClassifiedResponse, ClassifyResponse};
 use http::Response;
 use http_body::Body;
 use pin_project_lite::pin_project;
+use std::marker::PhantomData;
 use std::{
     future::Future,
     pin::Pin,
@@ -15,7 +16,7 @@ pin_project! {
     /// Response future for [`Trace`].
     ///
     /// [`Trace`]: super::Trace
-    pub struct ResponseFuture<F, C, OnResponse, OnBodyChunk, OnEos, OnFailure> {
+    pub struct ResponseFuture<F, C, ReqBody, OnResponse, OnBodyChunk, OnEos, OnFailure> {
         #[pin]
         pub(crate) inner: F,
         pub(crate) span: Span,
@@ -25,24 +26,26 @@ pin_project! {
         pub(crate) on_eos: Option<OnEos>,
         pub(crate) on_failure: Option<OnFailure>,
         pub(crate) start: Instant,
+        pub(crate) _req: PhantomData<ReqBody>
     }
 }
 
-impl<Fut, ResBody, E, C, OnResponseT, OnBodyChunkT, OnEosT, OnFailureT> Future
-    for ResponseFuture<Fut, C, OnResponseT, OnBodyChunkT, OnEosT, OnFailureT>
+impl<Fut, ReqBody, ResBody, E, C, OnResponseT, OnBodyChunkT, OnEosT, OnFailureT> Future
+    for ResponseFuture<Fut, C, ReqBody, OnResponseT, OnBodyChunkT, OnEosT, OnFailureT>
 where
     Fut: Future<Output = Result<Response<ResBody>, E>>,
     ResBody: Body,
+    ReqBody: Body,
     ResBody::Error: std::fmt::Display + 'static,
     E: std::fmt::Display + 'static,
     C: ClassifyResponse,
-    OnResponseT: OnResponse<ResBody>,
-    OnFailureT: OnFailure<C::FailureClass>,
-    OnBodyChunkT: OnBodyChunk<ResBody::Data>,
-    OnEosT: OnEos,
+    OnResponseT: OnResponse<ResBody, ReqBody>,
+    OnFailureT: OnFailure<C::FailureClass, ReqBody>,
+    OnBodyChunkT: OnBodyChunk<ResBody::Data, ReqBody>,
+    OnEosT: OnEos<ReqBody>,
 {
     type Output = Result<
-        Response<ResponseBody<ResBody, C::ClassifyEos, OnBodyChunkT, OnEosT, OnFailureT>>,
+        Response<ResponseBody<ResBody, C::ClassifyEos, ReqBody, OnBodyChunkT, OnEosT, OnFailureT>>,
         E,
     >;
 
@@ -82,6 +85,7 @@ where
                             on_failure: Some(on_failure),
                             start,
                             span,
+                            _req: Default::default(),
                         });
 
                         Poll::Ready(Ok(res))
@@ -96,6 +100,7 @@ where
                             on_failure: Some(on_failure),
                             start,
                             span,
+                            _req: Default::default(),
                         });
 
                         Poll::Ready(Ok(res))

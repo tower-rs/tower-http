@@ -1,5 +1,6 @@
 use super::{Latency, DEFAULT_ERROR_LEVEL};
 use crate::LatencyUnit;
+use http::Request;
 use std::{fmt, time::Duration};
 use tracing::{Level, Span};
 
@@ -9,7 +10,7 @@ use tracing::{Level, Span};
 /// `on_failure` callback is called.
 ///
 /// [`Trace`]: super::Trace
-pub trait OnFailure<FailureClass> {
+pub trait OnFailure<FailureClass, ReqBody> {
     /// Do the thing.
     ///
     /// `latency` is the duration since the request was received.
@@ -22,14 +23,17 @@ pub trait OnFailure<FailureClass> {
     /// [record]: https://docs.rs/tracing/latest/tracing/span/struct.Span.html#method.record
     /// [`TraceLayer::make_span_with`]: crate::trace::TraceLayer::make_span_with
     fn on_failure(&mut self, failure_classification: FailureClass, latency: Duration, span: &Span);
+
+    #[inline]
+    fn adapt(&mut self, _request: &Request<ReqBody>, _span: &Span) {}
 }
 
-impl<FailureClass> OnFailure<FailureClass> for () {
+impl<FailureClass, ReqBody> OnFailure<FailureClass, ReqBody> for () {
     #[inline]
     fn on_failure(&mut self, _: FailureClass, _: Duration, _: &Span) {}
 }
 
-impl<F, FailureClass> OnFailure<FailureClass> for F
+impl<F, FailureClass, ReqBody> OnFailure<FailureClass, ReqBody> for F
 where
     F: FnMut(FailureClass, Duration, &Span),
 {
@@ -81,7 +85,7 @@ impl DefaultOnFailure {
     }
 }
 
-impl<FailureClass> OnFailure<FailureClass> for DefaultOnFailure
+impl<FailureClass, ReqBody> OnFailure<FailureClass, ReqBody> for DefaultOnFailure
 where
     FailureClass: fmt::Display,
 {

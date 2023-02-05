@@ -283,16 +283,23 @@ where
     M::Classifier: Clone,
     MakeSpanT: MakeSpan<ReqBody>,
     OnRequestT: OnRequest<ReqBody>,
-    OnResponseT: OnResponse<ResBody> + Clone,
-    OnBodyChunkT: OnBodyChunk<ResBody::Data> + Clone,
-    OnEosT: OnEos + Clone,
-    OnFailureT: OnFailure<M::FailureClass> + Clone,
+    OnResponseT: OnResponse<ResBody, ReqBody> + Clone,
+    OnBodyChunkT: OnBodyChunk<ResBody::Data, ReqBody> + Clone,
+    OnEosT: OnEos<ReqBody> + Clone,
+    OnFailureT: OnFailure<M::FailureClass, ReqBody> + Clone,
 {
     type Response =
-        Response<ResponseBody<ResBody, M::ClassifyEos, OnBodyChunkT, OnEosT, OnFailureT>>;
+        Response<ResponseBody<ResBody, M::ClassifyEos, ReqBody, OnBodyChunkT, OnEosT, OnFailureT>>;
     type Error = S::Error;
-    type Future =
-        ResponseFuture<S::Future, M::Classifier, OnResponseT, OnBodyChunkT, OnEosT, OnFailureT>;
+    type Future = ResponseFuture<
+        S::Future,
+        M::Classifier,
+        ReqBody,
+        OnResponseT,
+        OnBodyChunkT,
+        OnEosT,
+        OnFailureT,
+    >;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx)
@@ -305,6 +312,15 @@ where
 
         let classifier = self.make_classifier.make_classifier(&req);
 
+        let mut on_resp = self.on_response.clone();
+        on_resp.adapt(&req, &span);
+        let mut on_eos = self.on_eos.clone();
+        on_eos.adapt(&req, &span);
+        let mut on_body_chunk = self.on_body_chunk.clone();
+        on_body_chunk.adapt(&req, &span);
+        let mut on_failure = self.on_failure.clone();
+        on_failure.adapt(&req, &span);
+
         let future = {
             let _guard = span.enter();
             self.on_request.on_request(&req, &span);
@@ -315,11 +331,12 @@ where
             inner: future,
             span,
             classifier: Some(classifier),
-            on_response: Some(self.on_response.clone()),
-            on_body_chunk: Some(self.on_body_chunk.clone()),
-            on_eos: Some(self.on_eos.clone()),
-            on_failure: Some(self.on_failure.clone()),
+            on_response: Some(on_resp),
+            on_body_chunk: Some(on_body_chunk),
+            on_eos: Some(on_eos),
+            on_failure: Some(on_failure),
             start,
+            _req: Default::default(),
         }
     }
 }

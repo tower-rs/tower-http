@@ -2,6 +2,7 @@ use super::{OnBodyChunk, OnEos, OnFailure};
 use crate::classify::ClassifyEos;
 use http_body::{Body, Frame};
 use pin_project_lite::pin_project;
+use std::marker::PhantomData;
 use std::{
     fmt,
     pin::Pin,
@@ -14,7 +15,7 @@ pin_project! {
     /// Response body for [`Trace`].
     ///
     /// [`Trace`]: super::Trace
-    pub struct ResponseBody<B, C, OnBodyChunk, OnEos, OnFailure> {
+    pub struct ResponseBody<B, C, ReqBody, OnBodyChunk, OnEos, OnFailure> {
         #[pin]
         pub(crate) inner: B,
         pub(crate) classify_eos: Option<C>,
@@ -23,18 +24,19 @@ pin_project! {
         pub(crate) on_failure: Option<OnFailure>,
         pub(crate) start: Instant,
         pub(crate) span: Span,
+        pub(crate) _req: PhantomData<ReqBody>
     }
 }
 
-impl<B, C, OnBodyChunkT, OnEosT, OnFailureT> Body
-    for ResponseBody<B, C, OnBodyChunkT, OnEosT, OnFailureT>
+impl<B, C, ReqBody, OnBodyChunkT, OnEosT, OnFailureT> Body
+    for ResponseBody<B, C, ReqBody, OnBodyChunkT, OnEosT, OnFailureT>
 where
     B: Body,
     B::Error: fmt::Display + 'static,
     C: ClassifyEos,
-    OnEosT: OnEos,
-    OnBodyChunkT: OnBodyChunk<B::Data>,
-    OnFailureT: OnFailure<C::FailureClass>,
+    OnEosT: OnEos<ReqBody>,
+    OnBodyChunkT: OnBodyChunk<B::Data, ReqBody>,
+    OnFailureT: OnFailure<C::FailureClass, ReqBody>,
 {
     type Data = B::Data;
     type Error = B::Error;

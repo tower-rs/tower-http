@@ -1,6 +1,7 @@
 use super::{Latency, DEFAULT_MESSAGE_LEVEL};
 use crate::{classify::grpc_errors_as_failures::ParsedGrpcStatus, LatencyUnit};
 use http::header::HeaderMap;
+use http::Request;
 use std::time::Duration;
 use tracing::{Level, Span};
 
@@ -10,7 +11,7 @@ use tracing::{Level, Span};
 /// callback is called.
 ///
 /// [`Trace`]: super::Trace
-pub trait OnEos {
+pub trait OnEos<ReqBody> {
     /// Do the thing.
     ///
     /// `stream_duration` is the duration since the response was sent.
@@ -23,14 +24,17 @@ pub trait OnEos {
     /// [record]: https://docs.rs/tracing/latest/tracing/span/struct.Span.html#method.record
     /// [`TraceLayer::make_span_with`]: crate::trace::TraceLayer::make_span_with
     fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Duration, span: &Span);
+
+    #[inline]
+    fn adapt(&mut self, _request: &Request<ReqBody>, _span: &Span) {}
 }
 
-impl OnEos for () {
+impl<ReqBody> OnEos<ReqBody> for () {
     #[inline]
     fn on_eos(self, _: Option<&HeaderMap>, _: Duration, _: &Span) {}
 }
 
-impl<F> OnEos for F
+impl<F, ReqBody> OnEos<ReqBody> for F
 where
     F: FnOnce(Option<&HeaderMap>, Duration, &Span),
 {
@@ -83,7 +87,7 @@ impl DefaultOnEos {
     }
 }
 
-impl OnEos for DefaultOnEos {
+impl<ReqBody> OnEos<ReqBody> for DefaultOnEos {
     fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Duration, _span: &Span) {
         let stream_duration = Latency {
             unit: self.latency_unit,
