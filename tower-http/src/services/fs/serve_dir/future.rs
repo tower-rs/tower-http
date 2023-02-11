@@ -124,9 +124,13 @@ where
                     }
 
                     Err(err) => {
-                        if let io::ErrorKind::NotFound | io::ErrorKind::PermissionDenied =
-                            err.kind()
-                        {
+                        if matches!(
+                            err.kind(),
+                            io::ErrorKind::NotFound | io::ErrorKind::PermissionDenied
+                        ) || (
+                            //20 = libc::ENOTDIR => "not a directory
+                            err.raw_os_error() == Some(20)
+                        ) {
                             if let Some((mut fallback, request)) = fallback_and_request.take() {
                                 call_fallback(&mut fallback, request)
                             } else {
