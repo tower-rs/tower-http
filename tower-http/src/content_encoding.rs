@@ -30,7 +30,7 @@ impl Encoding {
             #[cfg(any(feature = "fs", feature = "compression-br"))]
             Encoding::Brotli => "br",
             #[cfg(any(feature = "fs", feature = "compression-zstd"))]
-            Encoding::Zstd => "br",
+            Encoding::Zstd => "zstd",
             Encoding::Identity => "identity",
         }
     }
