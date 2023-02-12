@@ -41,7 +41,7 @@ impl Encoding {
             Encoding::Gzip => Some(std::ffi::OsStr::new(".gz")),
             Encoding::Deflate => Some(std::ffi::OsStr::new(".zz")),
             Encoding::Brotli => Some(std::ffi::OsStr::new(".br")),
-            Encoding::Zstd => Some(std::ffi::OsStr::new(".zstd")),
+            Encoding::Zstd => Some(std::ffi::OsStr::new(".zst")),
             Encoding::Identity => None,
         }
     }

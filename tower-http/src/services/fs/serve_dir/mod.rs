@@ -185,7 +185,7 @@ impl<F> ServeDir<F> {
     ///
     /// Assuming the `dir` directory is being served and `dir/foo.txt` is requested,
     /// a client with an `Accept-Encoding` header that allows the zstd encoding
-    /// will receive the file `dir/foo.txt.zz` instead of `dir/foo.txt`.
+    /// will receive the file `dir/foo.txt.zst` instead of `dir/foo.txt`.
     /// If the precompressed file is not available, or the client doesn't support it,
     /// the uncompressed version will be served instead.
     /// Both the precompressed version and the uncompressed version are expected
