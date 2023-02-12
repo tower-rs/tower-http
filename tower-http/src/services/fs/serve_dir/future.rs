@@ -124,13 +124,20 @@ where
                     }
 
                     Err(err) => {
+                        #[cfg(unix)]
+                        // 20 = libc::ENOTDIR => "not a directory
+                        // when `io_error_more` landed, this can be changed
+                        // to checking for `io::ErrorKind::NotADirectory`.
+                        // https://github.com/rust-lang/rust/issues/86442
+                        let error_is_not_a_directory = err.raw_os_error() == Some(20);
+                        #[cfg(not(unix))]
+                        let error_is_not_a_directory = false;
+
                         if matches!(
                             err.kind(),
                             io::ErrorKind::NotFound | io::ErrorKind::PermissionDenied
-                        ) || (
-                            //20 = libc::ENOTDIR => "not a directory
-                            err.raw_os_error() == Some(20)
-                        ) {
+                        ) || error_is_not_a_directory
+                        {
                             if let Some((mut fallback, request)) = fallback_and_request.take() {
                                 call_fallback(&mut fallback, request)
                             } else {
