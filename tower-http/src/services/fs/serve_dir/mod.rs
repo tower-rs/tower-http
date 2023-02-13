@@ -35,6 +35,8 @@ const DEFAULT_CAPACITY: usize = 65536;
 /// - The file doesn't exist
 /// - Any segment of the path contains `..`
 /// - Any segment of the path contains a backslash
+/// - On unix, any segment of the path referenced as directory is actually an
+///   existing file (`/file.html/something`)
 /// - We don't have necessary permissions to read the file
 ///
 /// # Example
