@@ -40,6 +40,19 @@ pin_project! {
     }
 }
 
+impl<B> Default for CompressionBody<B>
+where
+    B: Body + Default,
+{
+    fn default() -> Self {
+        Self {
+            inner: BodyInner::Identity {
+                inner: B::default(),
+            },
+        }
+    }
+}
+
 impl<B> CompressionBody<B>
 where
     B: Body,
