@@ -1,8 +1,7 @@
 use super::future::RequestDecompressionFuture as ResponseFuture;
 use super::layer::RequestDecompressionLayer;
 use crate::{
-    compression_utils::AcceptEncoding, compression_utils::WrapBody,
-    content_encoding::SupportedEncodings, decompression::body::BodyInner,
+    compression_utils::AcceptEncoding, decompression::body::BodyInner,
     decompression::DecompressionBody, BoxError,
 };
 use bytes::Buf;
@@ -56,19 +55,19 @@ where
                     b"gzip" if self.accept.gzip() => {
                         entry.remove();
                         parts.headers.remove(header::CONTENT_LENGTH);
-                        BodyInner::gzip(WrapBody::new(body))
+                        BodyInner::gzip(crate::compression_utils::WrapBody::new(body))
                     }
                     #[cfg(feature = "decompression-deflate")]
                     b"deflate" if self.accept.deflate() => {
                         entry.remove();
                         parts.headers.remove(header::CONTENT_LENGTH);
-                        BodyInner::deflate(WrapBody::new(body))
+                        BodyInner::deflate(crate::compression_utils::WrapBody::new(body))
                     }
                     #[cfg(feature = "decompression-br")]
                     b"br" if self.accept.br() => {
                         entry.remove();
                         parts.headers.remove(header::CONTENT_LENGTH);
-                        BodyInner::brotli(WrapBody::new(body))
+                        BodyInner::brotli(crate::compression_utils::WrapBody::new(body))
                     }
                     b"identity" => BodyInner::identity(body),
                     _ if self.pass_through_unaccepted => BodyInner::identity(body),
