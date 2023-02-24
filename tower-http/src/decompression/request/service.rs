@@ -77,6 +77,12 @@ where
                         parts.headers.remove(header::CONTENT_LENGTH);
                         BodyInner::brotli(crate::compression_utils::WrapBody::new(body))
                     }
+                    #[cfg(feature = "decompression-zstd")]
+                    b"zstd" if self.accept.zstd() => {
+                        entry.remove();
+                        parts.headers.remove(header::CONTENT_LENGTH);
+                        BodyInner::zstd(crate::compression_utils::WrapBody::new(body))
+                    }
                     b"identity" => BodyInner::identity(body),
                     _ if self.pass_through_unaccepted => BodyInner::identity(body),
                     _ => return ResponseFuture::unsupported_encoding(self.accept),
