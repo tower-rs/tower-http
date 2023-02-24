@@ -50,7 +50,7 @@ tower = { version = "0.4.10", features = ["buffer", "util", "retry", "make", "ti
 tracing-subscriber = "0.3"
 uuid = { version = "1.0", features = ["v4"] }
 serde_json = "1.0"
-zstd = "0.12.2"
+zstd = "0.11"
 
 [features]
 default = []
