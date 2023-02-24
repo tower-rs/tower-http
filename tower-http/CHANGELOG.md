@@ -36,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#317]: https://github.com/tower-rs/tower-http/pull/317
 [#321]: https://github.com/tower-rs/tower-http/pull/321
 [#323]: https://github.com/tower-rs/tower-http/pull/323
+[#325]: https://github.com/tower-rs/tower-http/pull/325
+[#331]: https://github.com/tower-rs/tower-http/pull/331
 
 # 0.3.5 (December 02, 2022)
 
