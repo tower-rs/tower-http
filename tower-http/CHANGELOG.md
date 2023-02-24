@@ -9,8 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Added
 
+- None.
+
+## Changed
+
+- None.
+
+## Removed
+
+- None.
+
+## Fixed
+
+- None.
+
+# 0.4.0 (February 24, 2023)
+
+## Added
+
 - **decompression:** Add `RequestDecompression` middleware ([#282])
 - **compression:** Implement `Default` for `CompressionBody` ([#323])
+- **compression, decompression:** Support zstd (de)compression ([#322])
 
 ## Changed
 
@@ -35,6 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#290]: https://github.com/tower-rs/tower-http/pull/290
 [#317]: https://github.com/tower-rs/tower-http/pull/317
 [#321]: https://github.com/tower-rs/tower-http/pull/321
+[#322]: https://github.com/tower-rs/tower-http/pull/322
 [#323]: https://github.com/tower-rs/tower-http/pull/323
 [#325]: https://github.com/tower-rs/tower-http/pull/325
 [#331]: https://github.com/tower-rs/tower-http/pull/331
