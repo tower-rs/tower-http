@@ -9,28 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Added
 
-- **compression, decompression:** Support `zstd` compression
+- **decompression:** Add `RequestDecompression` middleware ([#282])
+- **compression:** Implement `Default` for `CompressionBody` ([#323])
 
 ## Changed
 
-- **fs:** `ServeDir` and `ServeFile`'s error types are now `Infallible` and any IO errors
-  will be converted into responses. Use `try_call` to generate error responses manually ([#283])
-- **fs:** `ServeDir::fallback` and `ServeDir::not_found_service` now requires
-  the fallback service to use `Infallible` as its error type ([#283])
+- **serve_dir:** `ServeDir` and `ServeFile`'s error types are now `Infallible` and any IO errors
+  will be converted into responses. Use `try_call` to generate error responses manually (BREAKING) ([#283])
+- **serve_dir:** `ServeDir::fallback` and `ServeDir::not_found_service` now requires
+  the fallback service to use `Infallible` as its error type (BREAKING) ([#283])
+- **compression, decompression:** Tweak prefered compression encodings ([#325])
 
 ## Removed
 
-- Removed `RequireAuthorization` in favor of `ValidateRequest` ([#290])
+- Removed `RequireAuthorization` in favor of `ValidateRequest` (BREAKING) ([#290])
 
 ## Fixed
 
-- Don't include identity in Content-Encoding header ([#317])
+- **serve_dir:** Don't include identity in Content-Encoding header ([#317])
 - **compression:** Do compress SVGs ([#321])
+- **serve_dir:** In `ServeDir`, convert `io::ErrorKind::NotADirectory` to `404 Not Found` ([#331])
 
-[#290]: https://github.com/tower-rs/tower-http/pull/290
+[#282]: https://github.com/tower-rs/tower-http/pull/282
 [#283]: https://github.com/tower-rs/tower-http/pull/283
+[#290]: https://github.com/tower-rs/tower-http/pull/290
 [#317]: https://github.com/tower-rs/tower-http/pull/317
 [#321]: https://github.com/tower-rs/tower-http/pull/321
+[#323]: https://github.com/tower-rs/tower-http/pull/323
 
 # 0.3.5 (December 02, 2022)
 
