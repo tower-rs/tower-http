@@ -289,6 +289,27 @@ async fn not_found() {
     assert!(body.is_empty());
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn not_found_when_not_a_directory() {
+    let svc = ServeDir::new("../test-files");
+
+    // `index.html` is a file, and we are trying to request
+    // it as a directory.
+    let req = Request::builder()
+        .uri("/index.html/some_file")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+
+    // This should lead to a 404
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    assert!(res.headers().get(header::CONTENT_TYPE).is_none());
+
+    let body = body_into_text(res.into_body()).await;
+    assert!(body.is_empty());
+}
+
 #[tokio::test]
 async fn not_found_precompressed() {
     let svc = ServeDir::new("../test-files").precompressed_gzip();
