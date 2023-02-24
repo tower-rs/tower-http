@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Added
 
+- None.
+
+## Changed
+
+- None.
+
+## Removed
+
+- None.
+
+## Fixed
+
+- None.
+
+# 0.4.0 (February 24, 2023)
+
+## Added
+
 - **decompression:** Add `RequestDecompression` middleware ([#282])
 - **compression:** Implement `Default` for `CompressionBody` ([#323])
 
