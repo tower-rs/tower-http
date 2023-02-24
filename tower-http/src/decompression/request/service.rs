@@ -10,6 +10,14 @@ use http_body::{combinators::UnsyncBoxBody, Body};
 use std::task::{Context, Poll};
 use tower_service::Service;
 
+#[cfg(any(
+    feature = "decompression-gzip",
+    feature = "decompression-deflate",
+    feature = "decompression-br",
+    feature = "decompression-zstd",
+))]
+use crate::content_encoding::SupportedEncodings;
+
 /// Decompresses request bodies and calls its underlying service.
 ///
 /// Transparently decompresses request bodies based on the `Content-Encoding` header.
