@@ -10,6 +10,8 @@ use async_compression::tokio::bufread::BrotliEncoder;
 use async_compression::tokio::bufread::GzipEncoder;
 #[cfg(feature = "compression-deflate")]
 use async_compression::tokio::bufread::ZlibEncoder;
+#[cfg(feature = "compression-zstd")]
+use async_compression::tokio::bufread::ZstdEncoder;
 use bytes::{Buf, Bytes};
 use futures_util::ready;
 use http::HeaderMap;
@@ -55,6 +57,8 @@ where
             BodyInner::Deflate { inner } => inner.read.get_ref().get_ref().get_ref().get_ref(),
             #[cfg(feature = "compression-br")]
             BodyInner::Brotli { inner } => inner.read.get_ref().get_ref().get_ref().get_ref(),
+            #[cfg(feature = "compression-zstd")]
+            BodyInner::Zstd { inner } => inner.read.get_ref().get_ref().get_ref().get_ref(),
             BodyInner::Identity { inner } => inner,
         }
     }
@@ -68,6 +72,8 @@ where
             BodyInner::Deflate { inner } => inner.read.get_mut().get_mut().get_mut().get_mut(),
             #[cfg(feature = "compression-br")]
             BodyInner::Brotli { inner } => inner.read.get_mut().get_mut().get_mut().get_mut(),
+            #[cfg(feature = "compression-zstd")]
+            BodyInner::Zstd { inner } => inner.read.get_mut().get_mut().get_mut().get_mut(),
             BodyInner::Identity { inner } => inner,
         }
     }
@@ -93,6 +99,14 @@ where
                 .get_pin_mut(),
             #[cfg(feature = "compression-br")]
             BodyInnerProj::Brotli { inner } => inner
+                .project()
+                .read
+                .get_pin_mut()
+                .get_pin_mut()
+                .get_pin_mut()
+                .get_pin_mut(),
+            #[cfg(feature = "compression-zstd")]
+            BodyInnerProj::Zstd { inner } => inner
                 .project()
                 .read
                 .get_pin_mut()
@@ -127,6 +141,13 @@ where
                 .into_inner()
                 .into_inner()
                 .into_inner(),
+            #[cfg(feature = "compression-zstd")]
+            BodyInner::Zstd { inner } => inner
+                .read
+                .into_inner()
+                .into_inner()
+                .into_inner()
+                .into_inner(),
             BodyInner::Identity { inner } => inner,
         }
     }
@@ -140,6 +161,9 @@ type DeflateBody<B> = WrapBody<ZlibEncoder<B>>;
 
 #[cfg(feature = "compression-br")]
 type BrotliBody<B> = WrapBody<BrotliEncoder<B>>;
+
+#[cfg(feature = "compression-zstd")]
+type ZstdBody<B> = WrapBody<ZstdEncoder<B>>;
 
 pin_project_cfg! {
     #[project = BodyInnerProj]
@@ -162,6 +186,11 @@ pin_project_cfg! {
             #[pin]
             inner: BrotliBody<B>,
         },
+        #[cfg(feature = "compression-zstd")]
+        Zstd {
+            #[pin]
+            inner: ZstdBody<B>,
+        },
         Identity {
             #[pin]
             inner: B,
@@ -183,6 +212,11 @@ impl<B: Body> BodyInner<B> {
     #[cfg(feature = "compression-br")]
     pub(crate) fn brotli(inner: WrapBody<BrotliEncoder<B>>) -> Self {
         Self::Brotli { inner }
+    }
+
+    #[cfg(feature = "compression-zstd")]
+    pub(crate) fn zstd(inner: WrapBody<ZstdEncoder<B>>) -> Self {
+        Self::Zstd { inner }
     }
 
     pub(crate) fn identity(inner: B) -> Self {
@@ -209,6 +243,8 @@ where
             BodyInnerProj::Deflate { inner } => inner.poll_data(cx),
             #[cfg(feature = "compression-br")]
             BodyInnerProj::Brotli { inner } => inner.poll_data(cx),
+            #[cfg(feature = "compression-zstd")]
+            BodyInnerProj::Zstd { inner } => inner.poll_data(cx),
             BodyInnerProj::Identity { inner } => match ready!(inner.poll_data(cx)) {
                 Some(Ok(mut buf)) => {
                     let bytes = buf.copy_to_bytes(buf.remaining());
@@ -231,6 +267,8 @@ where
             BodyInnerProj::Deflate { inner } => inner.poll_trailers(cx),
             #[cfg(feature = "compression-br")]
             BodyInnerProj::Brotli { inner } => inner.poll_trailers(cx),
+            #[cfg(feature = "compression-zstd")]
+            BodyInnerProj::Zstd { inner } => inner.poll_trailers(cx),
             BodyInnerProj::Identity { inner } => inner.poll_trailers(cx).map_err(Into::into),
         }
     }
@@ -280,6 +318,23 @@ where
 
     fn apply(input: Self::Input) -> Self::Output {
         BrotliEncoder::new(input)
+    }
+
+    fn get_pin_mut(pinned: Pin<&mut Self::Output>) -> Pin<&mut Self::Input> {
+        pinned.get_pin_mut()
+    }
+}
+
+#[cfg(feature = "compression-zstd")]
+impl<B> DecorateAsyncRead for ZstdEncoder<B>
+where
+    B: Body,
+{
+    type Input = AsyncReadBody<B>;
+    type Output = ZstdEncoder<Self::Input>;
+
+    fn apply(input: Self::Input) -> Self::Output {
+        ZstdEncoder::new(input)
     }
 
     fn get_pin_mut(pinned: Pin<&mut Self::Output>) -> Pin<&mut Self::Input> {

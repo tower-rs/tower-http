@@ -2,6 +2,7 @@ pub(crate) trait SupportedEncodings: Copy {
     fn gzip(&self) -> bool;
     fn deflate(&self) -> bool;
     fn br(&self) -> bool;
+    fn zstd(&self) -> bool;
 }
 
 // This enum's variants are ordered from least to most preferred.
@@ -15,6 +16,8 @@ pub(crate) enum Encoding {
     Gzip,
     #[cfg(any(feature = "fs", feature = "compression-br"))]
     Brotli,
+    #[cfg(any(feature = "fs", feature = "compression-zstd"))]
+    Zstd,
 }
 
 impl Encoding {
@@ -27,6 +30,8 @@ impl Encoding {
             Encoding::Deflate => "deflate",
             #[cfg(any(feature = "fs", feature = "compression-br"))]
             Encoding::Brotli => "br",
+            #[cfg(any(feature = "fs", feature = "compression-zstd"))]
+            Encoding::Zstd => "zstd",
             Encoding::Identity => "identity",
         }
     }
@@ -37,6 +42,7 @@ impl Encoding {
             Encoding::Gzip => Some(std::ffi::OsStr::new(".gz")),
             Encoding::Deflate => Some(std::ffi::OsStr::new(".zz")),
             Encoding::Brotli => Some(std::ffi::OsStr::new(".br")),
+            Encoding::Zstd => Some(std::ffi::OsStr::new(".zst")),
             Encoding::Identity => None,
         }
     }
@@ -50,6 +56,7 @@ impl Encoding {
         feature = "compression-gzip",
         feature = "compression-br",
         feature = "compression-deflate",
+        feature = "compression-zstd",
         feature = "fs",
     ))]
     fn parse(s: &str, _supported_encoding: impl SupportedEncodings) -> Option<Encoding> {
@@ -68,6 +75,11 @@ impl Encoding {
             return Some(Encoding::Brotli);
         }
 
+        #[cfg(any(feature = "fs", feature = "compression-zstd"))]
+        if s.eq_ignore_ascii_case("zstd") && _supported_encoding.zstd() {
+            return Some(Encoding::Zstd);
+        }
+
         if s.eq_ignore_ascii_case("identity") {
             return Some(Encoding::Identity);
         }
@@ -78,6 +90,7 @@ impl Encoding {
     #[cfg(any(
         feature = "compression-gzip",
         feature = "compression-br",
+        feature = "compression-zstd",
         feature = "compression-deflate",
     ))]
     // based on https://github.com/http-rs/accept-encoding
@@ -92,6 +105,7 @@ impl Encoding {
     #[cfg(any(
         feature = "compression-gzip",
         feature = "compression-br",
+        feature = "compression-zstd",
         feature = "compression-deflate",
         feature = "fs",
     ))]
@@ -109,6 +123,7 @@ impl Encoding {
 #[cfg(any(
     feature = "compression-gzip",
     feature = "compression-br",
+    feature = "compression-zstd",
     feature = "compression-deflate",
     feature = "fs",
 ))]
@@ -118,6 +133,7 @@ pub(crate) struct QValue(u16);
 #[cfg(any(
     feature = "compression-gzip",
     feature = "compression-br",
+    feature = "compression-zstd",
     feature = "compression-deflate",
     feature = "fs",
 ))]
@@ -189,6 +205,7 @@ impl QValue {
 #[cfg(any(
     feature = "compression-gzip",
     feature = "compression-br",
+    feature = "compression-zstd",
     feature = "compression-deflate",
     feature = "fs",
 ))]
@@ -225,7 +242,8 @@ pub(crate) fn encodings(
     test,
     feature = "compression-gzip",
     feature = "compression-deflate",
-    feature = "compression-br"
+    feature = "compression-br",
+    feature = "compression-zstd",
 ))]
 mod tests {
     use super::*;
@@ -243,6 +261,10 @@ mod tests {
         }
 
         fn br(&self) -> bool {
+            true
+        }
+
+        fn zstd(&self) -> bool {
             true
         }
     }

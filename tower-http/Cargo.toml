@@ -50,6 +50,7 @@ tower = { version = "0.4.10", features = ["buffer", "util", "retry", "make", "ti
 tracing-subscriber = "0.3"
 uuid = { version = "1.0", features = ["v4"] }
 serde_json = "1.0"
+zstd = "0.11"
 
 [features]
 default = []
@@ -103,13 +104,15 @@ validate-request = ["mime"]
 
 compression-br = ["async-compression/brotli", "tokio-util", "tokio"]
 compression-deflate = ["async-compression/zlib", "tokio-util", "tokio"]
-compression-full = ["compression-br", "compression-deflate", "compression-gzip"]
+compression-full = ["compression-br", "compression-deflate", "compression-gzip", "compression-zstd"]
 compression-gzip = ["async-compression/gzip", "tokio-util", "tokio"]
+compression-zstd = ["async-compression/zstd", "tokio-util", "tokio"]
 
 decompression-br = ["async-compression/brotli", "tokio-util", "tokio"]
 decompression-deflate = ["async-compression/zlib", "tokio-util", "tokio"]
-decompression-full = ["decompression-br", "decompression-deflate", "decompression-gzip"]
+decompression-full = ["decompression-br", "decompression-deflate", "decompression-gzip", "decompression-zstd"]
 decompression-gzip = ["async-compression/gzip", "tokio-util", "tokio"]
+decompression-zstd = ["async-compression/zstd", "tokio-util", "tokio"]
 
 [package.metadata.docs.rs]
 all-features = true

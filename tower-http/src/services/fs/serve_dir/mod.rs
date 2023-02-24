@@ -182,6 +182,23 @@ impl<F> ServeDir<F> {
         self
     }
 
+    /// Informs the service that it should also look for a precompressed zstd
+    /// version of _any_ file in the directory.
+    ///
+    /// Assuming the `dir` directory is being served and `dir/foo.txt` is requested,
+    /// a client with an `Accept-Encoding` header that allows the zstd encoding
+    /// will receive the file `dir/foo.txt.zst` instead of `dir/foo.txt`.
+    /// If the precompressed file is not available, or the client doesn't support it,
+    /// the uncompressed version will be served instead.
+    /// Both the precompressed version and the uncompressed version are expected
+    /// to be present in the directory. Different precompressed variants can be combined.
+    pub fn precompressed_zstd(mut self) -> Self {
+        self.precompressed_variants
+            .get_or_insert(Default::default())
+            .zstd = true;
+        self
+    }
+
     /// Set the fallback service.
     ///
     /// This service will be called if there is no file at the path of the request.
@@ -534,6 +551,7 @@ struct PrecompressedVariants {
     gzip: bool,
     deflate: bool,
     br: bool,
+    zstd: bool,
 }
 
 impl SupportedEncodings for PrecompressedVariants {
@@ -547,5 +565,9 @@ impl SupportedEncodings for PrecompressedVariants {
 
     fn br(&self) -> bool {
         self.br
+    }
+
+    fn zstd(&self) -> bool {
+        self.zstd
     }
 }
