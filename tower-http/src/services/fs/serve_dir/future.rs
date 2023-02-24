@@ -2,7 +2,7 @@ use super::{
     open_file::{FileOpened, FileRequestExtent, OpenFileOutput},
     DefaultServeDirFallback, ResponseBody,
 };
-use crate::{services::fs::AsyncReadBody, BoxError};
+use crate::{content_encoding::Encoding, services::fs::AsyncReadBody, BoxError};
 use bytes::Bytes;
 use futures_util::{
     future::{BoxFuture, FutureExt, TryFutureExt},
@@ -15,6 +15,7 @@ use http::{
 use http_body::{Body, Empty, Full};
 use pin_project_lite::pin_project;
 use std::{
+    convert::Infallible,
     future::Future,
     io,
     pin::Pin,
@@ -23,7 +24,7 @@ use std::{
 use tower_service::Service;
 
 pin_project! {
-    /// Response future of [`ServeDir`].
+    /// Response future of [`ServeDir::try_call`].
     pub struct ResponseFuture<ReqBody, F = DefaultServeDirFallback> {
         #[pin]
         pub(super) inner: ResponseFutureInner<ReqBody, F>,
@@ -43,9 +44,11 @@ impl<ReqBody, F> ResponseFuture<ReqBody, F> {
         }
     }
 
-    pub(super) fn invalid_path() -> Self {
+    pub(super) fn invalid_path(fallback_and_request: Option<(F, Request<ReqBody>)>) -> Self {
         Self {
-            inner: ResponseFutureInner::InvalidPath,
+            inner: ResponseFutureInner::InvalidPath {
+                fallback_and_request,
+            },
         }
     }
 
@@ -65,17 +68,18 @@ pin_project! {
             fallback_and_request: Option<(F, Request<ReqBody>)>,
         },
         FallbackFuture {
-            future: BoxFuture<'static, io::Result<Response<ResponseBody>>>,
+            future: BoxFuture<'static, Result<Response<ResponseBody>, Infallible>>,
         },
-        InvalidPath,
+        InvalidPath {
+            fallback_and_request: Option<(F, Request<ReqBody>)>,
+        },
         MethodNotAllowed,
     }
 }
 
 impl<F, ReqBody, ResBody> Future for ResponseFuture<ReqBody, F>
 where
-    F: Service<Request<ReqBody>, Response = Response<ResBody>> + Clone,
-    F::Error: Into<io::Error>,
+    F: Service<Request<ReqBody>, Response = Response<ResBody>, Error = Infallible> + Clone,
     F::Future: Send + 'static,
     ResBody: http_body::Body<Data = Bytes> + Send + 'static,
     ResBody::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
@@ -120,8 +124,19 @@ where
                     }
 
                     Err(err) => {
-                        if let io::ErrorKind::NotFound | io::ErrorKind::PermissionDenied =
-                            err.kind()
+                        #[cfg(unix)]
+                        // 20 = libc::ENOTDIR => "not a directory
+                        // when `io_error_more` landed, this can be changed
+                        // to checking for `io::ErrorKind::NotADirectory`.
+                        // https://github.com/rust-lang/rust/issues/86442
+                        let error_is_not_a_directory = err.raw_os_error() == Some(20);
+                        #[cfg(not(unix))]
+                        let error_is_not_a_directory = false;
+
+                        if matches!(
+                            err.kind(),
+                            io::ErrorKind::NotFound | io::ErrorKind::PermissionDenied
+                        ) || error_is_not_a_directory
                         {
                             if let Some((mut fallback, request)) = fallback_and_request.take() {
                                 call_fallback(&mut fallback, request)
@@ -135,11 +150,17 @@ where
                 },
 
                 ResponseFutureInnerProj::FallbackFuture { future } => {
-                    break Pin::new(future).poll(cx)
+                    break Pin::new(future).poll(cx).map_err(|err| match err {})
                 }
 
-                ResponseFutureInnerProj::InvalidPath => {
-                    break Poll::Ready(Ok(not_found()));
+                ResponseFutureInnerProj::InvalidPath {
+                    fallback_and_request,
+                } => {
+                    if let Some((mut fallback, request)) = fallback_and_request.take() {
+                        call_fallback(&mut fallback, request)
+                    } else {
+                        break Poll::Ready(Ok(not_found()));
+                    }
                 }
 
                 ResponseFutureInnerProj::MethodNotAllowed => {
@@ -171,15 +192,13 @@ pub(super) fn call_fallback<F, B, FResBody>(
     req: Request<B>,
 ) -> ResponseFutureInner<B, F>
 where
-    F: Service<Request<B>, Response = Response<FResBody>> + Clone,
-    F::Error: Into<io::Error>,
+    F: Service<Request<B>, Response = Response<FResBody>, Error = Infallible> + Clone,
     F::Future: Send + 'static,
     FResBody: http_body::Body<Data = Bytes> + Send + 'static,
     FResBody::Error: Into<BoxError>,
 {
     let future = fallback
         .call(req)
-        .err_into()
         .map_ok(|response| {
             response
                 .map(|body| {
@@ -206,7 +225,10 @@ fn build_response(output: FileOpened) -> Response<ResponseBody> {
         .header(header::CONTENT_TYPE, output.mime_header_value)
         .header(header::ACCEPT_RANGES, "bytes");
 
-    if let Some(encoding) = output.maybe_encoding {
+    if let Some(encoding) = output
+        .maybe_encoding
+        .filter(|encoding| *encoding != Encoding::Identity)
+    {
         builder = builder.header(header::CONTENT_ENCODING, encoding.into_header_value());
     }
 

@@ -99,10 +99,7 @@ use http::{
     header::LOCATION, HeaderMap, HeaderValue, Method, Request, Response, StatusCode, Uri, Version,
 };
 use http_body::Body;
-use iri_string::{
-    spec::UriSpec,
-    types::{RiAbsoluteString, RiReferenceStr},
-};
+use iri_string::types::{UriAbsoluteString, UriReferenceStr};
 use pin_project_lite::pin_project;
 use std::{
     convert::TryFrom,
@@ -380,10 +377,10 @@ where
 
 /// Try to resolve a URI reference `relative` against a base URI `base`.
 fn resolve_uri(relative: &str, base: &Uri) -> Option<Uri> {
-    let relative = RiReferenceStr::<UriSpec>::new(relative).ok()?;
-    let base = RiAbsoluteString::try_from(base.to_string()).ok()?;
-    let uri = relative.resolve_against(&base);
-    Uri::try_from(uri.as_str()).ok()
+    let relative = UriReferenceStr::new(relative).ok()?;
+    let base = UriAbsoluteString::try_from(base.to_string()).ok()?;
+    let uri = relative.resolve_against(&base).to_string();
+    Uri::try_from(uri).ok()
 }
 
 #[cfg(test)]

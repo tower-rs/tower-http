@@ -143,6 +143,7 @@ impl CorsLayer {
     /// - No headers are currently exposed, but this may change in the future.
     pub fn very_permissive() -> Self {
         Self::new()
+            .allow_credentials(true)
             .allow_headers(AllowHeaders::mirror_request())
             .allow_methods(AllowMethods::mirror_request())
             .allow_origin(AllowOrigin::mirror_request())

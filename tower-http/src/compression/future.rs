@@ -60,6 +60,8 @@ where
             (_, Encoding::Deflate) => CompressionBody::new(BodyInner::deflate(WrapBody::new(body))),
             #[cfg(feature = "compression-br")]
             (_, Encoding::Brotli) => CompressionBody::new(BodyInner::brotli(WrapBody::new(body))),
+            #[cfg(feature = "compression-zstd")]
+            (_, Encoding::Zstd) => CompressionBody::new(BodyInner::zstd(WrapBody::new(body))),
             #[cfg(feature = "fs")]
             (true, _) => {
                 // This should never happen because the `AcceptEncoding` struct which is used to determine

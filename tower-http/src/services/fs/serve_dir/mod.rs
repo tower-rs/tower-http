@@ -4,8 +4,9 @@ use crate::{
     set_status::SetStatus,
 };
 use bytes::Bytes;
+use futures_util::FutureExt;
 use http::{header, HeaderValue, Method, Request, Response, StatusCode};
-use http_body::{combinators::UnsyncBoxBody, Empty};
+use http_body::{combinators::UnsyncBoxBody, Body, Empty};
 use percent_encoding::percent_decode;
 use std::{
     convert::Infallible,
@@ -34,6 +35,8 @@ const DEFAULT_CAPACITY: usize = 65536;
 /// - The file doesn't exist
 /// - Any segment of the path contains `..`
 /// - Any segment of the path contains a backslash
+/// - On unix, any segment of the path referenced as directory is actually an
+///   existing file (`/file.html/something`)
 /// - We don't have necessary permissions to read the file
 ///
 /// # Example
@@ -179,6 +182,23 @@ impl<F> ServeDir<F> {
         self
     }
 
+    /// Informs the service that it should also look for a precompressed zstd
+    /// version of _any_ file in the directory.
+    ///
+    /// Assuming the `dir` directory is being served and `dir/foo.txt` is requested,
+    /// a client with an `Accept-Encoding` header that allows the zstd encoding
+    /// will receive the file `dir/foo.txt.zst` instead of `dir/foo.txt`.
+    /// If the precompressed file is not available, or the client doesn't support it,
+    /// the uncompressed version will be served instead.
+    /// Both the precompressed version and the uncompressed version are expected
+    /// to be present in the directory. Different precompressed variants can be combined.
+    pub fn precompressed_zstd(mut self) -> Self {
+        self.precompressed_variants
+            .get_or_insert(Default::default())
+            .zstd = true;
+        self
+    }
+
     /// Set the fallback service.
     ///
     /// This service will be called if there is no file at the path of the request.
@@ -254,30 +274,80 @@ impl<F> ServeDir<F> {
         self.call_fallback_on_method_not_allowed = call_fallback;
         self
     }
-}
 
-impl<ReqBody, F, FResBody> Service<Request<ReqBody>> for ServeDir<F>
-where
-    F: Service<Request<ReqBody>, Response = Response<FResBody>> + Clone,
-    F::Error: Into<io::Error>,
-    F::Future: Send + 'static,
-    FResBody: http_body::Body<Data = Bytes> + Send + 'static,
-    FResBody::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
-{
-    type Response = Response<ResponseBody>;
-    type Error = io::Error;
-    type Future = ResponseFuture<ReqBody, F>;
-
-    #[inline]
-    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        if let Some(fallback) = &mut self.fallback {
-            fallback.poll_ready(cx).map_err(Into::into)
-        } else {
-            Poll::Ready(Ok(()))
-        }
-    }
-
-    fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
+    /// Call the service and get a future that contains any `std::io::Error` that might have
+    /// happened.
+    ///
+    /// By default `<ServeDir as Service<_>>::call` will handle IO errors and convert them into
+    /// responses. It does that by converting [`std::io::ErrorKind::NotFound`] and
+    /// [`std::io::ErrorKind::PermissionDenied`] to `404 Not Found` and any other error to `500
+    /// Internal Server Error`. The error will also be logged with `tracing`.
+    ///
+    /// If you want to manually control how the error response is generated you can make a new
+    /// service that wraps a `ServeDir` and calls `try_call` instead of `call`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use tower_http::services::ServeDir;
+    /// use std::{io, convert::Infallible};
+    /// use http::{Request, Response, StatusCode};
+    /// use http_body::{combinators::UnsyncBoxBody, Body as _};
+    /// use hyper::Body;
+    /// use bytes::Bytes;
+    /// use tower::{service_fn, ServiceExt, BoxError};
+    ///
+    /// async fn serve_dir(
+    ///     request: Request<Body>
+    /// ) -> Result<Response<UnsyncBoxBody<Bytes, BoxError>>, Infallible> {
+    ///     let mut service = ServeDir::new("assets");
+    ///
+    ///     // You only need to worry about backpressure, and thus call `ServiceExt::ready`, if
+    ///     // your adding a fallback to `ServeDir` that cares about backpressure.
+    ///     //
+    ///     // Its shown here for demonstration but you can do `service.try_call(request)`
+    ///     // otherwise
+    ///     let ready_service = match ServiceExt::<Request<Body>>::ready(&mut service).await {
+    ///         Ok(ready_service) => ready_service,
+    ///         Err(infallible) => match infallible {},
+    ///     };
+    ///
+    ///     match ready_service.try_call(request).await {
+    ///         Ok(response) => {
+    ///             Ok(response.map(|body| body.map_err(Into::into).boxed_unsync()))
+    ///         }
+    ///         Err(err) => {
+    ///             let body = Body::from("Something went wrong...")
+    ///                 .map_err(Into::into)
+    ///                 .boxed_unsync();
+    ///             let response = Response::builder()
+    ///                 .status(StatusCode::INTERNAL_SERVER_ERROR)
+    ///                 .body(body)
+    ///                 .unwrap();
+    ///             Ok(response)
+    ///         }
+    ///     }
+    /// }
+    ///
+    /// # async {
+    /// // Run our service using `hyper`
+    /// let addr = std::net::SocketAddr::from(([127, 0, 0, 1], 3000));
+    /// hyper::Server::bind(&addr)
+    ///     .serve(tower::make::Shared::new(service_fn(serve_dir)))
+    ///     .await
+    ///     .expect("server error");
+    /// # };
+    /// ```
+    pub fn try_call<ReqBody, FResBody>(
+        &mut self,
+        req: Request<ReqBody>,
+    ) -> ResponseFuture<ReqBody, F>
+    where
+        F: Service<Request<ReqBody>, Response = Response<FResBody>, Error = Infallible> + Clone,
+        F::Future: Send + 'static,
+        FResBody: http_body::Body<Data = Bytes> + Send + 'static,
+        FResBody::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+    {
         if req.method() != Method::GET && req.method() != Method::HEAD {
             if self.call_fallback_on_method_not_allowed {
                 if let Some(fallback) = &mut self.fallback {
@@ -299,16 +369,6 @@ where
         let extensions = std::mem::take(&mut parts.extensions);
         let req = Request::from_parts(parts, Empty::<Bytes>::new());
 
-        let path_to_file = match self
-            .variant
-            .build_and_validate_path(&self.base, req.uri().path())
-        {
-            Some(path_to_file) => path_to_file,
-            None => {
-                return ResponseFuture::invalid_path();
-            }
-        };
-
         let fallback_and_request = self.fallback.as_mut().map(|fallback| {
             let mut fallback_req = Request::new(body);
             *fallback_req.method_mut() = req.method().clone();
@@ -322,6 +382,16 @@ where
 
             (fallback, fallback_req)
         });
+
+        let path_to_file = match self
+            .variant
+            .build_and_validate_path(&self.base, req.uri().path())
+        {
+            Some(path_to_file) => path_to_file,
+            None => {
+                return ResponseFuture::invalid_path(fallback_and_request);
+            }
+        };
 
         let buf_chunk_size = self.buf_chunk_size;
         let range_header = req
@@ -348,6 +418,56 @@ where
 
         ResponseFuture::open_file_future(open_file_future, fallback_and_request)
     }
+}
+
+impl<ReqBody, F, FResBody> Service<Request<ReqBody>> for ServeDir<F>
+where
+    F: Service<Request<ReqBody>, Response = Response<FResBody>, Error = Infallible> + Clone,
+    F::Future: Send + 'static,
+    FResBody: http_body::Body<Data = Bytes> + Send + 'static,
+    FResBody::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+{
+    type Response = Response<ResponseBody>;
+    type Error = Infallible;
+    type Future = InfallibleResponseFuture<ReqBody, F>;
+
+    #[inline]
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        if let Some(fallback) = &mut self.fallback {
+            fallback.poll_ready(cx)
+        } else {
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
+        let future = self
+            .try_call(req)
+            .map(|result: Result<_, _>| -> Result<_, Infallible> {
+                let response = result.unwrap_or_else(|err| {
+                    tracing::error!(error = %err, "Failed to read file");
+
+                    let body =
+                        ResponseBody::new(Empty::new().map_err(|err| match err {}).boxed_unsync());
+                    Response::builder()
+                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                        .body(body)
+                        .unwrap()
+                });
+                Ok(response)
+            } as _);
+
+        InfallibleResponseFuture::new(future)
+    }
+}
+
+opaque_future! {
+    /// Response future of [`ServeDir`].
+    pub type InfallibleResponseFuture<ReqBody, F> =
+        futures_util::future::Map<
+            ResponseFuture<ReqBody, F>,
+            fn(Result<Response<ResponseBody>, io::Error>) -> Result<Response<ResponseBody>, Infallible>,
+        >;
 }
 
 // Allow the ServeDir service to be used in the ServeFile service
@@ -414,8 +534,8 @@ where
     ReqBody: Send + 'static,
 {
     type Response = Response<ResponseBody>;
-    type Error = io::Error;
-    type Future = ResponseFuture<ReqBody>;
+    type Error = Infallible;
+    type Future = InfallibleResponseFuture<ReqBody, Self>;
 
     fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         match self.0 {}
@@ -431,6 +551,7 @@ struct PrecompressedVariants {
     gzip: bool,
     deflate: bool,
     br: bool,
+    zstd: bool,
 }
 
 impl SupportedEncodings for PrecompressedVariants {
@@ -444,5 +565,9 @@ impl SupportedEncodings for PrecompressedVariants {
 
     fn br(&self) -> bool {
         self.br
+    }
+
+    fn zstd(&self) -> bool {
+        self.zstd
     }
 }

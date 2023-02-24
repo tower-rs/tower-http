@@ -59,6 +59,13 @@ impl<S> Decompression<S> {
         self
     }
 
+    /// Sets whether to request the Zstd encoding.
+    #[cfg(feature = "decompression-zstd")]
+    pub fn zstd(mut self, enable: bool) -> Self {
+        self.accept.set_zstd(enable);
+        self
+    }
+
     /// Disables the gzip encoding.
     ///
     /// This method is available even if the `gzip` crate feature is disabled.
@@ -80,6 +87,14 @@ impl<S> Decompression<S> {
     /// This method is available even if the `br` crate feature is disabled.
     pub fn no_br(mut self) -> Self {
         self.accept.set_br(false);
+        self
+    }
+
+    /// Disables the Zstd encoding.
+    ///
+    /// This method is available even if the `zstd` crate feature is disabled.
+    pub fn no_zstd(mut self) -> Self {
+        self.accept.set_zstd(false);
         self
     }
 }

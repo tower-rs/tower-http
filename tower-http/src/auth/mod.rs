@@ -10,5 +10,4 @@ pub use self::{
     async_require_authorization::{
         AsyncAuthorizeRequest, AsyncRequireAuthorization, AsyncRequireAuthorizationLayer,
     },
-    require_authorization::{AuthorizeRequest, RequireAuthorization, RequireAuthorizationLayer},
 };

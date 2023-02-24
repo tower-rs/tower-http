@@ -7,8 +7,9 @@ use http::{header, Method, Response};
 use http::{Request, StatusCode};
 use http_body::Body as HttpBody;
 use hyper::Body;
+use std::convert::Infallible;
 use std::io::{self, Read};
-use tower::ServiceExt;
+use tower::{service_fn, ServiceExt};
 
 #[tokio::test]
 async fn basic() {
@@ -288,6 +289,27 @@ async fn not_found() {
     assert!(body.is_empty());
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn not_found_when_not_a_directory() {
+    let svc = ServeDir::new("../test-files");
+
+    // `index.html` is a file, and we are trying to request
+    // it as a directory.
+    let req = Request::builder()
+        .uri("/index.html/some_file")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+
+    // This should lead to a 404
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    assert!(res.headers().get(header::CONTENT_TYPE).is_none());
+
+    let body = body_into_text(res.into_body()).await;
+    assert!(body.is_empty());
+}
+
 #[tokio::test]
 async fn not_found_precompressed() {
     let svc = ServeDir::new("../test-files").precompressed_gzip();
@@ -515,6 +537,21 @@ async fn read_partial_errs_on_bad_range() {
         &format!("bytes */{}", file_contents.len())
     )
 }
+
+#[tokio::test]
+async fn accept_encoding_identity() {
+    let svc = ServeDir::new("..");
+    let req = Request::builder()
+        .uri("/README.md")
+        .header("Accept-Encoding", "identity")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    // Identity encoding should not be included in the response headers
+    assert!(res.headers().get("content-encoding").is_none());
+}
+
 #[tokio::test]
 async fn last_modified() {
     let svc = ServeDir::new("..");
@@ -586,7 +623,7 @@ async fn last_modified() {
 
 #[tokio::test]
 async fn with_fallback_svc() {
-    async fn fallback<B>(req: Request<B>) -> io::Result<Response<Body>> {
+    async fn fallback<B>(req: Request<B>) -> Result<Response<Body>, Infallible> {
         Ok(Response::new(Body::from(format!(
             "from fallback {}",
             req.uri().path()
@@ -643,7 +680,7 @@ async fn method_not_allowed() {
 
 #[tokio::test]
 async fn calling_fallback_on_not_allowed() {
-    async fn fallback<B>(req: Request<B>) -> io::Result<Response<Body>> {
+    async fn fallback<B>(req: Request<B>) -> Result<Response<Body>, Infallible> {
         Ok(Response::new(Body::from(format!(
             "from fallback {}",
             req.uri().path()
@@ -669,7 +706,7 @@ async fn calling_fallback_on_not_allowed() {
 
 #[tokio::test]
 async fn with_fallback_svc_and_not_append_index_html_on_directories() {
-    async fn fallback<B>(req: Request<B>) -> io::Result<Response<Body>> {
+    async fn fallback<B>(req: Request<B>) -> Result<Response<Body>, Infallible> {
         Ok(Response::new(Body::from(format!(
             "from fallback {}",
             req.uri().path()
@@ -687,4 +724,26 @@ async fn with_fallback_svc_and_not_append_index_html_on_directories() {
 
     let body = body_into_text(res.into_body()).await;
     assert_eq!(body, "from fallback /");
+}
+
+// https://github.com/tower-rs/tower-http/issues/308
+#[tokio::test]
+async fn calls_fallback_on_invalid_paths() {
+    async fn fallback<T>(_: T) -> Result<Response<Body>, Infallible> {
+        let mut res = Response::new(Body::empty());
+        res.headers_mut()
+            .insert("from-fallback", "1".parse().unwrap());
+        Ok(res)
+    }
+
+    let svc = ServeDir::new("..").fallback(service_fn(fallback));
+
+    let req = Request::builder()
+        .uri("/weird_%c3%28_path")
+        .body(Body::empty())
+        .unwrap();
+
+    let res = svc.oneshot(req).await.unwrap();
+
+    assert_eq!(res.headers()["from-fallback"], "1");
 }

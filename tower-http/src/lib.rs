@@ -19,10 +19,10 @@
 //!     add_extension::AddExtensionLayer,
 //!     compression::CompressionLayer,
 //!     propagate_header::PropagateHeaderLayer,
-//!     auth::RequireAuthorizationLayer,
 //!     sensitive_headers::SetSensitiveRequestHeadersLayer,
 //!     set_header::SetResponseHeaderLayer,
 //!     trace::TraceLayer,
+//!     validate_request::ValidateRequestHeaderLayer,
 //! };
 //! use tower::{ServiceBuilder, service_fn, make::Shared};
 //! use http::{Request, Response, header::{HeaderName, CONTENT_TYPE, AUTHORIZATION}};
@@ -70,7 +70,9 @@
 //!         // If the response has a known size set the `Content-Length` header
 //!         .layer(SetResponseHeaderLayer::overriding(CONTENT_TYPE, content_length_from_response))
 //!         // Authorize requests using a token
-//!         .layer(RequireAuthorizationLayer::bearer("passwordlol"))
+//!         .layer(ValidateRequestHeaderLayer::bearer("passwordlol"))
+//!         // Accept only application/json, application/* and */* in a request's ACCEPT header
+//!         .layer(ValidateRequestHeaderLayer::accept("application/json"))
 //!         // Wrap a `Service` in our middleware stack
 //!         .service_fn(handler);
 //!
@@ -235,7 +237,8 @@ pub mod propagate_header;
 #[cfg(any(
     feature = "compression-br",
     feature = "compression-deflate",
-    feature = "compression-gzip"
+    feature = "compression-gzip",
+    feature = "compression-zstd",
 ))]
 pub mod compression;
 
@@ -248,7 +251,8 @@ pub mod sensitive_headers;
 #[cfg(any(
     feature = "decompression-br",
     feature = "decompression-deflate",
-    feature = "decompression-gzip"
+    feature = "decompression-gzip",
+    feature = "decompression-zstd",
 ))]
 pub mod decompression;
 
@@ -256,9 +260,11 @@ pub mod decompression;
     feature = "compression-br",
     feature = "compression-deflate",
     feature = "compression-gzip",
+    feature = "compression-zstd",
     feature = "decompression-br",
     feature = "decompression-deflate",
     feature = "decompression-gzip",
+    feature = "decompression-zstd",
     feature = "fs" // Used for serving precompressed static files as well
 ))]
 mod content_encoding;
@@ -267,9 +273,11 @@ mod content_encoding;
     feature = "compression-br",
     feature = "compression-deflate",
     feature = "compression-gzip",
+    feature = "compression-zstd",
     feature = "decompression-br",
     feature = "decompression-deflate",
     feature = "decompression-gzip",
+    feature = "decompression-zstd",
 ))]
 mod compression_utils;
 
@@ -318,6 +326,9 @@ mod builder;
 #[cfg(feature = "util")]
 #[doc(inline)]
 pub use self::builder::ServiceBuilderExt;
+
+#[cfg(feature = "validate-request")]
+pub mod validate_request;
 
 /// The latency unit used to report latencies by middleware.
 #[non_exhaustive]
