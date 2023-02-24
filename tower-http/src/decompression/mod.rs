@@ -1,7 +1,51 @@
-//! Middleware that decompresses response bodies.
+//! Middleware that decompresses request and response bodies.
 //!
-//! # Example
+//! # Examples
 //!
+//! #### Request
+//! ```rust
+//! use bytes::BytesMut;
+//! use flate2::{write::GzEncoder, Compression};
+//! use http::{header, HeaderValue, Request, Response};
+//! use http_body::Body as _; // for Body::data
+//! use hyper::Body;
+//! use std::{error::Error, io::Write};
+//! use tower::{Service, ServiceBuilder, service_fn, ServiceExt};
+//! use tower_http::{BoxError, decompression::{DecompressionBody, RequestDecompressionLayer}};
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), BoxError> {
+//! // A request encoded with gzip coming from some HTTP client.
+//! let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+//! encoder.write_all(b"Hello?")?;
+//! let request = Request::builder()
+//!     .header(header::CONTENT_ENCODING, "gzip")
+//!     .body(Body::from(encoder.finish()?))?;
+//!
+//! // Our HTTP server
+//! let mut server = ServiceBuilder::new()
+//!     // Automatically decompress request bodies.
+//!     .layer(RequestDecompressionLayer::new())
+//!     .service(service_fn(handler));
+//!
+//! // Send the request, with the gzip encoded body, to our server.
+//! let _response = server.ready().await?.call(request).await?;
+//!
+//! // Handler receives request whose body is decoded when read
+//! async fn handler(mut req: Request<DecompressionBody<Body>>) -> Result<Response<Body>, BoxError>{
+//!     let mut data = BytesMut::new();
+//!     while let Some(chunk) = req.body_mut().data().await {
+//!         let chunk = chunk?;
+//!         data.extend_from_slice(&chunk[..]);
+//!     }
+//!     assert_eq!(data.freeze().to_vec(), b"Hello?");
+//!     Ok(Response::new(Body::from("Hello, World!")))
+//! }
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! #### Response
 //! ```rust
 //! use bytes::BytesMut;
 //! use http::{Request, Response};
@@ -53,6 +97,8 @@
 //! # }
 //! ```
 
+mod request;
+
 mod body;
 mod future;
 mod layer;
@@ -62,6 +108,10 @@ pub use self::{
     body::DecompressionBody, future::ResponseFuture, layer::DecompressionLayer,
     service::Decompression,
 };
+
+pub use self::request::future::RequestDecompressionFuture;
+pub use self::request::layer::RequestDecompressionLayer;
+pub use self::request::service::RequestDecompression;
 
 #[cfg(test)]
 mod tests {
