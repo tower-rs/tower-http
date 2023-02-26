@@ -95,7 +95,8 @@ mod tests {
     use hyper::{Body, Error, Request, Response, Server};
     use std::sync::{Arc, RwLock};
     use std::{io::Read, net::SocketAddr};
-    use tokio::io::AsyncWriteExt;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio_util::io::StreamReader;
     use tower::{make::Shared, service_fn, Service, ServiceExt};
 
     // Compression filter allows every other request to be compressed
@@ -396,11 +397,16 @@ mod tests {
 
         // build the compressed body with the same quality level
         let compressed_with_level = {
-            let mut buf = Vec::new();
+            use async_compression::tokio::bufread::BrotliEncoder;
 
-            let mut enc = BrotliEncoder::with_quality(&mut buf, level.into());
-            enc.write_all(DATA.as_bytes()).await.unwrap();
-            enc.flush().await.unwrap();
+            let stream = Box::pin(futures::stream::once(async move {
+                Ok::<_, std::io::Error>(DATA.as_bytes())
+            }));
+            let reader = StreamReader::new(stream);
+            let mut enc = BrotliEncoder::with_quality(reader, level.into());
+
+            let mut buf = Vec::new();
+            enc.read_to_end(&mut buf).await.unwrap();
             buf
         };
 
