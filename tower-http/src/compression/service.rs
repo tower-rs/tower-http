@@ -1,11 +1,11 @@
 use super::{CompressionBody, CompressionLayer, ResponseFuture};
 use crate::compression::predicate::{DefaultPredicate, Predicate};
+use crate::compression::Level;
 use crate::{compression_utils::AcceptEncoding, content_encoding::Encoding};
 use http::{Request, Response};
 use http_body::Body;
 use std::task::{Context, Poll};
 use tower_service::Service;
-use crate::compression::Level;
 
 /// Compress response bodies of the underlying service.
 ///

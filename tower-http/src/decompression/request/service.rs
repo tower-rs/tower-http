@@ -1,5 +1,6 @@
 use super::future::RequestDecompressionFuture as ResponseFuture;
 use super::layer::RequestDecompressionLayer;
+use crate::compression_utils::Level;
 use crate::{
     compression_utils::AcceptEncoding, decompression::body::BodyInner,
     decompression::DecompressionBody, BoxError,
@@ -9,7 +10,6 @@ use http::{header, Request, Response};
 use http_body::{combinators::UnsyncBoxBody, Body};
 use std::task::{Context, Poll};
 use tower_service::Service;
-use crate::compression_utils::Level;
 
 #[cfg(any(
     feature = "decompression-gzip",
@@ -64,25 +64,37 @@ where
                     b"gzip" if self.accept.gzip() => {
                         entry.remove();
                         parts.headers.remove(header::CONTENT_LENGTH);
-                        BodyInner::gzip(crate::compression_utils::WrapBody::new(body, Level::default()))
+                        BodyInner::gzip(crate::compression_utils::WrapBody::new(
+                            body,
+                            Level::default(),
+                        ))
                     }
                     #[cfg(feature = "decompression-deflate")]
                     b"deflate" if self.accept.deflate() => {
                         entry.remove();
                         parts.headers.remove(header::CONTENT_LENGTH);
-                        BodyInner::deflate(crate::compression_utils::WrapBody::new(body, Level::default()))
+                        BodyInner::deflate(crate::compression_utils::WrapBody::new(
+                            body,
+                            Level::default(),
+                        ))
                     }
                     #[cfg(feature = "decompression-br")]
                     b"br" if self.accept.br() => {
                         entry.remove();
                         parts.headers.remove(header::CONTENT_LENGTH);
-                        BodyInner::brotli(crate::compression_utils::WrapBody::new(body, Level::default()))
+                        BodyInner::brotli(crate::compression_utils::WrapBody::new(
+                            body,
+                            Level::default(),
+                        ))
                     }
                     #[cfg(feature = "decompression-zstd")]
                     b"zstd" if self.accept.zstd() => {
                         entry.remove();
                         parts.headers.remove(header::CONTENT_LENGTH);
-                        BodyInner::zstd(crate::compression_utils::WrapBody::new(body, Level::default()))
+                        BodyInner::zstd(crate::compression_utils::WrapBody::new(
+                            body,
+                            Level::default(),
+                        ))
                     }
                     b"identity" => BodyInner::identity(body),
                     _ if self.pass_through_unaccepted => BodyInner::identity(body),

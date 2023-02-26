@@ -41,24 +41,24 @@ where
             if let header::Entry::Occupied(entry) = parts.headers.entry(header::CONTENT_ENCODING) {
                 let body = match entry.get().as_bytes() {
                     #[cfg(feature = "decompression-gzip")]
-                    b"gzip" if self.accept.gzip() => {
-                        DecompressionBody::new(BodyInner::gzip(WrapBody::new(body, Level::default())))
-                    }
+                    b"gzip" if self.accept.gzip() => DecompressionBody::new(BodyInner::gzip(
+                        WrapBody::new(body, Level::default()),
+                    )),
 
                     #[cfg(feature = "decompression-deflate")]
-                    b"deflate" if self.accept.deflate() => {
-                        DecompressionBody::new(BodyInner::deflate(WrapBody::new(body, Level::default())))
-                    }
+                    b"deflate" if self.accept.deflate() => DecompressionBody::new(
+                        BodyInner::deflate(WrapBody::new(body, Level::default())),
+                    ),
 
                     #[cfg(feature = "decompression-br")]
-                    b"br" if self.accept.br() => {
-                        DecompressionBody::new(BodyInner::brotli(WrapBody::new(body, Level::default())))
-                    }
+                    b"br" if self.accept.br() => DecompressionBody::new(BodyInner::brotli(
+                        WrapBody::new(body, Level::default()),
+                    )),
 
                     #[cfg(feature = "decompression-zstd")]
-                    b"zstd" if self.accept.zstd() => {
-                        DecompressionBody::new(BodyInner::zstd(WrapBody::new(body, Level::default())))
-                    }
+                    b"zstd" if self.accept.zstd() => DecompressionBody::new(BodyInner::zstd(
+                        WrapBody::new(body, Level::default()),
+                    )),
 
                     _ => {
                         return Poll::Ready(Ok(Response::from_parts(

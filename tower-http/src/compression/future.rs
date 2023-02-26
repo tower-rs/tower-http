@@ -2,9 +2,9 @@
 
 use super::{body::BodyInner, CompressionBody};
 use crate::compression::predicate::Predicate;
+use crate::compression::Level;
 use crate::compression_utils::WrapBody;
 use crate::content_encoding::Encoding;
-use crate::compression::Level;
 use futures_util::ready;
 use http::{header, HeaderMap, HeaderValue, Response};
 use http_body::Body;
@@ -57,13 +57,21 @@ where
             }
 
             #[cfg(feature = "compression-gzip")]
-            (_, Encoding::Gzip) => CompressionBody::new(BodyInner::gzip(WrapBody::new(body, self.quality))),
+            (_, Encoding::Gzip) => {
+                CompressionBody::new(BodyInner::gzip(WrapBody::new(body, self.quality)))
+            }
             #[cfg(feature = "compression-deflate")]
-            (_, Encoding::Deflate) => CompressionBody::new(BodyInner::deflate(WrapBody::new(body, self.quality))),
+            (_, Encoding::Deflate) => {
+                CompressionBody::new(BodyInner::deflate(WrapBody::new(body, self.quality)))
+            }
             #[cfg(feature = "compression-br")]
-            (_, Encoding::Brotli) => CompressionBody::new(BodyInner::brotli(WrapBody::new(body, self.quality))),
+            (_, Encoding::Brotli) => {
+                CompressionBody::new(BodyInner::brotli(WrapBody::new(body, self.quality)))
+            }
             #[cfg(feature = "compression-zstd")]
-            (_, Encoding::Zstd) => CompressionBody::new(BodyInner::zstd(WrapBody::new(body, self.quality))),
+            (_, Encoding::Zstd) => {
+                CompressionBody::new(BodyInner::zstd(WrapBody::new(body, self.quality)))
+            }
             #[cfg(feature = "fs")]
             (true, _) => {
                 // This should never happen because the `AcceptEncoding` struct which is used to determine

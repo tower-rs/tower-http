@@ -1,5 +1,6 @@
 #![allow(unused_imports)]
 
+use crate::compression::Level;
 use crate::{
     compression_utils::{AsyncReadBody, BodyIntoStream, DecorateAsyncRead, WrapBody},
     BoxError,
@@ -24,7 +25,6 @@ use std::{
     task::{Context, Poll},
 };
 use tokio_util::io::StreamReader;
-use crate::compression::Level;
 
 use super::pin_project_cfg::pin_project_cfg;
 

@@ -1,5 +1,6 @@
 #![allow(unused_imports)]
 
+use crate::compression_utils::Level;
 use crate::{
     compression_utils::{AsyncReadBody, BodyIntoStream, DecorateAsyncRead, WrapBody},
     BoxError,
@@ -20,7 +21,6 @@ use pin_project_lite::pin_project;
 use std::task::Context;
 use std::{io, marker::PhantomData, pin::Pin, task::Poll};
 use tokio_util::io::StreamReader;
-use crate::compression_utils::Level;
 
 pin_project! {
     /// Response body of [`RequestDecompression`] and [`Decompression`].
