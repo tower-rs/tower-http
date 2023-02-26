@@ -9,6 +9,7 @@ use http::{header, Request, Response};
 use http_body::{combinators::UnsyncBoxBody, Body};
 use std::task::{Context, Poll};
 use tower_service::Service;
+use crate::compression_utils::Level;
 
 #[cfg(any(
     feature = "decompression-gzip",
@@ -63,25 +64,25 @@ where
                     b"gzip" if self.accept.gzip() => {
                         entry.remove();
                         parts.headers.remove(header::CONTENT_LENGTH);
-                        BodyInner::gzip(crate::compression_utils::WrapBody::new(body))
+                        BodyInner::gzip(crate::compression_utils::WrapBody::new(body, Level::default()))
                     }
                     #[cfg(feature = "decompression-deflate")]
                     b"deflate" if self.accept.deflate() => {
                         entry.remove();
                         parts.headers.remove(header::CONTENT_LENGTH);
-                        BodyInner::deflate(crate::compression_utils::WrapBody::new(body))
+                        BodyInner::deflate(crate::compression_utils::WrapBody::new(body, Level::default()))
                     }
                     #[cfg(feature = "decompression-br")]
                     b"br" if self.accept.br() => {
                         entry.remove();
                         parts.headers.remove(header::CONTENT_LENGTH);
-                        BodyInner::brotli(crate::compression_utils::WrapBody::new(body))
+                        BodyInner::brotli(crate::compression_utils::WrapBody::new(body, Level::default()))
                     }
                     #[cfg(feature = "decompression-zstd")]
                     b"zstd" if self.accept.zstd() => {
                         entry.remove();
                         parts.headers.remove(header::CONTENT_LENGTH);
-                        BodyInner::zstd(crate::compression_utils::WrapBody::new(body))
+                        BodyInner::zstd(crate::compression_utils::WrapBody::new(body, Level::default()))
                     }
                     b"identity" => BodyInner::identity(body),
                     _ if self.pass_through_unaccepted => BodyInner::identity(body),

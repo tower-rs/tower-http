@@ -14,6 +14,7 @@ use std::{
 };
 use tokio::io::AsyncRead;
 use tokio_util::io::{poll_read_buf, StreamReader};
+use async_compression::Level as AsyncCompressionLevel;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct AcceptEncoding {
@@ -139,7 +140,7 @@ pub(crate) trait DecorateAsyncRead {
     type Output: AsyncRead;
 
     /// Apply the decorator
-    fn apply(input: Self::Input) -> Self::Output;
+    fn apply(input: Self::Input, quality: Level) -> Self::Output;
 
     /// Get a pinned mutable reference to the original input.
     ///
@@ -157,7 +158,7 @@ pin_project! {
 
 impl<M: DecorateAsyncRead> WrapBody<M> {
     #[allow(dead_code)]
-    pub(crate) fn new<B>(body: B) -> Self
+    pub(crate) fn new<B>(body: B, quality: Level) -> Self
     where
         B: Body,
         M: DecorateAsyncRead<Input = AsyncReadBody<B>>,
@@ -172,8 +173,8 @@ impl<M: DecorateAsyncRead> WrapBody<M> {
         // convert `Stream` into an `AsyncRead`
         let read = StreamReader::new(stream);
 
-        // apply decorator to `AsyncRead` yieling another `AsyncRead`
-        let read = M::apply(read);
+        // apply decorator to `AsyncRead` yielding another `AsyncRead`
+        let read = M::apply(read, quality);
 
         Self { read }
     }
@@ -335,3 +336,38 @@ where
 }
 
 pub(crate) const SENTINEL_ERROR_CODE: i32 = -837459418;
+
+
+/// Level of compression data should be compressed with.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug)]
+pub enum Level {
+    /// Fastest quality of compression, usually produces bigger size.
+    Fastest,
+    /// Best quality of compression, usually produces the smallest size.
+    Best,
+    /// Default quality of compression defined by the selected compression algorithm.
+    Default,
+    /// Precise quality based on the underlying compression algorithms'
+    /// qualities. The interpretation of this depends on the algorithm chosen
+    /// and the specific implementation backing it.
+    /// Qualities are implicitly clamped to the algorithm's maximum.
+    Precise(u32),
+}
+
+impl Default for Level {
+    fn default() -> Self {
+        Level::Default
+    }
+}
+
+impl From<Level> for AsyncCompressionLevel {
+    fn from(level: Level) -> Self {
+        match level {
+            Level::Fastest => AsyncCompressionLevel::Fastest,
+            Level::Best => AsyncCompressionLevel::Best,
+            Level::Default => AsyncCompressionLevel::Default,
+            Level::Precise(quality) => AsyncCompressionLevel::Precise(quality),
+        }
+    }
+}

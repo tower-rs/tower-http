@@ -20,6 +20,7 @@ use pin_project_lite::pin_project;
 use std::task::Context;
 use std::{io, marker::PhantomData, pin::Pin, task::Poll};
 use tokio_util::io::StreamReader;
+use crate::compression_utils::Level;
 
 pin_project! {
     /// Response body of [`RequestDecompression`] and [`Decompression`].
@@ -344,7 +345,7 @@ where
     type Input = AsyncReadBody<B>;
     type Output = GzipDecoder<Self::Input>;
 
-    fn apply(input: Self::Input) -> Self::Output {
+    fn apply(input: Self::Input, _quality: Level) -> Self::Output {
         GzipDecoder::new(input)
     }
 
@@ -361,7 +362,7 @@ where
     type Input = AsyncReadBody<B>;
     type Output = ZlibDecoder<Self::Input>;
 
-    fn apply(input: Self::Input) -> Self::Output {
+    fn apply(input: Self::Input, _quality: Level) -> Self::Output {
         ZlibDecoder::new(input)
     }
 
@@ -378,7 +379,7 @@ where
     type Input = AsyncReadBody<B>;
     type Output = BrotliDecoder<Self::Input>;
 
-    fn apply(input: Self::Input) -> Self::Output {
+    fn apply(input: Self::Input, _quality: Level) -> Self::Output {
         BrotliDecoder::new(input)
     }
 
@@ -395,7 +396,7 @@ where
     type Input = AsyncReadBody<B>;
     type Output = ZstdDecoder<Self::Input>;
 
-    fn apply(input: Self::Input) -> Self::Output {
+    fn apply(input: Self::Input, _quality: Level) -> Self::Output {
         ZstdDecoder::new(input)
     }
 

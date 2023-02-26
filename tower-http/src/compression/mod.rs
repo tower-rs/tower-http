@@ -80,6 +80,7 @@ pub use self::{
     predicate::{DefaultPredicate, Predicate},
     service::Compression,
 };
+pub use crate::compression_utils::Level;
 
 #[cfg(test)]
 mod tests {

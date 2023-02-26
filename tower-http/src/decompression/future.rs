@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 
 use super::{body::BodyInner, DecompressionBody};
-use crate::compression_utils::{AcceptEncoding, WrapBody};
+use crate::compression_utils::{AcceptEncoding, Level, WrapBody};
 use crate::content_encoding::SupportedEncodings;
 use futures_util::ready;
 use http::{header, Response};
@@ -42,22 +42,22 @@ where
                 let body = match entry.get().as_bytes() {
                     #[cfg(feature = "decompression-gzip")]
                     b"gzip" if self.accept.gzip() => {
-                        DecompressionBody::new(BodyInner::gzip(WrapBody::new(body)))
+                        DecompressionBody::new(BodyInner::gzip(WrapBody::new(body, Level::default())))
                     }
 
                     #[cfg(feature = "decompression-deflate")]
                     b"deflate" if self.accept.deflate() => {
-                        DecompressionBody::new(BodyInner::deflate(WrapBody::new(body)))
+                        DecompressionBody::new(BodyInner::deflate(WrapBody::new(body, Level::default())))
                     }
 
                     #[cfg(feature = "decompression-br")]
                     b"br" if self.accept.br() => {
-                        DecompressionBody::new(BodyInner::brotli(WrapBody::new(body)))
+                        DecompressionBody::new(BodyInner::brotli(WrapBody::new(body, Level::default())))
                     }
 
                     #[cfg(feature = "decompression-zstd")]
                     b"zstd" if self.accept.zstd() => {
-                        DecompressionBody::new(BodyInner::zstd(WrapBody::new(body)))
+                        DecompressionBody::new(BodyInner::zstd(WrapBody::new(body, Level::default())))
                     }
 
                     _ => {

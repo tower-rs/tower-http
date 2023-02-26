@@ -24,6 +24,7 @@ use std::{
     task::{Context, Poll},
 };
 use tokio_util::io::StreamReader;
+use crate::compression::Level;
 
 use super::pin_project_cfg::pin_project_cfg;
 
@@ -295,8 +296,8 @@ where
     type Input = AsyncReadBody<B>;
     type Output = GzipEncoder<Self::Input>;
 
-    fn apply(input: Self::Input) -> Self::Output {
-        GzipEncoder::new(input)
+    fn apply(input: Self::Input, quality: Level) -> Self::Output {
+        GzipEncoder::with_quality(input, quality.into())
     }
 
     fn get_pin_mut(pinned: Pin<&mut Self::Output>) -> Pin<&mut Self::Input> {
@@ -312,8 +313,8 @@ where
     type Input = AsyncReadBody<B>;
     type Output = ZlibEncoder<Self::Input>;
 
-    fn apply(input: Self::Input) -> Self::Output {
-        ZlibEncoder::new(input)
+    fn apply(input: Self::Input, quality: Level) -> Self::Output {
+        ZlibEncoder::with_quality(input, quality.into())
     }
 
     fn get_pin_mut(pinned: Pin<&mut Self::Output>) -> Pin<&mut Self::Input> {
@@ -329,8 +330,8 @@ where
     type Input = AsyncReadBody<B>;
     type Output = BrotliEncoder<Self::Input>;
 
-    fn apply(input: Self::Input) -> Self::Output {
-        BrotliEncoder::new(input)
+    fn apply(input: Self::Input, quality: Level) -> Self::Output {
+        BrotliEncoder::with_quality(input, quality.into())
     }
 
     fn get_pin_mut(pinned: Pin<&mut Self::Output>) -> Pin<&mut Self::Input> {
@@ -346,8 +347,8 @@ where
     type Input = AsyncReadBody<B>;
     type Output = ZstdEncoder<Self::Input>;
 
-    fn apply(input: Self::Input) -> Self::Output {
-        ZstdEncoder::new(input)
+    fn apply(input: Self::Input, quality: Level) -> Self::Output {
+        ZstdEncoder::with_quality(input, quality.into())
     }
 
     fn get_pin_mut(pinned: Pin<&mut Self::Output>) -> Pin<&mut Self::Input> {

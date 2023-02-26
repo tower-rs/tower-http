@@ -5,6 +5,7 @@ use http::{Request, Response};
 use http_body::Body;
 use std::task::{Context, Poll};
 use tower_service::Service;
+use crate::compression::Level;
 
 /// Compress response bodies of the underlying service.
 ///
@@ -17,6 +18,7 @@ pub struct Compression<S, P = DefaultPredicate> {
     pub(crate) inner: S,
     pub(crate) accept: AcceptEncoding,
     pub(crate) predicate: P,
+    pub(crate) quality: Level,
 }
 
 impl<S> Compression<S, DefaultPredicate> {
@@ -26,6 +28,7 @@ impl<S> Compression<S, DefaultPredicate> {
             inner: service,
             accept: AcceptEncoding::default(),
             predicate: DefaultPredicate::default(),
+            quality: Level::default(),
         }
     }
 }
@@ -65,6 +68,12 @@ impl<S, P> Compression<S, P> {
     #[cfg(feature = "compression-zstd")]
     pub fn zstd(mut self, enable: bool) -> Self {
         self.accept.set_zstd(enable);
+        self
+    }
+
+    /// Sets the compression quality.
+    pub fn quality(mut self, quality: Level) -> Self {
+        self.quality = quality;
         self
     }
 
@@ -143,6 +152,7 @@ impl<S, P> Compression<S, P> {
             inner: self.inner,
             accept: self.accept,
             predicate,
+            quality: self.quality,
         }
     }
 }
@@ -169,6 +179,7 @@ where
             inner: self.inner.call(req),
             encoding,
             predicate: self.predicate.clone(),
+            quality: self.quality,
         }
     }
 }
