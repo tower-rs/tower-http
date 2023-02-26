@@ -363,4 +363,51 @@ mod tests {
             .unwrap();
         assert_eq!(res.headers()[CONTENT_ENCODING], "gzip");
     }
+
+    #[tokio::test]
+    async fn compress_with_quality() {
+        const DATA: &str = "Check compression quality level! Check compression quality level! Check compression quality level!";
+        let level = Level::Best;
+
+        let svc = service_fn(|_| async {
+            let resp = Response::builder()
+                .body(Body::from(DATA.as_bytes()))
+                .unwrap();
+            Ok::<_, std::io::Error>(resp)
+        });
+
+        let mut svc = Compression::new(svc).quality(level);
+
+        // call the service
+        let req = Request::builder()
+            .header("accept-encoding", "br")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.ready().await.unwrap().call(req).await.unwrap();
+
+        // read the compressed body
+        let mut body = res.into_body();
+        let mut data = BytesMut::new();
+        while let Some(chunk) = body.data().await {
+            let chunk = chunk.unwrap();
+            data.extend_from_slice(&chunk[..]);
+        }
+        let compressed_data = data.freeze().to_vec();
+
+        // build the compressed body with the same quality level
+        let compressed_with_level = {
+            let mut buf = Vec::new();
+
+            let mut enc = BrotliEncoder::with_quality(&mut buf, level.into());
+            enc.write_all(DATA.as_bytes()).await.unwrap();
+            enc.flush().await.unwrap();
+            buf
+        };
+
+        assert_eq!(
+            compressed_data.as_slice(),
+            compressed_with_level.as_slice(),
+            "Compression level is not respected"
+        );
+    }
 }
