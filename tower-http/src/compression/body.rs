@@ -1,6 +1,6 @@
 #![allow(unused_imports)]
 
-use crate::compression::Level;
+use crate::compression::CompressionLevel;
 use crate::{
     compression_utils::{AsyncReadBody, BodyIntoStream, DecorateAsyncRead, WrapBody},
     BoxError,
@@ -296,7 +296,7 @@ where
     type Input = AsyncReadBody<B>;
     type Output = GzipEncoder<Self::Input>;
 
-    fn apply(input: Self::Input, quality: Level) -> Self::Output {
+    fn apply(input: Self::Input, quality: CompressionLevel) -> Self::Output {
         GzipEncoder::with_quality(input, quality.into())
     }
 
@@ -313,7 +313,7 @@ where
     type Input = AsyncReadBody<B>;
     type Output = ZlibEncoder<Self::Input>;
 
-    fn apply(input: Self::Input, quality: Level) -> Self::Output {
+    fn apply(input: Self::Input, quality: CompressionLevel) -> Self::Output {
         ZlibEncoder::with_quality(input, quality.into())
     }
 
@@ -330,7 +330,7 @@ where
     type Input = AsyncReadBody<B>;
     type Output = BrotliEncoder<Self::Input>;
 
-    fn apply(input: Self::Input, quality: Level) -> Self::Output {
+    fn apply(input: Self::Input, quality: CompressionLevel) -> Self::Output {
         BrotliEncoder::with_quality(input, quality.into())
     }
 
@@ -347,7 +347,7 @@ where
     type Input = AsyncReadBody<B>;
     type Output = ZstdEncoder<Self::Input>;
 
-    fn apply(input: Self::Input, quality: Level) -> Self::Output {
+    fn apply(input: Self::Input, quality: CompressionLevel) -> Self::Output {
         ZstdEncoder::with_quality(input, quality.into())
     }
 

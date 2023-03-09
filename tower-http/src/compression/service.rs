@@ -1,6 +1,6 @@
 use super::{CompressionBody, CompressionLayer, ResponseFuture};
 use crate::compression::predicate::{DefaultPredicate, Predicate};
-use crate::compression::Level;
+use crate::compression::CompressionLevel;
 use crate::{compression_utils::AcceptEncoding, content_encoding::Encoding};
 use http::{Request, Response};
 use http_body::Body;
@@ -18,7 +18,7 @@ pub struct Compression<S, P = DefaultPredicate> {
     pub(crate) inner: S,
     pub(crate) accept: AcceptEncoding,
     pub(crate) predicate: P,
-    pub(crate) quality: Level,
+    pub(crate) quality: CompressionLevel,
 }
 
 impl<S> Compression<S, DefaultPredicate> {
@@ -28,7 +28,7 @@ impl<S> Compression<S, DefaultPredicate> {
             inner: service,
             accept: AcceptEncoding::default(),
             predicate: DefaultPredicate::default(),
-            quality: Level::default(),
+            quality: CompressionLevel::default(),
         }
     }
 }
@@ -72,7 +72,7 @@ impl<S, P> Compression<S, P> {
     }
 
     /// Sets the compression quality.
-    pub fn quality(mut self, quality: Level) -> Self {
+    pub fn quality(mut self, quality: CompressionLevel) -> Self {
         self.quality = quality;
         self
     }

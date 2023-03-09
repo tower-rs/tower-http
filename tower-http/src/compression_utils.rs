@@ -140,7 +140,7 @@ pub(crate) trait DecorateAsyncRead {
     type Output: AsyncRead;
 
     /// Apply the decorator
-    fn apply(input: Self::Input, quality: Level) -> Self::Output;
+    fn apply(input: Self::Input, quality: CompressionLevel) -> Self::Output;
 
     /// Get a pinned mutable reference to the original input.
     ///
@@ -158,7 +158,7 @@ pin_project! {
 
 impl<M: DecorateAsyncRead> WrapBody<M> {
     #[allow(dead_code)]
-    pub(crate) fn new<B>(body: B, quality: Level) -> Self
+    pub(crate) fn new<B>(body: B, quality: CompressionLevel) -> Self
     where
         B: Body,
         M: DecorateAsyncRead<Input = AsyncReadBody<B>>,
@@ -340,7 +340,7 @@ pub(crate) const SENTINEL_ERROR_CODE: i32 = -837459418;
 /// Level of compression data should be compressed with.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Level {
+pub enum CompressionLevel {
     /// Fastest quality of compression, usually produces bigger size.
     Fastest,
     /// Best quality of compression, usually produces the smallest size.
@@ -354,19 +354,19 @@ pub enum Level {
     Precise(u32),
 }
 
-impl Default for Level {
+impl Default for CompressionLevel {
     fn default() -> Self {
-        Level::Default
+        CompressionLevel::Default
     }
 }
 
-impl From<Level> for AsyncCompressionLevel {
-    fn from(level: Level) -> Self {
+impl From<CompressionLevel> for AsyncCompressionLevel {
+    fn from(level: CompressionLevel) -> Self {
         match level {
-            Level::Fastest => AsyncCompressionLevel::Fastest,
-            Level::Best => AsyncCompressionLevel::Best,
-            Level::Default => AsyncCompressionLevel::Default,
-            Level::Precise(quality) => AsyncCompressionLevel::Precise(quality),
+            CompressionLevel::Fastest => AsyncCompressionLevel::Fastest,
+            CompressionLevel::Best => AsyncCompressionLevel::Best,
+            CompressionLevel::Default => AsyncCompressionLevel::Default,
+            CompressionLevel::Precise(quality) => AsyncCompressionLevel::Precise(quality),
         }
     }
 }

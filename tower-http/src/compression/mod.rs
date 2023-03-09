@@ -80,7 +80,7 @@ pub use self::{
     predicate::{DefaultPredicate, Predicate},
     service::Compression,
 };
-pub use crate::compression_utils::Level;
+pub use crate::compression_utils::CompressionLevel;
 
 #[cfg(test)]
 mod tests {
@@ -368,7 +368,7 @@ mod tests {
     #[tokio::test]
     async fn compress_with_quality() {
         const DATA: &str = "Check compression quality level! Check compression quality level! Check compression quality level!";
-        let level = Level::Best;
+        let level = CompressionLevel::Best;
 
         let svc = service_fn(|_| async {
             let resp = Response::builder()

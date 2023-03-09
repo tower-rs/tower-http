@@ -2,7 +2,7 @@
 
 use super::{body::BodyInner, CompressionBody};
 use crate::compression::predicate::Predicate;
-use crate::compression::Level;
+use crate::compression::CompressionLevel;
 use crate::compression_utils::WrapBody;
 use crate::content_encoding::Encoding;
 use futures_util::ready;
@@ -25,7 +25,7 @@ pin_project! {
         pub(crate) inner: F,
         pub(crate) encoding: Encoding,
         pub(crate) predicate: P,
-        pub(crate) quality: Level,
+        pub(crate) quality: CompressionLevel,
     }
 }
 

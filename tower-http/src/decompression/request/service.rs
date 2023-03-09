@@ -1,6 +1,6 @@
 use super::future::RequestDecompressionFuture as ResponseFuture;
 use super::layer::RequestDecompressionLayer;
-use crate::compression_utils::Level;
+use crate::compression_utils::CompressionLevel;
 use crate::{
     compression_utils::AcceptEncoding, decompression::body::BodyInner,
     decompression::DecompressionBody, BoxError,
@@ -66,7 +66,7 @@ where
                         parts.headers.remove(header::CONTENT_LENGTH);
                         BodyInner::gzip(crate::compression_utils::WrapBody::new(
                             body,
-                            Level::default(),
+                            CompressionLevel::default(),
                         ))
                     }
                     #[cfg(feature = "decompression-deflate")]
@@ -75,7 +75,7 @@ where
                         parts.headers.remove(header::CONTENT_LENGTH);
                         BodyInner::deflate(crate::compression_utils::WrapBody::new(
                             body,
-                            Level::default(),
+                            CompressionLevel::default(),
                         ))
                     }
                     #[cfg(feature = "decompression-br")]
@@ -84,7 +84,7 @@ where
                         parts.headers.remove(header::CONTENT_LENGTH);
                         BodyInner::brotli(crate::compression_utils::WrapBody::new(
                             body,
-                            Level::default(),
+                            CompressionLevel::default(),
                         ))
                     }
                     #[cfg(feature = "decompression-zstd")]
@@ -93,7 +93,7 @@ where
                         parts.headers.remove(header::CONTENT_LENGTH);
                         BodyInner::zstd(crate::compression_utils::WrapBody::new(
                             body,
-                            Level::default(),
+                            CompressionLevel::default(),
                         ))
                     }
                     b"identity" => BodyInner::identity(body),
