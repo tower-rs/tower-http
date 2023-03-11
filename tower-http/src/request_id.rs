@@ -469,7 +469,7 @@ where
 }
 
 /// A [`MakeRequestId`] that generates `UUID`s.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub struct MakeRequestUuid;
 
 impl MakeRequestId for MakeRequestUuid {
