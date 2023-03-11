@@ -469,7 +469,7 @@ where
 }
 
 /// A [`MakeRequestId`] that generates `UUID`s.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub struct MakeRequestUuid;
 
 impl MakeRequestId for MakeRequestUuid {
@@ -591,7 +591,7 @@ mod tests {
     #[tokio::test]
     async fn uuid() {
         let svc = ServiceBuilder::new()
-            .set_x_request_id(MakeRequestUuid)
+            .set_x_request_id(MakeRequestUuid::default())
             .propagate_x_request_id()
             .service_fn(handler);
 
