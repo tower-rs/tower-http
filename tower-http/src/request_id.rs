@@ -591,7 +591,7 @@ mod tests {
     #[tokio::test]
     async fn uuid() {
         let svc = ServiceBuilder::new()
-            .set_x_request_id(MakeRequestUuid::default())
+            .set_x_request_id(MakeRequestUuid)
             .propagate_x_request_id()
             .service_fn(handler);
 
