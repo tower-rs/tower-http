@@ -360,9 +360,9 @@ impl Default for CompressionLevel {
     }
 }
 
-impl From<CompressionLevel> for AsyncCompressionLevel {
-    fn from(level: CompressionLevel) -> Self {
-        match level {
+impl CompressionLevel {
+    pub(crate) fn into_async_compression(self) -> AsyncCompressionLevel {
+        match self {
             CompressionLevel::Fastest => AsyncCompressionLevel::Fastest,
             CompressionLevel::Best => AsyncCompressionLevel::Best,
             CompressionLevel::Default => AsyncCompressionLevel::Default,

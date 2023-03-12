@@ -403,7 +403,7 @@ mod tests {
                 Ok::<_, std::io::Error>(DATA.as_bytes())
             }));
             let reader = StreamReader::new(stream);
-            let mut enc = BrotliEncoder::with_quality(reader, level.into());
+            let mut enc = BrotliEncoder::with_quality(reader, level.into_async_compression());
 
             let mut buf = Vec::new();
             enc.read_to_end(&mut buf).await.unwrap();
