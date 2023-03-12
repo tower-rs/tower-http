@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Added
 
-- None.
+- **request_id:** Derive `Default` for `MakeRequestUuid` ([#335])
+- **fs:** Derive `Default` for `ServeFileSystemResponseBody` ([#336])
 
 ## Changed
 
@@ -22,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Fixed
 
 - None.
+
+[#335]: https://github.com/tower-rs/tower-http/pull/335
+[#336]: https://github.com/tower-rs/tower-http/pull/336
 
 # 0.4.0 (February 24, 2023)
 
