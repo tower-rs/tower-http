@@ -1,7 +1,6 @@
 //! Types used by compression and decompression middleware.
 
 use crate::{content_encoding::SupportedEncodings, BoxError};
-use async_compression::Level as AsyncCompressionLevel;
 use bytes::{Bytes, BytesMut};
 use futures_core::Stream;
 use futures_util::ready;
@@ -15,6 +14,14 @@ use std::{
 };
 use tokio::io::AsyncRead;
 use tokio_util::io::{poll_read_buf, StreamReader};
+
+#[cfg(any(
+    feature = "compression-br",
+    feature = "compression-deflate",
+    feature = "compression-gzip",
+    feature = "compression-zstd",
+))]
+use async_compression::Level as AsyncCompressionLevel;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct AcceptEncoding {
@@ -338,9 +345,18 @@ where
 pub(crate) const SENTINEL_ERROR_CODE: i32 = -837459418;
 
 /// Level of compression data should be compressed with.
+#[cfg_attr(
+    not(any(
+        feature = "compression-br",
+        feature = "compression-deflate",
+        feature = "compression-gzip",
+        feature = "compression-zstd",
+    )),
+    allow(dead_code)
+)]
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CompressionLevel {
+pub(crate) enum CompressionLevel {
     /// Fastest quality of compression, usually produces bigger size.
     Fastest,
     /// Best quality of compression, usually produces the smallest size.
@@ -354,6 +370,14 @@ pub enum CompressionLevel {
     Precise(u32),
 }
 
+#[cfg(any(
+    feature = "compression-br",
+    feature = "compression-deflate",
+    feature = "compression-gzip",
+    feature = "compression-zstd",
+))]
+pub use self::CompressionLevel;
+
 impl Default for CompressionLevel {
     fn default() -> Self {
         CompressionLevel::Default
@@ -361,6 +385,12 @@ impl Default for CompressionLevel {
 }
 
 impl CompressionLevel {
+    #[cfg(any(
+        feature = "compression-br",
+        feature = "compression-deflate",
+        feature = "compression-gzip",
+        feature = "compression-zstd",
+    ))]
     pub(crate) fn into_async_compression(self) -> AsyncCompressionLevel {
         match self {
             CompressionLevel::Fastest => AsyncCompressionLevel::Fastest,
