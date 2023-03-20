@@ -71,6 +71,7 @@ impl GrpcCode {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy)]
     pub(crate) struct GrpcCodeBitmask: u32 {
         const OK                  = 0b00000000000000001;
         const CANCELLED           = 0b00000000000000010;
