@@ -279,7 +279,7 @@ mod content_encoding;
     feature = "decompression-gzip",
     feature = "decompression-zstd",
 ))]
-mod compression_utils;
+pub mod compression_utils;
 
 #[cfg(feature = "map-response-body")]
 pub mod map_response_body;
