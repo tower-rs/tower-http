@@ -279,7 +279,19 @@ mod content_encoding;
     feature = "decompression-gzip",
     feature = "decompression-zstd",
 ))]
-pub mod compression_utils;
+mod compression_utils;
+
+#[cfg(any(
+    feature = "compression-br",
+    feature = "compression-deflate",
+    feature = "compression-gzip",
+    feature = "compression-zstd",
+    feature = "decompression-br",
+    feature = "decompression-deflate",
+    feature = "decompression-gzip",
+    feature = "decompression-zstd",
+))]
+pub use compression_utils::CompressionLevel;
 
 #[cfg(feature = "map-response-body")]
 pub mod map_response_body;
