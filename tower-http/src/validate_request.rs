@@ -379,12 +379,7 @@ where
             .headers()
             .get_all(header::ACCEPT)
             .into_iter()
-            .flat_map(|header| {
-                header
-                    .to_str()
-                    .ok()
-                    .into_iter()
-            })
+            .flat_map(|header| header.to_str().ok().into_iter())
             .any(|h| {
                 MimeIter::new(&h)
                     .map(|mim| {
@@ -553,7 +548,9 @@ mod tests {
     async fn accepted_header_with_quotes() {
         let value = "foo/bar; parisien=\"baguette, jambon, fromage\"";
         let mut service = ServiceBuilder::new()
-            .layer(ValidateRequestHeaderLayer::accept("foo/bar; parisien=\"baguette, jambon, fromage\""))
+            .layer(ValidateRequestHeaderLayer::accept(
+                "foo/bar; parisien=\"baguette, jambon, fromage\""
+            ))
             .service_fn(echo);
 
         let request = Request::get("/")
