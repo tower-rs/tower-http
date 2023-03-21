@@ -379,7 +379,7 @@ where
             .headers()
             .get_all(header::ACCEPT)
             .into_iter()
-            .flat_map(|header| header.to_str().ok().into_iter())
+            .filter_map(|header| header.to_str().ok())
             .any(|h| {
                 MimeIter::new(&h)
                     .map(|mim| {
