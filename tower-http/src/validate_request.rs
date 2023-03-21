@@ -549,7 +549,7 @@ mod tests {
         let value = "foo/bar; parisien=\"baguette, jambon, fromage\"";
         let mut service = ServiceBuilder::new()
             .layer(ValidateRequestHeaderLayer::accept(
-                "foo/bar; parisien=\"baguette, jambon, fromage\""
+                "foo/bar; parisien=\"baguette, jambon, fromage\"",
             ))
             .service_fn(echo);
 
