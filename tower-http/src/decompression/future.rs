@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 
 use super::{body::BodyInner, DecompressionBody};
-use crate::compression_utils::{AcceptEncoding, WrapBody};
+use crate::compression_utils::{AcceptEncoding, CompressionLevel, WrapBody};
 use crate::content_encoding::SupportedEncodings;
 use futures_util::ready;
 use http::{header, Response};
@@ -41,24 +41,24 @@ where
             if let header::Entry::Occupied(entry) = parts.headers.entry(header::CONTENT_ENCODING) {
                 let body = match entry.get().as_bytes() {
                     #[cfg(feature = "decompression-gzip")]
-                    b"gzip" if self.accept.gzip() => {
-                        DecompressionBody::new(BodyInner::gzip(WrapBody::new(body)))
-                    }
+                    b"gzip" if self.accept.gzip() => DecompressionBody::new(BodyInner::gzip(
+                        WrapBody::new(body, CompressionLevel::default()),
+                    )),
 
                     #[cfg(feature = "decompression-deflate")]
-                    b"deflate" if self.accept.deflate() => {
-                        DecompressionBody::new(BodyInner::deflate(WrapBody::new(body)))
-                    }
+                    b"deflate" if self.accept.deflate() => DecompressionBody::new(
+                        BodyInner::deflate(WrapBody::new(body, CompressionLevel::default())),
+                    ),
 
                     #[cfg(feature = "decompression-br")]
-                    b"br" if self.accept.br() => {
-                        DecompressionBody::new(BodyInner::brotli(WrapBody::new(body)))
-                    }
+                    b"br" if self.accept.br() => DecompressionBody::new(BodyInner::brotli(
+                        WrapBody::new(body, CompressionLevel::default()),
+                    )),
 
                     #[cfg(feature = "decompression-zstd")]
-                    b"zstd" if self.accept.zstd() => {
-                        DecompressionBody::new(BodyInner::zstd(WrapBody::new(body)))
-                    }
+                    b"zstd" if self.accept.zstd() => DecompressionBody::new(BodyInner::zstd(
+                        WrapBody::new(body, CompressionLevel::default()),
+                    )),
 
                     _ => {
                         return Poll::Ready(Ok(Response::from_parts(

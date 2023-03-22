@@ -1,5 +1,6 @@
 use super::{Compression, Predicate};
 use crate::compression::predicate::DefaultPredicate;
+use crate::compression::CompressionLevel;
 use crate::compression_utils::AcceptEncoding;
 use tower_layer::Layer;
 
@@ -13,6 +14,7 @@ use tower_layer::Layer;
 pub struct CompressionLayer<P = DefaultPredicate> {
     accept: AcceptEncoding,
     predicate: P,
+    quality: CompressionLevel,
 }
 
 impl<S, P> Layer<S> for CompressionLayer<P>
@@ -26,6 +28,7 @@ where
             inner,
             accept: self.accept,
             predicate: self.predicate.clone(),
+            quality: self.quality,
         }
     }
 }
@@ -61,6 +64,12 @@ impl CompressionLayer {
     #[cfg(feature = "compression-zstd")]
     pub fn zstd(mut self, enable: bool) -> Self {
         self.accept.set_zstd(enable);
+        self
+    }
+
+    /// Sets the compression quality.
+    pub fn quality(mut self, quality: CompressionLevel) -> Self {
+        self.quality = quality;
         self
     }
 
@@ -106,6 +115,7 @@ impl CompressionLayer {
         CompressionLayer {
             accept: self.accept,
             predicate,
+            quality: self.quality,
         }
     }
 }

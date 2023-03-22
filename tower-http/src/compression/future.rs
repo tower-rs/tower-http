@@ -2,6 +2,7 @@
 
 use super::{body::BodyInner, CompressionBody};
 use crate::compression::predicate::Predicate;
+use crate::compression::CompressionLevel;
 use crate::compression_utils::WrapBody;
 use crate::content_encoding::Encoding;
 use futures_util::ready;
@@ -23,7 +24,8 @@ pin_project! {
         #[pin]
         pub(crate) inner: F,
         pub(crate) encoding: Encoding,
-        pub(crate) predicate: P
+        pub(crate) predicate: P,
+        pub(crate) quality: CompressionLevel,
     }
 }
 
@@ -55,17 +57,25 @@ where
             }
 
             #[cfg(feature = "compression-gzip")]
-            (_, Encoding::Gzip) => CompressionBody::new(BodyInner::gzip(WrapBody::new(body))),
+            (_, Encoding::Gzip) => {
+                CompressionBody::new(BodyInner::gzip(WrapBody::new(body, self.quality)))
+            }
             #[cfg(feature = "compression-deflate")]
-            (_, Encoding::Deflate) => CompressionBody::new(BodyInner::deflate(WrapBody::new(body))),
+            (_, Encoding::Deflate) => {
+                CompressionBody::new(BodyInner::deflate(WrapBody::new(body, self.quality)))
+            }
             #[cfg(feature = "compression-br")]
-            (_, Encoding::Brotli) => CompressionBody::new(BodyInner::brotli(WrapBody::new(body))),
+            (_, Encoding::Brotli) => {
+                CompressionBody::new(BodyInner::brotli(WrapBody::new(body, self.quality)))
+            }
             #[cfg(feature = "compression-zstd")]
-            (_, Encoding::Zstd) => CompressionBody::new(BodyInner::zstd(WrapBody::new(body))),
+            (_, Encoding::Zstd) => {
+                CompressionBody::new(BodyInner::zstd(WrapBody::new(body, self.quality)))
+            }
             #[cfg(feature = "fs")]
             (true, _) => {
                 // This should never happen because the `AcceptEncoding` struct which is used to determine
-                // `self.encoding` will only enable the different compression algorightms if the
+                // `self.encoding` will only enable the different compression algorithms if the
                 // corresponding crate feature has been enabled. This means
                 // Encoding::[Gzip|Brotli|Deflate] should be impossible at this point without the
                 // features enabled.
@@ -76,7 +86,7 @@ where
                 // to compile without this branch even though it will never be reached.
                 //
                 // To safeguard against refactors that changes this relationship or other bugs the
-                // server will return an uncompressed response instead of panicing since that could
+                // server will return an uncompressed response instead of panicking since that could
                 // become a ddos attack vector.
                 return Poll::Ready(Ok(Response::from_parts(
                     parts,

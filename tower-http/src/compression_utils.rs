@@ -139,7 +139,7 @@ pub(crate) trait DecorateAsyncRead {
     type Output: AsyncRead;
 
     /// Apply the decorator
-    fn apply(input: Self::Input) -> Self::Output;
+    fn apply(input: Self::Input, quality: CompressionLevel) -> Self::Output;
 
     /// Get a pinned mutable reference to the original input.
     ///
@@ -157,7 +157,7 @@ pin_project! {
 
 impl<M: DecorateAsyncRead> WrapBody<M> {
     #[allow(dead_code)]
-    pub(crate) fn new<B>(body: B) -> Self
+    pub(crate) fn new<B>(body: B, quality: CompressionLevel) -> Self
     where
         B: Body,
         M: DecorateAsyncRead<Input = AsyncReadBody<B>>,
@@ -172,8 +172,8 @@ impl<M: DecorateAsyncRead> WrapBody<M> {
         // convert `Stream` into an `AsyncRead`
         let read = StreamReader::new(stream);
 
-        // apply decorator to `AsyncRead` yieling another `AsyncRead`
-        let read = M::apply(read);
+        // apply decorator to `AsyncRead` yielding another `AsyncRead`
+        let read = M::apply(read, quality);
 
         Self { read }
     }
@@ -335,3 +335,51 @@ where
 }
 
 pub(crate) const SENTINEL_ERROR_CODE: i32 = -837459418;
+
+/// Level of compression data should be compressed with.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CompressionLevel {
+    /// Fastest quality of compression, usually produces bigger size.
+    Fastest,
+    /// Best quality of compression, usually produces the smallest size.
+    Best,
+    /// Default quality of compression defined by the selected compression algorithm.
+    Default,
+    /// Precise quality based on the underlying compression algorithms'
+    /// qualities. The interpretation of this depends on the algorithm chosen
+    /// and the specific implementation backing it.
+    /// Qualities are implicitly clamped to the algorithm's maximum.
+    Precise(u32),
+}
+
+impl Default for CompressionLevel {
+    fn default() -> Self {
+        CompressionLevel::Default
+    }
+}
+
+#[cfg(any(
+    feature = "compression-br",
+    feature = "compression-gzip",
+    feature = "compression-deflate",
+    feature = "compression-zstd"
+))]
+use async_compression::Level as AsyncCompressionLevel;
+
+#[cfg(any(
+    feature = "compression-br",
+    feature = "compression-gzip",
+    feature = "compression-deflate",
+    feature = "compression-zstd"
+))]
+impl CompressionLevel {
+    pub(crate) fn into_async_compression(self) -> AsyncCompressionLevel {
+        match self {
+            CompressionLevel::Fastest => AsyncCompressionLevel::Fastest,
+            CompressionLevel::Best => AsyncCompressionLevel::Best,
+            CompressionLevel::Default => AsyncCompressionLevel::Default,
+            CompressionLevel::Precise(quality) => AsyncCompressionLevel::Precise(quality),
+        }
+    }
+}

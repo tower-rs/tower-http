@@ -1,5 +1,6 @@
 #![allow(unused_imports)]
 
+use crate::compression::CompressionLevel;
 use crate::{
     compression_utils::{AsyncReadBody, BodyIntoStream, DecorateAsyncRead, WrapBody},
     BoxError,
@@ -12,6 +13,7 @@ use async_compression::tokio::bufread::GzipEncoder;
 use async_compression::tokio::bufread::ZlibEncoder;
 #[cfg(feature = "compression-zstd")]
 use async_compression::tokio::bufread::ZstdEncoder;
+
 use bytes::{Buf, Bytes};
 use futures_util::ready;
 use http::HeaderMap;
@@ -295,8 +297,8 @@ where
     type Input = AsyncReadBody<B>;
     type Output = GzipEncoder<Self::Input>;
 
-    fn apply(input: Self::Input) -> Self::Output {
-        GzipEncoder::new(input)
+    fn apply(input: Self::Input, quality: CompressionLevel) -> Self::Output {
+        GzipEncoder::with_quality(input, quality.into_async_compression())
     }
 
     fn get_pin_mut(pinned: Pin<&mut Self::Output>) -> Pin<&mut Self::Input> {
@@ -312,8 +314,8 @@ where
     type Input = AsyncReadBody<B>;
     type Output = ZlibEncoder<Self::Input>;
 
-    fn apply(input: Self::Input) -> Self::Output {
-        ZlibEncoder::new(input)
+    fn apply(input: Self::Input, quality: CompressionLevel) -> Self::Output {
+        ZlibEncoder::with_quality(input, quality.into_async_compression())
     }
 
     fn get_pin_mut(pinned: Pin<&mut Self::Output>) -> Pin<&mut Self::Input> {
@@ -329,8 +331,8 @@ where
     type Input = AsyncReadBody<B>;
     type Output = BrotliEncoder<Self::Input>;
 
-    fn apply(input: Self::Input) -> Self::Output {
-        BrotliEncoder::new(input)
+    fn apply(input: Self::Input, quality: CompressionLevel) -> Self::Output {
+        BrotliEncoder::with_quality(input, quality.into_async_compression())
     }
 
     fn get_pin_mut(pinned: Pin<&mut Self::Output>) -> Pin<&mut Self::Input> {
@@ -346,8 +348,8 @@ where
     type Input = AsyncReadBody<B>;
     type Output = ZstdEncoder<Self::Input>;
 
-    fn apply(input: Self::Input) -> Self::Output {
-        ZstdEncoder::new(input)
+    fn apply(input: Self::Input, quality: CompressionLevel) -> Self::Output {
+        ZstdEncoder::with_quality(input, quality.into_async_compression())
     }
 
     fn get_pin_mut(pinned: Pin<&mut Self::Output>) -> Pin<&mut Self::Input> {
