@@ -412,7 +412,7 @@ where
 mod tests {
     #[allow(unused_imports)]
     use super::*;
-    use http::header;
+    use http::{header, StatusCode};
     use hyper::Body;
     use tower::{BoxError, ServiceBuilder, ServiceExt};
 
@@ -545,11 +545,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn accepted_header_with_quotes() {
-        let value = "foo/bar; parisien=\"baguette, jambon, fromage\"";
+    async fn accepted_header_with_quotes_valid() {
+        let value = "foo/bar; parisien=\"baguette, text/html, jambon, fromage\", application/*";
         let mut service = ServiceBuilder::new()
             .layer(ValidateRequestHeaderLayer::accept(
-                "foo/bar; parisien=\"baguette, jambon, fromage\"",
+                "application/xml",
             ))
             .service_fn(echo);
 
@@ -561,6 +561,25 @@ mod tests {
         let res = service.ready().await.unwrap().call(request).await.unwrap();
 
         assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn accepted_header_with_quotes_invalid() {
+        let value = "foo/bar; parisien=\"baguette, text/html, jambon, fromage\"";
+        let mut service = ServiceBuilder::new()
+            .layer(ValidateRequestHeaderLayer::accept(
+                "text/html",
+            ))
+            .service_fn(echo);
+
+        let request = Request::get("/")
+            .header(header::ACCEPT, value)
+            .body(Body::empty())
+            .unwrap();
+
+        let res = service.ready().await.unwrap().call(request).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::NOT_ACCEPTABLE);
     }
 
     async fn echo(req: Request<Body>) -> Result<Response<Body>, BoxError> {
