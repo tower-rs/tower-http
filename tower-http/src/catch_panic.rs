@@ -87,7 +87,7 @@ use futures_core::ready;
 use futures_util::future::{CatchUnwind, FutureExt};
 use http::{HeaderValue, Request, Response, StatusCode};
 use http_body::Body;
-use http_body_util::{combinators::UnsyncBoxBody, BodyExt, Full};
+use http_body_util::BodyExt;
 use pin_project_lite::pin_project;
 use std::{
     any::Any,
@@ -99,7 +99,10 @@ use std::{
 use tower_layer::Layer;
 use tower_service::Service;
 
-use crate::BoxError;
+use crate::{
+    body::{Full, UnsyncBoxBody},
+    BoxError,
+};
 
 /// Layer that applies the [`CatchPanic`] middleware that catches panics and converts them into
 /// `500 Internal Server` responses.
@@ -264,7 +267,9 @@ where
                 panic_handler,
             } => match ready!(future.poll(cx)) {
                 Ok(Ok(res)) => {
-                    Poll::Ready(Ok(res.map(|body| body.map_err(Into::into).boxed_unsync())))
+                    Poll::Ready(Ok(res.map(|body| {
+                        UnsyncBoxBody::new(body.map_err(Into::into).boxed_unsync())
+                    })))
                 }
                 Ok(Err(svc_err)) => Poll::Ready(Err(svc_err)),
                 Err(panic_err) => Poll::Ready(Ok(response_for_panic(
@@ -289,7 +294,7 @@ where
 {
     panic_handler
         .response_for_panic(err)
-        .map(|body| body.map_err(Into::into).boxed_unsync())
+        .map(|body| UnsyncBoxBody::new(body.map_err(Into::into).boxed_unsync()))
 }
 
 /// Trait for creating responses from panics.
@@ -327,7 +332,7 @@ where
 pub struct DefaultResponseForPanic;
 
 impl ResponseForPanic for DefaultResponseForPanic {
-    type ResponseBody = Full<Bytes>;
+    type ResponseBody = Full;
 
     fn response_for_panic(
         &mut self,
@@ -343,7 +348,7 @@ impl ResponseForPanic for DefaultResponseForPanic {
             );
         };
 
-        let mut res = Response::new(Full::from("Service panicked"));
+        let mut res = Response::new(Full::new(http_body_util::Full::from("Service panicked")));
         *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
 
         #[allow(clippy::declare_interior_mutable_const)]

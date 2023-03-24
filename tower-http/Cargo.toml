@@ -128,11 +128,6 @@ allowed = [
     "bytes",
     "http",
     "http_body",
-    # because of
-    # - UnsyncBoxBody
-    # - Full
-    # - Limited
-    "http_body_util",
     "mime",
     "tokio",
     "tower",

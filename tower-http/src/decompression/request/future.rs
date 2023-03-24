@@ -1,9 +1,9 @@
+use crate::body::UnsyncBoxBody;
 use crate::compression_utils::AcceptEncoding;
 use crate::BoxError;
 use bytes::Buf;
 use http::{header, HeaderValue, Response, StatusCode};
 use http_body::Body;
-use http_body_util::combinators::UnsyncBoxBody;
 use http_body_util::BodyExt;
 use http_body_util::Empty;
 use pin_project_lite::pin_project;
@@ -78,7 +78,9 @@ where
         match self.project().kind.project() {
             StateProj::Inner { fut } => fut
                 .poll(cx)
-                .map_ok(|res| res.map(|body| body.map_err(Into::into).boxed_unsync()))
+                .map_ok(|res| {
+                    res.map(|body| UnsyncBoxBody::new(body.map_err(Into::into).boxed_unsync()))
+                })
                 .map_err(Into::into),
             StateProj::Unsupported { accept } => {
                 let res = Response::builder()
@@ -89,7 +91,9 @@ where
                             .unwrap_or(HeaderValue::from_static("identity")),
                     )
                     .status(StatusCode::UNSUPPORTED_MEDIA_TYPE)
-                    .body(Empty::new().map_err(Into::into).boxed_unsync())
+                    .body(UnsyncBoxBody::new(
+                        Empty::new().map_err(Into::into).boxed_unsync(),
+                    ))
                     .unwrap();
                 Poll::Ready(Ok(res))
             }

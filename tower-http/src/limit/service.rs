@@ -1,7 +1,7 @@
 use super::{RequestBodyLimitLayer, ResponseBody, ResponseFuture};
+use crate::body::Limited;
 use http::{Request, Response};
 use http_body::Body;
-use http_body_util::Limited;
 use std::task::{Context, Poll};
 use tower_service::Service;
 
@@ -57,7 +57,7 @@ where
             None => self.limit,
         };
 
-        let req = req.map(|body| Limited::new(body, body_limit));
+        let req = req.map(|body| Limited::new(http_body_util::Limited::new(body, body_limit)));
 
         ResponseFuture::new(self.inner.call(req))
     }

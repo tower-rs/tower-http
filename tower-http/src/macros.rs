@@ -48,8 +48,8 @@ macro_rules! opaque_body {
             #[inline]
             fn poll_frame(
                 mut self: std::pin::Pin<&mut Self>,
-                cx: &mut Context<'_>,
-            ) -> Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
+                cx: &mut std::task::Context<'_>,
+            ) -> std::task::Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
                 self.project().inner.poll_frame(cx)
             }
 

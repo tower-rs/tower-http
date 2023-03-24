@@ -1,13 +1,13 @@
 use self::future::ResponseFuture;
 use crate::{
+    body::UnsyncBoxBody,
     content_encoding::{encodings, SupportedEncodings},
     set_status::SetStatus,
 };
 use bytes::Bytes;
 use futures_util::FutureExt;
 use http::{header, HeaderValue, Method, Request, Response, StatusCode};
-use http_body::Body;
-use http_body_util::{combinators::UnsyncBoxBody, BodyExt, Empty};
+use http_body_util::{BodyExt, Empty};
 use percent_encoding::percent_decode;
 use std::{
     convert::Infallible,
@@ -448,8 +448,9 @@ where
                 let response = result.unwrap_or_else(|err| {
                     tracing::error!(error = %err, "Failed to read file");
 
-                    let body =
-                        ResponseBody::new(Empty::new().map_err(|err| match err {}).boxed_unsync());
+                    let body = ResponseBody::new(UnsyncBoxBody::new(
+                        Empty::new().map_err(|err| match err {}).boxed_unsync(),
+                    ));
                     Response::builder()
                         .status(StatusCode::INTERNAL_SERVER_ERROR)
                         .body(body)
