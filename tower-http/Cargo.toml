@@ -120,3 +120,17 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [package.metadata.playground]
 features = ["full"]
+
+[package.metadata.cargo-public-api-crates]
+allowed = [
+    "bytes",
+    "http",
+    "http_body",
+    "mime",
+    "tokio",
+    "tower",
+    "tower_layer",
+    "tower_service",
+    "tracing",
+    "tracing_core",
+]

@@ -121,3 +121,19 @@ jobs:
         with:
           command: check ${{ matrix.checks }}
           arguments: --all-features --manifest-path tower-http/Cargo.toml
+
+  cargo-public-api-crates:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@master
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: nightly
+        override: true
+        profile: minimal
+    - uses: Swatinem/rust-cache@v1
+    - name: Install cargo-public-api-crates
+      run: |
+        cargo install --git https://github.com/davidpdrsn/cargo-public-api-crates
+    - name: cargo public-api-crates check
+      run: cargo public-api-crates --manifest-path tower-http/Cargo.toml check
