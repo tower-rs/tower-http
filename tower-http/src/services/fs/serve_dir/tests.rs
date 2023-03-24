@@ -1,4 +1,5 @@
 use crate::services::{ServeDir, ServeFile};
+use crate::test_helpers::{to_bytes, Body};
 use brotli::BrotliDecompress;
 use bytes::Bytes;
 use flate2::bufread::{DeflateDecoder, GzDecoder};
@@ -6,7 +7,6 @@ use http::header::ALLOW;
 use http::{header, Method, Response};
 use http::{Request, StatusCode};
 use http_body::Body as HttpBody;
-use hyper::Body;
 use std::convert::Infallible;
 use std::io::{self, Read};
 use tower::{service_fn, ServiceExt};
@@ -404,7 +404,7 @@ where
     B: HttpBody<Data = bytes::Bytes> + Unpin,
     B::Error: std::fmt::Debug,
 {
-    let bytes = hyper::body::to_bytes(body).await.unwrap();
+    let bytes = to_bytes(body).await.unwrap();
     String::from_utf8(bytes.to_vec()).unwrap()
 }
 
@@ -474,7 +474,7 @@ async fn read_partial_in_bounds() {
         )));
     assert_eq!(res.headers()["content-type"], "text/markdown");
 
-    let body = hyper::body::to_bytes(res.into_body()).await.ok().unwrap();
+    let body = to_bytes(res.into_body()).await.ok().unwrap();
     let source = Bytes::from(file_contents[bytes_start_incl..=bytes_end_incl].to_vec());
     assert_eq!(body, source);
 }

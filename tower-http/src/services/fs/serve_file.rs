@@ -128,6 +128,7 @@ where
 #[cfg(test)]
 mod tests {
     use crate::services::ServeFile;
+    use crate::test_helpers::Body;
     use brotli::BrotliDecompress;
     use flate2::bufread::DeflateDecoder;
     use flate2::bufread::GzDecoder;
@@ -135,7 +136,6 @@ mod tests {
     use http::Method;
     use http::{Request, StatusCode};
     use http_body::Body as _;
-    use hyper::Body;
     use mime::Mime;
     use std::io::Read;
     use std::str::FromStr;

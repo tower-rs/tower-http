@@ -225,6 +225,9 @@
 #[macro_use]
 pub(crate) mod macros;
 
+#[cfg(test)]
+mod test_helpers;
+
 #[cfg(feature = "auth")]
 pub mod auth;
 

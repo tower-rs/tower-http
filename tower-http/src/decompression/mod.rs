@@ -115,12 +115,15 @@ pub use self::request::service::RequestDecompression;
 
 #[cfg(test)]
 mod tests {
+    use std::convert::Infallible;
+
     use super::*;
     use crate::compression::Compression;
+    use crate::test_helpers::Body;
     use bytes::BytesMut;
+    use http::Request;
     use http::Response;
     use http_body::Body as _;
-    use hyper::{Body, Client, Error, Request};
     use tower::{service_fn, Service, ServiceExt};
 
     #[tokio::test]
@@ -145,17 +148,7 @@ mod tests {
         assert_eq!(decompressed_data, "Hello, World!");
     }
 
-    async fn handle(_req: Request<Body>) -> Result<Response<Body>, Error> {
+    async fn handle(_req: Request<Body>) -> Result<Response<Body>, Infallible> {
         Ok(Response::new(Body::from("Hello, World!")))
-    }
-
-    #[allow(dead_code)]
-    async fn is_compatible_with_hyper() {
-        let mut client = Decompression::new(Client::new());
-
-        let req = Request::new(Body::empty());
-
-        let _: Response<DecompressionBody<Body>> =
-            client.ready().await.unwrap().call(req).await.unwrap();
     }
 }

@@ -359,7 +359,8 @@ mod tests {
     #![allow(unreachable_code)]
 
     use super::*;
-    use hyper::{Body, Response};
+    use crate::test_helpers::Body;
+    use http::Response;
     use std::convert::Infallible;
     use tower::{ServiceBuilder, ServiceExt};
 
@@ -377,7 +378,7 @@ mod tests {
         let res = svc.oneshot(req).await.unwrap();
 
         assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
-        let body = hyper::body::to_bytes(res).await.unwrap();
+        let body = crate::test_helpers::to_bytes(res).await.unwrap();
         assert_eq!(&body[..], b"Service panicked");
     }
 
@@ -395,7 +396,7 @@ mod tests {
         let res = svc.oneshot(req).await.unwrap();
 
         assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
-        let body = hyper::body::to_bytes(res).await.unwrap();
+        let body = crate::test_helpers::to_bytes(res).await.unwrap();
         assert_eq!(&body[..], b"Service panicked");
     }
 }

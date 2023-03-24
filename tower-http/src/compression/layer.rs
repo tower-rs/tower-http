@@ -123,9 +123,9 @@ impl CompressionLayer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_helpers::Body;
     use http::{header::ACCEPT_ENCODING, Request, Response};
     use http_body::Body as _;
-    use hyper::Body;
     use tokio::fs::File;
     // for Body::data
     use bytes::{Bytes, BytesMut};
@@ -139,7 +139,7 @@ mod tests {
         // Convert the file into a `Stream`.
         let stream = ReaderStream::new(file);
         // Convert the `Stream` into a `Body`.
-        let body = Body::wrap_stream(stream);
+        let body = Body::from_stream(stream);
         // Create response.
         Ok(Response::new(body))
     }

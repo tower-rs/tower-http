@@ -297,8 +297,8 @@ where
 mod tests {
     #[allow(unused_imports)]
     use super::*;
+    use crate::test_helpers::Body;
     use http::Request;
-    use hyper::Body;
     use tower::{BoxError, ServiceBuilder};
 
     #[tokio::test]
@@ -325,7 +325,7 @@ mod tests {
         assert_eq!(counter.get(), 1);
 
         let body = response.into_body();
-        hyper::body::to_bytes(body).await.unwrap();
+        crate::test_helpers::to_bytes(body).await.unwrap();
         assert_eq!(counter.get(), 0);
     }
 

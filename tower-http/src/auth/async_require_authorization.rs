@@ -307,9 +307,9 @@ where
 mod tests {
     #[allow(unused_imports)]
     use super::*;
+    use crate::test_helpers::Body;
     use futures_util::future::BoxFuture;
     use http::{header, StatusCode};
-    use hyper::Body;
     use tower::{BoxError, ServiceBuilder, ServiceExt};
 
     #[derive(Clone, Copy)]

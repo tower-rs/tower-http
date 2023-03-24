@@ -6,14 +6,13 @@ pub(super) mod service;
 mod tests {
     use super::service::RequestDecompression;
     use crate::decompression::DecompressionBody;
+    use crate::test_helpers::Body;
     use bytes::BytesMut;
     use flate2::{write::GzEncoder, Compression};
-    use http::{header, Response, StatusCode};
+    use http::{header, Request, Response, StatusCode};
     use http_body::Body as _;
-    use hyper::{Body, Error, Request, Server};
-    use std::io::Write;
-    use std::net::SocketAddr;
-    use tower::{make::Shared, service_fn, Service, ServiceExt};
+    use std::{convert::Infallible, io::Write};
+    use tower::{service_fn, Service, ServiceExt};
 
     #[tokio::test]
     async fn decompress_accepted_encoding() {
@@ -48,7 +47,7 @@ mod tests {
 
     async fn assert_request_is_decompressed(
         req: Request<DecompressionBody<Body>>,
-    ) -> Result<Response<Body>, Error> {
+    ) -> Result<Response<Body>, Infallible> {
         let (parts, mut body) = req.into_parts();
         let body = read_body(&mut body).await;
 
@@ -60,7 +59,7 @@ mod tests {
 
     async fn assert_request_is_passed_through(
         req: Request<DecompressionBody<Body>>,
-    ) -> Result<Response<Body>, Error> {
+    ) -> Result<Response<Body>, Infallible> {
         let (parts, mut body) = req.into_parts();
         let body = read_body(&mut body).await;
 
@@ -72,7 +71,7 @@ mod tests {
 
     async fn should_not_be_called(
         _: Request<DecompressionBody<Body>>,
-    ) -> Result<Response<Body>, Error> {
+    ) -> Result<Response<Body>, Infallible> {
         panic!("Inner service should not be called");
     }
 
@@ -93,17 +92,5 @@ mod tests {
             data.extend_from_slice(&chunk[..]);
         }
         data.freeze().to_vec()
-    }
-
-    #[allow(dead_code)]
-    async fn is_compatible_with_hyper() {
-        let svc = service_fn(assert_request_is_decompressed);
-        let svc = RequestDecompression::new(svc);
-
-        let make_service = Shared::new(svc);
-
-        let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
-        let server = Server::bind(&addr).serve(make_service);
-        server.await.unwrap();
     }
 }

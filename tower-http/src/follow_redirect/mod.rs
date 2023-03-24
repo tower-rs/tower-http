@@ -386,7 +386,8 @@ fn resolve_uri(relative: &str, base: &Uri) -> Option<Uri> {
 #[cfg(test)]
 mod tests {
     use super::{policy::*, *};
-    use hyper::{header::LOCATION, Body};
+    use crate::test_helpers::Body;
+    use http::header::LOCATION;
     use std::convert::Infallible;
     use tower::{ServiceBuilder, ServiceExt};
 

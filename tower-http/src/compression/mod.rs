@@ -87,17 +87,19 @@ mod tests {
     use crate::compression::predicate::SizeAbove;
 
     use super::*;
+    use crate::test_helpers::Body;
     use async_compression::tokio::write::{BrotliDecoder, BrotliEncoder};
     use bytes::BytesMut;
     use flate2::read::GzDecoder;
     use http::header::{ACCEPT_ENCODING, CONTENT_ENCODING, CONTENT_TYPE};
+    use http::{Request, Response};
     use http_body::Body as _;
-    use hyper::{Body, Error, Request, Response, Server};
+    use std::convert::Infallible;
+    use std::io::Read;
     use std::sync::{Arc, RwLock};
-    use std::{io::Read, net::SocketAddr};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio_util::io::StreamReader;
-    use tower::{make::Shared, service_fn, Service, ServiceExt};
+    use tower::{service_fn, Service, ServiceExt};
 
     // Compression filter allows every other request to be compressed
     #[derive(Clone)]
@@ -171,18 +173,6 @@ mod tests {
         assert_eq!(decompressed, "Hello, World!");
     }
 
-    #[allow(dead_code)]
-    async fn is_compatible_with_hyper() {
-        let svc = service_fn(handle);
-        let svc = Compression::new(svc);
-
-        let make_service = Shared::new(svc);
-
-        let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
-        let server = Server::bind(&addr).serve(make_service);
-        server.await.unwrap();
-    }
-
     #[tokio::test]
     async fn no_recompress() {
         const DATA: &str = "Hello, World! I'm already compressed with br!";
@@ -247,7 +237,7 @@ mod tests {
         assert_eq!(data, DATA.as_bytes());
     }
 
-    async fn handle(_req: Request<Body>) -> Result<Response<Body>, Error> {
+    async fn handle(_req: Request<Body>) -> Result<Response<Body>, Infallible> {
         Ok(Response::new(Body::from("Hello, World!")))
     }
 
@@ -317,7 +307,7 @@ mod tests {
 
     #[tokio::test]
     async fn doesnt_compress_images() {
-        async fn handle(_req: Request<Body>) -> Result<Response<Body>, Error> {
+        async fn handle(_req: Request<Body>) -> Result<Response<Body>, Infallible> {
             let mut res = Response::new(Body::from(
                 "a".repeat((SizeAbove::DEFAULT_MIN_SIZE * 2) as usize),
             ));
@@ -342,7 +332,7 @@ mod tests {
 
     #[tokio::test]
     async fn does_compress_svg() {
-        async fn handle(_req: Request<Body>) -> Result<Response<Body>, Error> {
+        async fn handle(_req: Request<Body>) -> Result<Response<Body>, Infallible> {
             let mut res = Response::new(Body::from(
                 "a".repeat((SizeAbove::DEFAULT_MIN_SIZE * 2) as usize),
             ));

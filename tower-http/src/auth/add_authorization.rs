@@ -184,12 +184,11 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::validate_request::ValidateRequestHeaderLayer;
-
-    #[allow(unused_imports)]
     use super::*;
+    use crate::test_helpers::Body;
+    use crate::validate_request::ValidateRequestHeaderLayer;
     use http::{Response, StatusCode};
-    use hyper::Body;
+    use std::convert::Infallible;
     use tower::{BoxError, Service, ServiceBuilder, ServiceExt};
 
     #[tokio::test]
@@ -242,7 +241,7 @@ mod tests {
                 let auth = request.headers().get(http::header::AUTHORIZATION).unwrap();
                 assert!(auth.is_sensitive());
 
-                Ok::<_, hyper::Error>(Response::new(Body::empty()))
+                Ok::<_, Infallible>(Response::new(Body::empty()))
             });
 
         let mut client = AddAuthorization::bearer(svc, "foo").as_sensitive(true);

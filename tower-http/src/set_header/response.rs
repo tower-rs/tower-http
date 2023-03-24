@@ -301,8 +301,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_helpers::Body;
     use http::{header, HeaderValue};
-    use hyper::Body;
     use std::convert::Infallible;
     use tower::{service_fn, ServiceExt};
 

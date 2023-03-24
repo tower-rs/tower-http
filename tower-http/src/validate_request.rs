@@ -413,8 +413,8 @@ where
 mod tests {
     #[allow(unused_imports)]
     use super::*;
+    use crate::test_helpers::Body;
     use http::header;
-    use hyper::Body;
     use tower::{BoxError, ServiceBuilder, ServiceExt};
 
     #[tokio::test]

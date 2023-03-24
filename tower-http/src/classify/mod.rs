@@ -375,7 +375,7 @@ impl fmt::Display for ServerErrorsFailureClass {
 mod usable_for_retries {
     #[allow(unused_imports)]
     use super::*;
-    use hyper::{Request, Response};
+    use http::{Request, Response};
     use tower::retry::Policy;
 
     trait IsRetryable {
