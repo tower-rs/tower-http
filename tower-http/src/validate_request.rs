@@ -548,9 +548,7 @@ mod tests {
     async fn accepted_header_with_quotes_valid() {
         let value = "foo/bar; parisien=\"baguette, text/html, jambon, fromage\", application/*";
         let mut service = ServiceBuilder::new()
-            .layer(ValidateRequestHeaderLayer::accept(
-                "application/xml",
-            ))
+            .layer(ValidateRequestHeaderLayer::accept("application/xml"))
             .service_fn(echo);
 
         let request = Request::get("/")
@@ -567,9 +565,7 @@ mod tests {
     async fn accepted_header_with_quotes_invalid() {
         let value = "foo/bar; parisien=\"baguette, text/html, jambon, fromage\"";
         let mut service = ServiceBuilder::new()
-            .layer(ValidateRequestHeaderLayer::accept(
-                "text/html",
-            ))
+            .layer(ValidateRequestHeaderLayer::accept("text/html"))
             .service_fn(echo);
 
         let request = Request::get("/")
