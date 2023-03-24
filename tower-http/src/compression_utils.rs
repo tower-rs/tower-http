@@ -188,51 +188,61 @@ where
     type Data = Bytes;
     type Error = BoxError;
 
-    fn poll_data(
+    fn poll_frame(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-    ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
-        let mut this = self.project();
-        let mut buf = BytesMut::new();
+    ) -> Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
+        // I'm not sure our previous body wrapping setup works. It assumes we can poll data and
+        // trailers separately, but we can't anymore
 
-        let read = match ready!(poll_read_buf(this.read.as_mut(), cx, &mut buf)) {
-            Ok(read) => read,
-            Err(err) => {
-                let body_error: Option<B::Error> = M::get_pin_mut(this.read)
-                    .get_pin_mut()
-                    .project()
-                    .error
-                    .take();
-
-                if let Some(body_error) = body_error {
-                    return Poll::Ready(Some(Err(body_error.into())));
-                } else if err.raw_os_error() == Some(SENTINEL_ERROR_CODE) {
-                    // SENTINEL_ERROR_CODE only gets used when storing an underlying body error
-                    unreachable!()
-                } else {
-                    return Poll::Ready(Some(Err(err.into())));
-                }
-            }
-        };
-
-        if read == 0 {
-            Poll::Ready(None)
-        } else {
-            Poll::Ready(Some(Ok(buf.freeze())))
-        }
+        todo!()
     }
 
-    fn poll_trailers(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<Option<http::HeaderMap>, Self::Error>> {
-        let this = self.project();
-        let body = M::get_pin_mut(this.read)
-            .get_pin_mut()
-            .get_pin_mut()
-            .get_pin_mut();
-        body.poll_trailers(cx).map_err(Into::into)
-    }
+    // fn poll_data(
+    //     self: Pin<&mut Self>,
+    //     cx: &mut Context<'_>,
+    // ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
+    //     let mut this = self.project();
+    //     let mut buf = BytesMut::new();
+
+    //     let read = match ready!(poll_read_buf(this.read.as_mut(), cx, &mut buf)) {
+    //         Ok(read) => read,
+    //         Err(err) => {
+    //             let body_error: Option<B::Error> = M::get_pin_mut(this.read)
+    //                 .get_pin_mut()
+    //                 .project()
+    //                 .error
+    //                 .take();
+
+    //             if let Some(body_error) = body_error {
+    //                 return Poll::Ready(Some(Err(body_error.into())));
+    //             } else if err.raw_os_error() == Some(SENTINEL_ERROR_CODE) {
+    //                 // SENTINEL_ERROR_CODE only gets used when storing an underlying body error
+    //                 unreachable!()
+    //             } else {
+    //                 return Poll::Ready(Some(Err(err.into())));
+    //             }
+    //         }
+    //     };
+
+    //     if read == 0 {
+    //         Poll::Ready(None)
+    //     } else {
+    //         Poll::Ready(Some(Ok(buf.freeze())))
+    //     }
+    // }
+
+    // fn poll_trailers(
+    //     self: Pin<&mut Self>,
+    //     cx: &mut Context<'_>,
+    // ) -> Poll<Result<Option<http::HeaderMap>, Self::Error>> {
+    //     let this = self.project();
+    //     let body = M::get_pin_mut(this.read)
+    //         .get_pin_mut()
+    //         .get_pin_mut()
+    //         .get_pin_mut();
+    //     body.poll_trailers(cx).map_err(Into::into)
+    // }
 }
 
 pin_project! {
@@ -276,8 +286,17 @@ where
 {
     type Item = Result<B::Data, B::Error>;
 
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.project().body.poll_data(cx)
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        loop {
+            match futures_util::ready!(self.as_mut().project().body.poll_frame(cx)) {
+                Some(Ok(frame)) => match frame.into_data() {
+                    Ok(data) => return Poll::Ready(Some(Ok(data))),
+                    Err(_frame) => {}
+                },
+                Some(Err(err)) => return Poll::Ready(Some(Err(err))),
+                None => return Poll::Ready(None),
+            }
+        }
     }
 }
 

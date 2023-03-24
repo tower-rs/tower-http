@@ -5,7 +5,7 @@ use super::{
 use crate::content_encoding::{Encoding, QValue};
 use bytes::Bytes;
 use http::{header, HeaderValue, Method, Request, Uri};
-use http_body::Empty;
+use http_body_util::Empty;
 use http_range_header::RangeUnsatisfiableError;
 use std::{
     ffi::OsStr,

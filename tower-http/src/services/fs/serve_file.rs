@@ -129,6 +129,7 @@ where
 mod tests {
     use crate::services::ServeFile;
     use crate::test_helpers::Body;
+    use crate::test_helpers::TowerHttpBodyExt;
     use brotli::BrotliDecompress;
     use flate2::bufread::DeflateDecoder;
     use flate2::bufread::GzDecoder;

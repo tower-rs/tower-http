@@ -6,7 +6,8 @@ use crate::{
 use bytes::Bytes;
 use futures_util::FutureExt;
 use http::{header, HeaderValue, Method, Request, Response, StatusCode};
-use http_body::{combinators::UnsyncBoxBody, Body, Empty};
+use http_body::Body;
+use http_body_util::{combinators::UnsyncBoxBody, BodyExt, Empty};
 use percent_encoding::percent_decode;
 use std::{
     convert::Infallible,

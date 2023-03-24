@@ -1,6 +1,7 @@
 use super::{RequestBodyLimitLayer, ResponseBody, ResponseFuture};
 use http::{Request, Response};
-use http_body::{Body, Limited};
+use http_body::Body;
+use http_body_util::Limited;
 use std::task::{Context, Poll};
 use tower_service::Service;
 

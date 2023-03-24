@@ -87,7 +87,7 @@ mod tests {
     use crate::compression::predicate::SizeAbove;
 
     use super::*;
-    use crate::test_helpers::Body;
+    use crate::test_helpers::{Body, TowerHttpBodyExt};
     use async_compression::tokio::write::{BrotliDecoder, BrotliEncoder};
     use bytes::BytesMut;
     use flate2::read::GzDecoder;

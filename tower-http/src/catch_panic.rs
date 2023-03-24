@@ -86,7 +86,8 @@ use bytes::Bytes;
 use futures_core::ready;
 use futures_util::future::{CatchUnwind, FutureExt};
 use http::{HeaderValue, Request, Response, StatusCode};
-use http_body::{combinators::UnsyncBoxBody, Body, Full};
+use http_body::Body;
+use http_body_util::{combinators::UnsyncBoxBody, BodyExt, Full};
 use pin_project_lite::pin_project;
 use std::{
     any::Any,

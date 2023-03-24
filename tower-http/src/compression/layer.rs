@@ -123,7 +123,7 @@ impl CompressionLayer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::Body;
+    use crate::test_helpers::{Body, TowerHttpBodyExt};
     use http::{header::ACCEPT_ENCODING, Request, Response};
     use http_body::Body as _;
     use tokio::fs::File;

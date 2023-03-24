@@ -1,17 +1,19 @@
 use std::{
+    future::Future,
     pin::Pin,
     task::{Context, Poll},
 };
 
-use bytes::{Buf, BufMut, Bytes};
+use async_trait::async_trait;
+use bytes::Bytes;
 use futures::TryStream;
-use http::HeaderMap;
-use http_body::Body as _;
+use http_body::{Body as _, Frame};
+use http_body_util::BodyExt;
 use pin_project_lite::pin_project;
 use sync_wrapper::SyncWrapper;
 use tower::BoxError;
 
-type BoxBody = http_body::combinators::UnsyncBoxBody<Bytes, BoxError>;
+type BoxBody = http_body_util::combinators::UnsyncBoxBody<Bytes, BoxError>;
 
 #[derive(Debug)]
 pub(crate) struct Body(BoxBody);
@@ -26,7 +28,7 @@ impl Body {
     }
 
     pub(crate) fn empty() -> Self {
-        Self::new(http_body::Empty::new())
+        Self::new(http_body_util::Empty::new())
     }
 
     pub(crate) fn from_stream<S>(stream: S) -> Self
@@ -51,7 +53,7 @@ macro_rules! body_from_impl {
     ($ty:ty) => {
         impl From<$ty> for Body {
             fn from(buf: $ty) -> Self {
-                Self::new(http_body::Full::from(buf))
+                Self::new(http_body_util::Full::from(buf))
             }
         }
     };
@@ -71,18 +73,11 @@ impl http_body::Body for Body {
     type Data = Bytes;
     type Error = BoxError;
 
-    fn poll_data(
+    fn poll_frame(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-    ) -> std::task::Poll<Option<Result<Self::Data, Self::Error>>> {
-        Pin::new(&mut self.0).poll_data(cx)
-    }
-
-    fn poll_trailers(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> std::task::Poll<Result<Option<HeaderMap>, Self::Error>> {
-        Pin::new(&mut self.0).poll_trailers(cx)
+    ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
+        Pin::new(&mut self.0).poll_frame(cx)
     }
 
     fn size_hint(&self) -> http_body::SizeHint {
@@ -110,23 +105,16 @@ where
     type Data = Bytes;
     type Error = BoxError;
 
-    fn poll_data(
+    fn poll_frame(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-    ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
+    ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
         let stream = self.project().stream.get_pin_mut();
         match futures_util::ready!(stream.try_poll_next(cx)) {
-            Some(Ok(chunk)) => Poll::Ready(Some(Ok(chunk.into()))),
+            Some(Ok(chunk)) => Poll::Ready(Some(Ok(Frame::data(chunk.into())))),
             Some(Err(err)) => Poll::Ready(Some(Err(err.into()))),
             None => Poll::Ready(None),
         }
-    }
-
-    fn poll_trailers(
-        self: Pin<&mut Self>,
-        _cx: &mut Context<'_>,
-    ) -> Poll<Result<Option<HeaderMap>, Self::Error>> {
-        Poll::Ready(Ok(None))
     }
 }
 
@@ -136,29 +124,39 @@ where
     T: http_body::Body,
 {
     futures_util::pin_mut!(body);
+    Ok(body.collect().await?.to_bytes())
+}
 
-    // If there's only 1 chunk, we can just return Buf::to_bytes()
-    let mut first = if let Some(buf) = body.data().await {
-        buf?
-    } else {
-        return Ok(Bytes::new());
-    };
-
-    let second = if let Some(buf) = body.data().await {
-        buf?
-    } else {
-        return Ok(first.copy_to_bytes(first.remaining()));
-    };
-
-    // With more than 1 buf, we gotta flatten into a Vec first.
-    let cap = first.remaining() + second.remaining() + body.size_hint().lower() as usize;
-    let mut vec = Vec::with_capacity(cap);
-    vec.put(first);
-    vec.put(second);
-
-    while let Some(buf) = body.data().await {
-        vec.put(buf?);
+pub(crate) trait TowerHttpBodyExt: http_body::Body + Unpin {
+    /// Returns future that resolves to next data chunk, if any.
+    fn data(&mut self) -> Data<'_, Self>
+    where
+        Self: Unpin + Sized,
+    {
+        Data(self)
     }
+}
 
-    Ok(vec.into())
+impl<B> TowerHttpBodyExt for B where B: http_body::Body + Unpin {}
+
+pub(crate) struct Data<'a, T>(pub(crate) &'a mut T);
+
+impl<'a, T> Future for Data<'a, T>
+where
+    T: http_body::Body + Unpin,
+{
+    type Output = Option<Result<T::Data, T::Error>>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        loop {
+            match futures_util::ready!(Pin::new(&mut self.0).poll_frame(cx)) {
+                Some(Ok(frame)) => match frame.into_data() {
+                    Ok(data) => return Poll::Ready(Some(Ok(data))),
+                    Err(_frame) => {}
+                },
+                Some(Err(err)) => return Poll::Ready(Some(Err(err))),
+                None => return Poll::Ready(None),
+            }
+        }
+    }
 }

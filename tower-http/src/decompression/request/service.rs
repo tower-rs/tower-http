@@ -7,7 +7,8 @@ use crate::{
 };
 use bytes::Buf;
 use http::{header, Request, Response};
-use http_body::{combinators::UnsyncBoxBody, Body};
+use http_body::Body;
+use http_body_util::combinators::UnsyncBoxBody;
 use std::task::{Context, Poll};
 use tower_service::Service;
 

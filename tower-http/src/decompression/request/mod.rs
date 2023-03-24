@@ -5,8 +5,8 @@ pub(super) mod service;
 #[cfg(test)]
 mod tests {
     use super::service::RequestDecompression;
-    use crate::decompression::DecompressionBody;
     use crate::test_helpers::Body;
+    use crate::{decompression::DecompressionBody, test_helpers::TowerHttpBodyExt};
     use bytes::BytesMut;
     use flate2::{write::GzEncoder, Compression};
     use http::{header, Request, Response, StatusCode};

@@ -120,6 +120,7 @@ mod tests {
     use super::*;
     use crate::compression::Compression;
     use crate::test_helpers::Body;
+    use crate::test_helpers::TowerHttpBodyExt;
     use bytes::BytesMut;
     use http::Request;
     use http::Response;

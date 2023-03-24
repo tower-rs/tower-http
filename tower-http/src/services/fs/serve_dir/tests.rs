@@ -1,5 +1,5 @@
 use crate::services::{ServeDir, ServeFile};
-use crate::test_helpers::{to_bytes, Body};
+use crate::test_helpers::{to_bytes, Body, TowerHttpBodyExt};
 use brotli::BrotliDecompress;
 use bytes::Bytes;
 use flate2::bufread::{DeflateDecoder, GzDecoder};
