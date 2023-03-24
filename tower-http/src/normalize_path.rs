@@ -102,12 +102,12 @@ where
     }
 
     fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
-        remove_trailing_slash(req.uri_mut());
+        normalize_trailing_slash(req.uri_mut());
         self.inner.call(req)
     }
 }
 
-fn remove_trailing_slash(uri: &mut Uri) {
+fn normalize_trailing_slash(uri: &mut Uri) {
     if !uri.path().ends_with('/') {
         return;
     }
@@ -117,6 +117,12 @@ fn remove_trailing_slash(uri: &mut Uri) {
     let mut parts = uri.clone().into_parts();
 
     let new_path_and_query = if let Some(path_and_query) = &parts.path_and_query {
+        let new_path = if new_path.is_empty() {
+            "/"
+        } else {
+            new_path.into()
+        };
+
         let new_path_and_query = if let Some(query) = path_and_query.query() {
             Cow::Owned(format!("{}?{}", new_path, query))
         } else {
@@ -167,28 +173,49 @@ mod tests {
     #[test]
     fn is_noop_if_no_trailing_slash() {
         let mut uri = "/foo".parse::<Uri>().unwrap();
-        remove_trailing_slash(&mut uri);
+        normalize_trailing_slash(&mut uri);
         assert_eq!(uri, "/foo");
     }
 
     #[test]
     fn maintains_query() {
         let mut uri = "/foo/?a=a".parse::<Uri>().unwrap();
-        remove_trailing_slash(&mut uri);
+        normalize_trailing_slash(&mut uri);
         assert_eq!(uri, "/foo?a=a");
     }
 
     #[test]
     fn removes_multiple_trailing_slashes() {
         let mut uri = "/foo////".parse::<Uri>().unwrap();
-        remove_trailing_slash(&mut uri);
+        normalize_trailing_slash(&mut uri);
         assert_eq!(uri, "/foo");
     }
 
     #[test]
     fn removes_multiple_trailing_slashes_even_with_query() {
         let mut uri = "/foo////?a=a".parse::<Uri>().unwrap();
-        remove_trailing_slash(&mut uri);
+        normalize_trailing_slash(&mut uri);
         assert_eq!(uri, "/foo?a=a");
+    }
+
+    #[test]
+    fn is_noop_on_index() {
+        let mut uri = "/".parse::<Uri>().unwrap();
+        normalize_trailing_slash(&mut uri);
+        assert_eq!(uri, "/");
+    }
+
+    #[test]
+    fn removes_multiple_trailing_slashes_on_index() {
+        let mut uri = "////".parse::<Uri>().unwrap();
+        normalize_trailing_slash(&mut uri);
+        assert_eq!(uri, "/");
+    }
+
+    #[test]
+    fn removes_multiple_trailing_slashes_on_index_even_with_query() {
+        let mut uri = "////?a=a".parse::<Uri>().unwrap();
+        normalize_trailing_slash(&mut uri);
+        assert_eq!(uri, "/?a=a");
     }
 }
