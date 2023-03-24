@@ -136,4 +136,4 @@ jobs:
       run: |
         cargo install --git https://github.com/davidpdrsn/cargo-public-api-crates
     - name: cargo public-api-crates check
-      run: cargo public-api-crates --all-features --manifest-path tower-http/Cargo.toml check
+      run: cargo public-api-crates --manifest-path tower-http/Cargo.toml check
