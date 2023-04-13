@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Changed
 
-- None.
+- **decompression:** Enable `multiple_members` for `GzipDecoder` ([#354])
 
 ## Removed
 
@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [#335]: https://github.com/tower-rs/tower-http/pull/335
 [#336]: https://github.com/tower-rs/tower-http/pull/336
+[#354]: https://github.com/tower-rs/tower-http/pull/354
 
 # 0.4.0 (February 24, 2023)
 
