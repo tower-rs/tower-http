@@ -332,7 +332,16 @@ where
     type Output = BrotliEncoder<Self::Input>;
 
     fn apply(input: Self::Input, quality: CompressionLevel) -> Self::Output {
-        BrotliEncoder::with_quality(input, quality.into_async_compression())
+        // The brotli crate used under the hood here has a default compression level of 11,
+        // which is the max for brotli. This causes extremely slow compression times, so we
+        // manually set a default of 4 here.
+        //
+        // This is the same default used by NGINX for on-the-fly brotli compression.
+        let level = match quality {
+            CompressionLevel::Default => async_compression::Level::Precise(4),
+            other => other.into_async_compression(),
+        };
+        BrotliEncoder::with_quality(input, level)
     }
 
     fn get_pin_mut(pinned: Pin<&mut Self::Output>) -> Pin<&mut Self::Input> {
