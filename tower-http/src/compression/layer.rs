@@ -146,7 +146,10 @@ mod tests {
 
     #[tokio::test]
     async fn accept_encoding_configuration_works() -> Result<(), crate::BoxError> {
-        let deflate_only_layer = CompressionLayer::new().no_br().no_gzip();
+        let deflate_only_layer = CompressionLayer::new()
+            .quality(CompressionLevel::Best)
+            .no_br()
+            .no_gzip();
 
         let mut service = ServiceBuilder::new()
             // Compress responses based on the `Accept-Encoding` header.
@@ -173,7 +176,10 @@ mod tests {
 
         let deflate_bytes_len = bytes.len();
 
-        let br_only_layer = CompressionLayer::new().no_gzip().no_deflate();
+        let br_only_layer = CompressionLayer::new()
+            .quality(CompressionLevel::Best)
+            .no_gzip()
+            .no_deflate();
 
         let mut service = ServiceBuilder::new()
             // Compress responses based on the `Accept-Encoding` header.
