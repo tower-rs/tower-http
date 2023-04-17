@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **request_id:** Derive `Default` for `MakeRequestUuid` ([#335])
 - **fs:** Derive `Default` for `ServeFileSystemResponseBody` ([#336])
+- **validate-request:** Add `ValidateRequestHeaderLayer::assert()` function to reject requests when a header does not have an expected value ([#360])
 
 ## Changed
 
@@ -27,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#335]: https://github.com/tower-rs/tower-http/pull/335
 [#336]: https://github.com/tower-rs/tower-http/pull/336
 [#354]: https://github.com/tower-rs/tower-http/pull/354
+[#360]: https://github.com/tower-rs/tower-http/pull/360
 
 # 0.4.0 (February 24, 2023)
 
