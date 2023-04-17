@@ -402,6 +402,7 @@ http-range-header to `0.4`
 [#335]: https://github.com/tower-rs/tower-http/pull/335
 [#336]: https://github.com/tower-rs/tower-http/pull/336
 [#354]: https://github.com/tower-rs/tower-http/pull/354
+[#360]: https://github.com/tower-rs/tower-http/pull/360
 
 # 0.4.0 (February 24, 2023)
 
