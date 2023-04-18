@@ -24,7 +24,7 @@ use std::{
 use tower_service::Service;
 
 pin_project! {
-    /// Response future of [`ServeDir::try_call`].
+    /// Response future of [`ServeDir::try_call()`][`super::ServeDir::try_call()`].
     pub struct ResponseFuture<ReqBody, F = DefaultServeDirFallback> {
         #[pin]
         pub(super) inner: ResponseFutureInner<ReqBody, F>,
