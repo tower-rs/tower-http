@@ -1,4 +1,4 @@
-use super::DEFAULT_ERROR_LEVEL;
+use super::{latency_unit_to_str, DEFAULT_ERROR_LEVEL};
 use crate::LatencyUnit;
 use std::{fmt, time::Duration};
 use tracing::{Level, Span};
@@ -90,37 +90,20 @@ macro_rules! log_pattern_match {
     (
         $this:expr, $failure_classification:expr, $latency:expr, [$($level:ident),*]
     ) => {
-        match ($this.level, $this.latency_unit) {
+        let duration = match $this.latency_unit {
+            LatencyUnit::Seconds => $latency.as_secs() as u128,
+            LatencyUnit::Millis => $latency.as_millis(),
+            LatencyUnit::Micros => $latency.as_micros(),
+            LatencyUnit::Nanos => $latency.as_nanos(),
+        };
+
+        match $this.level {
             $(
-                (Level::$level, LatencyUnit::Seconds) => {
+                Level::$level => {
                     tracing::event!(
                         Level::$level,
                         classification = tracing::field::display($failure_classification),
-                        latency = format_args!("{} s", $latency.as_secs_f64()),
-                        "response failed"
-                    );
-                }
-                (Level::$level, LatencyUnit::Millis) => {
-                    tracing::event!(
-                        Level::$level,
-                        classification = tracing::field::display($failure_classification),
-                        latency = format_args!("{} ms", $latency.as_millis()),
-                        "response failed"
-                    );
-                }
-                (Level::$level, LatencyUnit::Micros) => {
-                    tracing::event!(
-                        Level::$level,
-                        classification = tracing::field::display($failure_classification),
-                        latency = format_args!("{} μs", $latency.as_micros()),
-                        "response failed"
-                    );
-                }
-                (Level::$level, LatencyUnit::Nanos) => {
-                    tracing::event!(
-                        Level::$level,
-                        classification = tracing::field::display($failure_classification),
-                        latency = format_args!("{} ns", $latency.as_nanos()),
+                        latency = format_args!("{} {}", duration, latency_unit_to_str($this.latency_unit)),
                         "response failed"
                     );
                 }

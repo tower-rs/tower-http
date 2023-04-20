@@ -1,4 +1,4 @@
-use super::DEFAULT_MESSAGE_LEVEL;
+use super::{latency_unit_to_str, DEFAULT_MESSAGE_LEVEL};
 use crate::{classify::grpc_errors_as_failures::ParsedGrpcStatus, LatencyUnit};
 use http::header::HeaderMap;
 use std::time::Duration;
@@ -93,69 +93,29 @@ macro_rules! log_pattern_match {
     (
         $this:expr, $stream_duration:expr, $status:expr, [$($level:ident),*]
     ) => {
-        match ($this.level, $this.latency_unit, $status) {
+        let duration = match $this.latency_unit {
+            LatencyUnit::Seconds => $stream_duration.as_secs() as u128,
+            LatencyUnit::Millis => $stream_duration.as_millis(),
+            LatencyUnit::Micros => $stream_duration.as_micros(),
+            LatencyUnit::Nanos => $stream_duration.as_nanos(),
+        };
+
+        match ($this.level, $status) {
             $(
-                (Level::$level, LatencyUnit::Seconds, None) => {
+                (Level::$level, None) => {
                     tracing::event!(
                         Level::$level,
-                        stream_duration = format_args!("{} s", $stream_duration.as_secs_f64()),
+                        stream_duration = format_args!("{} {}", duration, latency_unit_to_str($this.latency_unit)),
                         "end of stream"
                     );
                 }
-                (Level::$level, LatencyUnit::Seconds, Some(status)) => {
+                (Level::$level, Some(status)) => {
                     tracing::event!(
                         Level::$level,
-                        stream_duration = format_args!("{} s", $stream_duration.as_secs_f64()),
+                        stream_duration = format_args!("{} {}", duration, latency_unit_to_str($this.latency_unit)),
                         status = status,
                         "end of stream"
-                    );
-                }
 
-                (Level::$level, LatencyUnit::Millis, None) => {
-                    tracing::event!(
-                        Level::$level,
-                        stream_duration = format_args!("{} ms", $stream_duration.as_millis()),
-                        "end of stream"
-                    );
-                }
-                (Level::$level, LatencyUnit::Millis, Some(status)) => {
-                    tracing::event!(
-                        Level::$level,
-                        stream_duration = format_args!("{} ms", $stream_duration.as_millis()),
-                        status = status,
-                        "end of stream"
-                    );
-                }
-
-                (Level::$level, LatencyUnit::Micros, None) => {
-                    tracing::event!(
-                        Level::$level,
-                        stream_duration = format_args!("{} μs", $stream_duration.as_micros()),
-                        "end of stream"
-                    );
-                }
-                (Level::$level, LatencyUnit::Micros, Some(status)) => {
-                    tracing::event!(
-                        Level::$level,
-                        stream_duration = format_args!("{} μs", $stream_duration.as_micros()),
-                        status = status,
-                        "end of stream"
-                    );
-                }
-
-                (Level::$level, LatencyUnit::Nanos, None) => {
-                    tracing::event!(
-                        Level::$level,
-                        stream_duration = format_args!("{} ns", $stream_duration.as_nanos()),
-                        "end of stream"
-                    );
-                }
-                (Level::$level, LatencyUnit::Nanos, Some(status)) => {
-                    tracing::event!(
-                        Level::$level,
-                        stream_duration = format_args!("{} ns", $stream_duration.as_nanos()),
-                        status = status,
-                        "end of stream"
                     );
                 }
             )*

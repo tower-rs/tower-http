@@ -383,6 +383,7 @@
 //! [`Body::poll_trailers`]: http_body::Body::poll_trailers
 //! [`Body::poll_data`]: http_body::Body::poll_data
 
+use crate::LatencyUnit;
 use tracing::Level;
 
 pub use self::{
@@ -411,6 +412,16 @@ mod service;
 
 const DEFAULT_MESSAGE_LEVEL: Level = Level::DEBUG;
 const DEFAULT_ERROR_LEVEL: Level = Level::ERROR;
+
+#[inline]
+fn latency_unit_to_str(latency_unit: LatencyUnit) -> &'static str {
+    match latency_unit {
+        LatencyUnit::Seconds => "s",
+        LatencyUnit::Millis => "ms",
+        LatencyUnit::Micros => "μs",
+        LatencyUnit::Nanos => "ns",
+    }
+}
 
 #[cfg(test)]
 mod tests {

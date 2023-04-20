@@ -1,4 +1,4 @@
-use super::DEFAULT_MESSAGE_LEVEL;
+use super::{latency_unit_to_str, DEFAULT_MESSAGE_LEVEL};
 use crate::LatencyUnit;
 use http::Response;
 use std::time::Duration;
@@ -111,135 +111,42 @@ macro_rules! log_pattern_match {
     (
         $this:expr, $res:expr, $latency:expr, $include_headers:expr, [$($level:ident),*]
     ) => {
-        match ($this.level, $include_headers, $this.latency_unit, status($res)) {
+        let duration = match $this.latency_unit {
+            LatencyUnit::Seconds => $latency.as_secs() as u128,
+            LatencyUnit::Millis => $latency.as_millis(),
+            LatencyUnit::Micros => $latency.as_micros(),
+            LatencyUnit::Nanos => $latency.as_nanos(),
+        };
+        match ($this.level, $include_headers, status($res)) {
             $(
-                (Level::$level, true, LatencyUnit::Seconds, None) => {
+                (Level::$level, true, None) => {
                     tracing::event!(
                         Level::$level,
-                        latency = format_args!("{} s", $latency.as_secs_f64()),
+                        latency = format_args!("{} {}", duration, latency_unit_to_str($this.latency_unit)),
                         response_headers = ?$res.headers(),
                         "finished processing request"
                     );
                 }
-                (Level::$level, false, LatencyUnit::Seconds, None) => {
+                (Level::$level, false, None) => {
                     tracing::event!(
                         Level::$level,
-                        latency = format_args!("{} s", $latency.as_secs_f64()),
+                        latency = format_args!("{} {}", duration, latency_unit_to_str($this.latency_unit)),
                         "finished processing request"
                     );
                 }
-                (Level::$level, true, LatencyUnit::Seconds, Some(status)) => {
+                (Level::$level, true, Some(status)) => {
                     tracing::event!(
                         Level::$level,
-                        latency = format_args!("{} s", $latency.as_secs_f64()),
+                        latency = format_args!("{} {}", duration, latency_unit_to_str($this.latency_unit)),
                         status = status,
                         response_headers = ?$res.headers(),
                         "finished processing request"
                     );
                 }
-                (Level::$level, false, LatencyUnit::Seconds, Some(status)) => {
+                (Level::$level, false, Some(status)) => {
                     tracing::event!(
                         Level::$level,
-                        latency = format_args!("{} s", $latency.as_secs_f64()),
-                        status = status,
-                        "finished processing request"
-                    );
-                }
-
-                (Level::$level, true, LatencyUnit::Millis, None) => {
-                    tracing::event!(
-                        Level::$level,
-                        latency = format_args!("{} ms", $latency.as_millis()),
-                        response_headers = ?$res.headers(),
-                        "finished processing request"
-                    );
-                }
-                (Level::$level, false, LatencyUnit::Millis, None) => {
-                    tracing::event!(
-                        Level::$level,
-                        latency = format_args!("{} ms", $latency.as_millis()),
-                        "finished processing request"
-                    );
-                }
-                (Level::$level, true, LatencyUnit::Millis, Some(status)) => {
-                    tracing::event!(
-                        Level::$level,
-                        latency = format_args!("{} ms", $latency.as_millis()),
-                        status = status,
-                        response_headers = ?$res.headers(),
-                        "finished processing request"
-                    );
-                }
-                (Level::$level, false, LatencyUnit::Millis, Some(status)) => {
-                    tracing::event!(
-                        Level::$level,
-                        latency = format_args!("{} ms", $latency.as_millis()),
-                        status = status,
-                        "finished processing request"
-                    );
-                }
-
-                (Level::$level, true, LatencyUnit::Micros, None) => {
-                    tracing::event!(
-                        Level::$level,
-                        latency = format_args!("{} μs", $latency.as_micros()),
-                        response_headers = ?$res.headers(),
-                        "finished processing request"
-                    );
-                }
-                (Level::$level, false, LatencyUnit::Micros, None) => {
-                    tracing::event!(
-                        Level::$level,
-                        latency = format_args!("{} μs", $latency.as_micros()),
-                        "finished processing request"
-                    );
-                }
-                (Level::$level, true, LatencyUnit::Micros, Some(status)) => {
-                    tracing::event!(
-                        Level::$level,
-                        latency = format_args!("{} μs", $latency.as_micros()),
-                        status = status,
-                        response_headers = ?$res.headers(),
-                        "finished processing request"
-                    );
-                }
-                (Level::$level, false, LatencyUnit::Micros, Some(status)) => {
-                    tracing::event!(
-                        Level::$level,
-                        latency = format_args!("{} μs", $latency.as_micros()),
-                        status = status,
-                        "finished processing request"
-                    );
-                }
-
-                (Level::$level, true, LatencyUnit::Nanos, None) => {
-                    tracing::event!(
-                        Level::$level,
-                        latency = format_args!("{} ns", $latency.as_nanos()),
-                        response_headers = ?$res.headers(),
-                        "finished processing request"
-                    );
-                }
-                (Level::$level, false, LatencyUnit::Nanos, None) => {
-                    tracing::event!(
-                        Level::$level,
-                        latency = format_args!("{} ns", $latency.as_nanos()),
-                        "finished processing request"
-                    );
-                }
-                (Level::$level, true, LatencyUnit::Nanos, Some(status)) => {
-                    tracing::event!(
-                        Level::$level,
-                        latency = format_args!("{} ns", $latency.as_nanos()),
-                        status = status,
-                        response_headers = ?$res.headers(),
-                        "finished processing request"
-                    );
-                }
-                (Level::$level, false, LatencyUnit::Nanos, Some(status)) => {
-                    tracing::event!(
-                        Level::$level,
-                        latency = format_args!("{} ns", $latency.as_nanos()),
+                        latency = format_args!("{} {}", duration, latency_unit_to_str($this.latency_unit)),
                         status = status,
                         "finished processing request"
                     );
