@@ -195,7 +195,10 @@ impl<ResBody> Basic<ResBody> {
     where
         ResBody: Body + Default,
     {
-        let encoded = base64::encode(format!("{}:{}", username, password));
+        use base64::Engine;
+
+        let engine = base64::engine::general_purpose::STANDARD;
+        let encoded = engine.encode(format!("{}:{}", username, password));
         let header_value = format!("Basic {}", encoded).parse().unwrap();
         Self {
             header_value,
@@ -247,6 +250,7 @@ mod tests {
 
     #[allow(unused_imports)]
     use super::*;
+    use base64::Engine;
     use http::header;
     use hyper::Body;
     use tower::{BoxError, ServiceBuilder, ServiceExt};
@@ -258,10 +262,12 @@ mod tests {
             .layer(ValidateRequestHeaderLayer::basic("foo", "bar"))
             .service_fn(echo);
 
+        let engine = base64::engine::general_purpose::STANDARD;
+
         let request = Request::get("/")
             .header(
                 header::AUTHORIZATION,
-                format!("Basic {}", base64::encode("foo:bar")),
+                format!("Basic {}", engine.encode("foo:bar")),
             )
             .body(Body::empty())
             .unwrap();
@@ -277,10 +283,12 @@ mod tests {
             .layer(ValidateRequestHeaderLayer::basic("foo", "bar"))
             .service_fn(echo);
 
+        let engine = base64::engine::general_purpose::STANDARD;
+
         let request = Request::get("/")
             .header(
                 header::AUTHORIZATION,
-                format!("Basic {}", base64::encode("wrong:credentials")),
+                format!("Basic {}", engine.encode("wrong:credentials")),
             )
             .body(Body::empty())
             .unwrap();
@@ -315,10 +323,12 @@ mod tests {
             .layer(ValidateRequestHeaderLayer::basic("foo", "bar"))
             .service_fn(echo);
 
+        let engine = base64::engine::general_purpose::STANDARD;
+
         let request = Request::get("/")
             .header(
                 header::AUTHORIZATION,
-                format!("basic {}", base64::encode("foo:bar")),
+                format!("basic {}", engine.encode("foo:bar")),
             )
             .body(Body::empty())
             .unwrap();
@@ -334,10 +344,12 @@ mod tests {
             .layer(ValidateRequestHeaderLayer::basic("foo", "bar"))
             .service_fn(echo);
 
+        let engine = base64::engine::general_purpose::STANDARD;
+
         let request = Request::get("/")
             .header(
                 header::AUTHORIZATION,
-                format!("Basic {}", base64::encode("Foo:bar")),
+                format!("Basic {}", engine.encode("Foo:bar")),
             )
             .body(Body::empty())
             .unwrap();

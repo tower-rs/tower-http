@@ -70,7 +70,10 @@ impl AddAuthorizationLayer {
     /// Since the username and password is sent in clear text it is recommended to use HTTPS/TLS
     /// with this method. However use of HTTPS/TLS is not enforced by this middleware.
     pub fn basic(username: &str, password: &str) -> Self {
-        let encoded = base64::encode(format!("{}:{}", username, password));
+        use base64::Engine;
+
+        let engine = base64::engine::general_purpose::STANDARD;
+        let encoded = engine.encode(format!("{}:{}", username, password));
         let value = HeaderValue::try_from(format!("Basic {}", encoded)).unwrap();
         Self { value }
     }
