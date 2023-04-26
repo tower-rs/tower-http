@@ -115,7 +115,7 @@
 
 use http::{header, Request, Response, StatusCode};
 use http_body::Body;
-use mime::Mime;
+use mime::{Mime, MimeIter};
 use pin_project_lite::pin_project;
 use std::{
     fmt,
@@ -379,25 +379,24 @@ where
             .headers()
             .get_all(header::ACCEPT)
             .into_iter()
-            .flat_map(|header| {
-                header
-                    .to_str()
-                    .ok()
-                    .into_iter()
-                    .flat_map(|s| s.split(",").map(|typ| typ.trim()))
-            })
+            .filter_map(|header| header.to_str().ok())
             .any(|h| {
-                h.parse::<Mime>()
+                MimeIter::new(&h)
                     .map(|mim| {
-                        let typ = self.header_value.type_();
-                        let subtype = self.header_value.subtype();
-                        match (mim.type_(), mim.subtype()) {
-                            (t, s) if t == typ && s == subtype => true,
-                            (t, mime::STAR) if t == typ => true,
-                            (mime::STAR, mime::STAR) => true,
-                            _ => false,
+                        if let Ok(mim) = mim {
+                            let typ = self.header_value.type_();
+                            let subtype = self.header_value.subtype();
+                            match (mim.type_(), mim.subtype()) {
+                                (t, s) if t == typ && s == subtype => true,
+                                (t, mime::STAR) if t == typ => true,
+                                (mime::STAR, mime::STAR) => true,
+                                _ => false,
+                            }
+                        } else {
+                            false
                         }
                     })
+                    .reduce(|acc, mim| acc || mim)
                     .unwrap_or(false)
             })
         {
@@ -413,7 +412,7 @@ where
 mod tests {
     #[allow(unused_imports)]
     use super::*;
-    use http::header;
+    use http::{header, StatusCode};
     use hyper::Body;
     use tower::{BoxError, ServiceBuilder, ServiceExt};
 
@@ -543,6 +542,40 @@ mod tests {
         let res = service.ready().await.unwrap().call(request).await.unwrap();
 
         assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn accepted_header_with_quotes_valid() {
+        let value = "foo/bar; parisien=\"baguette, text/html, jambon, fromage\", application/*";
+        let mut service = ServiceBuilder::new()
+            .layer(ValidateRequestHeaderLayer::accept("application/xml"))
+            .service_fn(echo);
+
+        let request = Request::get("/")
+            .header(header::ACCEPT, value)
+            .body(Body::empty())
+            .unwrap();
+
+        let res = service.ready().await.unwrap().call(request).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn accepted_header_with_quotes_invalid() {
+        let value = "foo/bar; parisien=\"baguette, text/html, jambon, fromage\"";
+        let mut service = ServiceBuilder::new()
+            .layer(ValidateRequestHeaderLayer::accept("text/html"))
+            .service_fn(echo);
+
+        let request = Request::get("/")
+            .header(header::ACCEPT, value)
+            .body(Body::empty())
+            .unwrap();
+
+        let res = service.ready().await.unwrap().call(request).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::NOT_ACCEPTABLE);
     }
 
     async fn echo(req: Request<Body>) -> Result<Response<Body>, BoxError> {
