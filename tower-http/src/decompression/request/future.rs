@@ -67,16 +67,14 @@ where
     B: Body + Send + 'static,
     B::Data: Buf + 'static,
     B::Error: Into<BoxError> + 'static,
-    E: Into<BoxError>,
 {
-    type Output = Result<Response<UnsyncBoxBody<B::Data, BoxError>>, BoxError>;
+    type Output = Result<Response<UnsyncBoxBody<B::Data, BoxError>>, E>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match self.project().kind.project() {
             StateProj::Inner { fut } => fut
                 .poll(cx)
-                .map_ok(|res| res.map(|body| body.map_err(Into::into).boxed_unsync()))
-                .map_err(Into::into),
+                .map_ok(|res| res.map(|body| body.map_err(Into::into).boxed_unsync())),
             StateProj::Unsupported { accept } => {
                 let res = Response::builder()
                     .header(
