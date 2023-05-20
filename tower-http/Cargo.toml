@@ -24,7 +24,7 @@ tower-layer = "0.3"
 tower-service = "0.3"
 
 # optional dependencies
-async-compression = { version = "0.3", optional = true, features = ["tokio"] }
+async-compression = { version = "0.4", optional = true, features = ["tokio"] }
 base64 = { version = "0.20", optional = true }
 http-range-header = "0.3.0"
 iri-string = { version = "0.7.0", optional = true }
@@ -50,7 +50,7 @@ tower = { version = "0.4.10", features = ["buffer", "util", "retry", "make", "ti
 tracing-subscriber = "0.3"
 uuid = { version = "1.0", features = ["v4"] }
 serde_json = "1.0"
-zstd = "0.11"
+zstd = "0.12"
 
 [features]
 default = []
