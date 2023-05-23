@@ -36,6 +36,21 @@ jobs:
         RUSTDOCFLAGS: "-D rustdoc::broken_intra_doc_links"
       run: cargo doc --all-features --no-deps
 
+  check-examples:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt
+    - run: cargo fmt --all --check
+      working-directory: examples
+    - uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: "examples -> target"
+    - run: cargo check --workspace --all-features --all-targets
+      working-directory: examples
+
   cargo-hack:
     runs-on: ubuntu-latest
     steps:

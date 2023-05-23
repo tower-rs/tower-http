@@ -1,5 +1,2 @@
 [workspace]
-members = [
-  "tower-http",
-  "examples/*",
-]
+members = ["tower-http"]
