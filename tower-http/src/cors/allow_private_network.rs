@@ -84,6 +84,15 @@ impl From<bool> for AllowPrivateNetwork {
     }
 }
 
+impl<F> From<F> for AllowPrivateNetwork
+where
+    F: Fn(&HeaderValue, &RequestParts) -> bool + Send + Sync + 'static,
+{
+    fn from(f: F) -> Self {
+        AllowPrivateNetwork::predicate(f)
+    }
+}
+
 impl fmt::Debug for AllowPrivateNetwork {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.0 {
