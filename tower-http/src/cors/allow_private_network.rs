@@ -84,15 +84,6 @@ impl From<bool> for AllowPrivateNetwork {
     }
 }
 
-impl<F> From<F> for AllowPrivateNetwork
-where
-    F: Fn(&HeaderValue, &RequestParts) -> bool + Send + Sync + 'static,
-{
-    fn from(f: F) -> Self {
-        AllowPrivateNetwork::predicate(f)
-    }
-}
-
 impl fmt::Debug for AllowPrivateNetwork {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.0 {
@@ -120,6 +111,7 @@ impl Default for AllowPrivateNetworkInner {
 
 #[cfg(test)]
 mod tests {
+    use super::AllowPrivateNetwork;
     use crate::cors::CorsLayer;
 
     use http::{header::ORIGIN, request::Parts, HeaderName, HeaderValue, Request, Response};
@@ -157,12 +149,12 @@ mod tests {
 
     #[tokio::test]
     async fn cors_private_network_header_is_added_correctly_with_predicate() {
+        let allow_private_network =
+            AllowPrivateNetwork::predicate(|origin: &HeaderValue, parts: &Parts| {
+                parts.uri.path() == "/allow-private" && origin == "localhost"
+            });
         let mut service = ServiceBuilder::new()
-            .layer(
-                CorsLayer::new().allow_private_network(|origin: &HeaderValue, parts: &Parts| {
-                    parts.uri.path() == "/allow-private" && origin == "localhost"
-                }),
-            )
+            .layer(CorsLayer::new().allow_private_network(allow_private_network))
             .service_fn(echo);
 
         let req = Request::builder()
