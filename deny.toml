@@ -2,12 +2,7 @@
 vulnerability = "deny"
 unmaintained = "warn"
 notice = "warn"
-ignore = [
-  # Potential Unix segfault with time crate, used by chrono.
-  # if setting env vars in threaded context, we are unlikely affected
-  # https://github.com/time-rs/time/issues/293
-  "RUSTSEC-2020-0159",
-]
+ignore = []
 
 [licenses]
 unlicensed = "deny"
