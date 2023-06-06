@@ -36,7 +36,10 @@ license-files = [
 [bans]
 multiple-versions = "deny"
 highlight = "all"
-skip-tree = [{ name = "tower", version = ">=0.3, <=0.4" }]
+skip-tree = [
+  { name = "tower", version = ">=0.3, <=0.4" },
+  { name = "regex-syntax", version = ">=0.6, <= 0.7" },
+]
 
 [sources]
 unknown-registry = "warn"
