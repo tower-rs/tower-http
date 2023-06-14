@@ -2,12 +2,7 @@
 vulnerability = "deny"
 unmaintained = "warn"
 notice = "warn"
-ignore = [
-  # Potential Unix segfault with time crate, used by chrono.
-  # if setting env vars in threaded context, we are unlikely affected
-  # https://github.com/time-rs/time/issues/293
-  "RUSTSEC-2020-0159",
-]
+ignore = []
 
 [licenses]
 unlicensed = "deny"
@@ -36,6 +31,11 @@ license-files = [
 [bans]
 multiple-versions = "deny"
 highlight = "all"
+skip = [
+  # tracing-subscriber depends on multiple versions of regex-syntax.
+  # This is not actually depended by tower-http as this is caused by examples.
+  { name = "regex-syntax", version = ">=0.6, <= 0.7" },
+]
 skip-tree = [{ name = "tower", version = ">=0.3, <=0.4" }]
 
 [sources]
