@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Changed
 
-- None.
+- **compression:** Update to async-compression 0.4 ([#371])
 
 ## Removed
 
@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Fixed
 
 - None.
+
+[#371]: https://github.com/tower-rs/tower-http/pull/371
 
 # 0.4.1 (June 20, 2023)
 
