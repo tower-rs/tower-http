@@ -31,14 +31,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **fs:** Derive `Default` for `ServeFileSystemResponseBody` ([#336])
 - **compression:** Expose compression quality on the CompressionLayer ([#333])
 
-## Changed
-
-- None.
-
-## Removed
-
-- None.
-
 ## Fixed
 
 - **compression:** Improve parsing of `Accept-Encoding` request header ([#220])
