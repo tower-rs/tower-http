@@ -12,11 +12,7 @@ jobs:
     steps:
     - uses: actions/checkout@master
     - uses: dtolnay/rust-toolchain@stable
-    - name: Check
-      uses: actions-rs/cargo@v1
-      with:
-        command: check
-        args: --workspace --all-features --all-targets
+    - run: cargo check --workspace --all-features --all-targets
 
   check-docs:
     runs-on: ubuntu-latest
@@ -55,11 +51,7 @@ jobs:
     - uses: dtolnay/rust-toolchain@master
       with:
         toolchain: ${{ matrix.rust }}
-    - name: Run tests
-      uses: actions-rs/cargo@v1
-      with:
-        command: test
-        args: --workspace --all-features
+    - run: cargo test --workspace --all-features
 
   test-msrv:
     needs: check
@@ -67,12 +59,7 @@ jobs:
     steps:
     - uses: actions/checkout@master
     - uses: dtolnay/rust-toolchain@1.60.0
-    - name: Run tests
-      uses: actions-rs/cargo@v1
-      with:
-        command: test
-        args: -p tower-http --all-features
-        toolchain: 1.60.0
+    - run: cargo test -p tower-http --all-features
 
   style:
     needs: check
@@ -82,11 +69,7 @@ jobs:
     - uses: dtolnay/rust-toolchain@stable
       with:
         components: rustfmt
-    - name: rustfmt
-      uses: actions-rs/cargo@v1
-      with:
-        command: fmt
-        args: --all -- --check
+    - run: cargo fmt --all --check
 
   deny-check:
     name: cargo-deny check
