@@ -10,14 +10,14 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@master
+    - uses: actions/checkout@v3
     - uses: dtolnay/rust-toolchain@stable
     - run: cargo check --workspace --all-features --all-targets
 
   check-docs:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@master
+    - uses: actions/checkout@v3
     - uses: dtolnay/rust-toolchain@stable
     - name: cargo doc
       working-directory: ${{ matrix.subcrate }}
@@ -28,7 +28,7 @@ jobs:
   cargo-hack:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@master
+    - uses: actions/checkout@v3
     - uses: dtolnay/rust-toolchain@stable
     - name: Install cargo-hack
       run: |
@@ -47,7 +47,7 @@ jobs:
       matrix:
         rust: [stable, beta, nightly]
     steps:
-    - uses: actions/checkout@master
+    - uses: actions/checkout@v3
     - uses: dtolnay/rust-toolchain@master
       with:
         toolchain: ${{ matrix.rust }}
@@ -57,7 +57,7 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@master
+    - uses: actions/checkout@v3
     - uses: dtolnay/rust-toolchain@1.60.0
     - run: cargo test -p tower-http --all-features
 
@@ -65,7 +65,7 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@master
+    - uses: actions/checkout@v3
     - uses: dtolnay/rust-toolchain@stable
       with:
         components: rustfmt
@@ -81,7 +81,7 @@ jobs:
         - advisories
         - bans licenses sources
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - uses: EmbarkStudios/cargo-deny-action@v1
       with:
         command: check ${{ matrix.checks }}
@@ -90,7 +90,7 @@ jobs:
   cargo-public-api-crates:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@master
+    - uses: actions/checkout@v3
     - uses: dtolnay/rust-toolchain@nightly
     - uses: Swatinem/rust-cache@v2
     - name: Install cargo-public-api-crates
