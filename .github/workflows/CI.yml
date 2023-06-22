@@ -78,14 +78,14 @@ jobs:
     strategy:
       matrix:
         checks:
-          - advisories
-          - bans licenses sources
+        - advisories
+        - bans licenses sources
     steps:
-      - uses: actions/checkout@v2
-      - uses: EmbarkStudios/cargo-deny-action@v1
-        with:
-          command: check ${{ matrix.checks }}
-          arguments: --all-features --manifest-path tower-http/Cargo.toml
+    - uses: actions/checkout@v2
+    - uses: EmbarkStudios/cargo-deny-action@v1
+      with:
+        command: check ${{ matrix.checks }}
+        arguments: --all-features --manifest-path tower-http/Cargo.toml
 
   cargo-public-api-crates:
     runs-on: ubuntu-latest
