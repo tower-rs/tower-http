@@ -92,7 +92,7 @@ jobs:
     steps:
     - uses: actions/checkout@master
     - uses: dtolnay/rust-toolchain@nightly
-    - uses: Swatinem/rust-cache@v1
+    - uses: Swatinem/rust-cache@v2
     - name: Install cargo-public-api-crates
       run: |
         cargo install --git https://github.com/davidpdrsn/cargo-public-api-crates
