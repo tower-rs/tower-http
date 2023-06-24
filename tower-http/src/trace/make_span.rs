@@ -103,21 +103,11 @@ impl<B> MakeSpan<B> for DefaultMakeSpan {
         }
 
         match self.level {
-            Level::ERROR => {
-                make_span!(Level::ERROR)
-            }
-            Level::WARN => {
-                make_span!(Level::WARN)
-            }
-            Level::INFO => {
-                make_span!(Level::INFO)
-            }
-            Level::DEBUG => {
-                make_span!(Level::DEBUG)
-            }
-            Level::TRACE => {
-                make_span!(Level::TRACE)
-            }
+            Level::ERROR => make_span!(Level::ERROR),
+            Level::WARN => make_span!(Level::WARN),
+            Level::INFO => make_span!(Level::INFO),
+            Level::DEBUG => make_span!(Level::DEBUG),
+            Level::TRACE => make_span!(Level::TRACE),
         }
     }
 }
