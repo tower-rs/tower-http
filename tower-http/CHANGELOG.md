@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Changed
 
-- **compression:** Update to async-compression 0.4 ([#371])
+- None.
 
 ## Removed
 
@@ -23,7 +23,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - None.
 
+# 0.4.2 (July 19, 2023)
+
+## Added
+
+- **cors:** Add support for private network preflights ([#373])
+- **compression:** Implement `Default` for `DecompressionBody` ([#370])
+
+## Changed
+
+- **compression:** Update to async-compression 0.4 ([#371])
+
+## Fixed
+
+- **compression:** Override default brotli compression level 11 -> 4 ([#356])
+- **trace:** Simplify dynamic tracing level application ([#380])
+- **normalize_path:** Fix path normalization for preceding slashes ([#359])
+
+[#356]: https://github.com/tower-rs/tower-http/pull/356
+[#359]: https://github.com/tower-rs/tower-http/pull/359
+[#370]: https://github.com/tower-rs/tower-http/pull/370
 [#371]: https://github.com/tower-rs/tower-http/pull/371
+[#373]: https://github.com/tower-rs/tower-http/pull/373
+[#380]: https://github.com/tower-rs/tower-http/pull/380
 
 # 0.4.1 (June 20, 2023)
 
