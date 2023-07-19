@@ -1,4 +1,4 @@
-use super::DEFAULT_MESSAGE_LEVEL;
+use super::{Latency, DEFAULT_MESSAGE_LEVEL};
 use crate::{classify::grpc_errors_as_failures::ParsedGrpcStatus, LatencyUnit};
 use http::header::HeaderMap;
 use std::time::Duration;
@@ -83,88 +83,12 @@ impl DefaultOnEos {
     }
 }
 
-// Repeating this pattern match for each case is tedious. So we do it with a quick and
-// dirty macro.
-//
-// Tracing requires all these parts to be declared statically. You cannot easily build
-// events dynamically.
-#[allow(unused_macros)]
-macro_rules! log_pattern_match {
-    (
-        $this:expr, $stream_duration:expr, $status:expr, [$($level:ident),*]
-    ) => {
-        match ($this.level, $this.latency_unit, $status) {
-            $(
-                (Level::$level, LatencyUnit::Seconds, None) => {
-                    tracing::event!(
-                        Level::$level,
-                        stream_duration = format_args!("{} s", $stream_duration.as_secs_f64()),
-                        "end of stream"
-                    );
-                }
-                (Level::$level, LatencyUnit::Seconds, Some(status)) => {
-                    tracing::event!(
-                        Level::$level,
-                        stream_duration = format_args!("{} s", $stream_duration.as_secs_f64()),
-                        status = status,
-                        "end of stream"
-                    );
-                }
-
-                (Level::$level, LatencyUnit::Millis, None) => {
-                    tracing::event!(
-                        Level::$level,
-                        stream_duration = format_args!("{} ms", $stream_duration.as_millis()),
-                        "end of stream"
-                    );
-                }
-                (Level::$level, LatencyUnit::Millis, Some(status)) => {
-                    tracing::event!(
-                        Level::$level,
-                        stream_duration = format_args!("{} ms", $stream_duration.as_millis()),
-                        status = status,
-                        "end of stream"
-                    );
-                }
-
-                (Level::$level, LatencyUnit::Micros, None) => {
-                    tracing::event!(
-                        Level::$level,
-                        stream_duration = format_args!("{} μs", $stream_duration.as_micros()),
-                        "end of stream"
-                    );
-                }
-                (Level::$level, LatencyUnit::Micros, Some(status)) => {
-                    tracing::event!(
-                        Level::$level,
-                        stream_duration = format_args!("{} μs", $stream_duration.as_micros()),
-                        status = status,
-                        "end of stream"
-                    );
-                }
-
-                (Level::$level, LatencyUnit::Nanos, None) => {
-                    tracing::event!(
-                        Level::$level,
-                        stream_duration = format_args!("{} ns", $stream_duration.as_nanos()),
-                        "end of stream"
-                    );
-                }
-                (Level::$level, LatencyUnit::Nanos, Some(status)) => {
-                    tracing::event!(
-                        Level::$level,
-                        stream_duration = format_args!("{} ns", $stream_duration.as_nanos()),
-                        status = status,
-                        "end of stream"
-                    );
-                }
-            )*
-        }
-    };
-}
-
 impl OnEos for DefaultOnEos {
     fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Duration, _span: &Span) {
+        let stream_duration = Latency {
+            unit: self.latency_unit,
+            duration: stream_duration,
+        };
         let status = trailers.and_then(|trailers| {
             match crate::classify::grpc_errors_as_failures::classify_grpc_metadata(
                 trailers,
@@ -178,11 +102,6 @@ impl OnEos for DefaultOnEos {
             }
         });
 
-        log_pattern_match!(
-            self,
-            stream_duration,
-            status,
-            [ERROR, WARN, INFO, DEBUG, TRACE]
-        );
+        event_dynamic_lvl!(self.level, %stream_duration, status, "end of stream");
     }
 }
