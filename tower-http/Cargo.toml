@@ -10,7 +10,7 @@ repository = "https://github.com/tower-rs/tower-http"
 homepage = "https://github.com/tower-rs/tower-http"
 categories = ["asynchronous", "network-programming", "web-programming"]
 keywords = ["io", "async", "futures", "service", "http"]
-rust-version = "1.56"
+rust-version = "1.60"
 
 [dependencies]
 bitflags = "2.0.2"
