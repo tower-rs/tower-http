@@ -2,23 +2,23 @@
 name = "tonic-key-value-store"
 version = "0.1.0"
 authors = ["Tower Maintainers <team@tower-rs.com>"]
-edition = "2018"
+edition = "2021"
 publish = false
 license = "MIT"
 
 [dependencies]
 bytes = "1"
 hyper = { version = "0.14.4", features = ["full"] }
-prost = "0.8"
+prost = "0.11"
 tokio = { version = "1.2.0", features = ["full"] }
 futures = "0.3"
 tokio-stream = { version = "0.1", features = ["sync", "net"] }
-tonic = "0.5"
+tonic = "0.9"
 tower = { version = "0.4.5", features = ["full"] }
 tower-http = { path = "../../tower-http", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-clap = { version = "3.1.13", features = ["derive"] }
+clap = { version = "4.3.16", features = ["derive"] }
 
 [build-dependencies]
-tonic-build = "0.5"
+tonic-build = "0.9"

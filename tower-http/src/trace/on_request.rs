@@ -77,22 +77,6 @@ impl DefaultOnRequest {
 
 impl<B> OnRequest<B> for DefaultOnRequest {
     fn on_request(&mut self, _: &Request<B>, _: &Span) {
-        match self.level {
-            Level::ERROR => {
-                tracing::event!(Level::ERROR, "started processing request");
-            }
-            Level::WARN => {
-                tracing::event!(Level::WARN, "started processing request");
-            }
-            Level::INFO => {
-                tracing::event!(Level::INFO, "started processing request");
-            }
-            Level::DEBUG => {
-                tracing::event!(Level::DEBUG, "started processing request");
-            }
-            Level::TRACE => {
-                tracing::event!(Level::TRACE, "started processing request");
-            }
-        }
+        event_dynamic_lvl!(self.level, "started processing request");
     }
 }

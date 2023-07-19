@@ -36,6 +36,19 @@ pin_project! {
     }
 }
 
+impl<B> Default for DecompressionBody<B>
+where
+    B: Body + Default,
+{
+    fn default() -> Self {
+        Self {
+            inner: BodyInner::Identity {
+                inner: B::default(),
+            },
+        }
+    }
+}
+
 impl<B> DecompressionBody<B>
 where
     B: Body,

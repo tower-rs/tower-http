@@ -350,7 +350,7 @@ pub enum CompressionLevel {
     /// qualities. The interpretation of this depends on the algorithm chosen
     /// and the specific implementation backing it.
     /// Qualities are implicitly clamped to the algorithm's maximum.
-    Precise(u32),
+    Precise(i32),
 }
 
 impl Default for CompressionLevel {

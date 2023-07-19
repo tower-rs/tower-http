@@ -69,13 +69,15 @@ mod allow_credentials;
 mod allow_headers;
 mod allow_methods;
 mod allow_origin;
+mod allow_private_network;
 mod expose_headers;
 mod max_age;
 mod vary;
 
 pub use self::{
     allow_credentials::AllowCredentials, allow_headers::AllowHeaders, allow_methods::AllowMethods,
-    allow_origin::AllowOrigin, expose_headers::ExposeHeaders, max_age::MaxAge, vary::Vary,
+    allow_origin::AllowOrigin, allow_private_network::AllowPrivateNetwork,
+    expose_headers::ExposeHeaders, max_age::MaxAge, vary::Vary,
 };
 
 /// Layer that applies the [`Cors`] middleware which adds headers for [CORS][mdn].
@@ -90,6 +92,7 @@ pub struct CorsLayer {
     allow_headers: AllowHeaders,
     allow_methods: AllowMethods,
     allow_origin: AllowOrigin,
+    allow_private_network: AllowPrivateNetwork,
     expose_headers: ExposeHeaders,
     max_age: MaxAge,
     vary: Vary,
@@ -112,6 +115,7 @@ impl CorsLayer {
             allow_headers: Default::default(),
             allow_methods: Default::default(),
             allow_origin: Default::default(),
+            allow_private_network: Default::default(),
             expose_headers: Default::default(),
             max_age: Default::default(),
             vary: Default::default(),
@@ -360,6 +364,23 @@ impl CorsLayer {
         self
     }
 
+    /// Set the value of the [`Access-Control-Allow-Private-Network`][wicg] header.
+    ///
+    /// ```
+    /// use tower_http::cors::CorsLayer;
+    ///
+    /// let layer = CorsLayer::new().allow_private_network(true);
+    /// ```
+    ///
+    /// [wicg]: https://wicg.github.io/private-network-access/
+    pub fn allow_private_network<T>(mut self, allow_private_network: T) -> Self
+    where
+        T: Into<AllowPrivateNetwork>,
+    {
+        self.allow_private_network = allow_private_network.into();
+        self
+    }
+
     /// Set the value(s) of the [`Vary`][mdn] header.
     ///
     /// In contrast to the other headers, this one has a non-empty default of
@@ -554,6 +575,18 @@ impl<S> Cors<S> {
         self.map_layer(|layer| layer.expose_headers(headers))
     }
 
+    /// Set the value of the [`Access-Control-Allow-Private-Network`][wicg] header.
+    ///
+    /// See [`CorsLayer::allow_private_network`] for more details.
+    ///
+    /// [wicg]: https://wicg.github.io/private-network-access/
+    pub fn allow_private_network<T>(self, allow_private_network: T) -> Self
+    where
+        T: Into<AllowPrivateNetwork>,
+    {
+        self.map_layer(|layer| layer.allow_private_network(allow_private_network))
+    }
+
     fn map_layer<F>(mut self, f: F) -> Self
     where
         F: FnOnce(CorsLayer) -> CorsLayer,
@@ -588,6 +621,7 @@ where
 
         headers.extend(self.layer.allow_origin.to_header(origin, &parts));
         headers.extend(self.layer.allow_credentials.to_header(origin, &parts));
+        headers.extend(self.layer.allow_private_network.to_header(origin, &parts));
 
         let mut vary_headers = self.layer.vary.values();
         if let Some(first) = vary_headers.next() {

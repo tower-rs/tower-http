@@ -1,40 +1,3 @@
-//! Middleware that applies a timeout to request and response bodies.
-//!
-//! Bodies must produce data at most within the specified timeout.
-//! If the body does not produce a requested data frame within the timeout period, it will return an error.
-//!
-//! # Differences from [`crate::timeout::Timeout`]
-//!
-//! [`crate::timeout::Timeout`] applies a timeout to the request future, not body.
-//! That timeout is not reset when bytes are handled, whether the request is active or not.
-//! Bodies are handled asynchronously outside of the tower stack's future and thus needs an additional timeout.
-//!
-//! This middleware will return a [`TimeoutError`].
-//!
-//! # Example
-//!
-//! ```
-//! use http::{Request, Response};
-//! use hyper::Body;
-//! use std::time::Duration;
-//! use tower::ServiceBuilder;
-//! use tower_http::timeout::RequestBodyTimeoutLayer;
-//!
-//! async fn handle(_: Request<Body>) -> Result<Response<Body>, std::convert::Infallible> {
-//!     // ...
-//!     # todo!()
-//! }
-//!
-//! # #[tokio::main]
-//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let svc = ServiceBuilder::new()
-//!     // Timeout bodies after 30 seconds of inactivity
-//!     .layer(RequestBodyTimeoutLayer::new(Duration::from_secs(30)))
-//!     .service_fn(handle);
-//! # Ok(())
-//! # }
-//! ```
-
 use crate::BoxError;
 use futures_core::{ready, Future};
 use http_body::Body;
@@ -47,7 +10,44 @@ use std::{
 use tokio::time::{sleep, Sleep};
 
 pin_project! {
+    /// Middleware that applies a timeout to request and response bodies.
+    ///
     /// Wrapper around a [`http_body::Body`] to time out if data is not ready within the specified duration.
+    ///
+    /// Bodies must produce data at most within the specified timeout.
+    /// If the body does not produce a requested data frame within the timeout period, it will return an error.
+    ///
+    /// # Differences from [`Timeout`][crate::timeout::Timeout]
+    ///
+    /// [`Timeout`][crate::timeout::Timeout] applies a timeout to the request future, not body.
+    /// That timeout is not reset when bytes are handled, whether the request is active or not.
+    /// Bodies are handled asynchronously outside of the tower stack's future and thus needs an additional timeout.
+    ///
+    /// This middleware will return a [`TimeoutError`].
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use http::{Request, Response};
+    /// use hyper::Body;
+    /// use std::time::Duration;
+    /// use tower::ServiceBuilder;
+    /// use tower_http::timeout::RequestBodyTimeoutLayer;
+    ///
+    /// async fn handle(_: Request<Body>) -> Result<Response<Body>, std::convert::Infallible> {
+    ///     // ...
+    ///     # todo!()
+    /// }
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let svc = ServiceBuilder::new()
+    ///     // Timeout bodies after 30 seconds of inactivity
+    ///     .layer(RequestBodyTimeoutLayer::new(Duration::from_secs(30)))
+    ///     .service_fn(handle);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub struct TimeoutBody<B> {
         timeout: Duration,
         // In http-body 1.0, `poll_*` will be merged into `poll_frame`.

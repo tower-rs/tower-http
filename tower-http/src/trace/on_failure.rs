@@ -1,4 +1,4 @@
-use super::DEFAULT_ERROR_LEVEL;
+use super::{Latency, DEFAULT_ERROR_LEVEL};
 use crate::LatencyUnit;
 use std::{fmt, time::Duration};
 use tracing::{Level, Span};
@@ -81,64 +81,20 @@ impl DefaultOnFailure {
     }
 }
 
-// Repeating this pattern match for each case is tedious. So we do it with a quick and
-// dirty macro.
-//
-// Tracing requires all these parts to be declared statically. You cannot easily build
-// events dynamically.
-macro_rules! log_pattern_match {
-    (
-        $this:expr, $failure_classification:expr, $latency:expr, [$($level:ident),*]
-    ) => {
-        match ($this.level, $this.latency_unit) {
-            $(
-                (Level::$level, LatencyUnit::Seconds) => {
-                    tracing::event!(
-                        Level::$level,
-                        classification = tracing::field::display($failure_classification),
-                        latency = format_args!("{} s", $latency.as_secs_f64()),
-                        "response failed"
-                    );
-                }
-                (Level::$level, LatencyUnit::Millis) => {
-                    tracing::event!(
-                        Level::$level,
-                        classification = tracing::field::display($failure_classification),
-                        latency = format_args!("{} ms", $latency.as_millis()),
-                        "response failed"
-                    );
-                }
-                (Level::$level, LatencyUnit::Micros) => {
-                    tracing::event!(
-                        Level::$level,
-                        classification = tracing::field::display($failure_classification),
-                        latency = format_args!("{} μs", $latency.as_micros()),
-                        "response failed"
-                    );
-                }
-                (Level::$level, LatencyUnit::Nanos) => {
-                    tracing::event!(
-                        Level::$level,
-                        classification = tracing::field::display($failure_classification),
-                        latency = format_args!("{} ns", $latency.as_nanos()),
-                        "response failed"
-                    );
-                }
-            )*
-        }
-    };
-}
-
 impl<FailureClass> OnFailure<FailureClass> for DefaultOnFailure
 where
     FailureClass: fmt::Display,
 {
     fn on_failure(&mut self, failure_classification: FailureClass, latency: Duration, _: &Span) {
-        log_pattern_match!(
-            self,
-            &failure_classification,
-            latency,
-            [ERROR, WARN, INFO, DEBUG, TRACE]
+        let latency = Latency {
+            unit: self.latency_unit,
+            duration: latency,
+        };
+        event_dynamic_lvl!(
+            self.level,
+            classification = %failure_classification,
+            %latency,
+            "response failed"
         );
     }
 }
