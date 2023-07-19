@@ -11,6 +11,7 @@ use tokio::time::{sleep, Sleep};
 
 pin_project! {
     /// Middleware that applies a timeout to request and response bodies.
+    ///
     /// Wrapper around a [`http_body::Body`] to time out if data is not ready within the specified duration.
     ///
     /// Bodies must produce data at most within the specified timeout.
