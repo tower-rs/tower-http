@@ -8,7 +8,6 @@ use http::HeaderValue;
 use http_body::Body;
 use pin_project_lite::pin_project;
 use std::{
-    convert::TryInto,
     io,
     pin::Pin,
     task::{Context, Poll},
@@ -376,6 +375,8 @@ use async_compression::Level as AsyncCompressionLevel;
 ))]
 impl CompressionLevel {
     pub(crate) fn into_async_compression(self) -> AsyncCompressionLevel {
+        use std::convert::TryInto;
+
         match self {
             CompressionLevel::Fastest => AsyncCompressionLevel::Fastest,
             CompressionLevel::Best => AsyncCompressionLevel::Best,
