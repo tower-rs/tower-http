@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Added
 
-- Msrv 1.60.0 in `tower-http` package metadata
+- None.
 
 ## Changed
 
@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Fixed
 
-- Parses range headers with ranges where the end of range goes past the end of the document by bumping 
+- Accepts range headers with ranges where the end of range goes past the end of the document by bumping 
 http-range-header to `0.4`
 
 # 0.4.2 (July 19, 2023)
