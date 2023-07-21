@@ -8,7 +8,7 @@ use http::{Request, StatusCode};
 use http_body::Body as HttpBody;
 use hyper::Body;
 use std::convert::Infallible;
-use std::io::{Read};
+use std::io::Read;
 use tower::{service_fn, ServiceExt};
 
 #[tokio::test]
@@ -501,7 +501,11 @@ async fn read_partial_accepts_out_of_bounds_range() {
     // Out of bounds range gives all bytes
     assert_eq!(
         res.headers()["content-range"],
-        &format!("bytes 0-{}/{}", file_contents.len() - 1, file_contents.len())
+        &format!(
+            "bytes 0-{}/{}",
+            file_contents.len() - 1,
+            file_contents.len()
+        )
     )
 }
 
