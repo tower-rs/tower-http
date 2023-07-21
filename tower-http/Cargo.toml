@@ -12,6 +12,9 @@ categories = ["asynchronous", "network-programming", "web-programming"]
 keywords = ["io", "async", "futures", "service", "http"]
 rust-version = "1.60"
 
+[package.metadata]
+msrv = "1.60.0"
+
 [dependencies]
 bitflags = "2.0.2"
 bytes = "1"
