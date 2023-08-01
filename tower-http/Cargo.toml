@@ -26,7 +26,7 @@ tower-service = "0.3"
 # optional dependencies
 async-compression = { version = "0.4", optional = true, features = ["tokio"] }
 base64 = { version = "0.21", optional = true }
-http-range-header = "0.3.0"
+http-range-header = { version = "0.3.0", optional = true }
 iri-string = { version = "0.7.0", optional = true }
 mime = { version = "0.3.17", optional = true, default_features = false }
 mime_guess = { version = "2", optional = true, default_features = false }
@@ -85,7 +85,7 @@ auth = ["base64", "validate-request"]
 catch-panic = ["tracing", "futures-util/std"]
 cors = []
 follow-redirect = ["iri-string", "tower/util"]
-fs = ["tokio/fs", "tokio-util/io", "tokio/io-util", "mime_guess", "mime", "percent-encoding", "httpdate", "set-status", "futures-util/alloc", "tracing"]
+fs = ["tokio/fs", "tokio-util/io", "tokio/io-util", "dep:http-range-header", "mime_guess", "mime", "percent-encoding", "httpdate", "set-status", "futures-util/alloc", "tracing"]
 limit = []
 map-request-body = []
 map-response-body = []
