@@ -46,6 +46,12 @@ where
 
         let (mut parts, body) = res.into_parts();
 
+        if should_compress {
+            parts
+                .headers
+                .append(header::VARY, header::ACCEPT_ENCODING.into());
+        }
+
         let body = match (should_compress, self.encoding) {
             // if compression is _not_ support or the client doesn't accept it
             (false, _) | (_, Encoding::Identity) => {
