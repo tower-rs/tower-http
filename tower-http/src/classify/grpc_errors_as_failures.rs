@@ -244,6 +244,14 @@ impl ClassifyEos for GrpcEosErrorsAsFailures {
     }
 }
 
+impl Default for GrpcEosErrorsAsFailures {
+    fn default() -> Self {
+        Self {
+            success_codes: GrpcCodeBitmask::OK,
+        }
+    }
+}
+
 /// The failure class for [`GrpcErrorsAsFailures`].
 #[derive(Debug)]
 pub enum GrpcFailureClass {

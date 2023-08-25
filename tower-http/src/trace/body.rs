@@ -115,3 +115,19 @@ where
         self.inner.size_hint()
     }
 }
+
+impl<B: Default, C: Default, OnBodyChunk: Default, OnEos: Default, OnFailure: Default> Default
+    for ResponseBody<B, C, OnBodyChunk, OnEos, OnFailure>
+{
+    fn default() -> Self {
+        Self {
+            inner: Default::default(),
+            classify_eos: Default::default(),
+            on_eos: Default::default(),
+            on_body_chunk: Default::default(),
+            on_failure: Default::default(),
+            start: Instant::now(),
+            span: Span::current(),
+        }
+    }
+}
