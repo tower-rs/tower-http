@@ -103,7 +103,7 @@ impl<S, ResBody> ValidateRequestHeader<S, Bearer<ResBody>> {
     ///
     /// # Panics
     ///
-    /// Panics if the token is not a valid [`HeaderValue`](http::header::HeaderValue).
+    /// Panics if the token is not a valid [`HeaderValue`].
     pub fn bearer(inner: S, token: &str) -> Self
     where
         ResBody: Body + Default,
@@ -119,7 +119,7 @@ impl<ResBody> ValidateRequestHeaderLayer<Bearer<ResBody>> {
     ///
     /// # Panics
     ///
-    /// Panics if the token is not a valid [`HeaderValue`](http::header::HeaderValue).
+    /// Panics if the token is not a valid [`HeaderValue`].
     pub fn bearer(token: &str) -> Self
     where
         ResBody: Body + Default,
