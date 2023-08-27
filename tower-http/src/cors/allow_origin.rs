@@ -1,8 +1,17 @@
-use std::{array, fmt, sync::Arc};
-
+use futures_core::{
+    future::{BoxFuture, Future},
+    ready,
+};
+use futures_util::FutureExt;
 use http::{
     header::{self, HeaderName, HeaderValue},
     request::Parts as RequestParts,
+};
+use pin_project_lite::pin_project;
+use std::{array, fmt, sync::Arc};
+use std::{
+    pin::Pin,
+    task::{Context, Poll},
 };
 
 use super::{Any, WILDCARD};
@@ -70,6 +79,18 @@ impl AllowOrigin {
         Self(OriginInner::Predicate(Arc::new(f)))
     }
 
+    /// Set the allowed origins from an async predicate
+    ///
+    /// See [`CorsLayer::allow_origin`] for more details.
+    ///
+    /// [`CorsLayer::allow_origin`]: super::CorsLayer::allow_origin
+    pub fn future<F>(f: F) -> Self
+    where
+        F: Fn(&HeaderValue, &RequestParts) -> BoxFuture<'static, bool> + Send + Sync + 'static,
+    {
+        Self(OriginInner::Future(Arc::new(f)))
+    }
+
     /// Allow any origin, by mirroring the request origin
     ///
     /// This is equivalent to
@@ -91,14 +112,73 @@ impl AllowOrigin {
         &self,
         origin: Option<&HeaderValue>,
         parts: &RequestParts,
-    ) -> Option<(HeaderName, HeaderValue)> {
-        let allow_origin = match &self.0 {
-            OriginInner::Const(v) => v.clone(),
-            OriginInner::List(l) => origin.filter(|o| l.contains(o))?.clone(),
-            OriginInner::Predicate(c) => origin.filter(|origin| c(origin, parts))?.clone(),
-        };
+    ) -> AllowOriginFuture {
+        let name = header::ACCESS_CONTROL_ALLOW_ORIGIN;
 
-        Some((header::ACCESS_CONTROL_ALLOW_ORIGIN, allow_origin))
+        match &self.0 {
+            OriginInner::Const(v) => AllowOriginFuture::ok(Some((name, v.clone()))),
+            OriginInner::List(l) => {
+                AllowOriginFuture::ok(origin.filter(|o| l.contains(o)).map(|o| (name, o.clone())))
+            }
+            OriginInner::Predicate(c) => AllowOriginFuture::ok(
+                origin
+                    .filter(|origin| c(origin, parts))
+                    .map(|o| (name, o.clone())),
+            ),
+            OriginInner::Future(f) => {
+                if let Some(origin) = origin.cloned() {
+                    AllowOriginFuture::fut(
+                        f(&origin, parts)
+                            .map(|b| b.then_some((name, origin)))
+                            .boxed(),
+                    )
+                } else {
+                    AllowOriginFuture::ok(None)
+                }
+            }
+        }
+    }
+}
+
+pin_project! {
+    #[project = AllowOriginFutureProj]
+    pub(super) enum AllowOriginFuture {
+        Ok{
+            res: Option<(HeaderName, HeaderValue)>
+        },
+        Future{
+            #[pin]
+            future: BoxFuture<'static, Option<(HeaderName, HeaderValue)>>
+        },
+    }
+}
+
+impl AllowOriginFuture {
+    fn ok(res: Option<(HeaderName, HeaderValue)>) -> Self {
+        Self::Ok { res }
+    }
+
+    fn fut<F: Future<Output = Option<(HeaderName, HeaderValue)>> + Send + 'static>(
+        future: F,
+    ) -> Self {
+        Self::Future {
+            future: future.boxed(),
+        }
+    }
+}
+
+impl Future for AllowOriginFuture {
+    type Output = Option<(HeaderName, HeaderValue)>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        match self.project() {
+            AllowOriginFutureProj::Ok { res } => Poll::Ready(res.take()),
+            AllowOriginFutureProj::Future { future } => {
+                let res = ready!(future.poll(cx));
+
+                Poll::Ready(res)
+            }
+        }
     }
 }
 
@@ -108,6 +188,7 @@ impl fmt::Debug for AllowOrigin {
             OriginInner::Const(inner) => f.debug_tuple("Const").field(inner).finish(),
             OriginInner::List(inner) => f.debug_tuple("List").field(inner).finish(),
             OriginInner::Predicate(_) => f.debug_tuple("Predicate").finish(),
+            OriginInner::Future(_) => f.debug_tuple("Future").finish(),
         }
     }
 }
@@ -143,6 +224,14 @@ enum OriginInner {
     List(Vec<HeaderValue>),
     Predicate(
         Arc<dyn for<'a> Fn(&'a HeaderValue, &'a RequestParts) -> bool + Send + Sync + 'static>,
+    ),
+    Future(
+        Arc<
+            dyn for<'a> Fn(&'a HeaderValue, &'a RequestParts) -> BoxFuture<'static, bool>
+                + Send
+                + Sync
+                + 'static,
+        >,
     ),
 }
 

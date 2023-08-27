@@ -74,6 +74,8 @@ mod expose_headers;
 mod max_age;
 mod vary;
 
+use allow_origin::AllowOriginFuture;
+
 pub use self::{
     allow_credentials::AllowCredentials, allow_headers::AllowHeaders, allow_methods::AllowMethods,
     allow_origin::AllowOrigin, allow_private_network::AllowPrivateNetwork,
@@ -619,7 +621,6 @@ where
         // These headers are applied to both preflight and subsequent regular CORS requests:
         // https://fetch.spec.whatwg.org/#http-responses
 
-        headers.extend(self.layer.allow_origin.to_header(origin, &parts));
         headers.extend(self.layer.allow_credentials.to_header(origin, &parts));
         headers.extend(self.layer.allow_private_network.to_header(origin, &parts));
 
@@ -637,6 +638,8 @@ where
             }
         }
 
+        let allow_origin_future = self.layer.allow_origin.to_header(origin, &parts);
+
         // Return results immediately upon preflight request
         if parts.method == Method::OPTIONS {
             // These headers are applied only to preflight requests
@@ -645,7 +648,10 @@ where
             headers.extend(self.layer.max_age.to_header(origin, &parts));
 
             ResponseFuture {
-                inner: Kind::PreflightCall { headers },
+                inner: Kind::PreflightCall {
+                    allow_origin_future,
+                    headers,
+                },
             }
         } else {
             // This header is applied only to non-preflight requests
@@ -654,6 +660,7 @@ where
             let req = Request::from_parts(parts, body);
             ResponseFuture {
                 inner: Kind::CorsCall {
+                    allow_origin_future,
                     future: self.inner.call(req),
                     headers,
                 },
@@ -675,10 +682,14 @@ pin_project! {
     enum Kind<F> {
         CorsCall {
             #[pin]
+            allow_origin_future: AllowOriginFuture,
+            #[pin]
             future: F,
             headers: HeaderMap,
         },
         PreflightCall {
+            #[pin]
+            allow_origin_future: AllowOriginFuture,
             headers: HeaderMap,
         },
     }
@@ -693,14 +704,25 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match self.project().inner.project() {
-            KindProj::CorsCall { future, headers } => {
+            KindProj::CorsCall {
+                allow_origin_future,
+                future,
+                headers,
+            } => {
                 let mut response: Response<B> = ready!(future.poll(cx))?;
+                response
+                    .headers_mut()
+                    .extend(ready!(allow_origin_future.poll(cx)));
                 response.headers_mut().extend(headers.drain());
 
                 Poll::Ready(Ok(response))
             }
-            KindProj::PreflightCall { headers } => {
+            KindProj::PreflightCall {
+                allow_origin_future,
+                headers,
+            } => {
                 let mut response = Response::new(B::default());
+                headers.extend(ready!(allow_origin_future.poll(cx)));
                 mem::swap(response.headers_mut(), headers);
 
                 Poll::Ready(Ok(response))
