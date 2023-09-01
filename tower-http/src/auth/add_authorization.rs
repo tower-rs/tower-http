@@ -84,7 +84,7 @@ impl AddAuthorizationLayer {
     ///
     /// # Panics
     ///
-    /// Panics if the token is not a valid [`HeaderValue`](http::header::HeaderValue).
+    /// Panics if the token is not a valid [`HeaderValue`].
     pub fn bearer(token: &str) -> Self {
         let value =
             HeaderValue::try_from(format!("Bearer {}", token)).expect("token is not valid header");
@@ -147,7 +147,7 @@ impl<S> AddAuthorization<S> {
     ///
     /// # Panics
     ///
-    /// Panics if the token is not a valid [`HeaderValue`](http::header::HeaderValue).
+    /// Panics if the token is not a valid [`HeaderValue`].
     pub fn bearer(inner: S, token: &str) -> Self {
         AddAuthorizationLayer::bearer(token).layer(inner)
     }
