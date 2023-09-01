@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - None.
 
+# 0.4.4 (September 1, 2023)
+
+## Added
+
+- **trace**: Default implementations for trace bodies.
+
 # 0.4.3 (July 20, 2023)
 
 ## Fixed
