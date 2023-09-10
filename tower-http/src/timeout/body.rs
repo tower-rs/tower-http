@@ -159,6 +159,7 @@ mod tests {
 
     impl Error for MockError {}
     impl Display for MockError {
+        #[allow(clippy::todo)]
         fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             todo!()
         }
@@ -183,6 +184,7 @@ mod tests {
             this.sleep.poll(cx).map(|_| Some(Ok(vec![].into())))
         }
 
+        #[allow(clippy::todo)]
         fn poll_trailers(
             self: Pin<&mut Self>,
             _cx: &mut Context<'_>,

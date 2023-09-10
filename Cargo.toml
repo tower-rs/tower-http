@@ -3,3 +3,4 @@ members = [
   "tower-http",
   "examples/*",
 ]
+resolver = "2"

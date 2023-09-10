@@ -39,6 +39,7 @@ impl AllowPrivateNetwork {
         Self(AllowPrivateNetworkInner::Predicate(Arc::new(f)))
     }
 
+    #[allow(clippy::borrow_interior_mutable_const)]
     pub(super) fn to_header(
         &self,
         origin: Option<&HeaderValue>,
@@ -52,6 +53,7 @@ impl AllowPrivateNetwork {
         const ALLOW_PRIVATE_NETWORK: HeaderName =
             HeaderName::from_static("access-control-allow-private-network");
 
+        #[allow(clippy::declare_interior_mutable_const)]
         const TRUE: HeaderValue = HeaderValue::from_static("true");
 
         // Cheapest fallback: allow_private_network hasn't been set
@@ -110,6 +112,7 @@ impl Default for AllowPrivateNetworkInner {
 }
 
 #[cfg(test)]
+#[allow(clippy::borrow_interior_mutable_const)]
 mod tests {
     use super::AllowPrivateNetwork;
     use crate::cors::CorsLayer;
@@ -119,12 +122,15 @@ mod tests {
     use tower::{BoxError, ServiceBuilder, ServiceExt};
     use tower_service::Service;
 
+    #[allow(clippy::declare_interior_mutable_const)]
     const REQUEST_PRIVATE_NETWORK: HeaderName =
         HeaderName::from_static("access-control-request-private-network");
 
+    #[allow(clippy::declare_interior_mutable_const)]
     const ALLOW_PRIVATE_NETWORK: HeaderName =
         HeaderName::from_static("access-control-allow-private-network");
 
+    #[allow(clippy::declare_interior_mutable_const)]
     const TRUE: HeaderValue = HeaderValue::from_static("true");
 
     #[tokio::test]
