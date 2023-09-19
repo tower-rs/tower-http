@@ -661,6 +661,7 @@ where
             ResponseFuture {
                 inner: Kind::CorsCall {
                     allow_origin_future,
+                    allow_origin_complete: false,
                     future: self.inner.call(req),
                     headers,
                 },
@@ -683,6 +684,7 @@ pin_project! {
         CorsCall {
             #[pin]
             allow_origin_future: AllowOriginFuture,
+            allow_origin_complete: bool,
             #[pin]
             future: F,
             headers: HeaderMap,
@@ -706,13 +708,17 @@ where
         match self.project().inner.project() {
             KindProj::CorsCall {
                 allow_origin_future,
+                allow_origin_complete,
                 future,
                 headers,
             } => {
+                if !*allow_origin_complete {
+                    let allow_origin_header = ready!(allow_origin_future.poll(cx));
+                    headers.extend(allow_origin_header);
+                    *allow_origin_complete = true;
+                }
+
                 let mut response: Response<B> = ready!(future.poll(cx))?;
-                response
-                    .headers_mut()
-                    .extend(ready!(allow_origin_future.poll(cx)));
                 response.headers_mut().extend(headers.drain());
 
                 Poll::Ready(Ok(response))
