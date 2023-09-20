@@ -342,6 +342,9 @@ pub use self::builder::ServiceBuilderExt;
 #[cfg(feature = "validate-request")]
 pub mod validate_request;
 
+mod service_ext;
+pub use service_ext::ServiceExt;
+
 /// The latency unit used to report latencies by middleware.
 #[non_exhaustive]
 #[derive(Copy, Clone, Debug)]
