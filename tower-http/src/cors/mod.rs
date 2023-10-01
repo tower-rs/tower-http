@@ -681,6 +681,13 @@ where
         match self.project().inner.project() {
             KindProj::CorsCall { future, headers } => {
                 let mut response: Response<B> = ready!(future.poll(cx))?;
+
+                // vary header can have multiple values, don't overwrite
+                // previously-set value(s).
+                if let Some(vary) = headers.remove(header::VARY) {
+                    headers.append(header::VARY, vary);
+                }
+                // extend will overwrite previous headers of remaining names
                 response.headers_mut().extend(headers.drain());
 
                 Poll::Ready(Ok(response))
