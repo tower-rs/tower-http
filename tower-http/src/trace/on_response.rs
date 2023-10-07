@@ -147,10 +147,8 @@ fn status<B>(res: &Response<B>) -> Option<i32> {
             res.headers(),
             crate::classify::GrpcCode::Ok.into_bitmask(),
         ) {
-            ParsedGrpcStatus::Success
-            | ParsedGrpcStatus::HeaderNotString
-            | ParsedGrpcStatus::HeaderNotInt => Some(0),
-            ParsedGrpcStatus::NonSuccess(status) => Some(status.get()),
+            ParsedGrpcStatus::Success | ParsedGrpcStatus::HeaderNotGrpcCode => Some(0),
+            ParsedGrpcStatus::NonSuccess(status) => Some(status.code() as i32),
             // if `grpc-status` is missing then its a streaming response and there is no status
             // _yet_, so its neither success nor error
             ParsedGrpcStatus::GrpcStatusHeaderMissing => None,
