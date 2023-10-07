@@ -104,7 +104,7 @@ sensitive-headers = []
 set-header = []
 set-status = []
 timeout = ["dep:http-body", "dep:tokio", "tokio?/time"]
-trace = ["dep:http-body", "tracing"]
+trace = ["dep:http-body", "percent-encoding", "tracing"]
 util = ["tower"]
 validate-request = ["mime"]
 

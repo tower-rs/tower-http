@@ -94,10 +94,8 @@ impl OnEos for DefaultOnEos {
                 trailers,
                 crate::classify::GrpcCode::Ok.into_bitmask(),
             ) {
-                ParsedGrpcStatus::Success
-                | ParsedGrpcStatus::HeaderNotString
-                | ParsedGrpcStatus::HeaderNotInt => Some(0),
-                ParsedGrpcStatus::NonSuccess(status) => Some(status.get()),
+                ParsedGrpcStatus::Success | ParsedGrpcStatus::HeaderNotGrpcCode => Some(0),
+                ParsedGrpcStatus::NonSuccess(status) => Some(status.code() as i32),
                 ParsedGrpcStatus::GrpcStatusHeaderMissing => None,
             }
         });
