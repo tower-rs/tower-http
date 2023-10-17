@@ -68,6 +68,7 @@ full = [
     "map-response-body",
     "metrics",
     "normalize-path",
+    "propagate-extension",
     "propagate-header",
     "redirect",
     "request-id",
@@ -91,6 +92,7 @@ map-request-body = []
 map-response-body = []
 metrics = ["tokio/time"]
 normalize-path = []
+propagate-extension = []
 propagate-header = []
 redirect = []
 request-id = ["uuid"]
