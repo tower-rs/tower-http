@@ -54,6 +54,16 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
         header: HeaderName,
     ) -> ServiceBuilder<Stack<crate::propagate_header::PropagateHeaderLayer, L>>;
 
+    /// Propagate an extension from the request to the response.
+    ///
+    /// See [`tower_http::propagate_extension`] for more details.
+    ///
+    /// [`tower_http::propagate_extension`]: crate::propagate_extension
+    #[cfg(feature = "propagate-extension")]
+    fn propagate_extension<T>(
+        self
+    ) -> ServiceBuilder<Stack<crate::propagate_extension::PropagateExtensionLayer<T>, L>>;
+
     /// Add some shareable value to [request extensions].
     ///
     /// See [`tower_http::add_extension`] for more details.
