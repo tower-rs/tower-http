@@ -187,7 +187,7 @@ mod tests {
 	//use tower_http::propagate_extension::PropagateExtensionLayer;
 	use hyper::Body;
 
-	async fn handle(_req: Request<Body>) -> Result<Response<Body>, Infallible> {
+	async fn handle(req: Request<Body>) -> Result<Response<Body>, Infallible> {
 		Ok(Response::new(Body::empty()))
 	}
 
