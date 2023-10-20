@@ -390,6 +390,13 @@ impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
         self.layer(crate::propagate_header::PropagateHeaderLayer::new(header))
     }
 
+    #[cfg(feature = "propagate-extension")]
+    fn propagate_extension<X>(
+        self,
+    ) -> ServiceBuilder<Stack<crate::propagate_extension::PropagateExtensionLayer<X>, L>> {
+        self.layer(crate::propagate_extension::PropagateExtensionLayer::<X>::new())
+    }
+
     #[cfg(feature = "add-extension")]
     fn add_extension<T>(
         self,
