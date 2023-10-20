@@ -184,10 +184,9 @@ mod tests {
 	use std::convert::Infallible;
 	use tower::{Service, ServiceExt, ServiceBuilder};
 	use crate::add_extension::AddExtensionLayer;
-	//use tower_http::propagate_extension::PropagateExtensionLayer;
 	use hyper::Body;
 
-	async fn handle(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+	async fn handle(_req: Request<Body>) -> Result<Response<Body>, Infallible> {
 		Ok(Response::new(Body::empty()))
 	}
 
