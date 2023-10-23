@@ -243,6 +243,7 @@ where
  	use http::{Request, Response};
  	use std::convert::Infallible;
  	use tower::{Service, ServiceExt, ServiceBuilder};
+    use crate::builder::ServiceBuilderExt;
  	use crate::conditional_response::CondResponseLayer;
 
     fn responder(request: Request<String>) -> ConditionalResponse<Request<String>,Response<String>> {
@@ -287,7 +288,7 @@ where
     #[test]
     fn no_skip_test_no_header() {
 		let mut svc = ServiceBuilder::new()
-			.layer(CondResponseLayer::new(responder))
+			.conditional_response(responder)
 			.service_fn(handle);
 
 		let request = Request::builder().body("".to_string()).expect("Expected an empty body");
