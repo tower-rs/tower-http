@@ -231,6 +231,9 @@ pub mod auth;
 #[cfg(feature = "set-header")]
 pub mod set_header;
 
+#[cfg(any(test,feature = "propagate-extension"))]
+pub mod propagate_extension;
+
 #[cfg(feature = "propagate-header")]
 pub mod propagate_header;
 
@@ -242,7 +245,7 @@ pub mod propagate_header;
 ))]
 pub mod compression;
 
-#[cfg(feature = "add-extension")]
+#[cfg(any(test,feature = "add-extension"))]
 pub mod add_extension;
 
 #[cfg(feature = "sensitive-headers")]
