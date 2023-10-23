@@ -30,8 +30,8 @@
 
 //! The function signature has to be:
 //!
-//! ```
-//! fn responder(request: request type) -> conditional_response::ConditionalResponse<request type,response type> {
+//! ```ignore
+//! fn responder(request: request type) -> conditional_response::ConditionalResponse<request type,response type>
 //! ```
 //! 
 //! Note in particular that there is no [`Result`] - if you have an error you should just generate an error response
