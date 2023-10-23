@@ -335,10 +335,10 @@ pub mod normalize_path;
 pub mod classify;
 pub mod services;
 
-#[cfg(feature = "util")]
+#[cfg(any(test,feature = "util"))]
 mod builder;
 
-#[cfg(feature = "util")]
+#[cfg(any(test,feature = "util"))]
 #[doc(inline)]
 pub use self::builder::ServiceBuilderExt;
 
