@@ -14,6 +14,7 @@
 //! use tower::{Service, ServiceExt, ServiceBuilder, service_fn};
 //! use tower_http::add_extension::AddExtensionLayer;
 //! use tower_http::propagate_extension::PropagateExtensionLayer;
+//! use tower_http::ServiceBuilderExt;
 //! use hyper::Body;
 //!
 //! # #[tokio::main]
@@ -35,8 +36,8 @@
 //! let my_state = MyState { state_message: "propagated state".to_string() };
 //! 
 //! let mut svc = ServiceBuilder::new()
-//!     .layer(AddExtensionLayer::new(my_state)) // any other way of adding the extension to the request is OK too
-//!     .layer(PropagateExtensionLayer::<MyState>::new())
+//!     .add_extension(my_state) // any other way of adding the extension to the request is OK too
+//!     .propagate_extension::<MyState>()
 //!     .service_fn(handle);
 //!
 //! // Call the service.
@@ -184,6 +185,7 @@ mod tests {
 	use std::convert::Infallible;
 	use tower::{Service, ServiceExt, ServiceBuilder};
 	use crate::add_extension::AddExtensionLayer;
+	use crate::builder::ServiceBuilderExt;
 	use hyper::Body;
 
 	async fn handle(_req: Request<Body>) -> Result<Response<Body>, Infallible> {
@@ -203,6 +205,24 @@ mod tests {
 		let mut svc = ServiceBuilder::new()
 			.layer(AddExtensionLayer::new(my_state)) // any other way of adding the extension to the request is OK too
 			.layer(PropagateExtensionLayer::<MyState>::new())
+			.service_fn(handle);
+
+		let request = Request::builder().body(Body::empty()).expect("Expected an empty body");
+
+		// Call the service.
+		let ready = futures::executor::block_on(svc.ready()).expect("Expected the service to be ready");
+		let response = futures::executor::block_on(ready.call(request)).expect("Expected the service to be successful");
+		assert_eq!(response.extensions().get::<MyState>().unwrap().state_message, "propagated state");
+	}
+
+    #[test]
+	fn test_server_builder_ext() {
+
+		let my_state = MyState { state_message: "propagated state".to_string() };
+
+		let mut svc = ServiceBuilder::new()
+			.add_extension(my_state) // any other way of adding the extension to the request is OK too
+			.propagate_extension::<MyState>()
 			.service_fn(handle);
 
 		let request = Request::builder().body(Body::empty()).expect("Expected an empty body");
