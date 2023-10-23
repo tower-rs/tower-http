@@ -320,7 +320,7 @@ pub mod request_id;
 #[cfg(feature = "catch-panic")]
 pub mod catch_panic;
 
-#[cfg(any(test,feature = "cond-skip-inner"))]
+#[cfg(any(test,feature = "conditional-response"))]
 pub mod conditional_response;
 
 #[cfg(feature = "set-status")]

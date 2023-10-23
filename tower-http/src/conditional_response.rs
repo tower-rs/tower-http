@@ -117,7 +117,7 @@ where
 
 /// Middleware that conditionally provides a response to a request in lieu of calling the inner service.
 ///
-/// See the [module docs](crate::propagate_extension) for more details.
+/// See the [module docs](crate::conditional_response) for more details.
 #[derive(Clone,Debug)]
 pub struct CondResponse<S,P> {
     inner: S,
