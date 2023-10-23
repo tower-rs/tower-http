@@ -34,7 +34,7 @@
 //! use http::{Request, Response};
 //! use std::convert::Infallible;
 //! use tower::{Service, ServiceExt, ServiceBuilder};
-//! use tower::conditional_response::CondResponseLayer;
+//! use tower::conditional_response::ConditionalResponseLayer;
 //! 
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -59,7 +59,7 @@
 //!     //
 //!     // Directly wrap the target service with the conditional responder layer
 //!     //
-//!     .layer(CondResponseLayer::new(responder))
+//!     .layer(ConditionalResponseLayer::new(responder))
 //!     .service_fn(handle);
 //! 
 //! let request = Request::builder().header("x-so-we-skip","true").body("".to_string()).expect("Expected an empty body");
@@ -83,32 +83,32 @@ use tower_layer::Layer;
 use tower_service::Service;
 use pin_project::pin_project;
 
-/// Layer that applies [`CondResponse`] which allows the caller to generate/return a response instead of calling the
+/// Layer that applies [`ConditionalResponseService`] which allows the caller to generate/return a response instead of calling the
 /// inner service - useful for stacks where a default response (rather than an error) is determined by a pre-service
 /// filter.
 ///
 /// See the [module docs](crate::conditional_response) for more details.
 #[derive(Clone, Debug)]
-pub struct CondResponseLayer<P> {
+pub struct ConditionalResponseLayer<P> {
     responder: P
 }
 
-impl<P> CondResponseLayer<P> 
+impl<P> ConditionalResponseLayer<P> 
 {
-    /// Create a new [`CondResponseLayer`].
+    /// Create a new [`ConditionalResponseLayer`].
     pub fn new(responder:P) -> Self {
         Self { responder }
     }
 }
 
-impl<S,P> Layer<S> for CondResponseLayer<P>
+impl<S,P> Layer<S> for ConditionalResponseLayer<P>
 where
     P: Clone
 {
-    type Service = CondResponse<S,P>;
+    type Service = ConditionalResponseService<S,P>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        CondResponse::<S,P> {
+        ConditionalResponseService::<S,P> {
             inner,
             responder: self.responder.clone(),
         }
@@ -119,29 +119,29 @@ where
 ///
 /// See the [module docs](crate::conditional_response) for more details.
 #[derive(Clone,Debug)]
-pub struct CondResponse<S,P> {
+pub struct ConditionalResponseService<S,P> {
     inner: S,
     responder: P,
 }
 
-impl<S,P> CondResponse<S,P> 
+impl<S,P> ConditionalResponseService<S,P> 
 {
-    /// Create a new [`CondResponse`] with the inner service and the "responder" function.
+    /// Create a new [`ConditionalResponseService`] with the inner service and the "responder" function.
     pub fn new(inner: S, responder: P) -> Self {
         Self { inner, responder }
     }
 
     define_inner_service_accessors!();
 
-    /// Returns a new [`Layer`] that wraps services with a `CondResponse` middleware.
+    /// Returns a new [`Layer`] that wraps services with a `ConditionalResponseService` middleware.
     ///
     /// [`Layer`]: tower_layer::Layer
-    pub fn layer(responder: P) -> CondResponseLayer<P> {
-        CondResponseLayer::<P>::new(responder)
+    pub fn layer(responder: P) -> ConditionalResponseLayer<P> {
+        ConditionalResponseLayer::<P>::new(responder)
     }
 }
 
-impl<ReqBody, ResBody, S,P> Service<Request<ReqBody>> for CondResponse<S,P>
+impl<ReqBody, ResBody, S,P> Service<Request<ReqBody>> for ConditionalResponseService<S,P>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>> + Clone + Send + 'static,
     P: ConditionalResponder<Request<ReqBody>,Response<ResBody>>,
@@ -165,7 +165,7 @@ where
 }
 
 
-/// Response future for [`CondResponse`].
+/// Response future for [`ConditionalResponseService`].
 /// 
 /// We use an enum because the inner content may be a future or
 /// or may be a direct response.
@@ -244,7 +244,7 @@ where
  	use std::convert::Infallible;
  	use tower::{Service, ServiceExt, ServiceBuilder};
     use crate::builder::ServiceBuilderExt;
- 	use crate::conditional_response::CondResponseLayer;
+ 	use crate::conditional_response::ConditionalResponseLayer;
 
     fn responder(request: Request<String>) -> ConditionalResponse<Request<String>,Response<String>> {
         match request.headers().get("x-so-we-skip") {
@@ -260,7 +260,7 @@ where
     #[test]
     fn skip_test() {
 		let mut svc = ServiceBuilder::new()
-			.layer(CondResponseLayer::new(responder))
+			.layer(ConditionalResponseLayer::new(responder))
 			.service_fn(handle);
 
 		let request = Request::builder().header("x-so-we-skip","true").body("".to_string()).expect("Expected an empty body");
@@ -274,7 +274,7 @@ where
     #[test]
     fn no_skip_test_header() {
 		let mut svc = ServiceBuilder::new()
-			.layer(CondResponseLayer::new(responder))
+			.layer(ConditionalResponseLayer::new(responder))
 			.service_fn(handle);
 
 		let request = Request::builder().header("x-so-we-skip","not true").body("".to_string()).expect("Expected an empty body");

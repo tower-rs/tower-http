@@ -75,7 +75,7 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     fn conditional_response<R>(
         self,
         responder: R,
-    ) -> ServiceBuilder<Stack<crate::conditional_response::CondResponseLayer<R>, L>>;
+    ) -> ServiceBuilder<Stack<crate::conditional_response::ConditionalResponseLayer<R>, L>>;
 
     /// Apply a transformation to the request body.
     ///
@@ -403,8 +403,8 @@ impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
     fn conditional_response<R>(
         self,
         responder: R,
-    ) -> ServiceBuilder<Stack<crate::conditional_response::CondResponseLayer<R>, L>> {
-        self.layer(crate::conditional_response::CondResponseLayer::new(responder))
+    ) -> ServiceBuilder<Stack<crate::conditional_response::ConditionalResponseLayer<R>, L>> {
+        self.layer(crate::conditional_response::ConditionalResponseLayer::new(responder))
     }
 
     #[cfg(feature = "map-request-body")]
