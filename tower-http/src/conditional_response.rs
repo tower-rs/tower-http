@@ -35,7 +35,7 @@
 //! use std::convert::Infallible;
 //! use tower::{Service, ServiceExt, ServiceBuilder};
 //! use tower_http::conditional_response::ConditionalResponse;
-//! use tower_http::conditional_response::ConditionalResponseLayer;
+//! use tower_http::ServiceBuilderExt;
 //! 
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -60,7 +60,7 @@
 //!     //
 //!     // Directly wrap the target service with the conditional responder layer
 //!     //
-//!     .layer(ConditionalResponseLayer::new(responder))
+//!     .conditional_response(responder)
 //!     .service_fn(handle);
 //! 
 //! let request = Request::builder().header("x-so-we-skip","true").body("".to_string()).expect("Expected an empty body");
