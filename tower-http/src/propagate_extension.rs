@@ -64,6 +64,15 @@ use std::{
 use tower_layer::Layer;
 use tower_service::Service;
 
+#[allow(unused_imports)]
+use tracing::{
+	trace,
+	debug,
+	info,
+	warn,
+	error,
+};
+
 /// Layer that applies [`PropagateExtension`] which propagates an extension from the request to the response.
 ///
 /// This middleware is intended to wrap a Request->Response service handler that is _unaware_ of the
@@ -140,6 +149,7 @@ where
 
     fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
         let extension: Option<X> = req.extensions_mut().remove();
+        debug!("Removed state from request extensions. is_some? {}", extension.is_some());
 
         ResponseFuture {
             future: self.inner.call(req),
@@ -170,7 +180,10 @@ where
         let mut res = ready!(this.future.poll(cx)?);
 
         if let Some(extension) = this.extension.take() {
+            debug!("Inserting state into response extensions");
             res.extensions_mut().insert(extension);
+        } else {
+            debug!("No state to insert into response");
         }
 
         Poll::Ready(Ok(res))
