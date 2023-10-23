@@ -40,7 +40,7 @@ use tower_layer::Stack;
 /// # service.ready().await.unwrap().call(Request::new(Body::empty())).await.unwrap();
 /// # }
 /// ```
-#[cfg(any(test,feature = "util"))]
+#[cfg(feature = "util")]
 // ^ work around rustdoc not inferring doc(cfg)s for cfg's from surrounding scopes
 pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     /// Propagate a header from the request to the response.
@@ -71,7 +71,7 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     /// See [`tower_http::conditional_response`] for more details.
     ///
     /// [`tower_http::conditional_response`]: crate::conditional_response
-    #[cfg(any(test,feature = "conditional-response"))]
+    #[cfg(feature = "conditional-response")]
     fn conditional_response<R>(
         self,
         responder: R,
@@ -399,7 +399,7 @@ impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
         self.layer(crate::add_extension::AddExtensionLayer::new(value))
     }
 
-    #[cfg(any(test,feature = "conditional-response"))]
+    #[cfg(feature = "conditional-response")]
     fn conditional_response<R>(
         self,
         responder: R,

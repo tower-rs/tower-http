@@ -34,7 +34,8 @@
 //! use http::{Request, Response};
 //! use std::convert::Infallible;
 //! use tower::{Service, ServiceExt, ServiceBuilder};
-//! use tower::conditional_response::ConditionalResponseLayer;
+//! use tower_http::conditional_response::ConditionalResponse;
+//! use tower_http::conditional_response::ConditionalResponseLayer;
 //! 
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -175,7 +176,13 @@ where
 #[derive(Debug)]
 #[pin_project(project = ResponseFutureProj)]
 pub enum ResponseFuture<F,R> {
+    ///
+    /// The future contains a direct response to return on first poll
+    ///
     Response(Option<R>),
+    ///
+    /// The future contains a "child" future that should be polled
+    ///
     Future(#[pin] F),
 }
 

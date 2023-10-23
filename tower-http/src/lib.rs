@@ -320,7 +320,7 @@ pub mod request_id;
 #[cfg(feature = "catch-panic")]
 pub mod catch_panic;
 
-#[cfg(any(test,feature = "conditional-response"))]
+#[cfg(feature = "conditional-response")]
 pub mod conditional_response;
 
 #[cfg(feature = "set-status")]
@@ -335,10 +335,10 @@ pub mod normalize_path;
 pub mod classify;
 pub mod services;
 
-#[cfg(any(test,feature = "util"))]
+#[cfg(feature = "util")]
 mod builder;
 
-#[cfg(any(test,feature = "util"))]
+#[cfg(feature = "util")]
 #[doc(inline)]
 pub use self::builder::ServiceBuilderExt;
 
