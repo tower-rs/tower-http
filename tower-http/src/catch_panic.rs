@@ -10,11 +10,12 @@
 //! use std::convert::Infallible;
 //! use tower::{Service, ServiceExt, ServiceBuilder, service_fn};
 //! use tower_http::catch_panic::CatchPanicLayer;
-//! use hyper::Body;
+//! use http_body_util::Full;
+//! use bytes::Bytes;
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! async fn handle(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+//! async fn handle(req: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, Infallible> {
 //!     panic!("something went wrong...")
 //! }
 //!
@@ -24,7 +25,7 @@
 //!     .service_fn(handle);
 //!
 //! // Call the service.
-//! let request = Request::new(Body::empty());
+//! let request = Request::new(Full::default());
 //!
 //! let response = svc.ready().await?.call(request).await?;
 //!
@@ -41,15 +42,16 @@
 //! use std::{any::Any, convert::Infallible};
 //! use tower::{Service, ServiceExt, ServiceBuilder, service_fn};
 //! use tower_http::catch_panic::CatchPanicLayer;
-//! use hyper::Body;
+//! use bytes::Bytes;
+//! use http_body_util::Full;
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! async fn handle(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+//! async fn handle(req: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, Infallible> {
 //!     panic!("something went wrong...")
 //! }
 //!
-//! fn handle_panic(err: Box<dyn Any + Send + 'static>) -> Response<Body> {
+//! fn handle_panic(err: Box<dyn Any + Send + 'static>) -> Response<Full<Bytes>> {
 //!     let details = if let Some(s) = err.downcast_ref::<String>() {
 //!         s.clone()
 //!     } else if let Some(s) = err.downcast_ref::<&str>() {
@@ -69,7 +71,7 @@
 //!     Response::builder()
 //!         .status(StatusCode::INTERNAL_SERVER_ERROR)
 //!         .header(header::CONTENT_TYPE, "application/json")
-//!         .body(Body::from(body))
+//!         .body(Full::from(body))
 //!         .unwrap()
 //! }
 //!
