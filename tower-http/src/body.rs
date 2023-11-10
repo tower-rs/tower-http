@@ -46,6 +46,7 @@ pin_project! {
 }
 
 impl Full {
+    #[allow(dead_code)]
     pub(crate) fn new(inner: http_body_util::Full<Bytes>) -> Self {
         Self { inner }
     }
@@ -66,6 +67,7 @@ pin_project! {
 }
 
 impl<B> Limited<B> {
+    #[allow(dead_code)]
     pub(crate) fn new(inner: http_body_util::Limited<B>) -> Self {
         Self { inner }
     }
@@ -101,6 +103,7 @@ where
 }
 
 impl<D, E> UnsyncBoxBody<D, E> {
+    #[allow(dead_code)]
     pub(crate) fn new(inner: http_body_util::combinators::UnsyncBoxBody<D, E>) -> Self {
         Self { inner }
     }
