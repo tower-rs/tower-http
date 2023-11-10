@@ -2,6 +2,8 @@
 //!
 //! All these are wrappers around other body types. You shouldn't have to use them in your code.
 //! Use `http-body-util` instead.
+//!
+//! They exist because we cannot expose types from `http-body-util` in `tower-http`s public API.
 
 #![allow(missing_docs)]
 
