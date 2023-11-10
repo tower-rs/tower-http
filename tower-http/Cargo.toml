@@ -19,7 +19,7 @@ futures-core = "0.3"
 futures-util = { version = "0.3.14", default_features = false, features = [] }
 http = "0.2.2"
 http-body = "1.0.0-rc.2"
-http-body-util = "0.1.0-rc.2"
+http-body-util = "0.1.0-rc.3"
 pin-project-lite = "0.2.7"
 tower-layer = "0.3"
 tower-service = "0.3"
