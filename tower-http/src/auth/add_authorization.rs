@@ -7,15 +7,16 @@
 //! ```
 //! use tower_http::validate_request::{ValidateRequestHeader, ValidateRequestHeaderLayer};
 //! use tower_http::auth::AddAuthorizationLayer;
-//! use hyper::{Request, Response, Body, Error};
-//! use http::{StatusCode, header::AUTHORIZATION};
-//! use tower::{Service, ServiceExt, ServiceBuilder, service_fn};
-//! # async fn handle(request: Request<Body>) -> Result<Response<Body>, Error> {
-//! #     Ok(Response::new(Body::empty()))
+//! use http::{Request, Response, StatusCode, header::AUTHORIZATION};
+//! use tower::{Service, ServiceExt, ServiceBuilder, service_fn, BoxError};
+//! use http_body_util::Full;
+//! use bytes::Bytes;
+//! # async fn handle(request: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, BoxError> {
+//! #     Ok(Response::new(Full::default()))
 //! # }
 //!
 //! # #[tokio::main]
-//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn main() -> Result<(), BoxError> {
 //! # let service_that_requires_auth = ValidateRequestHeader::basic(
 //! #     tower::service_fn(handle),
 //! #     "username",
@@ -30,7 +31,7 @@
 //! let response = client
 //!     .ready()
 //!     .await?
-//!     .call(Request::new(Body::empty()))
+//!     .call(Request::new(Full::default()))
 //!     .await?;
 //!
 //! assert_eq!(StatusCode::OK, response.status());
