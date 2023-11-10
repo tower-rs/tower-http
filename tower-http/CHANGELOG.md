@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Changed
 
-- Bump Minimum Supported Rust Version to 1.63 ([#418])
+- Bump Minimum Supported Rust Version to 1.66 ([#433])
 
 ## Removed
 
@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 http-range-header to `0.4`
 
 [#418]: https://github.com/tower-rs/tower-http/pull/418
+[#433]: https://github.com/tower-rs/tower-http/pull/433
 
 # 0.4.2 (July 19, 2023)
 
