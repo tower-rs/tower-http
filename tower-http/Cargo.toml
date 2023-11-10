@@ -60,9 +60,9 @@ full = [
     "add-extension",
     "auth",
     "catch-panic",
-    "compression-full",
+    # "compression-full",
     "cors",
-    "decompression-full",
+    # "decompression-full",
     "follow-redirect",
     "fs",
     "limit",
@@ -104,17 +104,17 @@ trace = ["tracing"]
 util = ["tower"]
 validate-request = ["mime"]
 
-compression-br = ["async-compression/brotli", "tokio-util", "tokio"]
-compression-deflate = ["async-compression/zlib", "tokio-util", "tokio"]
-compression-full = ["compression-br", "compression-deflate", "compression-gzip", "compression-zstd"]
-compression-gzip = ["async-compression/gzip", "tokio-util", "tokio"]
-compression-zstd = ["async-compression/zstd", "tokio-util", "tokio"]
+# compression-br = ["async-compression/brotli", "tokio-util", "tokio"]
+# compression-deflate = ["async-compression/zlib", "tokio-util", "tokio"]
+# compression-full = ["compression-br", "compression-deflate", "compression-gzip", "compression-zstd"]
+# compression-gzip = ["async-compression/gzip", "tokio-util", "tokio"]
+# compression-zstd = ["async-compression/zstd", "tokio-util", "tokio"]
 
-decompression-br = ["async-compression/brotli", "tokio-util", "tokio"]
-decompression-deflate = ["async-compression/zlib", "tokio-util", "tokio"]
-decompression-full = ["decompression-br", "decompression-deflate", "decompression-gzip", "decompression-zstd"]
-decompression-gzip = ["async-compression/gzip", "tokio-util", "tokio"]
-decompression-zstd = ["async-compression/zstd", "tokio-util", "tokio"]
+# decompression-br = ["async-compression/brotli", "tokio-util", "tokio"]
+# decompression-deflate = ["async-compression/zlib", "tokio-util", "tokio"]
+# decompression-full = ["decompression-br", "decompression-deflate", "decompression-gzip", "decompression-zstd"]
+# decompression-gzip = ["async-compression/gzip", "tokio-util", "tokio"]
+# decompression-zstd = ["async-compression/zstd", "tokio-util", "tokio"]
 
 [package.metadata.docs.rs]
 all-features = true

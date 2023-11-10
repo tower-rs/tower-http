@@ -236,13 +236,14 @@ pub mod set_header;
 #[cfg(feature = "propagate-header")]
 pub mod propagate_header;
 
-#[cfg(any(
-    feature = "compression-br",
-    feature = "compression-deflate",
-    feature = "compression-gzip",
-    feature = "compression-zstd",
-))]
-pub mod compression;
+// TODO(david): bring this back
+// #[cfg(any(
+//     feature = "compression-br",
+//     feature = "compression-deflate",
+//     feature = "compression-gzip",
+//     feature = "compression-zstd",
+// ))]
+// pub mod compression;
 
 #[cfg(feature = "add-extension")]
 pub mod add_extension;
@@ -250,13 +251,14 @@ pub mod add_extension;
 #[cfg(feature = "sensitive-headers")]
 pub mod sensitive_headers;
 
-#[cfg(any(
-    feature = "decompression-br",
-    feature = "decompression-deflate",
-    feature = "decompression-gzip",
-    feature = "decompression-zstd",
-))]
-pub mod decompression;
+// TODO(david): bring this back
+// #[cfg(any(
+//     feature = "decompression-br",
+//     feature = "decompression-deflate",
+//     feature = "decompression-gzip",
+//     feature = "decompression-zstd",
+// ))]
+// pub mod decompression;
 
 #[cfg(any(
     feature = "compression-br",
@@ -271,29 +273,29 @@ pub mod decompression;
 ))]
 mod content_encoding;
 
-#[cfg(any(
-    feature = "compression-br",
-    feature = "compression-deflate",
-    feature = "compression-gzip",
-    feature = "compression-zstd",
-    feature = "decompression-br",
-    feature = "decompression-deflate",
-    feature = "decompression-gzip",
-    feature = "decompression-zstd",
-))]
-mod compression_utils;
+// #[cfg(any(
+//     feature = "compression-br",
+//     feature = "compression-deflate",
+//     feature = "compression-gzip",
+//     feature = "compression-zstd",
+//     feature = "decompression-br",
+//     feature = "decompression-deflate",
+//     feature = "decompression-gzip",
+//     feature = "decompression-zstd",
+// ))]
+// mod compression_utils;
 
-#[cfg(any(
-    feature = "compression-br",
-    feature = "compression-deflate",
-    feature = "compression-gzip",
-    feature = "compression-zstd",
-    feature = "decompression-br",
-    feature = "decompression-deflate",
-    feature = "decompression-gzip",
-    feature = "decompression-zstd",
-))]
-pub use compression_utils::CompressionLevel;
+// #[cfg(any(
+//     feature = "compression-br",
+//     feature = "compression-deflate",
+//     feature = "compression-gzip",
+//     feature = "compression-zstd",
+//     feature = "decompression-br",
+//     feature = "decompression-deflate",
+//     feature = "decompression-gzip",
+//     feature = "decompression-zstd",
+// ))]
+// pub use compression_utils::CompressionLevel;
 
 #[cfg(feature = "map-response-body")]
 pub mod map_response_body;

@@ -88,31 +88,31 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
         f: F,
     ) -> ServiceBuilder<Stack<crate::map_response_body::MapResponseBodyLayer<F>, L>>;
 
-    /// Compresses response bodies.
-    ///
-    /// See [`tower_http::compression`] for more details.
-    ///
-    /// [`tower_http::compression`]: crate::compression
-    #[cfg(any(
-        feature = "compression-br",
-        feature = "compression-deflate",
-        feature = "compression-gzip",
-        feature = "compression-zstd",
-    ))]
-    fn compression(self) -> ServiceBuilder<Stack<crate::compression::CompressionLayer, L>>;
+    ///// Compresses response bodies.
+    /////
+    ///// See [`tower_http::compression`] for more details.
+    /////
+    ///// [`tower_http::compression`]: crate::compression
+    //#[cfg(any(
+    //    feature = "compression-br",
+    //    feature = "compression-deflate",
+    //    feature = "compression-gzip",
+    //    feature = "compression-zstd",
+    //))]
+    //fn compression(self) -> ServiceBuilder<Stack<crate::compression::CompressionLayer, L>>;
 
-    /// Decompress response bodies.
-    ///
-    /// See [`tower_http::decompression`] for more details.
-    ///
-    /// [`tower_http::decompression`]: crate::decompression
-    #[cfg(any(
-        feature = "decompression-br",
-        feature = "decompression-deflate",
-        feature = "decompression-gzip",
-        feature = "decompression-zstd",
-    ))]
-    fn decompression(self) -> ServiceBuilder<Stack<crate::decompression::DecompressionLayer, L>>;
+    ///// Decompress response bodies.
+    /////
+    ///// See [`tower_http::decompression`] for more details.
+    /////
+    ///// [`tower_http::decompression`]: crate::decompression
+    //#[cfg(any(
+    //    feature = "decompression-br",
+    //    feature = "decompression-deflate",
+    //    feature = "decompression-gzip",
+    //    feature = "decompression-zstd",
+    //))]
+    //fn decompression(self) -> ServiceBuilder<Stack<crate::decompression::DecompressionLayer, L>>;
 
     /// High level tracing that classifies responses using HTTP status codes.
     ///
@@ -404,25 +404,25 @@ impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
         self.layer(crate::map_response_body::MapResponseBodyLayer::new(f))
     }
 
-    #[cfg(any(
-        feature = "compression-br",
-        feature = "compression-deflate",
-        feature = "compression-gzip",
-        feature = "compression-zstd",
-    ))]
-    fn compression(self) -> ServiceBuilder<Stack<crate::compression::CompressionLayer, L>> {
-        self.layer(crate::compression::CompressionLayer::new())
-    }
+    // #[cfg(any(
+    //     feature = "compression-br",
+    //     feature = "compression-deflate",
+    //     feature = "compression-gzip",
+    //     feature = "compression-zstd",
+    // ))]
+    // fn compression(self) -> ServiceBuilder<Stack<crate::compression::CompressionLayer, L>> {
+    //     self.layer(crate::compression::CompressionLayer::new())
+    // }
 
-    #[cfg(any(
-        feature = "decompression-br",
-        feature = "decompression-deflate",
-        feature = "decompression-gzip",
-        feature = "decompression-zstd",
-    ))]
-    fn decompression(self) -> ServiceBuilder<Stack<crate::decompression::DecompressionLayer, L>> {
-        self.layer(crate::decompression::DecompressionLayer::new())
-    }
+    // #[cfg(any(
+    //     feature = "decompression-br",
+    //     feature = "decompression-deflate",
+    //     feature = "decompression-gzip",
+    //     feature = "decompression-zstd",
+    // ))]
+    // fn decompression(self) -> ServiceBuilder<Stack<crate::decompression::DecompressionLayer, L>> {
+    //     self.layer(crate::decompression::DecompressionLayer::new())
+    // }
 
     #[cfg(feature = "trace")]
     fn trace_for_http(
