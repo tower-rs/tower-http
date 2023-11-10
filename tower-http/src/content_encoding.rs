@@ -271,8 +271,7 @@ mod tests {
 
     #[test]
     fn no_accept_encoding_header() {
-        let encoding =
-            Encoding::from_headers(&http::HeaderMap::new(), SupportedEncodingsAll);
+        let encoding = Encoding::from_headers(&http::HeaderMap::new(), SupportedEncodingsAll);
         assert_eq!(Encoding::Identity, encoding);
     }
 
