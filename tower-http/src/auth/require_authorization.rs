@@ -6,16 +6,17 @@
 //!
 //! ```
 //! use tower_http::validate_request::{ValidateRequest, ValidateRequestHeader, ValidateRequestHeaderLayer};
-//! use hyper::{Request, Response, Body, Error};
-//! use http::{StatusCode, header::AUTHORIZATION};
-//! use tower::{Service, ServiceExt, ServiceBuilder, service_fn};
+//! use http::{Request, Response, StatusCode, header::AUTHORIZATION};
+//! use tower::{Service, ServiceExt, ServiceBuilder, service_fn, BoxError};
+//! use bytes::Bytes;
+//! use http_body_util::Full;
 //!
-//! async fn handle(request: Request<Body>) -> Result<Response<Body>, Error> {
-//!     Ok(Response::new(Body::empty()))
+//! async fn handle(request: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, BoxError> {
+//!     Ok(Response::new(Full::default()))
 //! }
 //!
 //! # #[tokio::main]
-//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn main() -> Result<(), BoxError> {
 //! let mut service = ServiceBuilder::new()
 //!     // Require the `Authorization` header to be `Bearer passwordlol`
 //!     .layer(ValidateRequestHeaderLayer::bearer("passwordlol"))
@@ -24,7 +25,7 @@
 //! // Requests with the correct token are allowed through
 //! let request = Request::builder()
 //!     .header(AUTHORIZATION, "Bearer passwordlol")
-//!     .body(Body::empty())
+//!     .body(Full::default())
 //!     .unwrap();
 //!
 //! let response = service
@@ -37,7 +38,7 @@
 //!
 //! // Requests with an invalid token get a `401 Unauthorized` response
 //! let request = Request::builder()
-//!     .body(Body::empty())
+//!     .body(Full::default())
 //!     .unwrap();
 //!
 //! let response = service
