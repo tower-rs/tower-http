@@ -17,13 +17,14 @@ use tower_layer::Stack;
 ///
 /// ```rust
 /// use http::{Request, Response, header::HeaderName};
-/// use hyper::Body;
+/// use bytes::Bytes;
+/// use http_body_util::Full;
 /// use std::{time::Duration, convert::Infallible};
 /// use tower::{ServiceBuilder, ServiceExt, Service};
 /// use tower_http::ServiceBuilderExt;
 ///
-/// async fn handle(request: Request<Body>) -> Result<Response<Body>, Infallible> {
-///     Ok(Response::new(Body::empty()))
+/// async fn handle(request: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, Infallible> {
+///     Ok(Response::new(Full::default()))
 /// }
 ///
 /// # #[tokio::main]
@@ -33,11 +34,10 @@ use tower_layer::Stack;
 ///     .timeout(Duration::from_secs(30))
 ///     // Methods from tower-http
 ///     .trace_for_http()
-///     .compression()
 ///     .propagate_header(HeaderName::from_static("x-request-id"))
 ///     .service_fn(handle);
 /// # let mut service = service;
-/// # service.ready().await.unwrap().call(Request::new(Body::empty())).await.unwrap();
+/// # service.ready().await.unwrap().call(Request::new(Full::default())).await.unwrap();
 /// # }
 /// ```
 #[cfg(feature = "util")]
