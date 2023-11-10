@@ -10,12 +10,13 @@
 //! use tower::{Service, ServiceExt, ServiceBuilder};
 //! use tower_http::metrics::InFlightRequestsLayer;
 //! use http::{Request, Response};
-//! use hyper::Body;
+//! use bytes::Bytes;
+//! use http_body_util::Full;
 //! use std::{time::Duration, convert::Infallible};
 //!
-//! async fn handle(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+//! async fn handle(req: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, Infallible> {
 //!     // ...
-//!     # Ok(Response::new(Body::empty()))
+//!     # Ok(Response::new(Full::default()))
 //! }
 //!
 //! async fn update_in_flight_requests_metric(count: usize) {
@@ -44,7 +45,7 @@
 //! let response = service
 //!     .ready()
 //!     .await?
-//!     .call(Request::new(Body::empty()))
+//!     .call(Request::new(Full::default()))
 //!     .await?;
 //! # Ok(())
 //! # }
