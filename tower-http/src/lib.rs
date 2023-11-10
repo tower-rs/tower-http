@@ -17,17 +17,18 @@
 //! ```rust,no_run
 //! use tower_http::{
 //!     add_extension::AddExtensionLayer,
-//!     compression::CompressionLayer,
+//!     // compression::CompressionLayer,
 //!     propagate_header::PropagateHeaderLayer,
 //!     sensitive_headers::SetSensitiveRequestHeadersLayer,
 //!     set_header::SetResponseHeaderLayer,
 //!     trace::TraceLayer,
 //!     validate_request::ValidateRequestHeaderLayer,
 //! };
-//! use tower::{ServiceBuilder, service_fn, make::Shared};
+//! use tower::{ServiceBuilder, service_fn, BoxError};
 //! use http::{Request, Response, header::{HeaderName, CONTENT_TYPE, AUTHORIZATION}};
-//! use hyper::{Body, Error, server::Server, service::make_service_fn};
 //! use std::{sync::Arc, net::SocketAddr, convert::Infallible, iter::once};
+//! use bytes::Bytes;
+//! use http_body_util::Full;
 //! # struct DatabaseConnectionPool;
 //! # impl DatabaseConnectionPool {
 //! #     fn new() -> DatabaseConnectionPool { DatabaseConnectionPool }
@@ -37,7 +38,7 @@
 //!
 //! // Our request handler. This is where we would implement the application logic
 //! // for responding to HTTP requests...
-//! async fn handler(request: Request<Body>) -> Result<Response<Body>, Error> {
+//! async fn handler(request: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, BoxError> {
 //!     // ...
 //!     # todo!()
 //! }
@@ -64,7 +65,7 @@
 //!         // Share an `Arc<State>` with all requests
 //!         .layer(AddExtensionLayer::new(Arc::new(state)))
 //!         // Compress responses
-//!         .layer(CompressionLayer::new())
+//!         // .layer(CompressionLayer::new())
 //!         // Propagate `X-Request-Id`s from requests to responses
 //!         .layer(PropagateHeaderLayer::new(HeaderName::from_static("x-request-id")))
 //!         // If the response has a known size set the `Content-Length` header
@@ -75,69 +76,13 @@
 //!         .layer(ValidateRequestHeaderLayer::accept("application/json"))
 //!         // Wrap a `Service` in our middleware stack
 //!         .service_fn(handler);
-//!
-//!     // And run our service using `hyper`
-//!     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
-//!     Server::bind(&addr)
-//!         .serve(Shared::new(service))
-//!         .await
-//!         .expect("server error");
+//!     # let mut service = service;
+//!     # tower::Service::call(&mut service, Request::new(Full::default()));
 //! }
 //! ```
 //!
 //! Keep in mind that while this example uses [hyper], tower-http supports any HTTP
 //! client/server implementation that uses the [http] and [http-body] crates.
-//!
-//! # Example client
-//!
-//! tower-http middleware can also be applied to HTTP clients:
-//!
-//! ```rust,no_run
-//! use tower_http::{
-//!     decompression::DecompressionLayer,
-//!     set_header::SetRequestHeaderLayer,
-//!     trace::TraceLayer,
-//!     classify::StatusInRangeAsFailures,
-//! };
-//! use tower::{ServiceBuilder, Service, ServiceExt};
-//! use hyper::Body;
-//! use http::{Request, HeaderValue, header::USER_AGENT};
-//!
-//! #[tokio::main]
-//! async fn main() {
-//!     let mut client = ServiceBuilder::new()
-//!         // Add tracing and consider server errors and client
-//!         // errors as failures.
-//!         .layer(TraceLayer::new(
-//!             StatusInRangeAsFailures::new(400..=599).into_make_classifier()
-//!         ))
-//!         // Set a `User-Agent` header on all requests.
-//!         .layer(SetRequestHeaderLayer::overriding(
-//!             USER_AGENT,
-//!             HeaderValue::from_static("tower-http demo")
-//!         ))
-//!         // Decompress response bodies
-//!         .layer(DecompressionLayer::new())
-//!         // Wrap a `hyper::Client` in our middleware stack.
-//!         // This is possible because `hyper::Client` implements
-//!         // `tower::Service`.
-//!         .service(hyper::Client::new());
-//!
-//!     // Make a request
-//!     let request = Request::builder()
-//!         .uri("http://example.com")
-//!         .body(Body::empty())
-//!         .unwrap();
-//!
-//!     let response = client
-//!         .ready()
-//!         .await
-//!         .unwrap()
-//!         .call(request)
-//!         .await
-//!         .unwrap();
-//! }
-//! ```
 //!
 //! # Feature Flags
 //!
