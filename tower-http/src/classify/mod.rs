@@ -192,7 +192,7 @@ pub trait ClassifyResponse {
     ///     ClassifyResponse, ClassifiedResponse
     /// };
     /// use http::{Response, StatusCode};
-    /// use http_body::Empty;
+    /// use http_body_util::Empty;
     /// use bytes::Bytes;
     ///
     /// fn transform_failure_class(class: ServerErrorsFailureClass) -> NewFailureClass {
