@@ -8,7 +8,7 @@ use http::{header, Method, Response};
 use http::{Request, StatusCode};
 use http_body::Body as HttpBody;
 use std::convert::Infallible;
-use std::io::{self, Read};
+use std::io::Read;
 use tower::{service_fn, ServiceExt};
 
 #[tokio::test]

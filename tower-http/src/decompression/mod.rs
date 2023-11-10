@@ -124,7 +124,6 @@ mod tests {
     use bytes::BytesMut;
     use http::Request;
     use http::Response;
-    use http_body::Body as _;
     use tower::{service_fn, Service, ServiceExt};
 
     #[tokio::test]

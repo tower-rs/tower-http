@@ -183,7 +183,6 @@
     clippy::todo,
     clippy::empty_enum,
     clippy::enum_glob_use,
-    clippy::pub_enum_variant_names,
     clippy::mem_forget,
     clippy::unused_self,
     clippy::filter_map_next,

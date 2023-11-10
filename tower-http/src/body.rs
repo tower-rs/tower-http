@@ -3,6 +3,8 @@
 //! All these are wrappers around other body types. You shouldn't have to use them in your code.
 //! Use `http-body-util` instead.
 
+#![allow(missing_docs)]
+
 use std::convert::Infallible;
 
 use bytes::{Buf, Bytes};

@@ -93,7 +93,6 @@ mod tests {
     use flate2::read::GzDecoder;
     use http::header::{ACCEPT_ENCODING, CONTENT_ENCODING, CONTENT_TYPE};
     use http::{Request, Response};
-    use http_body::Body as _;
     use std::convert::Infallible;
     use std::io::Read;
     use std::sync::{Arc, RwLock};
@@ -259,6 +258,7 @@ mod tests {
         #[derive(Default, Clone)]
         struct EveryOtherResponse(Arc<RwLock<u64>>);
 
+        #[allow(clippy::dbg_macro)]
         impl Predicate for EveryOtherResponse {
             fn should_compress<B>(&self, _: &http::Response<B>) -> bool
             where

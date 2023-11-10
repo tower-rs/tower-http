@@ -125,7 +125,6 @@ mod tests {
     use super::*;
     use crate::test_helpers::{Body, TowerHttpBodyExt};
     use http::{header::ACCEPT_ENCODING, Request, Response};
-    use http_body::Body as _;
     use tokio::fs::File;
     // for Body::data
     use bytes::{Bytes, BytesMut};

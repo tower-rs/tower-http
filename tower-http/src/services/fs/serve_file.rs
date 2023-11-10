@@ -136,7 +136,6 @@ mod tests {
     use http::header;
     use http::Method;
     use http::{Request, StatusCode};
-    use http_body::Body as _;
     use mime::Mime;
     use std::io::Read;
     use std::str::FromStr;

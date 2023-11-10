@@ -1,7 +1,7 @@
 //! Types used by compression and decompression middleware.
 
 use crate::{content_encoding::SupportedEncodings, BoxError};
-use bytes::{Bytes, BytesMut};
+use bytes::Bytes;
 use futures_core::Stream;
 use futures_util::ready;
 use http::HeaderValue;
@@ -13,7 +13,7 @@ use std::{
     task::{Context, Poll},
 };
 use tokio::io::AsyncRead;
-use tokio_util::io::{poll_read_buf, StreamReader};
+use tokio_util::io::StreamReader;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct AcceptEncoding {

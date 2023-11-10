@@ -384,7 +384,7 @@ where
                     .to_str()
                     .ok()
                     .into_iter()
-                    .flat_map(|s| s.split(",").map(|typ| typ.trim()))
+                    .flat_map(|s| s.split(',').map(|typ| typ.trim()))
             })
             .any(|h| {
                 h.parse::<Mime>()

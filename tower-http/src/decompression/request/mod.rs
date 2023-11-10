@@ -10,7 +10,6 @@ mod tests {
     use bytes::BytesMut;
     use flate2::{write::GzEncoder, Compression};
     use http::{header, Request, Response, StatusCode};
-    use http_body::Body as _;
     use std::{convert::Infallible, io::Write};
     use tower::{service_fn, Service, ServiceExt};
 

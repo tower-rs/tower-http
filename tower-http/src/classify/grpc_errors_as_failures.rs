@@ -262,7 +262,6 @@ impl fmt::Display for GrpcFailureClass {
     }
 }
 
-#[allow(clippy::if_let_some_result)]
 pub(crate) fn classify_grpc_metadata(
     headers: &HeaderMap,
     success_codes: GrpcCodeBitmask,
