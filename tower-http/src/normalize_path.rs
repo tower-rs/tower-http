@@ -8,15 +8,16 @@
 //! ```
 //! use tower_http::normalize_path::NormalizePathLayer;
 //! use http::{Request, Response, StatusCode};
-//! use hyper::Body;
+//! use http_body_util::Full;
+//! use bytes::Bytes;
 //! use std::{iter::once, convert::Infallible};
 //! use tower::{ServiceBuilder, Service, ServiceExt};
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! async fn handle(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+//! async fn handle(req: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, Infallible> {
 //!     // `req.uri().path()` will not have trailing slashes
-//!     # Ok(Response::new(Body::empty()))
+//!     # Ok(Response::new(Full::default()))
 //! }
 //!
 //! let mut service = ServiceBuilder::new()
@@ -28,7 +29,7 @@
 //! let request = Request::builder()
 //!     // `handle` will see `/foo`
 //!     .uri("/foo/")
-//!     .body(Body::empty())?;
+//!     .body(Full::default())?;
 //!
 //! service.ready().await?.call(request).await?;
 //! #
