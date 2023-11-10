@@ -385,7 +385,7 @@ where
             .into_iter()
             .filter_map(|header| header.to_str().ok())
             .any(|h| {
-                MimeIter::new(&h)
+                MimeIter::new(h)
                     .map(|mim| {
                         if let Ok(mim) = mim {
                             let typ = self.header_value.type_();
