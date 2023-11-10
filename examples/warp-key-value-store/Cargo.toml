@@ -2,13 +2,13 @@
 name = "warp-key-value-store"
 version = "0.1.0"
 authors = ["Tower Maintainers <team@tower-rs.com>"]
-edition = "2018"
+edition = "2021"
 publish = false
 license = "MIT"
 
 [dependencies]
 bytes = "1"
-clap = { version = "3.1.13", features = ["derive"] }
+clap = { version = "4.3.16", features = ["derive"] }
 hyper = { version = "0.14.4", features = ["full"] }
 tokio = { version = "1.2.0", features = ["full"] }
 tower = { version = "0.4.5", features = ["full"] }

@@ -480,7 +480,7 @@ async fn read_partial_in_bounds() {
 }
 
 #[tokio::test]
-async fn read_partial_rejects_out_of_bounds_range() {
+async fn read_partial_accepts_out_of_bounds_range() {
     let svc = ServeDir::new("..");
     let bytes_start_incl = 0;
     let bytes_end_excl = 9999999;
@@ -496,11 +496,16 @@ async fn read_partial_rejects_out_of_bounds_range() {
         .unwrap();
     let res = svc.oneshot(req).await.unwrap();
 
-    assert_eq!(res.status(), StatusCode::RANGE_NOT_SATISFIABLE);
+    assert_eq!(res.status(), StatusCode::PARTIAL_CONTENT);
     let file_contents = std::fs::read("../README.md").unwrap();
+    // Out of bounds range gives all bytes
     assert_eq!(
         res.headers()["content-range"],
-        &format!("bytes */{}", file_contents.len())
+        &format!(
+            "bytes 0-{}/{}",
+            file_contents.len() - 1,
+            file_contents.len()
+        )
     )
 }
 

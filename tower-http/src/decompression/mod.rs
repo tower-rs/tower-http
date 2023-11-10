@@ -116,6 +116,7 @@ pub use self::request::service::RequestDecompression;
 #[cfg(test)]
 mod tests {
     use std::convert::Infallible;
+    use std::io::Write;
 
     use super::*;
     use crate::compression::Compression;
@@ -123,6 +124,7 @@ mod tests {
     use crate::test_helpers::TowerHttpBodyExt;
     use bytes::BytesMut;
     use http::Request;
+    use flate2::write::GzEncoder;
     use http::Response;
     use tower::{service_fn, Service, ServiceExt};
 
@@ -150,5 +152,57 @@ mod tests {
 
     async fn handle(_req: Request<Body>) -> Result<Response<Body>, Infallible> {
         Ok(Response::new(Body::from("Hello, World!")))
+    }
+
+    #[tokio::test]
+    async fn decompress_multi_gz() {
+        let mut client = Decompression::new(service_fn(handle_multi_gz));
+
+        let req = Request::builder()
+            .header("accept-encoding", "gzip")
+            .body(Body::empty())
+            .unwrap();
+        let res = client.ready().await.unwrap().call(req).await.unwrap();
+
+        // read the body, it will be decompressed automatically
+        let mut body = res.into_body();
+        let mut data = BytesMut::new();
+        while let Some(chunk) = body.data().await {
+            let chunk = chunk.unwrap();
+            data.extend_from_slice(&chunk[..]);
+        }
+        let decompressed_data = String::from_utf8(data.freeze().to_vec()).unwrap();
+
+        assert_eq!(decompressed_data, "Hello, World!");
+    }
+
+    async fn handle(_req: Request<Body>) -> Result<Response<Body>, Error> {
+        Ok(Response::new(Body::from("Hello, World!")))
+    }
+
+    async fn handle_multi_gz(_req: Request<Body>) -> Result<Response<Body>, Error> {
+        let mut buf = Vec::new();
+        let mut enc1 = GzEncoder::new(&mut buf, Default::default());
+        enc1.write_all(b"Hello, ").unwrap();
+        enc1.finish().unwrap();
+
+        let mut enc2 = GzEncoder::new(&mut buf, Default::default());
+        enc2.write_all(b"World!").unwrap();
+        enc2.finish().unwrap();
+
+        let mut res = Response::new(Body::from(buf));
+        res.headers_mut()
+            .insert("content-encoding", "gzip".parse().unwrap());
+        Ok(res)
+    }
+
+    #[allow(dead_code)]
+    async fn is_compatible_with_hyper() {
+        let mut client = Decompression::new(Client::new());
+
+        let req = Request::new(Body::empty());
+
+        let _: Response<DecompressionBody<Body>> =
+            client.ready().await.unwrap().call(req).await.unwrap();
     }
 }

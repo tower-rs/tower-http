@@ -487,7 +487,7 @@ impl ServeVariant {
 }
 
 opaque_body! {
-    /// Response body for [`ServeDir`] and [`ServeFile`].
+    /// Response body for [`ServeDir`] and [`ServeFile`][super::ServeFile].
     #[derive(Default)]
     pub type ResponseBody = UnsyncBoxBody<Bytes, io::Error>;
 }

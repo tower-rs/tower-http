@@ -1,7 +1,7 @@
 [package]
 name = "tower-http"
 description = "Tower middleware and utilities for HTTP clients and servers"
-version = "0.4.0"
+version = "0.4.2"
 authors = ["Tower Maintainers <team@tower-rs.com>"]
 edition = "2018"
 license = "MIT"
@@ -10,14 +10,14 @@ repository = "https://github.com/tower-rs/tower-http"
 homepage = "https://github.com/tower-rs/tower-http"
 categories = ["asynchronous", "network-programming", "web-programming"]
 keywords = ["io", "async", "futures", "service", "http"]
-rust-version = "1.56"
+rust-version = "1.66"
 
 [dependencies]
 bitflags = "2.0.2"
 bytes = "1"
 futures-core = "0.3"
 futures-util = { version = "0.3.14", default_features = false, features = [] }
-http = "0.2.2"
+http = "0.2.9"
 http-body = "1.0.0-rc.2"
 http-body-util = "0.1.0-rc.3"
 pin-project-lite = "0.2.7"
@@ -25,11 +25,11 @@ tower-layer = "0.3"
 tower-service = "0.3"
 
 # optional dependencies
-async-compression = { version = "0.3", optional = true, features = ["tokio"] }
-base64 = { version = "0.20", optional = true }
-http-range-header = "0.3.0"
+async-compression = { version = "0.4", optional = true, features = ["tokio"] }
+base64 = { version = "0.21", optional = true }
+http-range-header = { version = "0.4.0", optional = true }
 iri-string = { version = "0.7.0", optional = true }
-mime = { version = "0.3", optional = true, default_features = false }
+mime = { version = "0.3.17", optional = true, default_features = false }
 mime_guess = { version = "2", optional = true, default_features = false }
 percent-encoding = { version = "2.1.0", optional = true }
 tokio = { version = "1.6", optional = true, default_features = false }
@@ -52,7 +52,7 @@ tracing-subscriber = "0.3"
 uuid = { version = "1.0", features = ["v4"] }
 serde_json = "1.0"
 sync_wrapper = "0.1.1"
-zstd = "0.11"
+zstd = "0.12"
 
 [features]
 default = []
@@ -87,7 +87,7 @@ auth = ["base64", "validate-request"]
 catch-panic = ["tracing", "futures-util/std"]
 cors = []
 follow-redirect = ["iri-string", "tower/util"]
-fs = ["tokio/fs", "tokio-util/io", "tokio/io-util", "mime_guess", "mime", "percent-encoding", "httpdate", "set-status", "futures-util/alloc", "tracing"]
+fs = ["tokio/fs", "tokio-util/io", "tokio/io-util", "dep:http-range-header", "mime_guess", "mime", "percent-encoding", "httpdate", "set-status", "futures-util/alloc", "tracing"]
 limit = []
 map-request-body = []
 map-response-body = []

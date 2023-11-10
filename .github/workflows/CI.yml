@@ -10,26 +10,23 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@master
-    - uses: actions-rs/toolchain@v1
+    - uses: actions/checkout@v3
+    - uses: dtolnay/rust-toolchain@stable
+    - name: Install protoc
+      uses: taiki-e/install-action@v2
       with:
-        toolchain: stable
-        profile: minimal
-        override: true
-    - name: Check
-      uses: actions-rs/cargo@v1
-      with:
-        command: check
-        args: --workspace --all-features --all-targets
+        tool: protoc@3.20.3
+    - run: cargo check --workspace --all-features --all-targets
 
   check-docs:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@master
-    - uses: actions-rs/toolchain@v1
+    - uses: actions/checkout@v3
+    - uses: dtolnay/rust-toolchain@stable
+    - name: Install protoc
+      uses: taiki-e/install-action@v2
       with:
-        toolchain: stable
-        profile: minimal
+        tool: protoc@3.20.3
     - name: cargo doc
       working-directory: ${{ matrix.subcrate }}
       env:
@@ -39,14 +36,13 @@ jobs:
   cargo-hack:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@master
-    - uses: actions-rs/toolchain@v1
+    - uses: actions/checkout@v3
+    - uses: dtolnay/rust-toolchain@stable
+    - uses: taiki-e/install-action@cargo-hack
+    - name: Install protoc
+      uses: taiki-e/install-action@v2
       with:
-        toolchain: stable
-        profile: minimal
-    - name: Install cargo-hack
-      run: |
-        curl -LsSf https://github.com/taiki-e/cargo-hack/releases/latest/download/cargo-hack-x86_64-unknown-linux-gnu.tar.gz | tar xzf - -C ~/.cargo/bin
+        tool: protoc@3.20.3
     - name: cargo hack check
       working-directory: ${{ matrix.subcrate }}
       env:
@@ -61,50 +57,41 @@ jobs:
       matrix:
         rust: [stable, beta, nightly]
     steps:
-    - uses: actions/checkout@master
-    - uses: actions-rs/toolchain@v1
+    - uses: actions/checkout@v3
+    - uses: dtolnay/rust-toolchain@master
       with:
         toolchain: ${{ matrix.rust }}
-        profile: minimal
-        override: true
-    - name: Run tests
-      uses: actions-rs/cargo@v1
+    - name: Install protoc
+      uses: taiki-e/install-action@v2
       with:
-        command: test
-        args: --workspace --all-features
+        tool: protoc@3.20.3
+    - run: cargo test --workspace --all-features
 
   test-msrv:
     needs: check
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@master
-    - uses: actions-rs/toolchain@v1
+    - uses: actions/checkout@v3
+    - uses: dtolnay/rust-toolchain@1.66
+    - name: Install protoc
+      uses: taiki-e/install-action@v2
       with:
-        toolchain: 1.60.0
-        profile: minimal
-        override: true
-    - name: Run tests
-      uses: actions-rs/cargo@v1
-      with:
-        command: test
-        args: -p tower-http --all-features
-        toolchain: 1.60.0
+        tool: protoc@3.20.3
+    - run: cargo test -p tower-http --all-features
 
   style:
     needs: check
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@master
-    - uses: actions-rs/toolchain@v1
+    - uses: actions/checkout@v3
+    - uses: dtolnay/rust-toolchain@stable
       with:
-        toolchain: stable
         components: rustfmt
-        profile: minimal
-    - name: rustfmt
-      uses: actions-rs/cargo@v1
+    - name: Install protoc
+      uses: taiki-e/install-action@v2
       with:
-        command: fmt
-        args: --all -- --check
+        tool: protoc@3.20.3
+    - run: cargo fmt --all --check
 
   deny-check:
     name: cargo-deny check
@@ -113,25 +100,21 @@ jobs:
     strategy:
       matrix:
         checks:
-          - advisories
-          - bans licenses sources
+        - advisories
+        - bans licenses sources
     steps:
-      - uses: actions/checkout@v2
-      - uses: EmbarkStudios/cargo-deny-action@v1
-        with:
-          command: check ${{ matrix.checks }}
-          arguments: --all-features --manifest-path tower-http/Cargo.toml
+    - uses: actions/checkout@v3
+    - uses: EmbarkStudios/cargo-deny-action@v1
+      with:
+        command: check ${{ matrix.checks }}
+        arguments: --all-features --manifest-path tower-http/Cargo.toml
 
   cargo-public-api-crates:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@master
-    - uses: dtolnay/rust-toolchain@stable
-      with:
-        toolchain: nightly
-        override: true
-        profile: minimal
-    - uses: Swatinem/rust-cache@v1
+    - uses: actions/checkout@v3
+    - uses: dtolnay/rust-toolchain@nightly
+    - uses: Swatinem/rust-cache@v2
     - name: Install cargo-public-api-crates
       run: |
         cargo install --git https://github.com/davidpdrsn/cargo-public-api-crates

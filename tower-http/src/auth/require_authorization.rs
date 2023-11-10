@@ -55,12 +55,15 @@
 //! Custom validation can be made by implementing [`ValidateRequest`].
 
 use crate::validate_request::{ValidateRequest, ValidateRequestHeader, ValidateRequestHeaderLayer};
+use base64::Engine as _;
 use http::{
     header::{self, HeaderValue},
     Request, Response, StatusCode,
 };
 use http_body::Body;
 use std::{fmt, marker::PhantomData};
+
+const BASE64: base64::engine::GeneralPurpose = base64::engine::general_purpose::STANDARD;
 
 impl<S, ResBody> ValidateRequestHeader<S, Basic<ResBody>> {
     /// Authorize requests using a username and password pair.
@@ -196,7 +199,7 @@ impl<ResBody> Basic<ResBody> {
     where
         ResBody: Body + Default,
     {
-        let encoded = base64::encode(format!("{}:{}", username, password));
+        let encoded = BASE64.encode(format!("{}:{}", username, password));
         let header_value = format!("Basic {}", encoded).parse().unwrap();
         Self {
             header_value,
@@ -262,7 +265,7 @@ mod tests {
         let request = Request::get("/")
             .header(
                 header::AUTHORIZATION,
-                format!("Basic {}", base64::encode("foo:bar")),
+                format!("Basic {}", BASE64.encode("foo:bar")),
             )
             .body(Body::empty())
             .unwrap();
@@ -281,7 +284,7 @@ mod tests {
         let request = Request::get("/")
             .header(
                 header::AUTHORIZATION,
-                format!("Basic {}", base64::encode("wrong:credentials")),
+                format!("Basic {}", BASE64.encode("wrong:credentials")),
             )
             .body(Body::empty())
             .unwrap();
@@ -319,7 +322,7 @@ mod tests {
         let request = Request::get("/")
             .header(
                 header::AUTHORIZATION,
-                format!("basic {}", base64::encode("foo:bar")),
+                format!("basic {}", BASE64.encode("foo:bar")),
             )
             .body(Body::empty())
             .unwrap();
@@ -338,7 +341,7 @@ mod tests {
         let request = Request::get("/")
             .header(
                 header::AUTHORIZATION,
-                format!("Basic {}", base64::encode("Foo:bar")),
+                format!("Basic {}", BASE64.encode("Foo:bar")),
             )
             .body(Body::empty())
             .unwrap();
