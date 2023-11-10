@@ -15,12 +15,13 @@
 //!
 //! ```
 //! use http::{Request, Response};
-//! use hyper::Body;
+//! use http_body_util::Full;
+//! use bytes::Bytes;
 //! use std::time::Duration;
 //! use tower::ServiceBuilder;
 //! use tower_http::timeout::RequestBodyTimeoutLayer;
 //!
-//! async fn handle(_: Request<Body>) -> Result<Response<Body>, std::convert::Infallible> {
+//! async fn handle(_: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, std::convert::Infallible> {
 //!     // ...
 //!     # todo!()
 //! }
