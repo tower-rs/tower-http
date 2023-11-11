@@ -115,13 +115,12 @@
 //! # }
 //! ```
 
-use futures_core::ready;
 use http::{Request, Response};
 use pin_project_lite::pin_project;
 use std::{
     future::Future,
     pin::Pin,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
 };
 use tower_layer::Layer;
 use tower_service::Service;

@@ -93,7 +93,6 @@
 pub mod policy;
 
 use self::policy::{Action, Attempt, Policy, Standard};
-use futures_core::ready;
 use futures_util::future::Either;
 use http::{
     header::LOCATION, HeaderMap, HeaderValue, Method, Request, Response, StatusCode, Uri, Version,
@@ -107,7 +106,7 @@ use std::{
     mem,
     pin::Pin,
     str,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
 };
 use tower::util::Oneshot;
 use tower_layer::Layer;
