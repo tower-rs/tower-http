@@ -349,7 +349,7 @@ mod tests {
         }
     }
 
-    #[derive(Debug)]
+    #[derive(Clone, Debug)]
     struct UserId(String);
 
     #[tokio::test]
