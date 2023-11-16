@@ -34,13 +34,12 @@
 //! # }
 //! ```
 
-use futures_util::ready;
 use http::{header::HeaderName, HeaderValue, Request, Response};
 use pin_project_lite::pin_project;
 use std::future::Future;
 use std::{
     pin::Pin,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
 };
 use tower_layer::Layer;
 use tower_service::Service;

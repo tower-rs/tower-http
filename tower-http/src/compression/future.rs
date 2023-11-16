@@ -5,14 +5,13 @@ use crate::compression::predicate::Predicate;
 use crate::compression::CompressionLevel;
 use crate::compression_utils::WrapBody;
 use crate::content_encoding::Encoding;
-use futures_util::ready;
 use http::{header, HeaderMap, HeaderValue, Response};
 use http_body::Body;
 use pin_project_lite::pin_project;
 use std::{
     future::Future,
     pin::Pin,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
 };
 
 pin_project! {

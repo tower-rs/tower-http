@@ -14,12 +14,16 @@ use async_compression::tokio::bufread::ZlibDecoder;
 #[cfg(feature = "decompression-zstd")]
 use async_compression::tokio::bufread::ZstdDecoder;
 use bytes::{Buf, Bytes};
-use futures_util::ready;
 use http::HeaderMap;
 use http_body::Body;
 use pin_project_lite::pin_project;
 use std::task::Context;
-use std::{io, marker::PhantomData, pin::Pin, task::Poll};
+use std::{
+    io,
+    marker::PhantomData,
+    pin::Pin,
+    task::{ready, Poll},
+};
 use tokio_util::io::StreamReader;
 
 pin_project! {

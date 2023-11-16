@@ -4,10 +4,7 @@ use super::{
 };
 use crate::{content_encoding::Encoding, services::fs::AsyncReadBody, BoxError};
 use bytes::Bytes;
-use futures_util::{
-    future::{BoxFuture, FutureExt, TryFutureExt},
-    ready,
-};
+use futures_util::future::{BoxFuture, FutureExt, TryFutureExt};
 use http::{
     header::{self, ALLOW},
     HeaderValue, Request, Response, StatusCode,
@@ -19,7 +16,7 @@ use std::{
     future::Future,
     io,
     pin::Pin,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
 };
 use tower_service::Service;
 

@@ -15,7 +15,6 @@ use async_compression::tokio::bufread::ZlibEncoder;
 use async_compression::tokio::bufread::ZstdEncoder;
 
 use bytes::{Buf, Bytes};
-use futures_util::ready;
 use http::HeaderMap;
 use http_body::Body;
 use pin_project_lite::pin_project;
@@ -23,7 +22,7 @@ use std::{
     io,
     marker::PhantomData,
     pin::Pin,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
 };
 use tokio_util::io::StreamReader;
 
