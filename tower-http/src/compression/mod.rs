@@ -277,7 +277,7 @@ mod tests {
                 let mut guard = self.0.write().unwrap();
                 let should_compress = *guard % 2 != 0;
                 *guard += 1;
-                dbg!(should_compress)
+                should_compress
             }
         }
 

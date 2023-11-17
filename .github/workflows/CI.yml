@@ -93,6 +93,20 @@ jobs:
         tool: protoc@3.20.3
     - run: cargo fmt --all --check
 
+  clippy:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        components: clippy
+    - name: Install protoc
+      uses: taiki-e/install-action@v2
+      with:
+        tool: protoc@3.20.3
+    - run: cargo clippy --workspace --all-features --all-targets
+
   deny-check:
     name: cargo-deny check
     runs-on: ubuntu-latest

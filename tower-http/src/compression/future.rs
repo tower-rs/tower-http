@@ -72,6 +72,7 @@ where
                 CompressionBody::new(BodyInner::zstd(WrapBody::new(body, self.quality)))
             }
             #[cfg(feature = "fs")]
+            #[allow(unreachable_patterns)]
             (true, _) => {
                 // This should never happen because the `AcceptEncoding` struct which is used to determine
                 // `self.encoding` will only enable the different compression algorithms if the
