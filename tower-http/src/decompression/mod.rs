@@ -189,15 +189,4 @@ mod tests {
             .insert("content-encoding", "gzip".parse().unwrap());
         Ok(res)
     }
-
-    #[allow(dead_code)]
-    async fn is_compatible_with_hyper() {
-        todo!()
-        // let mut client = Decompression::new(Client::new());
-
-        // let req = Request::new(Body::empty());
-
-        // let _: Response<DecompressionBody<Body>> =
-        //     client.ready().await.unwrap().call(req).await.unwrap();
-    }
 }
