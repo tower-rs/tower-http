@@ -118,8 +118,6 @@ impl std::fmt::Display for TimeoutError {
 }
 #[cfg(test)]
 mod tests {
-    use crate::test_helpers::TowerHttpBodyExt;
-
     use super::*;
 
     use bytes::Bytes;
@@ -171,7 +169,12 @@ mod tests {
         };
         let timeout_body = TimeoutBody::new(timeout_sleep, mock_body);
 
-        assert!(timeout_body.boxed().data().await.expect("no data").is_ok());
+        assert!(timeout_body
+            .boxed()
+            .frame()
+            .await
+            .expect("no frame")
+            .is_ok());
     }
 
     #[tokio::test]
@@ -184,6 +187,6 @@ mod tests {
         };
         let timeout_body = TimeoutBody::new(timeout_sleep, mock_body);
 
-        assert!(timeout_body.boxed().data().await.unwrap().is_err());
+        assert!(timeout_body.boxed().frame().await.unwrap().is_err());
     }
 }

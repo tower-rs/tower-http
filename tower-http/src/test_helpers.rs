@@ -1,5 +1,4 @@
 use std::{
-    future::Future,
     pin::Pin,
     task::{Context, Poll},
 };
@@ -7,7 +6,7 @@ use std::{
 use bytes::Bytes;
 use futures::TryStream;
 use http::HeaderMap;
-use http_body::{Body as _, Frame};
+use http_body::Frame;
 use http_body_util::BodyExt;
 use pin_project_lite::pin_project;
 use sync_wrapper::SyncWrapper;
@@ -125,49 +124,12 @@ where
     }
 }
 
-// copied from hyper
 pub(crate) async fn to_bytes<T>(body: T) -> Result<Bytes, T::Error>
 where
     T: http_body::Body,
 {
     futures_util::pin_mut!(body);
     Ok(body.collect().await?.to_bytes())
-}
-
-// TODO(david): remove this and use `body.collect()` instead since that doesn't silently ignore
-// trailers
-pub(crate) trait TowerHttpBodyExt: http_body::Body + Unpin {
-    /// Returns future that resolves to next data chunk, if any.
-    fn data(&mut self) -> Data<'_, Self>
-    where
-        Self: Unpin + Sized,
-    {
-        Data(self)
-    }
-}
-
-impl<B> TowerHttpBodyExt for B where B: http_body::Body + Unpin {}
-
-pub(crate) struct Data<'a, T>(pub(crate) &'a mut T);
-
-impl<'a, T> Future for Data<'a, T>
-where
-    T: http_body::Body + Unpin,
-{
-    type Output = Option<Result<T::Data, T::Error>>;
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        loop {
-            match futures_util::ready!(Pin::new(&mut self.0).poll_frame(cx)) {
-                Some(Ok(frame)) => match frame.into_data() {
-                    Ok(data) => return Poll::Ready(Some(Ok(data))),
-                    Err(_frame) => {}
-                },
-                Some(Err(err)) => return Poll::Ready(Some(Err(err))),
-                None => return Poll::Ready(None),
-            }
-        }
-    }
 }
 
 pin_project! {

@@ -87,9 +87,8 @@ mod tests {
     use crate::compression::predicate::SizeAbove;
 
     use super::*;
-    use crate::test_helpers::{Body, TowerHttpBodyExt, WithTrailers};
+    use crate::test_helpers::{Body, WithTrailers};
     use async_compression::tokio::write::{BrotliDecoder, BrotliEncoder};
-    use bytes::BytesMut;
     use flate2::read::GzDecoder;
     use http::header::{ACCEPT_ENCODING, CONTENT_ENCODING, CONTENT_TYPE};
     use http::{HeaderMap, HeaderName, Request, Response};
@@ -157,13 +156,8 @@ mod tests {
         let res = svc.ready().await.unwrap().call(req).await.unwrap();
 
         // read the compressed body
-        let mut body = res.into_body();
-        let mut data = BytesMut::new();
-        while let Some(chunk) = body.data().await {
-            let chunk = chunk.unwrap();
-            data.extend_from_slice(&chunk[..]);
-        }
-        let compressed_data = data.freeze().to_vec();
+        let body = res.into_body();
+        let compressed_data = body.collect().await.unwrap().to_bytes();
 
         // decompress the body
         let decompressed = zstd::stream::decode_all(std::io::Cursor::new(compressed_data)).unwrap();
@@ -214,12 +208,8 @@ mod tests {
         );
 
         // read the compressed body
-        let mut body = res.into_body();
-        let mut data = BytesMut::new();
-        while let Some(chunk) = body.data().await {
-            let chunk = chunk.unwrap();
-            data.extend_from_slice(&chunk[..]);
-        }
+        let body = res.into_body();
+        let data = body.collect().await.unwrap().to_bytes();
 
         // decompress the body
         let data = {
@@ -282,12 +272,8 @@ mod tests {
         let res = svc.ready().await.unwrap().call(req).await.unwrap();
 
         // read the uncompressed body
-        let mut body = res.into_body();
-        let mut data = BytesMut::new();
-        while let Some(chunk) = body.data().await {
-            let chunk = chunk.unwrap();
-            data.extend_from_slice(&chunk[..]);
-        }
+        let body = res.into_body();
+        let data = body.collect().await.unwrap().to_bytes();
         let still_uncompressed = String::from_utf8(data.to_vec()).unwrap();
         assert_eq!(DATA, &still_uncompressed);
 
@@ -299,12 +285,8 @@ mod tests {
         let res = svc.ready().await.unwrap().call(req).await.unwrap();
 
         // read the compressed body
-        let mut body = res.into_body();
-        let mut data = BytesMut::new();
-        while let Some(chunk) = body.data().await {
-            let chunk = chunk.unwrap();
-            data.extend_from_slice(&chunk[..]);
-        }
+        let body = res.into_body();
+        let data = body.collect().await.unwrap().to_bytes();
         assert!(String::from_utf8(data.to_vec()).is_err());
     }
 
@@ -380,13 +362,8 @@ mod tests {
         let res = svc.ready().await.unwrap().call(req).await.unwrap();
 
         // read the compressed body
-        let mut body = res.into_body();
-        let mut data = BytesMut::new();
-        while let Some(chunk) = body.data().await {
-            let chunk = chunk.unwrap();
-            data.extend_from_slice(&chunk[..]);
-        }
-        let compressed_data = data.freeze().to_vec();
+        let body = res.into_body();
+        let compressed_data = body.collect().await.unwrap().to_bytes();
 
         // build the compressed body with the same quality level
         let compressed_with_level = {
@@ -404,7 +381,7 @@ mod tests {
         };
 
         assert_eq!(
-            compressed_data.as_slice(),
+            compressed_data,
             compressed_with_level.as_slice(),
             "Compression level is not respected"
         );

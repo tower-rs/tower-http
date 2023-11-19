@@ -152,7 +152,9 @@ pin_project! {
     /// `Body` that has been decorated by an `AsyncRead`
     pub(crate) struct WrapBody<M: DecorateAsyncRead> {
         #[pin]
-        pub(crate) read: M::Output,
+        // rust-analyer thinks this field is private if its `pub(crate)` but works fine when its
+        // `pub`
+        pub read: M::Output,
         read_all_data: bool,
     }
 }
@@ -236,9 +238,7 @@ where
         body.poll_frame(cx).map(|option| {
             option.map(|result| {
                 result
-                    .map(|frame| {
-                        frame.map_data(|mut data| data.copy_to_bytes(data.remaining()))
-                    })
+                    .map(|frame| frame.map_data(|mut data| data.copy_to_bytes(data.remaining())))
                     .map_err(|err| err.into())
             })
         })
@@ -419,6 +419,7 @@ pub enum CompressionLevel {
     Precise(i32),
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for CompressionLevel {
     fn default() -> Self {
         CompressionLevel::Default

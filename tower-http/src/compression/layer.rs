@@ -123,12 +123,11 @@ impl CompressionLayer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::{Body, TowerHttpBodyExt};
+    use crate::test_helpers::Body;
     use http::{header::ACCEPT_ENCODING, Request, Response};
-    use tokio::fs::File;
-    // for Body::data
-    use bytes::{Bytes, BytesMut};
+    use http_body_util::BodyExt;
     use std::convert::Infallible;
+    use tokio::fs::File;
     use tokio_util::io::ReaderStream;
     use tower::{Service, ServiceBuilder, ServiceExt};
 
@@ -165,13 +164,8 @@ mod tests {
         assert_eq!(response.headers()["content-encoding"], "deflate");
 
         // Read the body
-        let mut body = response.into_body();
-        let mut bytes = BytesMut::new();
-        while let Some(chunk) = body.data().await {
-            let chunk = chunk?;
-            bytes.extend_from_slice(&chunk[..]);
-        }
-        let bytes: Bytes = bytes.freeze();
+        let body = response.into_body();
+        let bytes = body.collect().await.unwrap().to_bytes();
 
         let deflate_bytes_len = bytes.len();
 
@@ -195,13 +189,8 @@ mod tests {
         assert_eq!(response.headers()["content-encoding"], "br");
 
         // Read the body
-        let mut body = response.into_body();
-        let mut bytes = BytesMut::new();
-        while let Some(chunk) = body.data().await {
-            let chunk = chunk?;
-            bytes.extend_from_slice(&chunk[..]);
-        }
-        let bytes: Bytes = bytes.freeze();
+        let body = response.into_body();
+        let bytes = body.collect().await.unwrap().to_bytes();
 
         let br_byte_length = bytes.len();
 
