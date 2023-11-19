@@ -5,11 +5,11 @@ pub(super) mod service;
 #[cfg(test)]
 mod tests {
     use super::service::RequestDecompression;
+    use crate::decompression::DecompressionBody;
     use crate::test_helpers::Body;
-    use crate::{decompression::DecompressionBody, test_helpers::TowerHttpBodyExt};
-    use bytes::BytesMut;
     use flate2::{write::GzEncoder, Compression};
     use http::{header, Request, Response, StatusCode};
+    use http_body_util::BodyExt;
     use std::{convert::Infallible, io::Write};
     use tower::{service_fn, Service, ServiceExt};
 
@@ -85,11 +85,6 @@ mod tests {
     }
 
     async fn read_body(body: &mut DecompressionBody<Body>) -> Vec<u8> {
-        let mut data = BytesMut::new();
-        while let Some(chunk) = body.data().await {
-            let chunk = chunk.unwrap();
-            data.extend_from_slice(&chunk[..]);
-        }
-        data.freeze().to_vec()
+        body.collect().await.unwrap().to_bytes().to_vec()
     }
 }

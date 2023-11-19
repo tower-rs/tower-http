@@ -234,6 +234,7 @@ where
             }
         }
 
+        // poll any remaining frames, such as trailers
         let body = M::get_pin_mut(this.read).get_pin_mut().get_pin_mut();
         body.poll_frame(cx).map(|option| {
             option.map(|result| {

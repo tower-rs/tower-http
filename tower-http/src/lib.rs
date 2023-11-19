@@ -195,14 +195,13 @@ pub mod add_extension;
 #[cfg(feature = "sensitive-headers")]
 pub mod sensitive_headers;
 
-// TODO(david): bring this back
-// #[cfg(any(
-//     feature = "decompression-br",
-//     feature = "decompression-deflate",
-//     feature = "decompression-gzip",
-//     feature = "decompression-zstd",
-// ))]
-// pub mod decompression;
+#[cfg(any(
+    feature = "decompression-br",
+    feature = "decompression-deflate",
+    feature = "decompression-gzip",
+    feature = "decompression-zstd",
+))]
+pub mod decompression;
 
 #[cfg(any(
     feature = "compression-br",
