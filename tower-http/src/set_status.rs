@@ -38,7 +38,7 @@ use pin_project_lite::pin_project;
 use std::{
     future::Future,
     pin::Pin,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
 };
 use tower_layer::Layer;
 use tower_service::Service;
@@ -130,7 +130,7 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
-        let mut response = futures_core::ready!(this.inner.poll(cx)?);
+        let mut response = ready!(this.inner.poll(cx)?);
         *response.status_mut() = this.status.take().expect("future polled after completion");
         Poll::Ready(Ok(response))
     }

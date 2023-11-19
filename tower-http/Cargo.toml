@@ -15,8 +15,6 @@ rust-version = "1.66"
 [dependencies]
 bitflags = "2.0.2"
 bytes = "1"
-futures-core = "0.3"
-futures-util = { version = "0.3.14", default_features = false, features = [] }
 http = "1.0"
 http-body = "1.0.0"
 http-body-util = "0.1.0"
@@ -27,6 +25,7 @@ tower-service = "0.3"
 # optional dependencies
 async-compression = { version = "0.4", optional = true, features = ["tokio"] }
 base64 = { version = "0.21", optional = true }
+futures-util = { version = "0.3.14", optional = true, default_features = false }
 http-range-header = { version = "0.4.0", optional = true }
 iri-string = { version = "0.7.0", optional = true }
 mime = { version = "0.3.17", optional = true, default_features = false }
@@ -44,7 +43,7 @@ async-trait = "0.1"
 brotli = "3"
 bytes = "1"
 flate2 = "1.0"
-futures = "0.3"
+futures-util = "0.3.14"
 hyper-util = { version = "0.1", features = ["client-legacy", "http1", "tokio"] }
 once_cell = "1"
 serde_json = "1.0"
@@ -84,11 +83,11 @@ full = [
 ]
 
 add-extension = []
-auth = ["base64", "validate-request"]
+auth = ["base64", "futures-util", "validate-request"]
 catch-panic = ["tracing", "futures-util/std"]
 cors = []
-follow-redirect = ["iri-string", "tower/util"]
-fs = ["tokio/fs", "tokio-util/io", "tokio/io-util", "dep:http-range-header", "mime_guess", "mime", "percent-encoding", "httpdate", "set-status", "futures-util/alloc", "tracing"]
+follow-redirect = ["futures-util", "iri-string", "tower/util"]
+fs = ["futures-util", "tokio/fs", "tokio-util/io", "tokio/io-util", "dep:http-range-header", "mime_guess", "mime", "percent-encoding", "httpdate", "set-status", "futures-util/alloc", "tracing"]
 limit = []
 map-request-body = []
 map-response-body = []
@@ -101,21 +100,21 @@ sensitive-headers = []
 set-header = []
 set-status = []
 timeout = ["tokio/time"]
-trace = ["tracing"]
+trace = ["futures-util", "tracing"]
 util = ["tower"]
 validate-request = ["mime"]
 
-compression-br = ["async-compression/brotli", "tokio-util", "tokio"]
-compression-deflate = ["async-compression/zlib", "tokio-util", "tokio"]
+compression-br = ["async-compression/brotli", "futures-util", "tokio-util", "tokio"]
+compression-deflate = ["async-compression/zlib", "futures-util", "tokio-util", "tokio"]
 compression-full = ["compression-br", "compression-deflate", "compression-gzip", "compression-zstd"]
-compression-gzip = ["async-compression/gzip", "tokio-util", "tokio"]
-compression-zstd = ["async-compression/zstd", "tokio-util", "tokio"]
+compression-gzip = ["async-compression/gzip", "futures-util", "tokio-util", "tokio"]
+compression-zstd = ["async-compression/zstd", "futures-util", "tokio-util", "tokio"]
 
-decompression-br = ["async-compression/brotli", "tokio-util", "tokio"]
-decompression-deflate = ["async-compression/zlib", "tokio-util", "tokio"]
+decompression-br = ["async-compression/brotli", "futures-util", "tokio-util", "tokio"]
+decompression-deflate = ["async-compression/zlib", "futures-util", "tokio-util", "tokio"]
 decompression-full = ["decompression-br", "decompression-deflate", "decompression-gzip", "decompression-zstd"]
-decompression-gzip = ["async-compression/gzip", "tokio-util", "tokio"]
-decompression-zstd = ["async-compression/zstd", "tokio-util", "tokio"]
+decompression-gzip = ["async-compression/gzip", "futures-util", "tokio-util", "tokio"]
+decompression-zstd = ["async-compression/zstd", "futures-util", "tokio-util", "tokio"]
 
 [package.metadata.docs.rs]
 all-features = true

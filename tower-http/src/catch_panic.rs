@@ -85,7 +85,6 @@
 //! ```
 
 use bytes::Bytes;
-use futures_core::ready;
 use futures_util::future::{CatchUnwind, FutureExt};
 use http::{HeaderValue, Request, Response, StatusCode};
 use http_body::Body;
@@ -96,7 +95,7 @@ use std::{
     future::Future,
     panic::AssertUnwindSafe,
     pin::Pin,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
 };
 use tower_layer::Layer;
 use tower_service::Service;

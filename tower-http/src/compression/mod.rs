@@ -374,7 +374,7 @@ mod tests {
         let compressed_with_level = {
             use async_compression::tokio::bufread::BrotliEncoder;
 
-            let stream = Box::pin(futures::stream::once(async move {
+            let stream = Box::pin(futures_util::stream::once(async move {
                 Ok::<_, std::io::Error>(DATA.as_bytes())
             }));
             let reader = StreamReader::new(stream);

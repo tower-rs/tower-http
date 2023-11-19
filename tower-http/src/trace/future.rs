@@ -6,7 +6,7 @@ use pin_project_lite::pin_project;
 use std::{
     future::Future,
     pin::Pin,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
     time::Instant,
 };
 use tracing::Span;
@@ -49,7 +49,7 @@ where
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
         let _guard = this.span.enter();
-        let result = futures_util::ready!(this.inner.poll(cx));
+        let result = ready!(this.inner.poll(cx));
         let latency = this.start.elapsed();
 
         let classifier = this.classifier.take().unwrap();

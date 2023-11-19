@@ -7,10 +7,9 @@
 //! use bytes::Bytes;
 //! use http::{Request, Response};
 //! use std::convert::Infallible;
-//! use std::{pin::Pin, task::{Context, Poll}};
+//! use std::{pin::Pin, task::{ready, Context, Poll}};
 //! use tower::{ServiceBuilder, service_fn, ServiceExt, Service};
 //! use tower_http::map_request_body::MapRequestBodyLayer;
-//! use futures::ready;
 //!
 //! // A wrapper for a `Full<Bytes>`
 //! struct BodyWrapper {

@@ -50,7 +50,6 @@
 #![allow(clippy::enum_variant_names)]
 
 use bytes::{BufMut, BytesMut};
-use futures_core::ready;
 use http::{
     header::{self, HeaderName},
     HeaderMap, HeaderValue, Method, Request, Response,
@@ -61,7 +60,7 @@ use std::{
     future::Future,
     mem,
     pin::Pin,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
 };
 use tower_layer::Layer;
 use tower_service::Service;

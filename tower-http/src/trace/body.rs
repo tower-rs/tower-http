@@ -1,12 +1,11 @@
 use super::{OnBodyChunk, OnEos, OnFailure};
 use crate::classify::ClassifyEos;
-use futures_core::ready;
 use http_body::{Body, Frame};
 use pin_project_lite::pin_project;
 use std::{
     fmt,
     pin::Pin,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
     time::Instant,
 };
 use tracing::Span;

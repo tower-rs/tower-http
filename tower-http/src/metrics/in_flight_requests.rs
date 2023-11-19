@@ -51,7 +51,6 @@
 //! # }
 //! ```
 
-use futures_util::ready;
 use http::{Request, Response};
 use http_body::Body;
 use pin_project_lite::pin_project;
@@ -62,7 +61,7 @@ use std::{
         atomic::{AtomicUsize, Ordering},
         Arc,
     },
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
     time::Duration,
 };
 use tower_layer::Layer;
@@ -304,7 +303,7 @@ mod tests {
         assert_eq!(counter.get(), 0);
 
         // driving service to ready shouldn't increment the counter
-        futures::future::poll_fn(|cx| service.poll_ready(cx))
+        std::future::poll_fn(|cx| service.poll_ready(cx))
             .await
             .unwrap();
         assert_eq!(counter.get(), 0);

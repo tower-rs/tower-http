@@ -7,10 +7,9 @@
 //! use http::{Request, Response};
 //! use http_body_util::Full;
 //! use std::convert::Infallible;
-//! use std::{pin::Pin, task::{Context, Poll}};
+//! use std::{pin::Pin, task::{ready, Context, Poll}};
 //! use tower::{ServiceBuilder, service_fn, ServiceExt, Service};
 //! use tower_http::map_response_body::MapResponseBodyLayer;
-//! use futures::ready;
 //!
 //! // A wrapper for a `Full<Bytes>`
 //! struct BodyWrapper {
@@ -55,14 +54,13 @@
 //! # }
 //! ```
 
-use futures_core::ready;
 use http::{Request, Response};
 use pin_project_lite::pin_project;
 use std::future::Future;
 use std::{
     fmt,
     pin::Pin,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
 };
 use tower_layer::Layer;
 use tower_service::Service;
