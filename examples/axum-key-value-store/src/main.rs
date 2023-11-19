@@ -1,5 +1,5 @@
 fn main() {
-    eprint!("this example has not yet been updated to hyper 1.0");
+    eprintln!("this example has not yet been updated to hyper 1.0");
 }
 
 /*
