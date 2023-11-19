@@ -48,7 +48,7 @@
 //!     # None
 //! }
 //!
-//! #[derive(Debug)]
+//! #[derive(Debug, Clone)]
 //! struct UserId(String);
 //!
 //! async fn handle(request: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, BoxError> {

@@ -7,23 +7,30 @@
 //! ```rust
 //! use bytes::{Bytes, BytesMut};
 //! use http::{Request, Response, header::ACCEPT_ENCODING};
-//! use http_body::Body as _; // for Body::data
-//! use hyper::Body;
+//! use http_body_util::{Full, BodyExt, StreamBody, combinators::UnsyncBoxBody};
+//! use http_body::Frame;
 //! use std::convert::Infallible;
 //! use tokio::fs::{self, File};
 //! use tokio_util::io::ReaderStream;
 //! use tower::{Service, ServiceExt, ServiceBuilder, service_fn};
 //! use tower_http::{compression::CompressionLayer, BoxError};
+//! use futures_util::TryStreamExt;
+//!
+//! type BoxBody = UnsyncBoxBody<Bytes, std::io::Error>;
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), BoxError> {
-//! async fn handle(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+//! async fn handle(req: Request<Full<Bytes>>) -> Result<Response<BoxBody>, Infallible> {
 //!     // Open the file.
 //!     let file = File::open("Cargo.toml").await.expect("file missing");
-//!     // Convert the file into a `Stream`.
+//!     // Convert the file into a `Stream` of `Bytes`.
 //!     let stream = ReaderStream::new(file);
+//!     // Convert the stream into a stream of data `Frame`s.
+//!     let stream = stream.map_ok(Frame::data);
 //!     // Convert the `Stream` into a `Body`.
-//!     let body = Body::wrap_stream(stream);
+//!     let body = StreamBody::new(stream);
+//!     // Erase the type because its very hard to name in the function signature.
+//!     let body = body.boxed_unsync();
 //!     // Create response.
 //!     Ok(Response::new(body))
 //! }
@@ -36,7 +43,7 @@
 //! // Call the service.
 //! let request = Request::builder()
 //!     .header(ACCEPT_ENCODING, "gzip")
-//!     .body(Body::empty())?;
+//!     .body(Full::<Bytes>::default())?;
 //!
 //! let response = service
 //!     .ready()
@@ -47,13 +54,11 @@
 //! assert_eq!(response.headers()["content-encoding"], "gzip");
 //!
 //! // Read the body
-//! let mut body = response.into_body();
-//! let mut bytes = BytesMut::new();
-//! while let Some(chunk) = body.data().await {
-//!     let chunk = chunk?;
-//!     bytes.extend_from_slice(&chunk[..]);
-//! }
-//! let bytes: Bytes = bytes.freeze();
+//! let bytes = response
+//!     .into_body()
+//!     .collect()
+//!     .await?
+//!     .to_bytes();
 //!
 //! // The compressed body should be smaller 🤞
 //! let uncompressed_len = fs::read_to_string("Cargo.toml").await?.len();
