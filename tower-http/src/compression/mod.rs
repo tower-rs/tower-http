@@ -87,12 +87,13 @@ mod tests {
     use crate::compression::predicate::SizeAbove;
 
     use super::*;
-    use crate::test_helpers::{Body, TowerHttpBodyExt};
+    use crate::test_helpers::{Body, TowerHttpBodyExt, WithTrailers};
     use async_compression::tokio::write::{BrotliDecoder, BrotliEncoder};
     use bytes::BytesMut;
     use flate2::read::GzDecoder;
     use http::header::{ACCEPT_ENCODING, CONTENT_ENCODING, CONTENT_TYPE};
-    use http::{Request, Response};
+    use http::{HeaderMap, HeaderName, Request, Response};
+    use http_body_util::BodyExt;
     use std::convert::Infallible;
     use std::io::Read;
     use std::sync::{Arc, RwLock};
@@ -126,13 +127,9 @@ mod tests {
         let res = svc.ready().await.unwrap().call(req).await.unwrap();
 
         // read the compressed body
-        let mut body = res.into_body();
-        let mut data = BytesMut::new();
-        while let Some(chunk) = body.data().await {
-            let chunk = chunk.unwrap();
-            data.extend_from_slice(&chunk[..]);
-        }
-        let compressed_data = data.freeze().to_vec();
+        let collected = res.into_body().collect().await.unwrap();
+        let trailers = collected.trailers().cloned().unwrap();
+        let compressed_data = collected.to_bytes();
 
         // decompress the body
         // doing this with flate2 as that is much easier than async-compression and blocking during
@@ -142,6 +139,9 @@ mod tests {
         decoder.read_to_string(&mut decompressed).unwrap();
 
         assert_eq!(decompressed, "Hello, World!");
+
+        // trailers are maintained
+        assert_eq!(trailers["foo"], "bar");
     }
 
     #[tokio::test]
@@ -236,8 +236,11 @@ mod tests {
         assert_eq!(data, DATA.as_bytes());
     }
 
-    async fn handle(_req: Request<Body>) -> Result<Response<Body>, Infallible> {
-        Ok(Response::new(Body::from("Hello, World!")))
+    async fn handle(_req: Request<Body>) -> Result<Response<WithTrailers<Body>>, Infallible> {
+        let mut trailers = HeaderMap::new();
+        trailers.insert(HeaderName::from_static("foo"), "bar".parse().unwrap());
+        let body = Body::from("Hello, World!").with_trailers(trailers);
+        Ok(Response::builder().body(body).unwrap())
     }
 
     #[tokio::test]

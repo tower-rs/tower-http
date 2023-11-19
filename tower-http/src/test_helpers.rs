@@ -6,6 +6,7 @@ use std::{
 
 use bytes::Bytes;
 use futures::TryStream;
+use http::HeaderMap;
 use http_body::{Body as _, Frame};
 use http_body_util::BodyExt;
 use pin_project_lite::pin_project;
@@ -39,6 +40,13 @@ impl Body {
         Self::new(StreamBody {
             stream: SyncWrapper::new(stream),
         })
+    }
+
+    pub(crate) fn with_trailers(self, trailers: HeaderMap) -> WithTrailers<Self> {
+        WithTrailers {
+            inner: self,
+            trailers: Some(trailers),
+        }
     }
 }
 
@@ -126,6 +134,8 @@ where
     Ok(body.collect().await?.to_bytes())
 }
 
+// TODO(david): remove this and use `body.collect()` instead since that doesn't silently ignore
+// trailers
 pub(crate) trait TowerHttpBodyExt: http_body::Body + Unpin {
     /// Returns future that resolves to next data chunk, if any.
     fn data(&mut self) -> Data<'_, Self>
@@ -155,6 +165,39 @@ where
                 },
                 Some(Err(err)) => return Poll::Ready(Some(Err(err))),
                 None => return Poll::Ready(None),
+            }
+        }
+    }
+}
+
+pin_project! {
+    pub(crate) struct WithTrailers<B> {
+        #[pin]
+        inner: B,
+        trailers: Option<HeaderMap>,
+    }
+}
+
+impl<B> http_body::Body for WithTrailers<B>
+where
+    B: http_body::Body,
+{
+    type Data = B::Data;
+    type Error = B::Error;
+
+    fn poll_frame(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
+        let this = self.project();
+        match futures_util::ready!(this.inner.poll_frame(cx)) {
+            Some(frame) => Poll::Ready(Some(frame)),
+            None => {
+                if let Some(trailers) = this.trailers.take() {
+                    Poll::Ready(Some(Ok(Frame::trailers(trailers))))
+                } else {
+                    Poll::Ready(None)
+                }
             }
         }
     }

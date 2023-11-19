@@ -1,13 +1,14 @@
 //! Types used by compression and decompression middleware.
 
 use crate::{content_encoding::SupportedEncodings, BoxError};
-use bytes::Bytes;
+use bytes::{Buf, Bytes, BytesMut};
 use futures_core::Stream;
 use futures_util::ready;
 use http::HeaderValue;
-use http_body::Body;
+use http_body::{Body, Frame};
 use pin_project_lite::pin_project;
 use std::{
+    collections::VecDeque,
     io,
     pin::Pin,
     task::{Context, Poll},
@@ -152,6 +153,7 @@ pin_project! {
     pub(crate) struct WrapBody<M: DecorateAsyncRead> {
         #[pin]
         pub(crate) read: M::Output,
+        read_all_data: bool,
     }
 }
 
@@ -175,7 +177,10 @@ impl<M: DecorateAsyncRead> WrapBody<M> {
         // apply decorator to `AsyncRead` yielding another `AsyncRead`
         let read = M::apply(read, quality);
 
-        Self { read }
+        Self {
+            read,
+            read_all_data: false,
+        }
     }
 }
 
@@ -192,71 +197,75 @@ where
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
-        // I'm not sure our previous body wrapping setup works. It assumes we can poll data and
-        // trailers separately, but we can't anymore
+        let mut this = self.project();
+        let mut buf = BytesMut::new();
+        if !*this.read_all_data {
+            match tokio_util::io::poll_read_buf(this.read.as_mut(), cx, &mut buf) {
+                Poll::Ready(result) => {
+                    match result {
+                        Ok(read) => {
+                            if read == 0 {
+                                *this.read_all_data = true;
+                            } else {
+                                return Poll::Ready(Some(Ok(Frame::data(buf.freeze()))));
+                            }
+                        }
+                        Err(err) => {
+                            let body_error: Option<B::Error> = M::get_pin_mut(this.read)
+                                .get_pin_mut()
+                                .project()
+                                .error
+                                .take();
 
-        todo!()
+                            if let Some(body_error) = body_error {
+                                return Poll::Ready(Some(Err(body_error.into())));
+                            } else if err.raw_os_error() == Some(SENTINEL_ERROR_CODE) {
+                                // SENTINEL_ERROR_CODE only gets used when storing an underlying body error
+                                unreachable!()
+                            } else {
+                                return Poll::Ready(Some(Err(err.into())));
+                            }
+                        }
+                    }
+                }
+                Poll::Pending => return Poll::Pending,
+            }
+        }
+
+        let body = M::get_pin_mut(this.read).get_pin_mut().get_pin_mut();
+        body.poll_frame(cx).map(|option| {
+            option.map(|result| {
+                result
+                    .map(|frame| {
+                        frame.map_data(|mut data| data.copy_to_bytes(data.remaining()))
+                    })
+                    .map_err(|err| err.into())
+            })
+        })
     }
-
-    // fn poll_data(
-    //     self: Pin<&mut Self>,
-    //     cx: &mut Context<'_>,
-    // ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
-    //     let mut this = self.project();
-    //     let mut buf = BytesMut::new();
-
-    //     let read = match ready!(poll_read_buf(this.read.as_mut(), cx, &mut buf)) {
-    //         Ok(read) => read,
-    //         Err(err) => {
-    //             let body_error: Option<B::Error> = M::get_pin_mut(this.read)
-    //                 .get_pin_mut()
-    //                 .project()
-    //                 .error
-    //                 .take();
-
-    //             if let Some(body_error) = body_error {
-    //                 return Poll::Ready(Some(Err(body_error.into())));
-    //             } else if err.raw_os_error() == Some(SENTINEL_ERROR_CODE) {
-    //                 // SENTINEL_ERROR_CODE only gets used when storing an underlying body error
-    //                 unreachable!()
-    //             } else {
-    //                 return Poll::Ready(Some(Err(err.into())));
-    //             }
-    //         }
-    //     };
-
-    //     if read == 0 {
-    //         Poll::Ready(None)
-    //     } else {
-    //         Poll::Ready(Some(Ok(buf.freeze())))
-    //     }
-    // }
-
-    // fn poll_trailers(
-    //     self: Pin<&mut Self>,
-    //     cx: &mut Context<'_>,
-    // ) -> Poll<Result<Option<http::HeaderMap>, Self::Error>> {
-    //     let this = self.project();
-    //     let body = M::get_pin_mut(this.read)
-    //         .get_pin_mut()
-    //         .get_pin_mut()
-    //         .get_pin_mut();
-    //     body.poll_trailers(cx).map_err(Into::into)
-    // }
 }
 
 pin_project! {
-    // When https://github.com/hyperium/http-body/pull/36 is merged we can remove this
-    pub(crate) struct BodyIntoStream<B> {
+    pub(crate) struct BodyIntoStream<B>
+    where
+        B: Body,
+    {
         #[pin]
         body: B,
+        non_data_frames: VecDeque<Frame<B::Data>>,
     }
 }
 
 #[allow(dead_code)]
-impl<B> BodyIntoStream<B> {
+impl<B> BodyIntoStream<B>
+where
+    B: Body,
+{
     pub(crate) fn new(body: B) -> Self {
-        Self { body }
+        Self {
+            body,
+            non_data_frames: Default::default(),
+        }
     }
 
     /// Get a reference to the inner body
@@ -288,15 +297,53 @@ where
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         loop {
-            match futures_util::ready!(self.as_mut().project().body.poll_frame(cx)) {
+            let this = self.as_mut().project();
+            match futures_util::ready!(this.body.poll_frame(cx)) {
                 Some(Ok(frame)) => match frame.into_data() {
                     Ok(data) => return Poll::Ready(Some(Ok(data))),
-                    Err(_frame) => {}
+                    Err(frame) => {
+                        this.non_data_frames.push_back(frame);
+                    }
                 },
                 Some(Err(err)) => return Poll::Ready(Some(Err(err))),
                 None => return Poll::Ready(None),
             }
         }
+    }
+}
+
+impl<B> Body for BodyIntoStream<B>
+where
+    B: Body,
+{
+    type Data = B::Data;
+    type Error = B::Error;
+
+    fn poll_frame(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
+        let this = self.project();
+
+        if let Some(frame) = futures_util::ready!(this.body.poll_frame(cx)) {
+            return Poll::Ready(Some(frame));
+        }
+
+        if let Some(frame) = this.non_data_frames.pop_back() {
+            return Poll::Ready(Some(Ok(frame)));
+        }
+
+        Poll::Ready(None)
+    }
+
+    #[inline]
+    fn is_end_stream(&self) -> bool {
+        self.body.is_end_stream()
+    }
+
+    #[inline]
+    fn size_hint(&self) -> http_body::SizeHint {
+        self.body.size_hint()
     }
 }
 
