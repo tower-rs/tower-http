@@ -181,7 +181,6 @@ pub mod set_header;
 #[cfg(feature = "propagate-header")]
 pub mod propagate_header;
 
-// TODO(david): bring this back
 #[cfg(any(
     feature = "compression-br",
     feature = "compression-deflate",
