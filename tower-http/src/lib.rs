@@ -84,6 +84,60 @@
 //! Keep in mind that while this example uses [hyper], tower-http supports any HTTP
 //! client/server implementation that uses the [http] and [http-body] crates.
 //!
+//! # Example client
+//!
+//! tower-http middleware can also be applied to HTTP clients:
+//!
+//! ```rust,no_run
+//! use tower_http::{
+//!     decompression::DecompressionLayer,
+//!     set_header::SetRequestHeaderLayer,
+//!     trace::TraceLayer,
+//!     classify::StatusInRangeAsFailures,
+//! };
+//! use tower::{ServiceBuilder, Service, ServiceExt};
+//! use hyper_util::{rt::TokioExecutor, client::legacy::Client};
+//! use http_body_util::Full;
+//! use bytes::Bytes;
+//! use http::{Request, HeaderValue, header::USER_AGENT};
+//!
+//! #[tokio::main]
+//! async fn main() {
+//! let client = Client::builder(TokioExecutor::new()).build_http();
+//!     let mut client = ServiceBuilder::new()
+//!         // Add tracing and consider server errors and client
+//!         // errors as failures.
+//!         .layer(TraceLayer::new(
+//!             StatusInRangeAsFailures::new(400..=599).into_make_classifier()
+//!         ))
+//!         // Set a `User-Agent` header on all requests.
+//!         .layer(SetRequestHeaderLayer::overriding(
+//!             USER_AGENT,
+//!             HeaderValue::from_static("tower-http demo")
+//!         ))
+//!         // Decompress response bodies
+//!         .layer(DecompressionLayer::new())
+//!         // Wrap a `Client` in our middleware stack.
+//!         // This is possible because `Client` implements
+//!         // `tower::Service`.
+//!         .service(client);
+//!
+//!     // Make a request
+//!     let request = Request::builder()
+//!         .uri("http://example.com")
+//!         .body(Full::<Bytes>::default())
+//!         .unwrap();
+//!
+//!     let response = client
+//!         .ready()
+//!         .await
+//!         .unwrap()
+//!         .call(request)
+//!         .await
+//!         .unwrap();
+//! }
+//! ```
+//!
 //! # Feature Flags
 //!
 //! All middleware are disabled by default and can be enabled using [cargo features].
