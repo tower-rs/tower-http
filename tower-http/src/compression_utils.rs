@@ -351,11 +351,6 @@ where
     }
 
     #[inline]
-    fn is_end_stream(&self) -> bool {
-        self.body.is_end_stream()
-    }
-
-    #[inline]
     fn size_hint(&self) -> http_body::SizeHint {
         self.body.size_hint()
     }
