@@ -3,14 +3,13 @@
 use super::{body::BodyInner, DecompressionBody};
 use crate::compression_utils::{AcceptEncoding, CompressionLevel, WrapBody};
 use crate::content_encoding::SupportedEncodings;
-use futures_util::ready;
 use http::{header, Response};
 use http_body::Body;
 use pin_project_lite::pin_project;
 use std::{
     future::Future,
     pin::Pin,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
 };
 
 pin_project! {

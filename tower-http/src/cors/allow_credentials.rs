@@ -27,6 +27,8 @@ impl AllowCredentials {
 
     /// Allow credentials for some requests, based on a given predicate
     ///
+    /// The first argument to the predicate is the request origin.
+    ///
     /// See [`CorsLayer::allow_credentials`] for more details.
     ///
     /// [`CorsLayer::allow_credentials`]: super::CorsLayer::allow_credentials

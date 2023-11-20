@@ -9,12 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Added
 
-- **request_id:** Derive `Default` for `MakeRequestUuid` ([#335])
-- **fs:** Derive `Default` for `ServeFileSystemResponseBody` ([#336])
+- None.
 
 ## Changed
 
-- **decompression:** Enable `multiple_members` for `GzipDecoder` ([#354])
+- Bump Minimum Supported Rust Version to 1.66 ([#433])
 
 ## Removed
 
@@ -22,8 +21,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Fixed
 
-- None.
+- Accepts range headers with ranges where the end of range goes past the end of the document by bumping 
+http-range-header to `0.4`
 
+[#418]: https://github.com/tower-rs/tower-http/pull/418
+[#433]: https://github.com/tower-rs/tower-http/pull/433
+
+# 0.4.2 (July 19, 2023)
+
+## Added
+
+- **cors:** Add support for private network preflights ([#373])
+- **compression:** Implement `Default` for `DecompressionBody` ([#370])
+
+## Changed
+
+- **compression:** Update to async-compression 0.4 ([#371])
+
+## Fixed
+
+- **compression:** Override default brotli compression level 11 -> 4 ([#356])
+- **trace:** Simplify dynamic tracing level application ([#380])
+- **normalize_path:** Fix path normalization for preceding slashes ([#359])
+
+[#356]: https://github.com/tower-rs/tower-http/pull/356
+[#359]: https://github.com/tower-rs/tower-http/pull/359
+[#370]: https://github.com/tower-rs/tower-http/pull/370
+[#371]: https://github.com/tower-rs/tower-http/pull/371
+[#373]: https://github.com/tower-rs/tower-http/pull/373
+[#380]: https://github.com/tower-rs/tower-http/pull/380
+
+# 0.4.1 (June 20, 2023)
+
+## Added
+
+- **request_id:** Derive `Default` for `MakeRequestUuid` ([#335])
+- **fs:** Derive `Default` for `ServeFileSystemResponseBody` ([#336])
+- **compression:** Expose compression quality on the CompressionLayer ([#333])
+
+## Fixed
+
+- **compression:** Improve parsing of `Accept-Encoding` request header ([#220])
+- **normalize_path:** Fix path normalization of index route ([#347])
+- **decompression:** Enable `multiple_members` for `GzipDecoder` ([#354])
+
+[#347]: https://github.com/tower-rs/tower-http/pull/347
+[#333]: https://github.com/tower-rs/tower-http/pull/333
+[#220]: https://github.com/tower-rs/tower-http/pull/220
 [#335]: https://github.com/tower-rs/tower-http/pull/335
 [#336]: https://github.com/tower-rs/tower-http/pull/336
 [#354]: https://github.com/tower-rs/tower-http/pull/354

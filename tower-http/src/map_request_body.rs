@@ -7,10 +7,9 @@
 //! use http::{Request, Response};
 //! use hyper::Body;
 //! use std::convert::Infallible;
-//! use std::{pin::Pin, task::{Context, Poll}};
+//! use std::{pin::Pin, task::{ready, Context, Poll}};
 //! use tower::{ServiceBuilder, service_fn, ServiceExt, Service};
 //! use tower_http::map_request_body::MapRequestBodyLayer;
-//! use futures::ready;
 //!
 //! // A wrapper for a `hyper::Body` that prints the size of data chunks
 //! struct PrintChunkSizesBody {

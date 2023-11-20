@@ -2,15 +2,14 @@
 
 use crate::{content_encoding::SupportedEncodings, BoxError};
 use bytes::{Bytes, BytesMut};
-use futures_core::Stream;
-use futures_util::ready;
+use futures_util::Stream;
 use http::HeaderValue;
 use http_body::Body;
 use pin_project_lite::pin_project;
 use std::{
     io,
     pin::Pin,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
 };
 use tokio::io::AsyncRead;
 use tokio_util::io::{poll_read_buf, StreamReader};
@@ -350,7 +349,7 @@ pub enum CompressionLevel {
     /// qualities. The interpretation of this depends on the algorithm chosen
     /// and the specific implementation backing it.
     /// Qualities are implicitly clamped to the algorithm's maximum.
-    Precise(u32),
+    Precise(i32),
 }
 
 impl Default for CompressionLevel {
