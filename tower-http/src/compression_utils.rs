@@ -332,9 +332,9 @@ where
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
-        // First drive the stream impl. This conume all data frames and buffer at most one trailers
-        // frame.
-        if let Some(frame) = futures_util::ready!(self.as_mut().poll_next(cx)) {
+        // First drive the stream impl. This consumes all data frames and buffer at most one
+        // trailers frame.
+        if let Some(frame) = std::task::ready!(self.as_mut().poll_next(cx)) {
             return Poll::Ready(Some(frame.map(Frame::data)));
         }
 
