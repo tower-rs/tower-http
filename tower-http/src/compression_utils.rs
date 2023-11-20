@@ -413,26 +413,20 @@ pub(crate) const SENTINEL_ERROR_CODE: i32 = -837459418;
 
 /// Level of compression data should be compressed with.
 #[non_exhaustive]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Default)]
 pub enum CompressionLevel {
     /// Fastest quality of compression, usually produces bigger size.
     Fastest,
     /// Best quality of compression, usually produces the smallest size.
     Best,
     /// Default quality of compression defined by the selected compression algorithm.
+    #[default]
     Default,
     /// Precise quality based on the underlying compression algorithms'
     /// qualities. The interpretation of this depends on the algorithm chosen
     /// and the specific implementation backing it.
     /// Qualities are implicitly clamped to the algorithm's maximum.
     Precise(i32),
-}
-
-#[allow(clippy::derivable_impls)]
-impl Default for CompressionLevel {
-    fn default() -> Self {
-        CompressionLevel::Default
-    }
 }
 
 #[cfg(any(
