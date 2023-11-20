@@ -7,7 +7,6 @@ use http::HeaderValue;
 use http_body::{Body, Frame};
 use pin_project_lite::pin_project;
 use std::{
-    collections::VecDeque,
     io,
     pin::Pin,
     task::{ready, Context, Poll},
@@ -252,7 +251,8 @@ pin_project! {
     {
         #[pin]
         body: B,
-        non_data_frames: VecDeque<Frame<B::Data>>,
+        yielded_all_data: bool,
+        non_data_frame: Option<Frame<B::Data>>,
     }
 }
 
@@ -264,7 +264,8 @@ where
     pub(crate) fn new(body: B) -> Self {
         Self {
             body,
-            non_data_frames: Default::default(),
+            yielded_all_data: false,
+            non_data_frame: None,
         }
     }
 
@@ -298,15 +299,23 @@ where
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         loop {
             let this = self.as_mut().project();
+
+            if *this.yielded_all_data {
+                return Poll::Ready(None);
+            }
+
             match futures_util::ready!(this.body.poll_frame(cx)) {
                 Some(Ok(frame)) => match frame.into_data() {
                     Ok(data) => return Poll::Ready(Some(Ok(data))),
                     Err(frame) => {
-                        this.non_data_frames.push_back(frame);
+                        *this.yielded_all_data = true;
+                        *this.non_data_frame = Some(frame);
                     }
                 },
                 Some(Err(err)) => return Poll::Ready(Some(Err(err))),
-                None => return Poll::Ready(None),
+                None => {
+                    *this.yielded_all_data = true;
+                }
             }
         }
     }
@@ -320,20 +329,25 @@ where
     type Error = B::Error;
 
     fn poll_frame(
-        self: Pin<&mut Self>,
+        mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
-        let this = self.project();
-
-        if let Some(frame) = futures_util::ready!(this.body.poll_frame(cx)) {
-            return Poll::Ready(Some(frame));
+        // First drive the stream impl. This conume all data frames and buffer at most one trailers
+        // frame.
+        if let Some(frame) = futures_util::ready!(self.as_mut().poll_next(cx)) {
+            return Poll::Ready(Some(frame.map(Frame::data)));
         }
 
-        if let Some(frame) = this.non_data_frames.pop_back() {
+        let this = self.project();
+
+        // Yield the trailers frame `poll_next` hit.
+        if let Some(frame) = this.non_data_frame.take() {
             return Poll::Ready(Some(Ok(frame)));
         }
 
-        Poll::Ready(None)
+        // Yield any remaining frames in the body. There shouldn't be any after the trailers but
+        // you never know.
+        this.body.poll_frame(cx)
     }
 
     #[inline]
