@@ -17,7 +17,7 @@
 //! ```rust,no_run
 //! use tower_http::{
 //!     add_extension::AddExtensionLayer,
-//!     // compression::CompressionLayer,
+//!     compression::CompressionLayer,
 //!     propagate_header::PropagateHeaderLayer,
 //!     sensitive_headers::SetSensitiveRequestHeadersLayer,
 //!     set_header::SetResponseHeaderLayer,
@@ -65,7 +65,7 @@
 //!         // Share an `Arc<State>` with all requests
 //!         .layer(AddExtensionLayer::new(Arc::new(state)))
 //!         // Compress responses
-//!         // .layer(CompressionLayer::new())
+//!         .layer(CompressionLayer::new())
 //!         // Propagate `X-Request-Id`s from requests to responses
 //!         .layer(PropagateHeaderLayer::new(HeaderName::from_static("x-request-id")))
 //!         // If the response has a known size set the `Content-Length` header
