@@ -75,11 +75,9 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match self.project().kind.project() {
-            StateProj::Inner { fut } => fut
-                .poll(cx)
-                .map_ok(|res| {
-                    res.map(|body| UnsyncBoxBody::new(body.map_err(Into::into).boxed_unsync()))
-                }),
+            StateProj::Inner { fut } => fut.poll(cx).map_ok(|res| {
+                res.map(|body| UnsyncBoxBody::new(body.map_err(Into::into).boxed_unsync()))
+            }),
             StateProj::Unsupported { accept } => {
                 let res = Response::builder()
                     .header(
