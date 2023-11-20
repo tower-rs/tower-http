@@ -304,7 +304,7 @@ where
                 return Poll::Ready(None);
             }
 
-            match futures_util::ready!(this.body.poll_frame(cx)) {
+            match std::task::ready!(this.body.poll_frame(cx)) {
                 Some(Ok(frame)) => match frame.into_data() {
                     Ok(data) => return Poll::Ready(Some(Ok(data))),
                     Err(frame) => {

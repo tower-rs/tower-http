@@ -116,7 +116,7 @@ where
         cx: &mut Context<'_>,
     ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
         let stream = self.project().stream.get_pin_mut();
-        match futures_util::ready!(stream.try_poll_next(cx)) {
+        match std::task::ready!(stream.try_poll_next(cx)) {
             Some(Ok(chunk)) => Poll::Ready(Some(Ok(Frame::data(chunk.into())))),
             Some(Err(err)) => Poll::Ready(Some(Err(err.into()))),
             None => Poll::Ready(None),
@@ -152,7 +152,7 @@ where
         cx: &mut Context<'_>,
     ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
         let this = self.project();
-        match futures_util::ready!(this.inner.poll_frame(cx)) {
+        match std::task::ready!(this.inner.poll_frame(cx)) {
             Some(frame) => Poll::Ready(Some(frame)),
             None => {
                 if let Some(trailers) = this.trailers.take() {
