@@ -183,4 +183,17 @@ mod tests {
             .insert("content-encoding", "gzip".parse().unwrap());
         Ok(res)
     }
+
+    #[allow(dead_code)]
+    async fn is_compatible_with_hyper() {
+        let client =
+            hyper_util::client::legacy::Client::builder(hyper_util::rt::TokioExecutor::new())
+                .build_http();
+        let mut client = Decompression::new(client);
+
+        let req = Request::new(Body::empty());
+
+        let _: Response<DecompressionBody<_>> =
+            client.ready().await.unwrap().call(req).await.unwrap();
+    }
 }
