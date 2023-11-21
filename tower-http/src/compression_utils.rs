@@ -1,10 +1,10 @@
 //! Types used by compression and decompression middleware.
 
 use crate::{content_encoding::SupportedEncodings, BoxError};
-use bytes::{Bytes, BytesMut};
+use bytes::{Buf, Bytes, BytesMut};
 use futures_util::Stream;
 use http::HeaderValue;
-use http_body::Body;
+use http_body::{Body, Frame};
 use pin_project_lite::pin_project;
 use std::{
     io,
@@ -12,7 +12,7 @@ use std::{
     task::{ready, Context, Poll},
 };
 use tokio::io::AsyncRead;
-use tokio_util::io::{poll_read_buf, StreamReader};
+use tokio_util::io::StreamReader;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct AcceptEncoding {
@@ -150,7 +150,10 @@ pin_project! {
     /// `Body` that has been decorated by an `AsyncRead`
     pub(crate) struct WrapBody<M: DecorateAsyncRead> {
         #[pin]
-        pub(crate) read: M::Output,
+        // rust-analyer thinks this field is private if its `pub(crate)` but works fine when its
+        // `pub`
+        pub read: M::Output,
+        read_all_data: bool,
     }
 }
 
@@ -174,7 +177,10 @@ impl<M: DecorateAsyncRead> WrapBody<M> {
         // apply decorator to `AsyncRead` yielding another `AsyncRead`
         let read = M::apply(read, quality);
 
-        Self { read }
+        Self {
+            read,
+            read_all_data: false,
+        }
     }
 }
 
@@ -187,65 +193,80 @@ where
     type Data = Bytes;
     type Error = BoxError;
 
-    fn poll_data(
+    fn poll_frame(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-    ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
+    ) -> Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
         let mut this = self.project();
         let mut buf = BytesMut::new();
+        if !*this.read_all_data {
+            match tokio_util::io::poll_read_buf(this.read.as_mut(), cx, &mut buf) {
+                Poll::Ready(result) => {
+                    match result {
+                        Ok(read) => {
+                            if read == 0 {
+                                *this.read_all_data = true;
+                            } else {
+                                return Poll::Ready(Some(Ok(Frame::data(buf.freeze()))));
+                            }
+                        }
+                        Err(err) => {
+                            let body_error: Option<B::Error> = M::get_pin_mut(this.read)
+                                .get_pin_mut()
+                                .project()
+                                .error
+                                .take();
 
-        let read = match ready!(poll_read_buf(this.read.as_mut(), cx, &mut buf)) {
-            Ok(read) => read,
-            Err(err) => {
-                let body_error: Option<B::Error> = M::get_pin_mut(this.read)
-                    .get_pin_mut()
-                    .project()
-                    .error
-                    .take();
-
-                if let Some(body_error) = body_error {
-                    return Poll::Ready(Some(Err(body_error.into())));
-                } else if err.raw_os_error() == Some(SENTINEL_ERROR_CODE) {
-                    // SENTINEL_ERROR_CODE only gets used when storing an underlying body error
-                    unreachable!()
-                } else {
-                    return Poll::Ready(Some(Err(err.into())));
+                            if let Some(body_error) = body_error {
+                                return Poll::Ready(Some(Err(body_error.into())));
+                            } else if err.raw_os_error() == Some(SENTINEL_ERROR_CODE) {
+                                // SENTINEL_ERROR_CODE only gets used when storing an underlying body error
+                                unreachable!()
+                            } else {
+                                return Poll::Ready(Some(Err(err.into())));
+                            }
+                        }
+                    }
                 }
+                Poll::Pending => return Poll::Pending,
             }
-        };
-
-        if read == 0 {
-            Poll::Ready(None)
-        } else {
-            Poll::Ready(Some(Ok(buf.freeze())))
         }
-    }
 
-    fn poll_trailers(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<Option<http::HeaderMap>, Self::Error>> {
-        let this = self.project();
-        let body = M::get_pin_mut(this.read)
-            .get_pin_mut()
-            .get_pin_mut()
-            .get_pin_mut();
-        body.poll_trailers(cx).map_err(Into::into)
+        // poll any remaining frames, such as trailers
+        let body = M::get_pin_mut(this.read).get_pin_mut().get_pin_mut();
+        body.poll_frame(cx).map(|option| {
+            option.map(|result| {
+                result
+                    .map(|frame| frame.map_data(|mut data| data.copy_to_bytes(data.remaining())))
+                    .map_err(|err| err.into())
+            })
+        })
     }
 }
 
 pin_project! {
-    // When https://github.com/hyperium/http-body/pull/36 is merged we can remove this
-    pub(crate) struct BodyIntoStream<B> {
+    pub(crate) struct BodyIntoStream<B>
+    where
+        B: Body,
+    {
         #[pin]
         body: B,
+        yielded_all_data: bool,
+        non_data_frame: Option<Frame<B::Data>>,
     }
 }
 
 #[allow(dead_code)]
-impl<B> BodyIntoStream<B> {
+impl<B> BodyIntoStream<B>
+where
+    B: Body,
+{
     pub(crate) fn new(body: B) -> Self {
-        Self { body }
+        Self {
+            body,
+            yielded_all_data: false,
+            non_data_frame: None,
+        }
     }
 
     /// Get a reference to the inner body
@@ -275,8 +296,63 @@ where
 {
     type Item = Result<B::Data, B::Error>;
 
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.project().body.poll_data(cx)
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        loop {
+            let this = self.as_mut().project();
+
+            if *this.yielded_all_data {
+                return Poll::Ready(None);
+            }
+
+            match std::task::ready!(this.body.poll_frame(cx)) {
+                Some(Ok(frame)) => match frame.into_data() {
+                    Ok(data) => return Poll::Ready(Some(Ok(data))),
+                    Err(frame) => {
+                        *this.yielded_all_data = true;
+                        *this.non_data_frame = Some(frame);
+                    }
+                },
+                Some(Err(err)) => return Poll::Ready(Some(Err(err))),
+                None => {
+                    *this.yielded_all_data = true;
+                }
+            }
+        }
+    }
+}
+
+impl<B> Body for BodyIntoStream<B>
+where
+    B: Body,
+{
+    type Data = B::Data;
+    type Error = B::Error;
+
+    fn poll_frame(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
+        // First drive the stream impl. This consumes all data frames and buffer at most one
+        // trailers frame.
+        if let Some(frame) = std::task::ready!(self.as_mut().poll_next(cx)) {
+            return Poll::Ready(Some(frame.map(Frame::data)));
+        }
+
+        let this = self.project();
+
+        // Yield the trailers frame `poll_next` hit.
+        if let Some(frame) = this.non_data_frame.take() {
+            return Poll::Ready(Some(Ok(frame)));
+        }
+
+        // Yield any remaining frames in the body. There shouldn't be any after the trailers but
+        // you never know.
+        this.body.poll_frame(cx)
+    }
+
+    #[inline]
+    fn size_hint(&self) -> http_body::SizeHint {
+        self.body.size_hint()
     }
 }
 
@@ -337,25 +413,20 @@ pub(crate) const SENTINEL_ERROR_CODE: i32 = -837459418;
 
 /// Level of compression data should be compressed with.
 #[non_exhaustive]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Default)]
 pub enum CompressionLevel {
     /// Fastest quality of compression, usually produces bigger size.
     Fastest,
     /// Best quality of compression, usually produces the smallest size.
     Best,
     /// Default quality of compression defined by the selected compression algorithm.
+    #[default]
     Default,
     /// Precise quality based on the underlying compression algorithms'
     /// qualities. The interpretation of this depends on the algorithm chosen
     /// and the specific implementation backing it.
     /// Qualities are implicitly clamped to the algorithm's maximum.
     Precise(i32),
-}
-
-impl Default for CompressionLevel {
-    fn default() -> Self {
-        CompressionLevel::Default
-    }
 }
 
 #[cfg(any(

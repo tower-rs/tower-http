@@ -57,7 +57,7 @@ impl AllowCredentials {
             AllowCredentialsInner::Predicate(c) => c(origin?, parts),
         };
 
-        allow_creds.then(|| (header::ACCESS_CONTROL_ALLOW_CREDENTIALS, TRUE))
+        allow_creds.then_some((header::ACCESS_CONTROL_ALLOW_CREDENTIALS, TRUE))
     }
 }
 

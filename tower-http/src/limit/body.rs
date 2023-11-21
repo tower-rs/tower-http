@@ -1,6 +1,7 @@
 use bytes::Bytes;
-use http::{HeaderMap, HeaderValue, Response, StatusCode};
-use http_body::{Body, Full, SizeHint};
+use http::{HeaderValue, Response, StatusCode};
+use http_body::{Body, SizeHint};
+use http_body_util::Full;
 use pin_project_lite::pin_project;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -52,25 +53,13 @@ where
     type Data = Bytes;
     type Error = B::Error;
 
-    fn poll_data(
+    fn poll_frame(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-    ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
+    ) -> Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
         match self.project().inner.project() {
-            BodyProj::PayloadTooLarge { body } => body.poll_data(cx).map_err(|err| match err {}),
-            BodyProj::Body { body } => body.poll_data(cx),
-        }
-    }
-
-    fn poll_trailers(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<Option<HeaderMap>, Self::Error>> {
-        match self.project().inner.project() {
-            BodyProj::PayloadTooLarge { body } => {
-                body.poll_trailers(cx).map_err(|err| match err {})
-            }
-            BodyProj::Body { body } => body.poll_trailers(cx),
+            BodyProj::PayloadTooLarge { body } => body.poll_frame(cx).map_err(|err| match err {}),
+            BodyProj::Body { body } => body.poll_frame(cx),
         }
     }
 

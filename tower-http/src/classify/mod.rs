@@ -192,7 +192,7 @@ pub trait ClassifyResponse {
     ///     ClassifyResponse, ClassifiedResponse
     /// };
     /// use http::{Response, StatusCode};
-    /// use http_body::Empty;
+    /// use http_body_util::Empty;
     /// use bytes::Bytes;
     ///
     /// fn transform_failure_class(class: ServerErrorsFailureClass) -> NewFailureClass {
@@ -375,7 +375,7 @@ impl fmt::Display for ServerErrorsFailureClass {
 mod usable_for_retries {
     #[allow(unused_imports)]
     use super::*;
-    use hyper::{Request, Response};
+    use http::{Request, Response};
     use tower::retry::Policy;
 
     trait IsRetryable {

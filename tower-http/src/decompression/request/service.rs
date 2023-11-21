@@ -1,5 +1,6 @@
 use super::future::RequestDecompressionFuture as ResponseFuture;
 use super::layer::RequestDecompressionLayer;
+use crate::body::UnsyncBoxBody;
 use crate::compression_utils::CompressionLevel;
 use crate::{
     compression_utils::AcceptEncoding, decompression::body::BodyInner,
@@ -7,7 +8,7 @@ use crate::{
 };
 use bytes::Buf;
 use http::{header, Request, Response};
-use http_body::{combinators::UnsyncBoxBody, Body};
+use http_body::Body;
 use std::task::{Context, Poll};
 use tower_service::Service;
 

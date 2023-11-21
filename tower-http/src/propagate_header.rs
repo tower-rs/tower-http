@@ -7,13 +7,14 @@
 //! use std::convert::Infallible;
 //! use tower::{Service, ServiceExt, ServiceBuilder, service_fn};
 //! use tower_http::propagate_header::PropagateHeaderLayer;
-//! use hyper::Body;
+//! use bytes::Bytes;
+//! use http_body_util::Full;
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! async fn handle(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+//! async fn handle(req: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, Infallible> {
 //!     // ...
-//!     # Ok(Response::new(Body::empty()))
+//!     # Ok(Response::new(Full::default()))
 //! }
 //!
 //! let mut svc = ServiceBuilder::new()
@@ -24,7 +25,7 @@
 //! // Call the service.
 //! let request = Request::builder()
 //!     .header("x-request-id", "1337")
-//!     .body(Body::empty())?;
+//!     .body(Full::default())?;
 //!
 //! let response = svc.ready().await?.call(request).await?;
 //!

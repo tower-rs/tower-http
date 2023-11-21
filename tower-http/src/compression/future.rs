@@ -36,7 +36,7 @@ where
 {
     type Output = Result<Response<CompressionBody<B>>, E>;
 
-    #[allow(unreachable_code, unused_mut, unused_variables)]
+    #[allow(unreachable_code, unused_mut, unused_variables, unreachable_patterns)]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let res = ready!(self.as_mut().project().inner.poll(cx)?);
 

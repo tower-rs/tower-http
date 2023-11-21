@@ -1,3 +1,8 @@
+fn main() {
+    eprintln!("this example has not yet been updated to hyper 1.0");
+}
+
+/*
 use axum::{
     body::Bytes,
     extract::{Path, State},
@@ -108,3 +113,4 @@ async fn set_key(Path(path): Path<String>, state: State<AppState>, value: Bytes)
 
 // See https://github.com/tokio-rs/axum/blob/main/examples/testing/src/main.rs for an example of
 // how to test axum apps
+*/
