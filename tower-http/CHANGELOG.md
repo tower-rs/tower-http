@@ -13,14 +13,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Changed
 
-- Bump Minimum Supported Rust Version to 1.66 ([#433])
-- Update to http-body 1.0 ([#348])
-- Update to http 1.0 ([#348])
-- Preserve service error type in RequestDecompression ([#368])
+- None.
 
 ## Removed
 
 - None.
+
+## Fixed
+
+- None.
+
+# 0.5.0 (November 21, 2023)
+
+## Changed
+
+- Bump Minimum Supported Rust Version to 1.66 ([#433])
+- Update to http-body 1.0 ([#348])
+- Update to http 1.0 ([#348])
+- Preserve service error type in RequestDecompression ([#368])
 
 ## Fixed
 
