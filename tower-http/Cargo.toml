@@ -25,6 +25,7 @@ tower-service = "0.3"
 # optional dependencies
 async-compression = { version = "0.4", optional = true, features = ["tokio"] }
 base64 = { version = "0.21", optional = true }
+futures-core = { version = "0.3", optional = true, default_features = false }
 futures-util = { version = "0.3.14", optional = true, default_features = false }
 http-range-header = { version = "0.4.0", optional = true }
 iri-string = { version = "0.7.0", optional = true }
@@ -83,7 +84,7 @@ full = [
 ]
 
 add-extension = []
-auth = ["base64", "futures-util", "validate-request"]
+auth = ["base64", "validate-request"]
 catch-panic = ["tracing", "futures-util/std"]
 cors = []
 follow-redirect = ["futures-util", "iri-string", "tower/util"]
@@ -100,21 +101,21 @@ sensitive-headers = []
 set-header = []
 set-status = []
 timeout = ["tokio/time"]
-trace = ["futures-util", "tracing"]
+trace = ["tracing"]
 util = ["tower"]
 validate-request = ["mime"]
 
-compression-br = ["async-compression/brotli", "futures-util", "tokio-util", "tokio"]
-compression-deflate = ["async-compression/zlib", "futures-util", "tokio-util", "tokio"]
+compression-br = ["async-compression/brotli", "futures-core", "tokio-util", "tokio"]
+compression-deflate = ["async-compression/zlib", "futures-core", "tokio-util", "tokio"]
 compression-full = ["compression-br", "compression-deflate", "compression-gzip", "compression-zstd"]
-compression-gzip = ["async-compression/gzip", "futures-util", "tokio-util", "tokio"]
-compression-zstd = ["async-compression/zstd", "futures-util", "tokio-util", "tokio"]
+compression-gzip = ["async-compression/gzip", "futures-core", "tokio-util", "tokio"]
+compression-zstd = ["async-compression/zstd", "futures-core", "tokio-util", "tokio"]
 
-decompression-br = ["async-compression/brotli", "futures-util", "tokio-util", "tokio"]
-decompression-deflate = ["async-compression/zlib", "futures-util", "tokio-util", "tokio"]
+decompression-br = ["async-compression/brotli", "futures-core", "tokio-util", "tokio"]
+decompression-deflate = ["async-compression/zlib", "futures-core", "tokio-util", "tokio"]
 decompression-full = ["decompression-br", "decompression-deflate", "decompression-gzip", "decompression-zstd"]
-decompression-gzip = ["async-compression/gzip", "futures-util", "tokio-util", "tokio"]
-decompression-zstd = ["async-compression/zstd", "futures-util", "tokio-util", "tokio"]
+decompression-gzip = ["async-compression/gzip", "futures-core", "tokio-util", "tokio"]
+decompression-zstd = ["async-compression/zstd", "futures-core", "tokio-util", "tokio"]
 
 [package.metadata.docs.rs]
 all-features = true
