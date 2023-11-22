@@ -2,7 +2,7 @@
 
 use crate::{content_encoding::SupportedEncodings, BoxError};
 use bytes::{Buf, Bytes, BytesMut};
-use futures_util::Stream;
+use futures_core::Stream;
 use http::HeaderValue;
 use http_body::{Body, Frame};
 use pin_project_lite::pin_project;
