@@ -1,3 +1,8 @@
+fn main() {
+    eprint!("this example has not yet been updated to hyper 1.0");
+}
+
+/*
 use bytes::Bytes;
 use clap::Parser;
 use futures::StreamExt;
@@ -370,3 +375,4 @@ mod tests {
         addr
     }
 }
+*/

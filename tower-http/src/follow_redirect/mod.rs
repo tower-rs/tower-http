@@ -18,7 +18,8 @@
 //!
 //! ```
 //! use http::{Request, Response};
-//! use hyper::Body;
+//! use bytes::Bytes;
+//! use http_body_util::Full;
 //! use tower::{Service, ServiceBuilder, ServiceExt};
 //! use tower_http::follow_redirect::{FollowRedirectLayer, RequestUri};
 //!
@@ -32,7 +33,7 @@
 //! #             .status(http::StatusCode::MOVED_PERMANENTLY)
 //! #             .header(http::header::LOCATION, dest);
 //! #     }
-//! #     Ok::<_, std::convert::Infallible>(res.body(Body::empty()).unwrap())
+//! #     Ok::<_, std::convert::Infallible>(res.body(Full::<Bytes>::default()).unwrap())
 //! # });
 //! let mut client = ServiceBuilder::new()
 //!     .layer(FollowRedirectLayer::new())
@@ -40,7 +41,7 @@
 //!
 //! let request = Request::builder()
 //!     .uri("https://rust-lang.org/")
-//!     .body(Body::empty())
+//!     .body(Full::<Bytes>::default())
 //!     .unwrap();
 //!
 //! let response = client.ready().await?.call(request).await?;
@@ -56,7 +57,8 @@
 //!
 //! ```
 //! use http::{Request, Response};
-//! use hyper::Body;
+//! use http_body_util::Full;
+//! use bytes::Bytes;
 //! use tower::{Service, ServiceBuilder, ServiceExt};
 //! use tower_http::follow_redirect::{
 //!     policy::{self, PolicyExt},
@@ -65,14 +67,14 @@
 //!
 //! #[derive(Debug)]
 //! enum MyError {
-//!     Hyper(hyper::Error),
 //!     TooManyRedirects,
+//!     Other(tower::BoxError),
 //! }
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), MyError> {
 //! # let http_client =
-//! #     tower::service_fn(|_: Request<Body>| async { Ok(Response::new(Body::empty())) });
+//! #     tower::service_fn(|_: Request<Full<Bytes>>| async { Ok(Response::new(Full::<Bytes>::default())) });
 //! let policy = policy::Limited::new(10) // Set the maximum number of redirections to 10.
 //!     // Return an error when the limit was reached.
 //!     .or::<_, (), _>(policy::redirect_fn(|_| Err(MyError::TooManyRedirects)))
@@ -81,7 +83,7 @@
 //!
 //! let mut client = ServiceBuilder::new()
 //!     .layer(FollowRedirectLayer::with_policy(policy))
-//!     .map_err(MyError::Hyper)
+//!     .map_err(MyError::Other)
 //!     .service(http_client);
 //!
 //! // ...
@@ -93,7 +95,6 @@
 pub mod policy;
 
 use self::policy::{Action, Attempt, Policy, Standard};
-use futures_core::ready;
 use futures_util::future::Either;
 use http::{
     header::LOCATION, HeaderMap, HeaderValue, Method, Request, Response, StatusCode, Uri, Version,
@@ -107,7 +108,7 @@ use std::{
     mem,
     pin::Pin,
     str,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
 };
 use tower::util::Oneshot;
 use tower_layer::Layer;
@@ -324,6 +325,7 @@ where
 ///
 /// The value differs from the original request's effective URI if the middleware has followed
 /// redirections.
+#[derive(Clone)]
 pub struct RequestUri(pub Uri);
 
 #[derive(Debug)]
@@ -386,7 +388,8 @@ fn resolve_uri(relative: &str, base: &Uri) -> Option<Uri> {
 #[cfg(test)]
 mod tests {
     use super::{policy::*, *};
-    use hyper::{header::LOCATION, Body};
+    use crate::test_helpers::Body;
+    use http::header::LOCATION;
     use std::convert::Infallible;
     use tower::{ServiceBuilder, ServiceExt};
 

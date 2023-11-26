@@ -1,11 +1,10 @@
 use crate::timeout::body::TimeoutBody;
-use futures_core::ready;
 use http::{Request, Response, StatusCode};
 use pin_project_lite::pin_project;
 use std::{
     future::Future,
     pin::Pin,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
     time::Duration,
 };
 use tokio::time::Sleep;

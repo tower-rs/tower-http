@@ -3,72 +3,51 @@
 //! # Example
 //!
 //! ```
+//! use http_body_util::Full;
 //! use bytes::Bytes;
 //! use http::{Request, Response};
-//! use hyper::Body;
 //! use std::convert::Infallible;
-//! use std::{pin::Pin, task::{Context, Poll}};
+//! use std::{pin::Pin, task::{ready, Context, Poll}};
 //! use tower::{ServiceBuilder, service_fn, ServiceExt, Service};
 //! use tower_http::map_request_body::MapRequestBodyLayer;
-//! use futures::ready;
 //!
-//! // A wrapper for a `hyper::Body` that prints the size of data chunks
-//! struct PrintChunkSizesBody {
-//!     inner: Body,
+//! // A wrapper for a `Full<Bytes>`
+//! struct BodyWrapper {
+//!     inner: Full<Bytes>,
 //! }
 //!
-//! impl PrintChunkSizesBody {
-//!     fn new(inner: Body) -> Self {
+//! impl BodyWrapper {
+//!     fn new(inner: Full<Bytes>) -> Self {
 //!         Self { inner }
 //!     }
 //! }
 //!
-//! impl http_body::Body for PrintChunkSizesBody {
-//!     type Data = Bytes;
-//!     type Error = hyper::Error;
-//!
-//!     fn poll_data(
-//!         mut self: Pin<&mut Self>,
-//!         cx: &mut Context<'_>,
-//!     ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
-//!         if let Some(chunk) = ready!(Pin::new(&mut self.inner).poll_data(cx)?) {
-//!             println!("chunk size = {}", chunk.len());
-//!             Poll::Ready(Some(Ok(chunk)))
-//!         } else {
-//!             Poll::Ready(None)
-//!         }
-//!     }
-//!
-//!     fn poll_trailers(
-//!         mut self: Pin<&mut Self>,
-//!         cx: &mut Context<'_>,
-//!     ) -> Poll<Result<Option<hyper::HeaderMap>, Self::Error>> {
-//!         Pin::new(&mut self.inner).poll_trailers(cx)
-//!     }
-//!
-//!     fn is_end_stream(&self) -> bool {
-//!         self.inner.is_end_stream()
-//!     }
-//!
-//!     fn size_hint(&self) -> http_body::SizeHint {
-//!         self.inner.size_hint()
-//!     }
+//! impl http_body::Body for BodyWrapper {
+//!     // ...
+//!     # type Data = Bytes;
+//!     # type Error = tower::BoxError;
+//!     # fn poll_frame(
+//!     #     self: Pin<&mut Self>,
+//!     #     cx: &mut Context<'_>
+//!     # ) -> Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> { unimplemented!() }
+//!     # fn is_end_stream(&self) -> bool { unimplemented!() }
+//!     # fn size_hint(&self) -> http_body::SizeHint { unimplemented!() }
 //! }
 //!
-//! async fn handle<B>(_: Request<B>) -> Result<Response<Body>, Infallible> {
+//! async fn handle<B>(_: Request<B>) -> Result<Response<Full<Bytes>>, Infallible> {
 //!     // ...
-//!     # Ok(Response::new(Body::empty()))
+//!     # Ok(Response::new(Full::default()))
 //! }
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let mut svc = ServiceBuilder::new()
-//!     // Wrap response bodies in `PrintChunkSizesBody`
-//!     .layer(MapRequestBodyLayer::new(PrintChunkSizesBody::new))
+//!     // Wrap response bodies in `BodyWrapper`
+//!     .layer(MapRequestBodyLayer::new(BodyWrapper::new))
 //!     .service_fn(handle);
 //!
 //! // Call the service
-//! let request = Request::new(Body::empty());
+//! let request = Request::new(Full::default());
 //!
 //! svc.ready().await?.call(request).await?;
 //! # Ok(())

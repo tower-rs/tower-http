@@ -192,7 +192,7 @@ pub trait ClassifyResponse {
     ///     ClassifyResponse, ClassifiedResponse
     /// };
     /// use http::{Response, StatusCode};
-    /// use http_body::Empty;
+    /// use http_body_util::Empty;
     /// use bytes::Bytes;
     ///
     /// fn transform_failure_class(class: ServerErrorsFailureClass) -> NewFailureClass {
@@ -375,7 +375,7 @@ impl fmt::Display for ServerErrorsFailureClass {
 mod usable_for_retries {
     #[allow(unused_imports)]
     use super::*;
-    use hyper::{Request, Response};
+    use http::{Request, Response};
     use tower::retry::Policy;
 
     trait IsRetryable {
@@ -397,7 +397,7 @@ mod usable_for_retries {
         Request<ReqB>: Clone,
         E: std::error::Error + 'static,
     {
-        type Future = futures::future::Ready<RetryBasedOnClassification<C>>;
+        type Future = std::future::Ready<RetryBasedOnClassification<C>>;
 
         fn retry(
             &self,
@@ -410,7 +410,7 @@ mod usable_for_retries {
                         self.classifier.clone().classify_response(res)
                     {
                         if class.err()?.is_retryable() {
-                            return Some(futures::future::ready(self.clone()));
+                            return Some(std::future::ready(self.clone()));
                         }
                     }
 
@@ -421,7 +421,7 @@ mod usable_for_retries {
                     .clone()
                     .classify_error(err)
                     .is_retryable()
-                    .then(|| futures::future::ready(self.clone())),
+                    .then(|| std::future::ready(self.clone())),
             }
         }
 

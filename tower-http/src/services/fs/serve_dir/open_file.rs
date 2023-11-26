@@ -5,7 +5,7 @@ use super::{
 use crate::content_encoding::{Encoding, QValue};
 use bytes::Bytes;
 use http::{header, HeaderValue, Method, Request, Uri};
-use http_body::Empty;
+use http_body_util::Empty;
 use http_range_header::RangeUnsatisfiableError;
 use std::{
     ffi::OsStr,
@@ -257,9 +257,13 @@ async fn maybe_redirect_or_append_path(
 ) -> Option<OpenFileOutput> {
     if !uri.path().ends_with('/') {
         if is_dir(path_to_file).await {
-            let location =
-                HeaderValue::from_str(&append_slash_on_path(uri.clone()).to_string()).unwrap();
-            Some(OpenFileOutput::Redirect { location })
+            if append_index_html_on_directories {
+                let location =
+                    HeaderValue::from_str(&append_slash_on_path(uri.clone()).to_string()).unwrap();
+                Some(OpenFileOutput::Redirect { location })
+            } else {
+                Some(OpenFileOutput::FileNotFound)
+            }
         } else {
             None
         }

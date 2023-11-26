@@ -14,12 +14,16 @@ use async_compression::tokio::bufread::ZlibDecoder;
 #[cfg(feature = "decompression-zstd")]
 use async_compression::tokio::bufread::ZstdDecoder;
 use bytes::{Buf, Bytes};
-use futures_util::ready;
 use http::HeaderMap;
 use http_body::Body;
 use pin_project_lite::pin_project;
 use std::task::Context;
-use std::{io, marker::PhantomData, pin::Pin, task::Poll};
+use std::{
+    io,
+    marker::PhantomData,
+    pin::Pin,
+    task::{ready, Poll},
+};
 use tokio_util::io::StreamReader;
 
 pin_project! {
@@ -290,53 +294,27 @@ where
     type Data = Bytes;
     type Error = BoxError;
 
-    fn poll_data(
+    fn poll_frame(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-    ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
+    ) -> Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
         match self.project().inner.project() {
             #[cfg(feature = "decompression-gzip")]
-            BodyInnerProj::Gzip { inner } => inner.poll_data(cx),
+            BodyInnerProj::Gzip { inner } => inner.poll_frame(cx),
             #[cfg(feature = "decompression-deflate")]
-            BodyInnerProj::Deflate { inner } => inner.poll_data(cx),
+            BodyInnerProj::Deflate { inner } => inner.poll_frame(cx),
             #[cfg(feature = "decompression-br")]
-            BodyInnerProj::Brotli { inner } => inner.poll_data(cx),
+            BodyInnerProj::Brotli { inner } => inner.poll_frame(cx),
             #[cfg(feature = "decompression-zstd")]
-            BodyInnerProj::Zstd { inner } => inner.poll_data(cx),
-            BodyInnerProj::Identity { inner } => match ready!(inner.poll_data(cx)) {
-                Some(Ok(mut buf)) => {
-                    let bytes = buf.copy_to_bytes(buf.remaining());
-                    Poll::Ready(Some(Ok(bytes)))
+            BodyInnerProj::Zstd { inner } => inner.poll_frame(cx),
+            BodyInnerProj::Identity { inner } => match ready!(inner.poll_frame(cx)) {
+                Some(Ok(frame)) => {
+                    let frame = frame.map_data(|mut buf| buf.copy_to_bytes(buf.remaining()));
+                    Poll::Ready(Some(Ok(frame)))
                 }
                 Some(Err(err)) => Poll::Ready(Some(Err(err.into()))),
                 None => Poll::Ready(None),
             },
-
-            #[cfg(not(feature = "decompression-gzip"))]
-            BodyInnerProj::Gzip { inner } => match inner.0 {},
-            #[cfg(not(feature = "decompression-deflate"))]
-            BodyInnerProj::Deflate { inner } => match inner.0 {},
-            #[cfg(not(feature = "decompression-br"))]
-            BodyInnerProj::Brotli { inner } => match inner.0 {},
-            #[cfg(not(feature = "decompression-zstd"))]
-            BodyInnerProj::Zstd { inner } => match inner.0 {},
-        }
-    }
-
-    fn poll_trailers(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<Option<HeaderMap>, Self::Error>> {
-        match self.project().inner.project() {
-            #[cfg(feature = "decompression-gzip")]
-            BodyInnerProj::Gzip { inner } => inner.poll_trailers(cx),
-            #[cfg(feature = "decompression-deflate")]
-            BodyInnerProj::Deflate { inner } => inner.poll_trailers(cx),
-            #[cfg(feature = "decompression-br")]
-            BodyInnerProj::Brotli { inner } => inner.poll_trailers(cx),
-            #[cfg(feature = "decompression-zstd")]
-            BodyInnerProj::Zstd { inner } => inner.poll_trailers(cx),
-            BodyInnerProj::Identity { inner } => inner.poll_trailers(cx).map_err(Into::into),
 
             #[cfg(not(feature = "decompression-gzip"))]
             BodyInnerProj::Gzip { inner } => match inner.0 {},

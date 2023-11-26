@@ -8,12 +8,13 @@
 //! use tower_http::request_id::{
 //!     SetRequestIdLayer, PropagateRequestIdLayer, MakeRequestId, RequestId,
 //! };
-//! use hyper::Body;
+//! use http_body_util::Full;
+//! use bytes::Bytes;
 //! use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! # let handler = tower::service_fn(|request: Request<Body>| async move {
+//! # let handler = tower::service_fn(|request: Request<Full<Bytes>>| async move {
 //! #     Ok::<_, std::convert::Infallible>(Response::new(request.into_body()))
 //! # });
 //! #
@@ -47,7 +48,7 @@
 //!     .layer(PropagateRequestIdLayer::new(x_request_id))
 //!     .service(handler);
 //!
-//! let request = Request::new(Body::empty());
+//! let request = Request::new(Full::default());
 //! let response = svc.ready().await?.call(request).await?;
 //!
 //! assert_eq!(response.headers()["x-request-id"], "0");
@@ -65,11 +66,12 @@
 //! # use tower_http::request_id::{
 //! #     SetRequestIdLayer, PropagateRequestIdLayer, MakeRequestId, RequestId,
 //! # };
-//! # use hyper::Body;
+//! # use bytes::Bytes;
+//! # use http_body_util::Full;
 //! # use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! # let handler = tower::service_fn(|request: Request<Body>| async move {
+//! # let handler = tower::service_fn(|request: Request<Full<Bytes>>| async move {
 //! #     Ok::<_, std::convert::Infallible>(Response::new(request.into_body()))
 //! # });
 //! # #[derive(Clone, Default)]
@@ -92,7 +94,7 @@
 //!     .propagate_x_request_id()
 //!     .service(handler);
 //!
-//! let request = Request::new(Body::empty());
+//! let request = Request::new(Full::default());
 //! let response = svc.ready().await?.call(request).await?;
 //!
 //! assert_eq!(response.headers()["x-request-id"], "0");
@@ -118,11 +120,12 @@
 //! # use tower_http::request_id::{
 //! #     SetRequestIdLayer, PropagateRequestIdLayer, MakeRequestId, RequestId,
 //! # };
-//! # use hyper::Body;
+//! # use http_body_util::Full;
+//! # use bytes::Bytes;
 //! # use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! # let handler = tower::service_fn(|request: Request<Body>| async move {
+//! # let handler = tower::service_fn(|request: Request<Full<Bytes>>| async move {
 //! #     Ok::<_, std::convert::Infallible>(Response::new(request.into_body()))
 //! # });
 //! # #[derive(Clone, Default)]
@@ -172,7 +175,7 @@ use http::{
     Request, Response,
 };
 use pin_project_lite::pin_project;
-use std::task::{Context, Poll};
+use std::task::{ready, Context, Poll};
 use std::{future::Future, pin::Pin};
 use tower_layer::Layer;
 use tower_service::Service;
@@ -450,7 +453,7 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
-        let mut response = futures_core::ready!(this.inner.poll(cx))?;
+        let mut response = ready!(this.inner.poll(cx))?;
 
         if let Some(current_id) = response.headers().get(&*this.header_name) {
             if response.extensions().get::<RequestId>().is_none() {
@@ -481,8 +484,9 @@ impl MakeRequestId for MakeRequestUuid {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_helpers::Body;
     use crate::ServiceBuilderExt as _;
-    use hyper::{Body, Response};
+    use http::Response;
     use std::{
         convert::Infallible,
         sync::{

@@ -72,7 +72,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
-    - uses: dtolnay/rust-toolchain@1.60.0
+    - uses: dtolnay/rust-toolchain@1.66
     - name: Install protoc
       uses: taiki-e/install-action@v2
       with:

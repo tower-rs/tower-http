@@ -5,14 +5,13 @@ use crate::compression::predicate::Predicate;
 use crate::compression::CompressionLevel;
 use crate::compression_utils::WrapBody;
 use crate::content_encoding::Encoding;
-use futures_util::ready;
 use http::{header, HeaderMap, HeaderValue, Response};
 use http_body::Body;
 use pin_project_lite::pin_project;
 use std::{
     future::Future,
     pin::Pin,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
 };
 
 pin_project! {
@@ -37,7 +36,7 @@ where
 {
     type Output = Result<Response<CompressionBody<B>>, E>;
 
-    #[allow(unreachable_code, unused_mut, unused_variables)]
+    #[allow(unreachable_code, unused_mut, unused_variables, unreachable_patterns)]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let res = ready!(self.as_mut().project().inner.poll(cx)?);
 

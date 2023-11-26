@@ -46,19 +46,11 @@ macro_rules! opaque_body {
             type Error = <$actual as http_body::Body>::Error;
 
             #[inline]
-            fn poll_data(
+            fn poll_frame(
                 self: std::pin::Pin<&mut Self>,
                 cx: &mut std::task::Context<'_>,
-            ) -> std::task::Poll<Option<Result<Self::Data, Self::Error>>> {
-                self.project().inner.poll_data(cx)
-            }
-
-            #[inline]
-            fn poll_trailers(
-                self: std::pin::Pin<&mut Self>,
-                cx: &mut std::task::Context<'_>,
-            ) -> std::task::Poll<Result<Option<http::HeaderMap>, Self::Error>> {
-                self.project().inner.poll_trailers(cx)
+            ) -> std::task::Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
+                self.project().inner.poll_frame(cx)
             }
 
             #[inline]
