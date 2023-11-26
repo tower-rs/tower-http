@@ -113,17 +113,39 @@ mod tests {
     use std::io::Write;
 
     use super::*;
-    use crate::test_helpers::Body;
     use crate::{compression::Compression, test_helpers::WithTrailers};
+    use crate::{test_helpers::Body, ServiceExt};
     use flate2::write::GzEncoder;
     use http::Response;
     use http::{HeaderMap, HeaderName, Request};
     use http_body_util::BodyExt;
-    use tower::{service_fn, Service, ServiceExt};
+    use tower::{service_fn, Service, ServiceExt as TowerServiceExt};
 
     #[tokio::test]
     async fn works() {
         let mut client = Decompression::new(Compression::new(service_fn(handle)));
+
+        let req = Request::builder()
+            .header("accept-encoding", "gzip")
+            .body(Body::empty())
+            .unwrap();
+        let res = client.ready().await.unwrap().call(req).await.unwrap();
+
+        // read the body, it will be decompressed automatically
+        let body = res.into_body();
+        let collected = body.collect().await.unwrap();
+        let trailers = collected.trailers().cloned().unwrap();
+        let decompressed_data = String::from_utf8(collected.to_bytes().to_vec()).unwrap();
+
+        assert_eq!(decompressed_data, "Hello, World!");
+
+        // maintains trailers
+        assert_eq!(trailers["foo"], "bar");
+    }
+
+    #[tokio::test]
+    async fn works_service_ext() {
+        let mut client = Compression::new(service_fn(handle)).decompress();
 
         let req = Request::builder()
             .header("accept-encoding", "gzip")

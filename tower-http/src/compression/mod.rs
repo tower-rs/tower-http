@@ -92,7 +92,10 @@ mod tests {
     use crate::compression::predicate::SizeAbove;
 
     use super::*;
-    use crate::test_helpers::{Body, WithTrailers};
+    use crate::{
+        test_helpers::{Body, WithTrailers},
+        ServiceExt,
+    };
     use async_compression::tokio::write::{BrotliDecoder, BrotliEncoder};
     use flate2::read::GzDecoder;
     use http::header::{ACCEPT_ENCODING, CONTENT_ENCODING, CONTENT_TYPE};
@@ -103,7 +106,7 @@ mod tests {
     use std::sync::{Arc, RwLock};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio_util::io::StreamReader;
-    use tower::{service_fn, Service, ServiceExt};
+    use tower::{service_fn, Service, ServiceExt as TowerServiceExt};
 
     // Compression filter allows every other request to be compressed
     #[derive(Clone)]
@@ -122,6 +125,35 @@ mod tests {
     async fn gzip_works() {
         let svc = service_fn(handle);
         let mut svc = Compression::new(svc).compress_when(Always);
+
+        // call the service
+        let req = Request::builder()
+            .header("accept-encoding", "gzip")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.ready().await.unwrap().call(req).await.unwrap();
+
+        // read the compressed body
+        let collected = res.into_body().collect().await.unwrap();
+        let trailers = collected.trailers().cloned().unwrap();
+        let compressed_data = collected.to_bytes();
+
+        // decompress the body
+        // doing this with flate2 as that is much easier than async-compression and blocking during
+        // tests is fine
+        let mut decoder = GzDecoder::new(&compressed_data[..]);
+        let mut decompressed = String::new();
+        decoder.read_to_string(&mut decompressed).unwrap();
+
+        assert_eq!(decompressed, "Hello, World!");
+
+        // trailers are maintained
+        assert_eq!(trailers["foo"], "bar");
+    }
+
+    #[tokio::test]
+    async fn gzip_works_service_ext() {
+        let mut svc = service_fn(handle).compress_when(Always);
 
         // call the service
         let req = Request::builder()

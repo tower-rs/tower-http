@@ -485,7 +485,7 @@ impl MakeRequestId for MakeRequestUuid {
 #[cfg(test)]
 mod tests {
     use crate::test_helpers::Body;
-    use crate::ServiceBuilderExt as _;
+    use crate::{ServiceBuilderExt as _, ServiceExt};
     use http::Response;
     use std::{
         convert::Infallible,
@@ -494,7 +494,7 @@ mod tests {
             Arc,
         },
     };
-    use tower::{ServiceBuilder, ServiceExt};
+    use tower::{service_fn, ServiceBuilder, ServiceExt as TowerServiceExt};
 
     #[allow(unused_imports)]
     use super::*;
@@ -505,6 +505,35 @@ mod tests {
             .set_x_request_id(Counter::default())
             .propagate_x_request_id()
             .service_fn(handler);
+
+        // header on response
+        let req = Request::builder().body(Body::empty()).unwrap();
+        let res = svc.clone().oneshot(req).await.unwrap();
+        assert_eq!(res.headers()["x-request-id"], "0");
+
+        let req = Request::builder().body(Body::empty()).unwrap();
+        let res = svc.clone().oneshot(req).await.unwrap();
+        assert_eq!(res.headers()["x-request-id"], "1");
+
+        // doesn't override if header is already there
+        let req = Request::builder()
+            .header("x-request-id", "foo")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.clone().oneshot(req).await.unwrap();
+        assert_eq!(res.headers()["x-request-id"], "foo");
+
+        // extension propagated
+        let req = Request::builder().body(Body::empty()).unwrap();
+        let res = svc.clone().oneshot(req).await.unwrap();
+        assert_eq!(res.extensions().get::<RequestId>().unwrap().0, "2");
+    }
+
+    #[tokio::test]
+    async fn basic_service_ext() {
+        let svc = service_fn(handler)
+            .propagate_x_request_id()
+            .set_x_request_id(Counter::default());
 
         // header on response
         let req = Request::builder().body(Body::empty()).unwrap();

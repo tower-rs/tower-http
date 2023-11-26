@@ -1,5 +1,3 @@
-// todo: tests
-
 #[cfg(feature = "add-extension")]
 use crate::add_extension::AddExtension;
 #[cfg(feature = "auth")]

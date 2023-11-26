@@ -189,11 +189,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::Body;
     use crate::validate_request::ValidateRequestHeaderLayer;
+    use crate::{test_helpers::Body, ServiceExt};
     use http::{Response, StatusCode};
     use std::convert::Infallible;
-    use tower::{BoxError, Service, ServiceBuilder, ServiceExt};
+    use tower::{service_fn, BoxError, Service, ServiceBuilder, ServiceExt as TowerServiceExt};
 
     #[tokio::test]
     async fn basic() {
@@ -217,11 +217,49 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn basic_service_ext() {
+        // service that requires auth for all requests
+        let svc = service_fn(echo).require_basic_authorization("foo", "bar");
+
+        // make a client that adds auth
+        let mut client = AddAuthorization::basic(svc, "foo", "bar");
+
+        let res = client
+            .ready()
+            .await
+            .unwrap()
+            .call(Request::new(Body::empty()))
+            .await
+            .unwrap();
+
+        assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
     async fn token() {
         // service that requires auth for all requests
         let svc = ServiceBuilder::new()
             .layer(ValidateRequestHeaderLayer::bearer("foo"))
             .service_fn(echo);
+
+        // make a client that adds auth
+        let mut client = AddAuthorization::bearer(svc, "foo");
+
+        let res = client
+            .ready()
+            .await
+            .unwrap()
+            .call(Request::new(Body::empty()))
+            .await
+            .unwrap();
+
+        assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn token_service_ext() {
+        // service that requires auth for all requests
+        let svc = service_fn(echo).require_bearer_authorization("foo");
 
         // make a client that adds auth
         let mut client = AddAuthorization::bearer(svc, "foo");

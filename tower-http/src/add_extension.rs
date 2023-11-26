@@ -138,10 +138,10 @@ where
 mod tests {
     #[allow(unused_imports)]
     use super::*;
-    use crate::test_helpers::Body;
+    use crate::{test_helpers::Body, ServiceExt};
     use http::Response;
     use std::{convert::Infallible, sync::Arc};
-    use tower::{service_fn, ServiceBuilder, ServiceExt};
+    use tower::{service_fn, ServiceBuilder, ServiceExt as TowerServiceExt};
 
     struct State(i32);
 
@@ -155,6 +155,25 @@ mod tests {
                 let state = req.extensions().get::<Arc<State>>().unwrap();
                 Ok::<_, Infallible>(Response::new(state.0))
             }));
+
+        let res = svc
+            .oneshot(Request::new(Body::empty()))
+            .await
+            .unwrap()
+            .into_body();
+
+        assert_eq!(1, res);
+    }
+
+    #[tokio::test]
+    async fn basic_service_ext() {
+        let state = Arc::new(State(1));
+
+        let svc = service_fn(|req: Request<Body>| async move {
+            let state = req.extensions().get::<Arc<State>>().unwrap();
+            Ok::<_, Infallible>(Response::new(state.0))
+        })
+        .add_extension(state);
 
         let res = svc
             .oneshot(Request::new(Body::empty()))
