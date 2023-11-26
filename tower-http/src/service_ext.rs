@@ -107,7 +107,7 @@ pub trait ServiceExt<Request>: tower_service::Service<Request> {
     ///
     /// # Panics
     ///
-    /// Panics if the token is not a valid [`HeaderValue`].
+    /// Panics if the token is not a valid [HeaderValue](http::{HeaderValue).
     ///
     /// See the [auth](crate::auth) for more details.
     #[cfg(feature = "auth")]
@@ -276,7 +276,7 @@ pub trait ServiceExt<Request>: tower_service::Service<Request> {
         RequestDecompression::new(self)
     }
 
-    /// Creates a new middleware that retries requests with a [`Service`] to follow redirection responses.
+    /// Creates a new middleware that retries requests with a [`Service`](tower::Service) to follow redirection responses.
     ///
     /// See the [follow_redirect](crate::follow_redirect) for more details.
     #[cfg(feature = "follow-redirect")]
@@ -287,8 +287,8 @@ pub trait ServiceExt<Request>: tower_service::Service<Request> {
         FollowRedirect::new(self)
     }
 
-    /// Creates a new middleware that retries requests with a [`Service`] to follow redirection responses
-    /// with the given redirection [`Policy`].
+    /// Creates a new middleware that retries requests with a [`Service`](tower::Service) to follow redirection responses
+    /// with the given redirection [`Policy`](crate::follow_redirect::policy::Policy).
     ///
     /// See the [follow_redirect](crate::follow_redirect) for more details.
     #[cfg(feature = "follow-redirect")]
@@ -370,7 +370,7 @@ pub trait ServiceExt<Request>: tower_service::Service<Request> {
     /// Creates a new middleware that propagate request ids from requests to responses.
     ///
     /// If the request contains a matching header that header will be applied to responses. If a
-    /// [`RequestId`] extension is also present it will be propagated as well.
+    /// [`RequestId`](crate::request_id::RequestId) extension is also present it will be propagated as well.
     ///
     /// See the [request_id](crate::request_id) for an example.
     #[cfg(feature = "request-id")]
@@ -385,7 +385,7 @@ pub trait ServiceExt<Request>: tower_service::Service<Request> {
     /// using `x-request-id` as the header name.
     ///
     /// If the request contains a matching header that header will be applied to responses. If a
-    /// [`RequestId`] extension is also present it will be propagated as well.
+    /// [`RequestId`](crate::request_id::RequestId) extension is also present it will be propagated as well.
     ///
     /// See the [request_id](crate::request_id) for an example.
     #[cfg(feature = "request-id")]
@@ -401,8 +401,8 @@ pub trait ServiceExt<Request>: tower_service::Service<Request> {
     /// If [`MakeRequestId::make_request_id`] returns `Some(_)` and the request doesn't already have a
     /// header with the same name, then the header will be inserted.
     ///
-    /// Additionally [`RequestId`] will be inserted into [`Request::extensions`] so other
-    /// services can access it.
+    /// Additionally [`RequestId`](crate::request_id::RequestId) will be inserted into
+    /// the Request extensions so other services can access it.
     ///
     /// See the [request_id](crate::request_id) for an example.
     #[cfg(feature = "request-id")]
@@ -420,8 +420,8 @@ pub trait ServiceExt<Request>: tower_service::Service<Request> {
     /// If [`MakeRequestId::make_request_id`] returns `Some(_)` and the request doesn't already have a
     /// header with the same name, then the header will be inserted.
     ///
-    /// Additionally [`RequestId`] will be inserted into [`Request::extensions`] so other
-    /// services can access it.
+    /// Additionally [`RequestId`](crate::request_id::RequestId) will be inserted into
+    /// the Request extensions so other services can access it.
     ///
     /// See the [request_id](crate::request_id) for an example.
     #[cfg(feature = "request-id")]
@@ -723,7 +723,7 @@ pub trait ServiceExt<Request>: tower_service::Service<Request> {
     ///
     /// # Panics
     ///
-    /// Panics if the token is not a valid [`HeaderValue`].
+    /// Panics if the token is not a valid [`HeaderValue`](http::header::HeaderValue).
     ///
     /// See the [validate_request](crate::validate_request) for an example.
     #[cfg(feature = "validate-request")]
