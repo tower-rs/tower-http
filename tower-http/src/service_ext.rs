@@ -1,5 +1,7 @@
 #[cfg(feature = "add-extension")]
 use crate::add_extension::AddExtension;
+#[cfg(all(feature = "validate-request", feature = "auth"))]
+use crate::auth::require_authorization::{Basic, Bearer};
 #[cfg(feature = "auth")]
 use crate::auth::{AddAuthorization, AsyncRequireAuthorization};
 #[cfg(feature = "catch-panic")]
@@ -45,10 +47,7 @@ use crate::set_header::{SetRequestHeader, SetResponseHeader};
 #[cfg(feature = "set-status")]
 use crate::set_status::SetStatus;
 #[cfg(feature = "validate-request")]
-use crate::{
-    auth::require_authorization::{Basic, Bearer},
-    validate_request::{AcceptHeader, ValidateRequestHeader},
-};
+use crate::validate_request::{AcceptHeader, ValidateRequestHeader};
 #[cfg(feature = "trace")]
 use crate::{
     classify::{GrpcErrorsAsFailures, MakeClassifier, ServerErrorsAsFailures, SharedClassifier},
@@ -211,7 +210,6 @@ pub trait ServiceExt<Request>: tower_service::Service<Request> {
     /// See the [cors](crate::cors) for an example.
     ///
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
-    #[cfg(feature = "cors")]
     #[cfg(feature = "cors")]
     fn add_cors_permissive(self) -> Cors<Self>
     where
@@ -587,6 +585,7 @@ pub trait ServiceExt<Request>: tower_service::Service<Request> {
     /// Request Timeout` response will be sent.
     ///
     /// See the [timeout](crate::timeout) for an example.
+    #[cfg(feature = "timeout")]
     fn timeout(self, timeout: Duration) -> Timeout<Self>
     where
         Self: Sized,
@@ -597,6 +596,7 @@ pub trait ServiceExt<Request>: tower_service::Service<Request> {
     /// Creates a new middleware that applies a timeout to request bodies.
     ///
     /// See the [timeout](crate::timeout) for an example.
+    #[cfg(feature = "timeout")]
     fn timeout_request_body(self, timeout: Duration) -> RequestBodyTimeout<Self>
     where
         Self: Sized,
@@ -607,6 +607,7 @@ pub trait ServiceExt<Request>: tower_service::Service<Request> {
     /// Creates a new middleware that applies a timeout to response bodies.
     ///
     /// See the [timeout](crate::timeout) for an example.
+    #[cfg(feature = "timeout")]
     fn timeout_response_body(self, timeout: Duration) -> ResponseBodyTimeout<Self>
     where
         Self: Sized,
@@ -703,7 +704,7 @@ pub trait ServiceExt<Request>: tower_service::Service<Request> {
     /// with this method. However use of HTTPS/TLS is not enforced by this middleware.
     ///
     /// See the [validate_request](crate::validate_request) for an example.
-    #[cfg(feature = "validate-request")]
+    #[cfg(all(feature = "validate-request", feature = "auth"))]
     fn validate_basic_authorization<Resbody>(
         self,
         username: &str,
@@ -726,7 +727,7 @@ pub trait ServiceExt<Request>: tower_service::Service<Request> {
     /// Panics if the token is not a valid [`HeaderValue`](http::header::HeaderValue).
     ///
     /// See the [validate_request](crate::validate_request) for an example.
-    #[cfg(feature = "validate-request")]
+    #[cfg(all(feature = "validate-request", feature = "auth"))]
     fn validate_bearer_authorization<Resbody>(
         self,
         token: &str,
