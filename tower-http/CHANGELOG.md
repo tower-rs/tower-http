@@ -9,7 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Added
 
-- None.
+- Add `ServiceExt` trait ([#410])
+
+[#410]: https://github.com/tower-rs/tower-http/pull/410
 
 ## Changed
 
