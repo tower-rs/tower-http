@@ -21,7 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Fixed
 
-- Skip compression for range requests ([#446])
+- **compression:** Skip compression for range requests ([#446])
+
+[#446]: https://github.com/tower-rs/tower-http/pull/446
 
 # 0.5.0 (November 21, 2023)
 
