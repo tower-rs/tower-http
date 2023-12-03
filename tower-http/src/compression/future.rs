@@ -42,6 +42,7 @@ where
 
         // never recompress responses that are already compressed
         let should_compress = !res.headers().contains_key(header::CONTENT_ENCODING)
+            && !res.headers().contains_key(header::CONTENT_RANGE)
             && self.predicate.should_compress(&res);
 
         let (mut parts, body) = res.into_parts();
@@ -94,6 +95,7 @@ where
             }
         };
 
+        parts.headers.remove(header::ACCEPT_RANGES);
         parts.headers.remove(header::CONTENT_LENGTH);
 
         parts
