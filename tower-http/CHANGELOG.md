@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Fixed
 
-- None.
+- Skip compression for range requests ([#446])
 
 # 0.5.0 (November 21, 2023)
 
