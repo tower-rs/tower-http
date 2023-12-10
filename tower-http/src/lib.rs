@@ -294,6 +294,9 @@ mod compression_utils;
 ))]
 pub use compression_utils::CompressionLevel;
 
+#[cfg(feature = "concurrency-limit")]
+pub mod concurrency_limit;
+
 #[cfg(feature = "map-response-body")]
 pub mod map_response_body;
 
