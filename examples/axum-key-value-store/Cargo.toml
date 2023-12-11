@@ -7,11 +7,10 @@ publish = false
 license = "MIT"
 
 [dependencies]
-hyper = { version = "0.14.15", features = ["full"] }
-tokio = { version = "1.2.0", features = ["full"] }
+tokio = { version = "1.32.0", features = ["full"] }
 tower = { version = "0.4.13", features = ["full"] }
 tower-http = { path = "../../tower-http", features = ["full"] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3.11", features = ["env-filter"] }
-axum = "0.6"
-clap = { version = "4.3.16", features = ["derive"] }
+tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
+axum = "0.7"
+clap = { version = "4.4.4", features = ["derive"] }
