@@ -84,6 +84,20 @@ impl ServeFile {
         Self(self.0.precompressed_deflate())
     }
 
+    /// Informs the service that it should also look for a precompressed zstd
+    /// version of the file.
+    ///
+    /// If the client has an `Accept-Encoding` header that allows the zstd encoding,
+    /// the file `foo.txt.zst` will be served instead of `foo.txt`.
+    /// If the precompressed file is not available, or the client doesn't support it,
+    /// the uncompressed version will be served instead.
+    /// Both the precompressed version and the uncompressed version are expected
+    /// to be present in the same directory. Different precompressed
+    /// variants can be combined.
+    pub fn precompressed_zstd(self) -> Self {
+        Self(self.0.precompressed_zstd())
+    }
+
     /// Set a specific read buffer chunk size.
     ///
     /// The default capacity is 64kb.
