@@ -143,6 +143,7 @@ where
 mod tests {
     use crate::services::ServeFile;
     use crate::test_helpers::Body;
+    use async_compression::tokio::bufread::ZstdDecoder;
     use brotli::BrotliDecompress;
     use flate2::bufread::DeflateDecoder;
     use flate2::bufread::GzDecoder;
@@ -153,6 +154,7 @@ mod tests {
     use mime::Mime;
     use std::io::Read;
     use std::str::FromStr;
+    use tokio::io::AsyncReadExt;
     use tower::ServiceExt;
 
     #[tokio::test]
@@ -353,6 +355,25 @@ mod tests {
         let mut decoder = DeflateDecoder::new(&body[..]);
         let mut decompressed = String::new();
         decoder.read_to_string(&mut decompressed).unwrap();
+        assert!(decompressed.starts_with("\"This is a test file!\""));
+    }
+
+    #[tokio::test]
+    async fn precompressed_zstd() {
+        let svc = ServeFile::new("../test-files/precompressed.txt").precompressed_zstd();
+        let request = Request::builder()
+            .header("Accept-Encoding", "zstd,br")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(request).await.unwrap();
+
+        assert_eq!(res.headers()["content-type"], "text/plain");
+        assert_eq!(res.headers()["content-encoding"], "zstd");
+
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        let mut decoder = ZstdDecoder::new(&body[..]);
+        let mut decompressed = String::new();
+        decoder.read_to_string(&mut decompressed).await.unwrap();
         assert!(decompressed.starts_with("\"This is a test file!\""));
     }
 
