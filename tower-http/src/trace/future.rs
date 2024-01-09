@@ -1,4 +1,7 @@
-use super::{OnBodyChunk, OnEos, OnFailure, OnResponse, ResponseBody};
+use super::{
+    DefaultOnBodyChunk, DefaultOnEos, DefaultOnFailure, DefaultOnResponse, OnBodyChunk, OnEos,
+    OnFailure, OnResponse, ResponseBody,
+};
 use crate::classify::{ClassifiedResponse, ClassifyResponse};
 use http::Response;
 use http_body::Body;
@@ -15,7 +18,7 @@ pin_project! {
     /// Response future for [`Trace`].
     ///
     /// [`Trace`]: super::Trace
-    pub struct ResponseFuture<F, C, OnResponse, OnBodyChunk, OnEos, OnFailure> {
+    pub struct ResponseFuture<F, C, OnResponse = DefaultOnResponse, OnBodyChunk = DefaultOnBodyChunk, OnEos = DefaultOnEos, OnFailure = DefaultOnFailure> {
         #[pin]
         pub(crate) inner: F,
         pub(crate) span: Span,
