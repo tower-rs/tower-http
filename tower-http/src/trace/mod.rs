@@ -400,7 +400,16 @@ pub use self::{
     on_response::{DefaultOnResponse, OnResponse},
     service::Trace,
 };
-use crate::LatencyUnit;
+use crate::{
+    classify::{GrpcErrorsAsFailures, ServerErrorsAsFailures, SharedClassifier},
+    LatencyUnit,
+};
+
+/// MakeClassifier for HTTP requests.
+pub type HttpMakeClassifier = SharedClassifier<ServerErrorsAsFailures>;
+
+/// MakeClassifier for gRPC requests.
+pub type GrpcMakeClassifier = SharedClassifier<GrpcErrorsAsFailures>;
 
 macro_rules! event_dynamic_lvl {
     ( $(target: $target:expr,)? $(parent: $parent:expr,)? $lvl:expr, $($tt:tt)* ) => {
