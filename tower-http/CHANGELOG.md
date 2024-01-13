@@ -23,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Accepts range headers with ranges where the end of range goes past the end of the document by bumping 
 http-range-header to `0.4`
+- cors: Keep Vary headers set by the inner service when setting response headers ([#398])
+
+[#398]:  https://github.com/tower-rs/tower-http/pull/398
 
 # 0.4.2 (July 19, 2023)
 
