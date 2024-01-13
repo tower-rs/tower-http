@@ -1,8 +1,3 @@
-fn main() {
-    eprintln!("this example has not yet been updated to hyper 1.0");
-}
-
-/*
 use axum::{
     body::Bytes,
     extract::{Path, State},
@@ -18,6 +13,7 @@ use std::{
     sync::{Arc, RwLock},
     time::Duration,
 };
+use tokio::net::TcpListener;
 use tower::ServiceBuilder;
 use tower_http::{
     timeout::TimeoutLayer,
@@ -49,10 +45,12 @@ async fn main() {
     // Run our service
     let addr = SocketAddr::from((Ipv4Addr::UNSPECIFIED, config.port));
     tracing::info!("Listening on {}", addr);
-    axum::Server::bind(&addr)
-        .serve(app().into_make_service())
-        .await
-        .expect("server error");
+    axum::serve(
+        TcpListener::bind(addr).await.expect("bind error"),
+        app().into_make_service(),
+    )
+    .await
+    .expect("server error");
 }
 
 fn app() -> Router {
@@ -79,8 +77,6 @@ fn app() -> Router {
         .sensitive_response_headers(sensitive_headers)
         // Set a timeout
         .layer(TimeoutLayer::new(Duration::from_secs(10)))
-        // Box the response body so it implements `Default` which is required by axum
-        .map_response_body(axum::body::boxed)
         // Compress responses
         .compression()
         // Set a `Content-Type` if there isn't one already.
@@ -113,4 +109,3 @@ async fn set_key(Path(path): Path<String>, state: State<AppState>, value: Bytes)
 
 // See https://github.com/tokio-rs/axum/blob/main/examples/testing/src/main.rs for an example of
 // how to test axum apps
-*/
