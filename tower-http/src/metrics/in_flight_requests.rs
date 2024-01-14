@@ -289,9 +289,9 @@ where
 mod tests {
     #[allow(unused_imports)]
     use super::*;
-    use crate::test_helpers::Body;
+    use crate::{test_helpers::Body, ServiceExt};
     use http::Request;
-    use tower::{BoxError, ServiceBuilder};
+    use tower::{service_fn, BoxError, ServiceBuilder};
 
     #[tokio::test]
     async fn basic() {
@@ -300,6 +300,32 @@ mod tests {
         let mut service = ServiceBuilder::new()
             .layer(in_flight_requests_layer)
             .service_fn(echo);
+        assert_eq!(counter.get(), 0);
+
+        // driving service to ready shouldn't increment the counter
+        std::future::poll_fn(|cx| service.poll_ready(cx))
+            .await
+            .unwrap();
+        assert_eq!(counter.get(), 0);
+
+        // creating the response future should increment the count
+        let response_future = service.call(Request::new(Body::empty()));
+        assert_eq!(counter.get(), 1);
+
+        // count shouldn't decrement until the full body has been comsumed
+        let response = response_future.await.unwrap();
+        assert_eq!(counter.get(), 1);
+
+        let body = response.into_body();
+        crate::test_helpers::to_bytes(body).await.unwrap();
+        assert_eq!(counter.get(), 0);
+    }
+
+    #[tokio::test]
+    async fn basic_service_ext() {
+        let counter = InFlightRequestsCounter::new();
+
+        let mut service = service_fn(echo).count_in_flight_requests(counter.clone());
         assert_eq!(counter.get(), 0);
 
         // driving service to ready shouldn't increment the counter

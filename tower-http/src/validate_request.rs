@@ -416,15 +416,29 @@ where
 mod tests {
     #[allow(unused_imports)]
     use super::*;
-    use crate::test_helpers::Body;
+    use crate::{test_helpers::Body, ServiceExt};
     use http::header;
-    use tower::{BoxError, ServiceBuilder, ServiceExt};
+    use tower::{service_fn, BoxError, ServiceBuilder, ServiceExt as TowerServiceExt};
 
     #[tokio::test]
     async fn valid_accept_header() {
         let mut service = ServiceBuilder::new()
             .layer(ValidateRequestHeaderLayer::accept("application/json"))
             .service_fn(echo);
+
+        let request = Request::get("/")
+            .header(header::ACCEPT, "application/json")
+            .body(Body::empty())
+            .unwrap();
+
+        let res = service.ready().await.unwrap().call(request).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn valid_accept_header_service_ext() {
+        let mut service = service_fn(echo).validate_accept_header("application/json");
 
         let request = Request::get("/")
             .header(header::ACCEPT, "application/json")

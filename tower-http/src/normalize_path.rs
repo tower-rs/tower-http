@@ -140,8 +140,9 @@ fn normalize_trailing_slash(uri: &mut Uri) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ServiceExt;
     use std::convert::Infallible;
-    use tower::{ServiceBuilder, ServiceExt};
+    use tower::{service_fn, ServiceBuilder, ServiceExt as TowerServiceExt};
 
     #[tokio::test]
     async fn works() {
@@ -152,6 +153,26 @@ mod tests {
         let mut svc = ServiceBuilder::new()
             .layer(NormalizePathLayer::trim_trailing_slash())
             .service_fn(handle);
+
+        let body = svc
+            .ready()
+            .await
+            .unwrap()
+            .call(Request::builder().uri("/foo/").body(()).unwrap())
+            .await
+            .unwrap()
+            .into_body();
+
+        assert_eq!(body, "/foo");
+    }
+
+    #[tokio::test]
+    async fn works_service_ext() {
+        async fn handle(request: Request<()>) -> Result<Response<String>, Infallible> {
+            Ok(Response::new(request.uri().to_string()))
+        }
+
+        let mut svc = service_fn(handle).normalize_path();
 
         let body = svc
             .ready()

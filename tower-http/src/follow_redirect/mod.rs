@@ -388,10 +388,10 @@ fn resolve_uri(relative: &str, base: &Uri) -> Option<Uri> {
 #[cfg(test)]
 mod tests {
     use super::{policy::*, *};
-    use crate::test_helpers::Body;
+    use crate::{test_helpers::Body, ServiceExt};
     use http::header::LOCATION;
     use std::convert::Infallible;
-    use tower::{ServiceBuilder, ServiceExt};
+    use tower::{service_fn, ServiceBuilder, ServiceExt as TowerServiceExt};
 
     #[tokio::test]
     async fn follows() {
@@ -399,6 +399,21 @@ mod tests {
             .layer(FollowRedirectLayer::with_policy(Action::Follow))
             .buffer(1)
             .service_fn(handle);
+        let req = Request::builder()
+            .uri("http://example.com/42")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+        assert_eq!(*res.body(), 0);
+        assert_eq!(
+            res.extensions().get::<RequestUri>().unwrap().0,
+            "http://example.com/0"
+        );
+    }
+
+    #[tokio::test]
+    async fn follows_service_ext() {
+        let svc = service_fn(handle).follow_redirect_with_policy(Action::Follow);
         let req = Request::builder()
             .uri("http://example.com/42")
             .body(Body::empty())

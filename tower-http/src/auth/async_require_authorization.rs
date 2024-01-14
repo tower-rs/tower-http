@@ -308,10 +308,10 @@ where
 mod tests {
     #[allow(unused_imports)]
     use super::*;
-    use crate::test_helpers::Body;
+    use crate::{test_helpers::Body, ServiceExt};
     use futures_util::future::BoxFuture;
     use http::{header, StatusCode};
-    use tower::{BoxError, ServiceBuilder, ServiceExt};
+    use tower::{service_fn, BoxError, ServiceBuilder, ServiceExt as TowerServiceExt};
 
     #[derive(Clone, Copy)]
     struct MyAuth;
@@ -372,6 +372,20 @@ mod tests {
         let mut service = ServiceBuilder::new()
             .layer(AsyncRequireAuthorizationLayer::new(MyAuth))
             .service_fn(echo);
+
+        let request = Request::get("/")
+            .header(header::AUTHORIZATION, "Bearer deez")
+            .body(Body::empty())
+            .unwrap();
+
+        let res = service.ready().await.unwrap().call(request).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn require_async_auth_401_service_ext() {
+        let mut service = service_fn(echo).async_require_authorization(MyAuth);
 
         let request = Request::get("/")
             .header(header::AUTHORIZATION, "Bearer deez")
