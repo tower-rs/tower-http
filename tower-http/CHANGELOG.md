@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
+## Added:
+
+- **compression:** Will now send a `vary: accept-encoding` header on compressed responses ([#399])
+
+[#399]: https://github.com/tower-rs/tower-http/pull/399
+
 # 0.5.1 (January 14, 2024)
 
 ## Added
