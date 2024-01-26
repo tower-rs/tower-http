@@ -95,7 +95,9 @@ mod tests {
     use crate::test_helpers::{Body, WithTrailers};
     use async_compression::tokio::write::{BrotliDecoder, BrotliEncoder};
     use flate2::read::GzDecoder;
-    use http::header::{ACCEPT_ENCODING, CONTENT_ENCODING, CONTENT_TYPE};
+    use http::header::{
+        ACCEPT_ENCODING, ACCEPT_RANGES, CONTENT_ENCODING, CONTENT_RANGE, CONTENT_TYPE, RANGE,
+    };
     use http::{HeaderMap, HeaderName, Request, Response};
     use http_body_util::BodyExt;
     use std::convert::Infallible;
@@ -390,5 +392,67 @@ mod tests {
             compressed_with_level.as_slice(),
             "Compression level is not respected"
         );
+    }
+
+    #[tokio::test]
+    async fn should_not_compress_ranges() {
+        let svc = service_fn(|_| async {
+            let mut res = Response::new(Body::from("Hello"));
+            let headers = res.headers_mut();
+            headers.insert(ACCEPT_RANGES, "bytes".parse().unwrap());
+            headers.insert(CONTENT_RANGE, "bytes 0-4/*".parse().unwrap());
+            Ok::<_, std::io::Error>(res)
+        });
+        let mut svc = Compression::new(svc).compress_when(Always);
+
+        // call the service
+        let req = Request::builder()
+            .header(ACCEPT_ENCODING, "gzip")
+            .header(RANGE, "bytes=0-4")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.ready().await.unwrap().call(req).await.unwrap();
+        let headers = res.headers().clone();
+
+        // read the uncompressed body
+        let collected = res.into_body().collect().await.unwrap().to_bytes();
+
+        assert_eq!(headers[ACCEPT_RANGES], "bytes");
+        assert!(!headers.contains_key(CONTENT_ENCODING));
+        assert_eq!(collected, "Hello");
+    }
+
+    #[tokio::test]
+    async fn should_strip_accept_ranges_header_when_compressing() {
+        let svc = service_fn(|_| async {
+            let mut res = Response::new(Body::from("Hello, World!"));
+            res.headers_mut()
+                .insert(ACCEPT_RANGES, "bytes".parse().unwrap());
+            Ok::<_, std::io::Error>(res)
+        });
+        let mut svc = Compression::new(svc).compress_when(Always);
+
+        // call the service
+        let req = Request::builder()
+            .header(ACCEPT_ENCODING, "gzip")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.ready().await.unwrap().call(req).await.unwrap();
+        let headers = res.headers().clone();
+
+        // read the compressed body
+        let collected = res.into_body().collect().await.unwrap();
+        let compressed_data = collected.to_bytes();
+
+        // decompress the body
+        // doing this with flate2 as that is much easier than async-compression and blocking during
+        // tests is fine
+        let mut decoder = GzDecoder::new(&compressed_data[..]);
+        let mut decompressed = String::new();
+        decoder.read_to_string(&mut decompressed).unwrap();
+
+        assert!(!headers.contains_key(ACCEPT_RANGES));
+        assert_eq!(headers[CONTENT_ENCODING], "gzip");
+        assert_eq!(decompressed, "Hello, World!");
     }
 }

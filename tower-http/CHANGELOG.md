@@ -11,7 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **compression:** Will now send a `vary: accept-encoding` header on compressed responses ([#399])
 
+## Fixed
+
+- **compression:** Skip compression for range requests ([#446])
+
 [#399]: https://github.com/tower-rs/tower-http/pull/399
+[#446]: https://github.com/tower-rs/tower-http/pull/446
 
 # 0.5.1 (January 14, 2024)
 
