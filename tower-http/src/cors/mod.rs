@@ -618,24 +618,10 @@ where
 
         // These headers are applied to both preflight and subsequent regular CORS requests:
         // https://fetch.spec.whatwg.org/#http-responses
-
         headers.extend(self.layer.allow_origin.to_header(origin, &parts));
         headers.extend(self.layer.allow_credentials.to_header(origin, &parts));
         headers.extend(self.layer.allow_private_network.to_header(origin, &parts));
-
-        let mut vary_headers = self.layer.vary.values();
-        if let Some(first) = vary_headers.next() {
-            let mut header = match headers.entry(header::VARY) {
-                header::Entry::Occupied(_) => {
-                    unreachable!("no vary header inserted up to this point")
-                }
-                header::Entry::Vacant(v) => v.insert_entry(first),
-            };
-
-            for val in vary_headers {
-                header.append(val);
-            }
-        }
+        headers.extend(self.layer.vary.to_header());
 
         // Return results immediately upon preflight request
         if parts.method == Method::OPTIONS {
@@ -695,6 +681,13 @@ where
         match self.project().inner.project() {
             KindProj::CorsCall { future, headers } => {
                 let mut response: Response<B> = ready!(future.poll(cx))?;
+
+                // vary header can have multiple values, don't overwrite
+                // previously-set value(s).
+                if let Some(vary) = headers.remove(header::VARY) {
+                    headers.append(header::VARY, vary);
+                }
+                // extend will overwrite previous headers of remaining names
                 response.headers_mut().extend(headers.drain());
 
                 Poll::Ready(Ok(response))

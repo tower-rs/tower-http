@@ -7,23 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
-## Added
+## Added:
 
-- None.
-
-## Changed
-
-- None.
-
-## Removed
-
-- None.
+- **compression:** Will now send a `vary: accept-encoding` header on compressed responses ([#399])
 
 ## Fixed
 
 - **compression:** Skip compression for range requests ([#446])
 
+[#399]: https://github.com/tower-rs/tower-http/pull/399
 [#446]: https://github.com/tower-rs/tower-http/pull/446
+
+# 0.5.1 (January 14, 2024)
+
+## Added
+
+- **fs:** Support files precompressed with `zstd` in `ServeFile`
+- **trace:** Add default generic parameters for `ResponseBody` and `ResponseFuture` ([#455])
+- **trace:** Add type aliases `HttpMakeClassifier` and `GrpcMakeClassifier` ([#455])
+
+## Fixed
+
+- **cors:** Keep Vary headers set by the inner service when setting response headers ([#398])
+- **fs:** `ServeDir` now no longer redirects from `/directory` to `/directory/`
+  if `append_index_html_on_directories` is disabled ([#421])
+
+[#398]: https://github.com/tower-rs/tower-http/pull/398
+[#421]: https://github.com/tower-rs/tower-http/pull/421
+[#455]: https://github.com/tower-rs/tower-http/pull/455
 
 # 0.5.0 (November 21, 2023)
 
