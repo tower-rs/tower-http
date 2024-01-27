@@ -54,7 +54,7 @@ where
         }
 
         let body = match (should_compress, self.encoding) {
-            // if compression is _not_ support or the client doesn't accept it
+            // if compression is _not_ supported or the client doesn't accept it
             (false, _) | (_, Encoding::Identity) => {
                 return Poll::Ready(Ok(Response::from_parts(
                     parts,
