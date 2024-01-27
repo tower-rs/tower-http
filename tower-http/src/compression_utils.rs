@@ -200,35 +200,33 @@ where
         let mut this = self.project();
         let mut buf = BytesMut::new();
         if !*this.read_all_data {
-            match tokio_util::io::poll_read_buf(this.read.as_mut(), cx, &mut buf) {
-                Poll::Ready(result) => match result {
-                    Ok(read) => {
-                        if read == 0 {
-                            *this.read_all_data = true;
-                        } else {
-                            return Poll::Ready(Some(Ok(Frame::data(buf.freeze()))));
-                        }
-                    }
-                    Err(err) => {
-                        let body_error: Option<B::Error> = M::get_pin_mut(this.read)
-                            .get_pin_mut()
-                            .project()
-                            .error
-                            .take();
+            let result = tokio_util::io::poll_read_buf(this.read.as_mut(), cx, &mut buf);
 
-                        if let Some(body_error) = body_error {
-                            return Poll::Ready(Some(Err(body_error.into())));
-                        } else if err.raw_os_error() == Some(SENTINEL_ERROR_CODE) {
-                            // SENTINEL_ERROR_CODE only gets used when storing
-                            // an underlying body error
-                            unreachable!()
-                        } else {
-                            return Poll::Ready(Some(Err(err.into())));
-                        }
+            match ready!(result) {
+                Ok(read) => {
+                    if read == 0 {
+                        *this.read_all_data = true;
+                    } else {
+                        return Poll::Ready(Some(Ok(Frame::data(buf.freeze()))));
                     }
-                },
+                }
+                Err(err) => {
+                    let body_error: Option<B::Error> = M::get_pin_mut(this.read)
+                        .get_pin_mut()
+                        .project()
+                        .error
+                        .take();
 
-                Poll::Pending => return Poll::Pending,
+                    if let Some(body_error) = body_error {
+                        return Poll::Ready(Some(Err(body_error.into())));
+                    } else if err.raw_os_error() == Some(SENTINEL_ERROR_CODE) {
+                        // SENTINEL_ERROR_CODE only gets used when storing
+                        // an underlying body error
+                        unreachable!()
+                    } else {
+                        return Poll::Ready(Some(Err(err.into())));
+                    }
+                }
             }
         }
 
