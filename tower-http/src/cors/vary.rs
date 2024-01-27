@@ -28,7 +28,7 @@ impl Vary {
 
     pub(super) fn to_header(&self) -> Option<(HeaderName, HeaderValue)> {
         let values = &self.0;
-        let mut res = values.get(0)?.as_bytes().to_owned();
+        let mut res = values.first()?.as_bytes().to_owned();
         for val in &values[1..] {
             res.extend_from_slice(b", ");
             res.extend_from_slice(val.as_bytes());
