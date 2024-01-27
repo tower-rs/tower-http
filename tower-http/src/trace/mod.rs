@@ -516,7 +516,7 @@ mod tests {
                 tracing::info_span!("test-span", foo = tracing::field::Empty)
             })
             .on_request(|_req: &Request<Body>, span: &Span| {
-                span.record("foo", 42);
+                span.record("foo", &42);
                 ON_REQUEST_COUNT.fetch_add(1, Ordering::SeqCst);
             })
             .on_response(|_res: &Response<Body>, _latency: Duration, _span: &Span| {
