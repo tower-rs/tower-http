@@ -71,49 +71,37 @@ impl SupportedEncodings for AcceptEncoding {
     #[allow(dead_code)]
     fn gzip(&self) -> bool {
         #[cfg(any(feature = "decompression-gzip", feature = "compression-gzip"))]
-        {
-            self.gzip
-        }
+        return self.gzip;
+
         #[cfg(not(any(feature = "decompression-gzip", feature = "compression-gzip")))]
-        {
-            false
-        }
+        return false;
     }
 
     #[allow(dead_code)]
     fn deflate(&self) -> bool {
         #[cfg(any(feature = "decompression-deflate", feature = "compression-deflate"))]
-        {
-            self.deflate
-        }
+        return self.deflate;
+
         #[cfg(not(any(feature = "decompression-deflate", feature = "compression-deflate")))]
-        {
-            false
-        }
+        return false;
     }
 
     #[allow(dead_code)]
     fn br(&self) -> bool {
         #[cfg(any(feature = "decompression-br", feature = "compression-br"))]
-        {
-            self.br
-        }
+        return self.br;
+
         #[cfg(not(any(feature = "decompression-br", feature = "compression-br")))]
-        {
-            false
-        }
+        return false;
     }
 
     #[allow(dead_code)]
     fn zstd(&self) -> bool {
         #[cfg(any(feature = "decompression-zstd", feature = "compression-zstd"))]
-        {
-            self.zstd
-        }
+        return self.zstd;
+
         #[cfg(not(any(feature = "decompression-zstd", feature = "compression-zstd")))]
-        {
-            false
-        }
+        return false;
     }
 }
 
