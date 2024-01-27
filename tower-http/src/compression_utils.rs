@@ -203,12 +203,11 @@ where
             let result = tokio_util::io::poll_read_buf(this.read.as_mut(), cx, &mut buf);
 
             match ready!(result) {
-                Ok(read) => {
-                    if read == 0 {
-                        *this.read_all_data = true;
-                    } else {
-                        return Poll::Ready(Some(Ok(Frame::data(buf.freeze()))));
-                    }
+                Ok(0) => {
+                    *this.read_all_data = true;
+                }
+                Ok(_) => {
+                    return Poll::Ready(Some(Ok(Frame::data(buf.freeze()))));
                 }
                 Err(err) => {
                     let body_error: Option<B::Error> = M::get_pin_mut(this.read)
