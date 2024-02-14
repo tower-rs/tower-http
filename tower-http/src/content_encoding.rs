@@ -61,7 +61,9 @@ impl Encoding {
     ))]
     fn parse(s: &str, _supported_encoding: impl SupportedEncodings) -> Option<Encoding> {
         #[cfg(any(feature = "fs", feature = "compression-gzip"))]
-        if s.eq_ignore_ascii_case("gzip") && _supported_encoding.gzip() {
+        if (s.eq_ignore_ascii_case("gzip") || s.eq_ignore_ascii_case("x-gzip"))
+            && _supported_encoding.gzip()
+        {
             return Some(Encoding::Gzip);
         }
 
@@ -295,6 +297,28 @@ mod tests {
         );
         let encoding = Encoding::from_headers(&headers, SupportedEncodingsAll);
         assert_eq!(Encoding::Brotli, encoding);
+    }
+
+    #[test]
+    fn accept_encoding_header_gzip_x_gzip() {
+        let mut headers = http::HeaderMap::new();
+        headers.append(
+            http::header::ACCEPT_ENCODING,
+            http::HeaderValue::from_static("gzip,x-gzip"),
+        );
+        let encoding = Encoding::from_headers(&headers, SupportedEncodingsAll);
+        assert_eq!(Encoding::Gzip, encoding);
+    }
+
+    #[test]
+    fn accept_encoding_header_x_gzip_deflate() {
+        let mut headers = http::HeaderMap::new();
+        headers.append(
+            http::header::ACCEPT_ENCODING,
+            http::HeaderValue::from_static("deflate,x-gzip"),
+        );
+        let encoding = Encoding::from_headers(&headers, SupportedEncodingsAll);
+        assert_eq!(Encoding::Gzip, encoding);
     }
 
     #[test]

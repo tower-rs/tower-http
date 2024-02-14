@@ -98,7 +98,7 @@ mod tests {
     use http::header::{
         ACCEPT_ENCODING, ACCEPT_RANGES, CONTENT_ENCODING, CONTENT_RANGE, CONTENT_TYPE, RANGE,
     };
-    use http::{HeaderMap, HeaderName, Request, Response};
+    use http::{HeaderMap, HeaderName, HeaderValue, Request, Response};
     use http_body_util::BodyExt;
     use std::convert::Infallible;
     use std::io::Read;
@@ -131,6 +131,46 @@ mod tests {
             .body(Body::empty())
             .unwrap();
         let res = svc.ready().await.unwrap().call(req).await.unwrap();
+
+        // read the compressed body
+        let collected = res.into_body().collect().await.unwrap();
+        let trailers = collected.trailers().cloned().unwrap();
+        let compressed_data = collected.to_bytes();
+
+        // decompress the body
+        // doing this with flate2 as that is much easier than async-compression and blocking during
+        // tests is fine
+        let mut decoder = GzDecoder::new(&compressed_data[..]);
+        let mut decompressed = String::new();
+        decoder.read_to_string(&mut decompressed).unwrap();
+
+        assert_eq!(decompressed, "Hello, World!");
+
+        // trailers are maintained
+        assert_eq!(trailers["foo"], "bar");
+    }
+
+    #[tokio::test]
+    async fn x_gzip_works() {
+        let svc = service_fn(handle);
+        let mut svc = Compression::new(svc).compress_when(Always);
+
+        // call the service
+        let req = Request::builder()
+            .header("accept-encoding", "x-gzip")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.ready().await.unwrap().call(req).await.unwrap();
+
+        // we treat x-gzip as equivalent to gzip and don't have to return x-gzip
+        // taking extra caution by checking all headers with this name
+        assert_eq!(
+            res.headers()
+                .get_all("content-encoding")
+                .iter()
+                .collect::<Vec<&HeaderValue>>(),
+            vec!(HeaderValue::from_static("gzip"))
+        );
 
         // read the compressed body
         let collected = res.into_body().collect().await.unwrap();
