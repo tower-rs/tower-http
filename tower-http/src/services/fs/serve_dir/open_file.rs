@@ -176,7 +176,7 @@ fn preferred_encoding(
     path: &mut PathBuf,
     negotiated_encoding: &[(Encoding, QValue)],
 ) -> Option<Encoding> {
-    let preferred_encoding = Encoding::preferred_encoding(negotiated_encoding);
+    let preferred_encoding = Encoding::preferred_encoding(negotiated_encoding.iter().copied());
 
     if let Some(file_extension) =
         preferred_encoding.and_then(|encoding| encoding.to_file_extension())
