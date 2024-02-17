@@ -62,23 +62,18 @@ where
                 )))
             }
 
-            #[cfg(feature = "compression-gzip")]
-            (_, Encoding::Gzip) => {
+            (true, Encoding::Gzip) => {
                 CompressionBody::new(BodyInner::gzip(WrapBody::new(body, self.quality)))
             }
-            #[cfg(feature = "compression-deflate")]
-            (_, Encoding::Deflate) => {
+            (true, Encoding::Deflate) => {
                 CompressionBody::new(BodyInner::deflate(WrapBody::new(body, self.quality)))
             }
-            #[cfg(feature = "compression-br")]
-            (_, Encoding::Brotli) => {
+            (true, Encoding::Brotli) => {
                 CompressionBody::new(BodyInner::brotli(WrapBody::new(body, self.quality)))
             }
-            #[cfg(feature = "compression-zstd")]
-            (_, Encoding::Zstd) => {
+            (true, Encoding::Zstd) => {
                 CompressionBody::new(BodyInner::zstd(WrapBody::new(body, self.quality)))
             }
-            #[cfg(feature = "fs")]
             #[allow(unreachable_patterns)]
             (true, _) => {
                 // This should never happen because the `AcceptEncoding` struct which is used to determine

@@ -72,6 +72,7 @@
 pub mod predicate;
 
 mod body;
+mod encoding;
 mod future;
 mod layer;
 mod pin_project_cfg;
@@ -80,12 +81,13 @@ mod service;
 #[doc(inline)]
 pub use self::{
     body::CompressionBody,
+    encoding::EncodingPreference,
     future::ResponseFuture,
     layer::CompressionLayer,
     predicate::{DefaultPredicate, Predicate},
     service::Compression,
 };
-pub use crate::compression_utils::CompressionLevel;
+pub use crate::{compression_utils::CompressionLevel, content_encoding::Encoding};
 
 #[cfg(test)]
 mod tests {

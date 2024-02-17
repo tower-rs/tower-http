@@ -1,7 +1,7 @@
-use super::{CompressionBody, CompressionLayer, ResponseFuture};
+use super::{CompressionBody, CompressionLayer, EncodingPreference, ResponseFuture};
 use crate::compression::predicate::{DefaultPredicate, Predicate};
 use crate::compression::CompressionLevel;
-use crate::{compression_utils::AcceptEncoding, content_encoding::Encoding};
+use crate::compression_utils::AcceptEncoding;
 use http::{Request, Response};
 use http_body::Body;
 use std::task::{Context, Poll};
@@ -19,6 +19,7 @@ pub struct Compression<S, P = DefaultPredicate> {
     pub(crate) accept: AcceptEncoding,
     pub(crate) predicate: P,
     pub(crate) quality: CompressionLevel,
+    pub(crate) encoding_preference: EncodingPreference,
 }
 
 impl<S> Compression<S, DefaultPredicate> {
@@ -29,6 +30,7 @@ impl<S> Compression<S, DefaultPredicate> {
             accept: AcceptEncoding::default(),
             predicate: DefaultPredicate::default(),
             quality: CompressionLevel::default(),
+            encoding_preference: EncodingPreference::default(),
         }
     }
 }
@@ -153,6 +155,7 @@ impl<S, P> Compression<S, P> {
             accept: self.accept,
             predicate,
             quality: self.quality,
+            encoding_preference: self.encoding_preference,
         }
     }
 }
@@ -173,7 +176,7 @@ where
     }
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
-        let encoding = Encoding::from_headers(req.headers(), self.accept);
+        let encoding = self.encoding_preference.select(req.headers(), self.accept);
 
         ResponseFuture {
             inner: self.inner.call(req),

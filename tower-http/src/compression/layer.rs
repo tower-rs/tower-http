@@ -1,4 +1,4 @@
-use super::{Compression, Predicate};
+use super::{Compression, EncodingPreference, Predicate};
 use crate::compression::predicate::DefaultPredicate;
 use crate::compression::CompressionLevel;
 use crate::compression_utils::AcceptEncoding;
@@ -15,6 +15,7 @@ pub struct CompressionLayer<P = DefaultPredicate> {
     accept: AcceptEncoding,
     predicate: P,
     quality: CompressionLevel,
+    encoding_preference: EncodingPreference,
 }
 
 impl<S, P> Layer<S> for CompressionLayer<P>
@@ -29,6 +30,7 @@ where
             accept: self.accept,
             predicate: self.predicate.clone(),
             quality: self.quality,
+            encoding_preference: self.encoding_preference,
         }
     }
 }
@@ -70,6 +72,16 @@ impl CompressionLayer {
     /// Sets the compression quality.
     pub fn quality(mut self, quality: CompressionLevel) -> Self {
         self.quality = quality;
+        self
+    }
+
+    /// Sets a custom preference for which one of several enabled encodings is
+    /// used.
+    pub fn encoding_preference<T>(mut self, pref: T) -> Self
+    where
+        T: Into<EncodingPreference>,
+    {
+        self.encoding_preference = pref.into();
         self
     }
 
@@ -116,6 +128,7 @@ impl CompressionLayer {
             accept: self.accept,
             predicate,
             quality: self.quality,
+            encoding_preference: self.encoding_preference,
         }
     }
 }

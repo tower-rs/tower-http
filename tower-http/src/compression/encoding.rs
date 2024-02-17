@@ -1,252 +1,354 @@
-pub(crate) trait SupportedEncodings: Copy {
-    fn gzip(&self) -> bool;
-    fn deflate(&self) -> bool;
-    fn br(&self) -> bool;
-    fn zstd(&self) -> bool;
-}
+use std::fmt;
 
-/// A content-encoding supported by the compression service.
-#[non_exhaustive]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-// This enum's variants are ordered from least to most preferred,
-// for the as cast in preferred_encoding to make sense.
-pub enum Encoding {
-    /// Identity encoding, i.e. no compression.
+use arrayvec::ArrayVec;
+
+use crate::content_encoding::{encodings, Encoding, SupportedEncodings};
+
+pub(crate) enum SupportedEncoding {
     Identity,
-    /// `deflate` compression.
+    #[cfg(feature = "compression-deflate")]
     Deflate,
-    /// `gzip` compression.
+    #[cfg(feature = "compression-gzip")]
     Gzip,
-    /// `brotli` compression.
+    #[cfg(feature = "compression-br")]
     Brotli,
-    /// `zstd` compression.
+    #[cfg(feature = "compression-zstd")]
     Zstd,
 }
 
-impl Encoding {
-    #[allow(dead_code)]
-    pub(crate) fn to_str(self) -> &'static str {
-        match self {
-            Encoding::Gzip => "gzip",
-            Encoding::Deflate => "deflate",
-            Encoding::Brotli => "br",
-            Encoding::Zstd => "zstd",
-            Encoding::Identity => "identity",
-        }
+/// Holds configuration for which compression to use when there is more than
+/// one match between client and server-supported compression algorithms.
+#[derive(Clone, Copy)]
+pub struct EncodingPreference(EncodingPreferenceInner);
+
+impl EncodingPreference {
+    /// Within the highest-quality encodings both client and server support, use
+    /// the first one by the order the client sent them in `accept-encoding`.
+    pub fn first_supported() -> Self {
+        Self(EncodingPreferenceInner::FirstSupported)
     }
 
-    #[cfg(feature = "fs")]
-    pub(crate) fn to_file_extension(self) -> Option<&'static std::ffi::OsStr> {
-        match self {
-            Encoding::Gzip => Some(std::ffi::OsStr::new(".gz")),
-            Encoding::Deflate => Some(std::ffi::OsStr::new(".zz")),
-            Encoding::Brotli => Some(std::ffi::OsStr::new(".br")),
-            Encoding::Zstd => Some(std::ffi::OsStr::new(".zst")),
-            Encoding::Identity => None,
-        }
+    #[track_caller]
+    fn list(list: ArrayVec<Encoding, 5>) -> Self {
+        Self(EncodingPreferenceInner::List(EncodingPreferenceList::new(
+            list,
+        )))
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn into_header_value(self) -> http::HeaderValue {
-        http::HeaderValue::from_static(self.to_str())
-    }
-
-    #[cfg(any(
-        feature = "compression-gzip",
-        feature = "compression-br",
-        feature = "compression-deflate",
-        feature = "compression-zstd",
-        feature = "fs",
-    ))]
-    fn parse(s: &str, _supported_encoding: impl SupportedEncodings) -> Option<Encoding> {
-        if (s.eq_ignore_ascii_case("gzip") || s.eq_ignore_ascii_case("x-gzip"))
-            && _supported_encoding.gzip()
-        {
-            return Some(Encoding::Gzip);
-        }
-
-        if s.eq_ignore_ascii_case("deflate") && _supported_encoding.deflate() {
-            return Some(Encoding::Deflate);
-        }
-
-        if s.eq_ignore_ascii_case("br") && _supported_encoding.br() {
-            return Some(Encoding::Brotli);
-        }
-
-        if s.eq_ignore_ascii_case("zstd") && _supported_encoding.zstd() {
-            return Some(Encoding::Zstd);
-        }
-
-        if s.eq_ignore_ascii_case("identity") {
-            return Some(Encoding::Identity);
-        }
-
-        None
-    }
-
-    #[cfg(all(
-        test,
-        any(
-            feature = "compression-gzip",
-            feature = "compression-br",
-            feature = "compression-zstd",
-            feature = "compression-deflate",
-        )
-    ))]
-    // based on https://github.com/http-rs/accept-encoding
-    pub(crate) fn from_headers(
+    pub(super) fn select(
+        &self,
         headers: &http::HeaderMap,
-        supported_encoding: impl SupportedEncodings,
-    ) -> Self {
-        Encoding::preferred_encoding(encodings(headers, supported_encoding))
-            .unwrap_or(Encoding::Identity)
-    }
+        supported_encodings: impl SupportedEncodings,
+    ) -> Encoding {
+        let encodings = encodings(headers, supported_encodings);
 
-    #[cfg(any(
-        feature = "compression-gzip",
-        feature = "compression-br",
-        feature = "compression-zstd",
-        feature = "compression-deflate",
-        feature = "fs",
-    ))]
-    pub(crate) fn preferred_encoding(
-        accepted_encodings: impl Iterator<Item = (Encoding, QValue)>,
-    ) -> Option<Self> {
-        accepted_encodings
-            .filter(|(_, qvalue)| qvalue.0 > 0)
-            .max_by_key(|&(encoding, qvalue)| (qvalue, encoding as u8))
-            .map(|(encoding, _)| encoding)
+        let pref = match &self.0 {
+            EncodingPreferenceInner::List(list) => {
+                encodings.max_by_key(|&(enc, qval)| (qval, list.get(enc)))
+            }
+            EncodingPreferenceInner::FirstSupported => encodings.max_by_key(|&(_, qval)| qval),
+        };
+
+        pref.map(|(enc, _)| enc).unwrap_or(Encoding::Identity)
     }
 }
 
-// Allowed q-values are numbers between 0 and 1 with at most 3 digits in the fractional part. They
-// are presented here as an unsigned integer between 0 and 1000.
-#[cfg(any(
-    feature = "compression-gzip",
-    feature = "compression-br",
-    feature = "compression-zstd",
-    feature = "compression-deflate",
-    feature = "fs",
-))]
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct QValue(u16);
-
-#[cfg(any(
-    feature = "compression-gzip",
-    feature = "compression-br",
-    feature = "compression-zstd",
-    feature = "compression-deflate",
-    feature = "fs",
-))]
-impl QValue {
-    #[inline]
-    fn one() -> Self {
-        Self(1000)
+impl Default for EncodingPreference {
+    fn default() -> Self {
+        Self(EncodingPreferenceInner::List(EncodingPreferenceList {
+            identity_priority: EncodingPriority::_1,
+            #[cfg(feature = "compression-deflate")]
+            deflate_priority: EncodingPriority::_2,
+            #[cfg(feature = "compression-gzip")]
+            gzip_priority: EncodingPriority::_3,
+            #[cfg(feature = "compression-br")]
+            brotli_priority: EncodingPriority::_4,
+            #[cfg(feature = "compression-zstd")]
+            zstd_priority: EncodingPriority::_5,
+        }))
     }
+}
 
-    // Parse a q-value as specified in RFC 7231 section 5.3.1.
-    fn parse(s: &str) -> Option<Self> {
-        let mut c = s.chars();
-        // Parse "q=" (case-insensitively).
-        match c.next() {
-            Some('q' | 'Q') => (),
-            _ => return None,
-        };
-        match c.next() {
-            Some('=') => (),
-            _ => return None,
-        };
+impl fmt::Debug for EncodingPreference {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
 
-        // Parse leading digit. Since valid q-values are between 0.000 and 1.000, only "0" and "1"
-        // are allowed.
-        let mut value = match c.next() {
-            Some('0') => 0,
-            Some('1') => 1000,
-            _ => return None,
-        };
+impl From<[Encoding; 5]> for EncodingPreference {
+    #[track_caller]
+    fn from(value: [Encoding; 5]) -> Self {
+        Self::list(ArrayVec::from(value))
+    }
+}
 
-        // Parse optional decimal point.
-        match c.next() {
-            Some('.') => (),
-            None => return Some(Self(value)),
-            _ => return None,
-        };
+impl From<[Encoding; 4]> for EncodingPreference {
+    #[track_caller]
+    fn from(value: [Encoding; 4]) -> Self {
+        Self::list(value.into_iter().collect())
+    }
+}
 
-        // Parse optional fractional digits. The value of each digit is multiplied by `factor`.
-        // Since the q-value is represented as an integer between 0 and 1000, `factor` is `100` for
-        // the first digit, `10` for the next, and `1` for the digit after that.
-        let mut factor = 100;
-        loop {
-            match c.next() {
-                Some(n @ '0'..='9') => {
-                    // If `factor` is less than `1`, three digits have already been parsed. A
-                    // q-value having more than 3 fractional digits is invalid.
-                    if factor < 1 {
-                        return None;
-                    }
-                    // Add the digit's value multiplied by `factor` to `value`.
-                    value += factor * (n as u16 - '0' as u16);
-                }
-                None => {
-                    // No more characters to parse. Check that the value representing the q-value is
-                    // in the valid range.
-                    return if value <= 1000 {
-                        Some(Self(value))
-                    } else {
-                        None
-                    };
-                }
-                _ => return None,
-            };
-            factor /= 10;
+impl From<[Encoding; 3]> for EncodingPreference {
+    #[track_caller]
+    fn from(value: [Encoding; 3]) -> Self {
+        Self::list(value.into_iter().collect())
+    }
+}
+
+impl From<[Encoding; 2]> for EncodingPreference {
+    #[track_caller]
+    fn from(value: [Encoding; 2]) -> Self {
+        Self::list(value.into_iter().collect())
+    }
+}
+
+impl From<[Encoding; 1]> for EncodingPreference {
+    fn from(value: [Encoding; 1]) -> Self {
+        Self::list(value.into_iter().collect())
+    }
+}
+
+impl From<Encoding> for EncodingPreference {
+    fn from(value: Encoding) -> Self {
+        Self::list([value].into_iter().collect())
+    }
+}
+
+#[derive(Clone, Copy)]
+#[cfg_attr(test, derive(PartialEq))]
+enum EncodingPreferenceInner {
+    List(EncodingPreferenceList),
+    FirstSupported,
+}
+
+impl fmt::Debug for EncodingPreferenceInner {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::List(pref) => f
+                .debug_tuple("List")
+                .field(&pref.dbg_sorted_descending())
+                .finish(),
+            Self::FirstSupported => f.debug_tuple("FirstSupported").finish(),
         }
     }
 }
 
-#[cfg(any(
-    feature = "compression-gzip",
-    feature = "compression-br",
-    feature = "compression-zstd",
-    feature = "compression-deflate",
-    feature = "fs",
-))]
-// based on https://github.com/http-rs/accept-encoding
-pub(crate) fn encodings<'a>(
-    headers: &'a http::HeaderMap,
-    supported_encoding: impl SupportedEncodings + 'a,
-) -> impl Iterator<Item = (Encoding, QValue)> + 'a {
-    headers
-        .get_all(http::header::ACCEPT_ENCODING)
-        .iter()
-        .filter_map(|hval| hval.to_str().ok())
-        .flat_map(|s| s.split(','))
-        .filter_map(move |v| {
-            let mut v = v.splitn(2, ';');
-
-            let encoding = match Encoding::parse(v.next().unwrap().trim(), supported_encoding) {
-                Some(encoding) => encoding,
-                None => return None, // ignore unknown encodings
-            };
-
-            let qval = if let Some(qval) = v.next() {
-                QValue::parse(qval.trim())?
-            } else {
-                QValue::one()
-            };
-
-            Some((encoding, qval))
-        })
+#[derive(Clone, Copy)]
+#[cfg_attr(test, derive(PartialEq))]
+struct EncodingPreferenceList {
+    identity_priority: EncodingPriority,
+    #[cfg(feature = "compression-deflate")]
+    deflate_priority: EncodingPriority,
+    #[cfg(feature = "compression-gzip")]
+    gzip_priority: EncodingPriority,
+    #[cfg(feature = "compression-br")]
+    brotli_priority: EncodingPriority,
+    #[cfg(feature = "compression-zstd")]
+    zstd_priority: EncodingPriority,
 }
 
-#[cfg(all(
-    test,
-    feature = "compression-gzip",
-    feature = "compression-deflate",
-    feature = "compression-br",
-    feature = "compression-zstd",
-))]
+impl EncodingPreferenceList {
+    #[track_caller]
+    fn new(list: ArrayVec<Encoding, 5>) -> Self {
+        // Not a closure to support tracking the callsite
+        // https://github.com/rust-lang/rust/issues/87417
+        let mut next_prio = 5;
+        macro_rules! set_prio {
+            ($field:ident, $enc:ident) => {{
+                if $field.is_some() {
+                    panic!("Encoding preference list contains a duplicate: {:?}", $enc);
+                }
+                $field = Some(EncodingPriority::from_u8(next_prio));
+            }};
+        }
+
+        const DEFAULTS: [SupportedEncoding; 5] = [
+            #[cfg(feature = "compression-zstd")]
+            Encoding::Zstd,
+            #[cfg(feature = "compression-br")]
+            Encoding::Brotli,
+            #[cfg(feature = "compression-gzip")]
+            Encoding::Gzip,
+            #[cfg(feature = "compression-deflate")]
+            Encoding::Deflate,
+            Encoding::Identity,
+        ];
+
+        let mut identity_priority = None;
+        #[cfg(feature = "compression-deflate")]
+        let mut deflate_priority = None;
+        #[cfg(feature = "compression-gzip")]
+        let mut gzip_priority = None;
+        #[cfg(feature = "compression-br")]
+        let mut brotli_priority = None;
+        #[cfg(feature = "compression-zstd")]
+        let mut zstd_priority = None;
+
+        for enc in list {
+            match enc {
+                Encoding::Identity => set_prio!(identity_priority, enc),
+                #[cfg(feature = "compression-deflate")]
+                Encoding::Deflate => set_prio!(deflate_priority, enc),
+                #[cfg(feature = "compression-gzip")]
+                Encoding::Gzip => set_prio!(gzip_priority, enc),
+                #[cfg(feature = "compression-br")]
+                Encoding::Brotli => set_prio!(brotli_priority, enc),
+                #[cfg(feature = "compression-zstd")]
+                Encoding::Zstd => set_prio!(zstd_priority, enc),
+            }
+
+            next_prio -= 1;
+        }
+
+        for enc in DEFAULTS {
+            if next_prio == 0 {
+                break;
+            }
+
+            match enc {
+                Encoding::Identity => {
+                    identity_priority.get_or_insert(EncodingPriority::from_u8(next_prio));
+                }
+                Encoding::Deflate => {
+                    deflate_priority.get_or_insert(EncodingPriority::from_u8(next_prio));
+                }
+                Encoding::Gzip => {
+                    gzip_priority.get_or_insert(EncodingPriority::from_u8(next_prio));
+                }
+                #[cfg(feature = "compression-br")]
+                Encoding::Brotli => {
+                    brotli_priority.get_or_insert(EncodingPriority::from_u8(next_prio));
+                }
+                #[cfg(feature = "compression-zstd")]
+                Encoding::Zstd => {
+                    zstd_priority.get_or_insert(EncodingPriority::from_u8(next_prio));
+                }
+            }
+
+            next_prio -= 1;
+        }
+
+        Self::new_(
+            identity_priority,
+            deflate_priority,
+            gzip_priority,
+            brotli_priority,
+            #[cfg(feature = "compression-zstd")]
+            zstd_priority,
+        )
+    }
+
+    fn new_(
+        identity_priority: Option<EncodingPriority>,
+        deflate_priority: Option<EncodingPriority>,
+        gzip_priority: Option<EncodingPriority>,
+        #[cfg(feature = "compression-br")] brotli_priority: Option<EncodingPriority>,
+        zstd_priority: Option<EncodingPriority>,
+    ) -> EncodingPreferenceList {
+        // Separate function to "neutralize" new's #[track_caller] attribute
+        Self {
+            identity_priority: identity_priority.unwrap(),
+            deflate_priority: deflate_priority.unwrap(),
+            gzip_priority: gzip_priority.unwrap(),
+            #[cfg(feature = "compression-br")]
+            brotli_priority: brotli_priority.unwrap(),
+            zstd_priority: zstd_priority.unwrap(),
+        }
+    }
+
+    fn get(&self, enc: Encoding) -> EncodingPriority {
+        match enc {
+            Encoding::Identity => self.identity_priority,
+            Encoding::Deflate => self.deflate_priority,
+            Encoding::Gzip => self.gzip_priority,
+            #[cfg(feature = "compression-br")]
+            Encoding::Brotli => self.brotli_priority,
+            Encoding::Zstd => self.zstd_priority,
+        }
+    }
+
+    fn dbg_sorted_descending(&self) -> DebugSortedDescendingEncodingPreferenceList {
+        let mut result = ArrayVec::new();
+        result.extend(self.encoding_for_priority(EncodingPriority::_5));
+        result.extend(self.encoding_for_priority(EncodingPriority::_4));
+        result.extend(self.encoding_for_priority(EncodingPriority::_3));
+        result.extend(self.encoding_for_priority(EncodingPriority::_2));
+        result.extend(self.encoding_for_priority(EncodingPriority::_1));
+        DebugSortedDescendingEncodingPreferenceList(result)
+    }
+
+    fn encoding_for_priority(&self, prio: EncodingPriority) -> Option<Encoding> {
+        if self.identity_priority == prio {
+            Some(Encoding::Identity)
+        } else if self.deflate_priority == prio {
+            Some(Encoding::Deflate)
+        } else if self.gzip_priority == prio {
+            Some(Encoding::Gzip)
+        } else if self.brotli_priority == prio {
+            Some(Encoding::Brotli)
+        } else if self.zstd_priority == prio {
+            Some(Encoding::Zstd)
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum EncodingPriority {
+    // lowest priority
+    _1,
+    _2,
+    _3,
+    _4,
+    // highest priority
+    _5,
+}
+
+impl EncodingPriority {
+    fn from_u8(value: u8) -> Self {
+        match value {
+            1 => Self::_1,
+            2 => Self::_2,
+            3 => Self::_3,
+            4 => Self::_4,
+            5 => Self::_5,
+            _ => panic!("internal error: priority out of bounds"),
+        }
+    }
+}
+
+struct DebugSortedDescendingEncodingPreferenceList(ArrayVec<Encoding, 5>);
+
+impl fmt::Debug for DebugSortedDescendingEncodingPreferenceList {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let enc = self
+            .0
+            .first()
+            .expect("encoding preference list must be non-empty");
+        f.write_str(enc.to_str())?;
+
+        for enc in &self.0[1..] {
+            f.write_str(", ")?;
+            f.write_str(enc.to_str())?;
+        }
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_encoding_preference() {
+        assert_eq!(
+            EncodingPreference::list(ArrayVec::new()).0,
+            EncodingPreference::default().0
+        );
+    }
 
     #[derive(Copy, Clone, Default)]
     struct SupportedEncodingsAll;
