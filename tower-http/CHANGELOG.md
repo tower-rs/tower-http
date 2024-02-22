@@ -14,7 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Fixed
 
 - **compression:** Skip compression for range requests ([#446])
-- **cors:** don't overwrite previously-set (Vary) value ([#473])
+- **cors:** *Actually* keep Vary headers set by the inner service when setting response headers ([#473])
+  - Version 0.5.1 intended to ship this, but the implementation was buggy and didn't actually do anything
 
 [#399]: https://github.com/tower-rs/tower-http/pull/399
 [#446]: https://github.com/tower-rs/tower-http/pull/446
