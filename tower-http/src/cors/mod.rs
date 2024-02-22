@@ -74,6 +74,9 @@ mod expose_headers;
 mod max_age;
 mod vary;
 
+#[cfg(test)]
+mod tests;
+
 pub use self::{
     allow_credentials::AllowCredentials, allow_headers::AllowHeaders, allow_methods::AllowMethods,
     allow_origin::AllowOrigin, allow_private_network::AllowPrivateNetwork,
@@ -682,13 +685,15 @@ where
             KindProj::CorsCall { future, headers } => {
                 let mut response: Response<B> = ready!(future.poll(cx))?;
 
+                let response_headers = response.headers_mut();
+
                 // vary header can have multiple values, don't overwrite
                 // previously-set value(s).
-                if let Some(vary) = headers.remove(header::VARY) {
+                if let Some(vary) = response_headers.remove(header::VARY) {
                     headers.append(header::VARY, vary);
                 }
                 // extend will overwrite previous headers of remaining names
-                response.headers_mut().extend(headers.drain());
+                response_headers.extend(headers.drain());
 
                 Poll::Ready(Ok(response))
             }
