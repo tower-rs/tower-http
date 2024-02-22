@@ -689,8 +689,8 @@ where
 
                 // vary header can have multiple values, don't overwrite
                 // previously-set value(s).
-                if let Some(vary) = response_headers.remove(header::VARY) {
-                    headers.append(header::VARY, vary);
+                if let Some(vary) = headers.remove(header::VARY) {
+                    response_headers.append(header::VARY, vary);
                 }
                 // extend will overwrite previous headers of remaining names
                 response_headers.extend(headers.drain());

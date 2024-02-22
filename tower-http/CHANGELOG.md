@@ -14,9 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Fixed
 
 - **compression:** Skip compression for range requests ([#446])
+- **cors:** don't overwrite previously-set (Vary) value ([#473])
 
 [#399]: https://github.com/tower-rs/tower-http/pull/399
 [#446]: https://github.com/tower-rs/tower-http/pull/446
+[#473]: https://github.com/tower-rs/tower-http/pull/473
 
 # 0.5.1 (January 14, 2024)
 
