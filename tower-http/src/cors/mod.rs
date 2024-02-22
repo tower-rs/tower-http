@@ -625,20 +625,6 @@ where
         headers.extend(self.layer.allow_private_network.to_header(origin, &parts));
         headers.extend(self.layer.vary.to_header());
 
-        let mut vary_headers = self.layer.vary.values();
-        if let Some(first) = vary_headers.next() {
-            let mut header = match headers.entry(header::VARY) {
-                header::Entry::Occupied(_) => {
-                    unreachable!("no vary header inserted up to this point")
-                }
-                header::Entry::Vacant(v) => v.insert_entry(first),
-            };
-
-            for val in vary_headers {
-                header.append(val);
-            }
-        }
-
         let allow_origin_future = self.layer.allow_origin.to_header(origin, &parts);
 
         // Return results immediately upon preflight request
