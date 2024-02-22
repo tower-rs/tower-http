@@ -7,22 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
+## Added:
+
+- **compression:** Will now send a `vary: accept-encoding` header on compressed responses ([#399])
+
+## Fixed
+
+- **compression:** Skip compression for range requests ([#446])
+
+[#399]: https://github.com/tower-rs/tower-http/pull/399
+[#446]: https://github.com/tower-rs/tower-http/pull/446
+
+# 0.5.1 (January 14, 2024)
+
 ## Added
 
-- None.
+- **fs:** Support files precompressed with `zstd` in `ServeFile`
+- **trace:** Add default generic parameters for `ResponseBody` and `ResponseFuture` ([#455])
+- **trace:** Add type aliases `HttpMakeClassifier` and `GrpcMakeClassifier` ([#455])
+
+## Fixed
+
+- **cors:** Keep Vary headers set by the inner service when setting response headers ([#398])
+- **fs:** `ServeDir` now no longer redirects from `/directory` to `/directory/`
+  if `append_index_html_on_directories` is disabled ([#421])
+
+[#398]: https://github.com/tower-rs/tower-http/pull/398
+[#421]: https://github.com/tower-rs/tower-http/pull/421
+[#455]: https://github.com/tower-rs/tower-http/pull/455
+
+# 0.5.0 (November 21, 2023)
 
 ## Changed
 
-- None.
-
-## Removed
-
-- None.
+- Bump Minimum Supported Rust Version to 1.66 ([#433])
+- Update to http-body 1.0 ([#348])
+- Update to http 1.0 ([#348])
+- Preserve service error type in RequestDecompression ([#368])
 
 ## Fixed
 
 - Accepts range headers with ranges where the end of range goes past the end of the document by bumping 
 http-range-header to `0.4`
+
+[#418]: https://github.com/tower-rs/tower-http/pull/418
+[#433]: https://github.com/tower-rs/tower-http/pull/433
+[#348]: https://github.com/tower-rs/tower-http/pull/348
+[#368]: https://github.com/tower-rs/tower-http/pull/368
 
 # 0.4.2 (July 19, 2023)
 

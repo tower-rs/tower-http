@@ -3,7 +3,7 @@ use bitflags::bitflags;
 use http::{HeaderMap, Response};
 use std::{fmt, num::NonZeroI32};
 
-/// gRPC status codes. Used in [`GrpcErrorsAsFailures::success_codes`].
+/// gRPC status codes.
 ///
 /// These variants match the [gRPC status codes].
 ///
@@ -125,7 +125,7 @@ impl GrpcCodeBitmask {
 ///
 /// Responses are considered successful if
 ///
-/// - `grpc-status` header value matches [`GrpcErrorsAsFailures::success_codes`] (only `Ok` by
+/// - `grpc-status` header value contains a success value.
 /// default).
 /// - `grpc-status` header is missing.
 /// - `grpc-status` header value isn't a valid `String`.
@@ -262,7 +262,6 @@ impl fmt::Display for GrpcFailureClass {
     }
 }
 
-#[allow(clippy::if_let_some_result)]
 pub(crate) fn classify_grpc_metadata(
     headers: &HeaderMap,
     success_codes: GrpcCodeBitmask,

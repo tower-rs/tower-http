@@ -4,13 +4,14 @@
 //!
 //! ```
 //! use http::{Request, Response, Method, header};
-//! use hyper::Body;
+//! use http_body_util::Full;
+//! use bytes::Bytes;
 //! use tower::{ServiceBuilder, ServiceExt, Service};
 //! use tower_http::cors::{Any, CorsLayer};
 //! use std::convert::Infallible;
 //!
-//! async fn handle(request: Request<Body>) -> Result<Response<Body>, Infallible> {
-//!     Ok(Response::new(Body::empty()))
+//! async fn handle(request: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, Infallible> {
+//!     Ok(Response::new(Full::default()))
 //! }
 //!
 //! # #[tokio::main]
@@ -27,7 +28,7 @@
 //!
 //! let request = Request::builder()
 //!     .header(header::ORIGIN, "https://example.com")
-//!     .body(Body::empty())
+//!     .body(Full::default())
 //!     .unwrap();
 //!
 //! let response = service
@@ -49,7 +50,6 @@
 #![allow(clippy::enum_variant_names)]
 
 use bytes::{BufMut, BytesMut};
-use futures_core::ready;
 use http::{
     header::{self, HeaderName},
     HeaderMap, HeaderValue, Method, Request, Response,
@@ -60,7 +60,7 @@ use std::{
     future::Future,
     mem,
     pin::Pin,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
 };
 use tower_layer::Layer;
 use tower_service::Service;
@@ -623,6 +623,7 @@ where
 
         headers.extend(self.layer.allow_credentials.to_header(origin, &parts));
         headers.extend(self.layer.allow_private_network.to_header(origin, &parts));
+        headers.extend(self.layer.vary.to_header());
 
         let mut vary_headers = self.layer.vary.values();
         if let Some(first) = vary_headers.next() {
@@ -719,6 +720,13 @@ where
                 }
 
                 let mut response: Response<B> = ready!(future.poll(cx))?;
+
+                // vary header can have multiple values, don't overwrite
+                // previously-set value(s).
+                if let Some(vary) = headers.remove(header::VARY) {
+                    headers.append(header::VARY, vary);
+                }
+                // extend will overwrite previous headers of remaining names
                 response.headers_mut().extend(headers.drain());
 
                 Poll::Ready(Ok(response))

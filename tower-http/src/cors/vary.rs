@@ -1,6 +1,6 @@
 use std::array;
 
-use http::{header::HeaderName, HeaderValue};
+use http::header::{self, HeaderName, HeaderValue};
 
 use super::preflight_request_headers;
 
@@ -26,8 +26,17 @@ impl Vary {
         Self(headers.into_iter().map(Into::into).collect())
     }
 
-    pub(super) fn values(&self) -> impl Iterator<Item = HeaderValue> + '_ {
-        self.0.iter().cloned()
+    pub(super) fn to_header(&self) -> Option<(HeaderName, HeaderValue)> {
+        let values = &self.0;
+        let mut res = values.first()?.as_bytes().to_owned();
+        for val in &values[1..] {
+            res.extend_from_slice(b", ");
+            res.extend_from_slice(val.as_bytes());
+        }
+
+        let header_val = HeaderValue::from_bytes(&res)
+            .expect("comma-separated list of HeaderValues is always a valid HeaderValue");
+        Some((header::VARY, header_val))
     }
 }
 

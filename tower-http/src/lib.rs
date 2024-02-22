@@ -24,10 +24,11 @@
 //!     trace::TraceLayer,
 //!     validate_request::ValidateRequestHeaderLayer,
 //! };
-//! use tower::{ServiceBuilder, service_fn, make::Shared};
+//! use tower::{ServiceBuilder, service_fn, BoxError};
 //! use http::{Request, Response, header::{HeaderName, CONTENT_TYPE, AUTHORIZATION}};
-//! use hyper::{Body, Error, server::Server, service::make_service_fn};
 //! use std::{sync::Arc, net::SocketAddr, convert::Infallible, iter::once};
+//! use bytes::Bytes;
+//! use http_body_util::Full;
 //! # struct DatabaseConnectionPool;
 //! # impl DatabaseConnectionPool {
 //! #     fn new() -> DatabaseConnectionPool { DatabaseConnectionPool }
@@ -37,7 +38,7 @@
 //!
 //! // Our request handler. This is where we would implement the application logic
 //! // for responding to HTTP requests...
-//! async fn handler(request: Request<Body>) -> Result<Response<Body>, Error> {
+//! async fn handler(request: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, BoxError> {
 //!     // ...
 //!     # todo!()
 //! }
@@ -75,13 +76,8 @@
 //!         .layer(ValidateRequestHeaderLayer::accept("application/json"))
 //!         // Wrap a `Service` in our middleware stack
 //!         .service_fn(handler);
-//!
-//!     // And run our service using `hyper`
-//!     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
-//!     Server::bind(&addr)
-//!         .serve(Shared::new(service))
-//!         .await
-//!         .expect("server error");
+//!     # let mut service = service;
+//!     # tower::Service::call(&mut service, Request::new(Full::default()));
 //! }
 //! ```
 //!
@@ -100,11 +96,14 @@
 //!     classify::StatusInRangeAsFailures,
 //! };
 //! use tower::{ServiceBuilder, Service, ServiceExt};
-//! use hyper::Body;
+//! use hyper_util::{rt::TokioExecutor, client::legacy::Client};
+//! use http_body_util::Full;
+//! use bytes::Bytes;
 //! use http::{Request, HeaderValue, header::USER_AGENT};
 //!
 //! #[tokio::main]
 //! async fn main() {
+//! let client = Client::builder(TokioExecutor::new()).build_http();
 //!     let mut client = ServiceBuilder::new()
 //!         // Add tracing and consider server errors and client
 //!         // errors as failures.
@@ -118,15 +117,15 @@
 //!         ))
 //!         // Decompress response bodies
 //!         .layer(DecompressionLayer::new())
-//!         // Wrap a `hyper::Client` in our middleware stack.
-//!         // This is possible because `hyper::Client` implements
+//!         // Wrap a `Client` in our middleware stack.
+//!         // This is possible because `Client` implements
 //!         // `tower::Service`.
-//!         .service(hyper::Client::new());
+//!         .service(client);
 //!
 //!     // Make a request
 //!     let request = Request::builder()
 //!         .uri("http://example.com")
-//!         .body(Body::empty())
+//!         .body(Full::<Bytes>::default())
 //!         .unwrap();
 //!
 //!     let response = client
@@ -183,7 +182,6 @@
     clippy::todo,
     clippy::empty_enum,
     clippy::enum_glob_use,
-    clippy::pub_enum_variant_names,
     clippy::mem_forget,
     clippy::unused_self,
     clippy::filter_map_next,
@@ -211,7 +209,7 @@
     nonstandard_style,
     missing_docs
 )]
-#![deny(unreachable_pub, private_in_public)]
+#![deny(unreachable_pub)]
 #![allow(
     elided_lifetimes_in_paths,
     // TODO: Remove this once the MSRV bumps to 1.42.0 or above.
@@ -224,6 +222,9 @@
 
 #[macro_use]
 pub(crate) mod macros;
+
+#[cfg(test)]
+mod test_helpers;
 
 #[cfg(feature = "auth")]
 pub mod auth;
@@ -341,6 +342,8 @@ pub use self::builder::ServiceBuilderExt;
 
 #[cfg(feature = "validate-request")]
 pub mod validate_request;
+
+pub mod body;
 
 /// The latency unit used to report latencies by middleware.
 #[non_exhaustive]

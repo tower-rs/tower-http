@@ -12,20 +12,23 @@ use std::{fmt, ops::RangeInclusive};
 /// ```no_run
 /// use tower_http::{trace::TraceLayer, classify::StatusInRangeAsFailures};
 /// use tower::{ServiceBuilder, Service, ServiceExt};
-/// use hyper::{Client, Body};
 /// use http::{Request, Method};
+/// use http_body_util::Full;
+/// use bytes::Bytes;
+/// use hyper_util::{rt::TokioExecutor, client::legacy::Client};
 ///
 /// # async fn foo() -> Result<(), tower::BoxError> {
 /// let classifier = StatusInRangeAsFailures::new(400..=599);
 ///
+/// let client = Client::builder(TokioExecutor::new()).build_http();
 /// let mut client = ServiceBuilder::new()
 ///     .layer(TraceLayer::new(classifier.into_make_classifier()))
-///     .service(Client::new());
+///     .service(client);
 ///
 /// let request = Request::builder()
 ///     .method(Method::GET)
 ///     .uri("https://example.com")
-///     .body(Body::empty())
+///     .body(Full::<Bytes>::default())
 ///     .unwrap();
 ///
 /// let response = client.ready().await?.call(request).await?;

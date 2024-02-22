@@ -6,13 +6,14 @@
 //!
 //! ```rust
 //! use http::{Request, Response};
-//! use hyper::Body;
 //! use tower::{ServiceBuilder, ServiceExt, Service};
 //! use tower_http::trace::TraceLayer;
 //! use std::convert::Infallible;
+//! use http_body_util::Full;
+//! use bytes::Bytes;
 //!
-//! async fn handle(request: Request<Body>) -> Result<Response<Body>, Infallible> {
-//!     Ok(Response::new(Body::from("foo")))
+//! async fn handle(request: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, Infallible> {
+//!     Ok(Response::new(Full::default()))
 //! }
 //!
 //! # #[tokio::main]
@@ -24,7 +25,7 @@
 //!     .layer(TraceLayer::new_for_http())
 //!     .service_fn(handle);
 //!
-//! let request = Request::new(Body::from("foo"));
+//! let request = Request::new(Full::from("foo"));
 //!
 //! let response = service
 //!     .ready()
@@ -50,7 +51,7 @@
 //!
 //! ```rust
 //! use http::{Request, Response, HeaderMap, StatusCode};
-//! use hyper::Body;
+//! use http_body_util::Full;
 //! use bytes::Bytes;
 //! use tower::ServiceBuilder;
 //! use tracing::Level;
@@ -62,8 +63,8 @@
 //! # use tower::{ServiceExt, Service};
 //! # use std::convert::Infallible;
 //!
-//! # async fn handle(request: Request<Body>) -> Result<Response<Body>, Infallible> {
-//! #     Ok(Response::new(Body::from("foo")))
+//! # async fn handle(request: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, Infallible> {
+//! #     Ok(Response::new(Full::from("foo")))
 //! # }
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -90,7 +91,7 @@
 //! # let response = service
 //! #     .ready()
 //! #     .await?
-//! #     .call(Request::new(Body::from("foo")))
+//! #     .call(Request::new(Full::from("foo")))
 //! #     .await?;
 //! # Ok(())
 //! # }
@@ -100,7 +101,7 @@
 //!
 //! ```rust
 //! use http::{Request, Response, HeaderMap, StatusCode};
-//! use hyper::Body;
+//! use http_body_util::Full;
 //! use bytes::Bytes;
 //! use tower::ServiceBuilder;
 //! use tower_http::{classify::ServerErrorsFailureClass, trace::TraceLayer};
@@ -109,8 +110,8 @@
 //! # use tower::{ServiceExt, Service};
 //! # use std::convert::Infallible;
 //!
-//! # async fn handle(request: Request<Body>) -> Result<Response<Body>, Infallible> {
-//! #     Ok(Response::new(Body::from("foo")))
+//! # async fn handle(request: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, Infallible> {
+//! #     Ok(Response::new(Full::from("foo")))
 //! # }
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -119,13 +120,13 @@
 //! let service = ServiceBuilder::new()
 //!     .layer(
 //!         TraceLayer::new_for_http()
-//!             .make_span_with(|request: &Request<Body>| {
+//!             .make_span_with(|request: &Request<Full<Bytes>>| {
 //!                 tracing::debug_span!("http-request")
 //!             })
-//!             .on_request(|request: &Request<Body>, _span: &Span| {
+//!             .on_request(|request: &Request<Full<Bytes>>, _span: &Span| {
 //!                 tracing::debug!("started {} {}", request.method(), request.uri().path())
 //!             })
-//!             .on_response(|response: &Response<Body>, latency: Duration, _span: &Span| {
+//!             .on_response(|response: &Response<Full<Bytes>>, latency: Duration, _span: &Span| {
 //!                 tracing::debug!("response generated in {:?}", latency)
 //!             })
 //!             .on_body_chunk(|chunk: &Bytes, latency: Duration, _span: &Span| {
@@ -143,7 +144,7 @@
 //! # let response = service
 //! #     .ready()
 //! #     .await?
-//! #     .call(Request::new(Body::from("foo")))
+//! #     .call(Request::new(Full::from("foo")))
 //! #     .await?;
 //! # Ok(())
 //! # }
@@ -160,12 +161,13 @@
 //! use std::time::Duration;
 //! use tracing::Span;
 //! # use tower::{ServiceExt, Service};
-//! # use hyper::Body;
+//! # use http_body_util::Full;
+//! # use bytes::Bytes;
 //! # use http::{Response, Request};
 //! # use std::convert::Infallible;
 //!
-//! # async fn handle(request: Request<Body>) -> Result<Response<Body>, Infallible> {
-//! #     Ok(Response::new(Body::from("foo")))
+//! # async fn handle(request: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, Infallible> {
+//! #     Ok(Response::new(Full::from("foo")))
 //! # }
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -188,7 +190,7 @@
 //! # let response = service
 //! #     .ready()
 //! #     .await?
-//! #     .call(Request::new(Body::from("foo")))
+//! #     .call(Request::new(Full::from("foo")))
 //! #     .await?;
 //! # Ok(())
 //! # }
@@ -216,14 +218,14 @@
 //! ### `on_body_chunk`
 //!
 //! The `on_body_chunk` callback is called when the response body produces a new
-//! chunk, that is when [`Body::poll_data`] returns `Poll::Ready(Some(Ok(chunk)))`.
+//! chunk, that is when [`Body::poll_frame`] returns a data frame.
 //!
 //! `on_body_chunk` is called even if the chunk is empty.
 //!
 //! ### `on_eos`
 //!
 //! The `on_eos` callback is called when a streaming response body ends, that is
-//! when [`Body::poll_trailers`] returns `Poll::Ready(Ok(trailers))`.
+//! when [`Body::poll_frame`] returns a trailers frame.
 //!
 //! `on_eos` is called even if the trailers produced are `None`.
 //!
@@ -233,8 +235,7 @@
 //!
 //! - The inner [`Service`]'s response future resolves to an error.
 //! - A response is classified as a failure.
-//! - [`Body::poll_data`] returns an error.
-//! - [`Body::poll_trailers`] returns an error.
+//! - [`Body::poll_frame`] returns an error.
 //! - An end-of-stream is classified as a failure.
 //!
 //! # Recording fields on the span
@@ -245,7 +246,7 @@
 //!
 //! ```rust
 //! use http::{Request, Response, HeaderMap, StatusCode};
-//! use hyper::Body;
+//! use http_body_util::Full;
 //! use bytes::Bytes;
 //! use tower::ServiceBuilder;
 //! use tower_http::trace::TraceLayer;
@@ -253,8 +254,8 @@
 //! use std::time::Duration;
 //! # use std::convert::Infallible;
 //!
-//! # async fn handle(request: Request<Body>) -> Result<Response<Body>, Infallible> {
-//! #     Ok(Response::new(Body::from("foo")))
+//! # async fn handle(request: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, Infallible> {
+//! #     Ok(Response::new(Full::from("foo")))
 //! # }
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -263,13 +264,13 @@
 //! let service = ServiceBuilder::new()
 //!     .layer(
 //!         TraceLayer::new_for_http()
-//!             .make_span_with(|request: &Request<Body>| {
+//!             .make_span_with(|request: &Request<Full<Bytes>>| {
 //!                 tracing::debug_span!(
 //!                     "http-request",
 //!                     status_code = tracing::field::Empty,
 //!                 )
 //!             })
-//!             .on_response(|response: &Response<Body>, _latency: Duration, span: &Span| {
+//!             .on_response(|response: &Response<Full<Bytes>>, _latency: Duration, span: &Span| {
 //!                 span.record("status_code", &tracing::field::display(response.status()));
 //!
 //!                 tracing::debug!("response generated")
@@ -290,7 +291,8 @@
 //!
 //! ```rust
 //! use http::{Request, Response};
-//! use hyper::Body;
+//! use http_body_util::Full;
+//! use bytes::Bytes;
 //! use tower::ServiceBuilder;
 //! use tower_http::{
 //!     trace::TraceLayer,
@@ -301,8 +303,8 @@
 //! };
 //! use std::convert::Infallible;
 //!
-//! # async fn handle(request: Request<Body>) -> Result<Response<Body>, Infallible> {
-//! #     Ok(Response::new(Body::from("foo")))
+//! # async fn handle(request: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, Infallible> {
+//! #     Ok(Response::new(Full::from("foo")))
 //! # }
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -380,8 +382,7 @@
 //! [`TraceLayer::make_span_with`]: crate::trace::TraceLayer::make_span_with
 //! [`Span`]: tracing::Span
 //! [`ServerErrorsAsFailures`]: crate::classify::ServerErrorsAsFailures
-//! [`Body::poll_trailers`]: http_body::Body::poll_trailers
-//! [`Body::poll_data`]: http_body::Body::poll_data
+//! [`Body::poll_frame`]: http_body::Body::poll_frame
 
 use std::{fmt, time::Duration};
 
@@ -399,7 +400,16 @@ pub use self::{
     on_response::{DefaultOnResponse, OnResponse},
     service::Trace,
 };
-use crate::LatencyUnit;
+use crate::{
+    classify::{GrpcErrorsAsFailures, ServerErrorsAsFailures, SharedClassifier},
+    LatencyUnit,
+};
+
+/// MakeClassifier for HTTP requests.
+pub type HttpMakeClassifier = SharedClassifier<ServerErrorsAsFailures>;
+
+/// MakeClassifier for gRPC requests.
+pub type GrpcMakeClassifier = SharedClassifier<GrpcErrorsAsFailures>;
 
 macro_rules! event_dynamic_lvl {
     ( $(target: $target:expr,)? $(parent: $parent:expr,)? $lvl:expr, $($tt:tt)* ) => {
@@ -482,9 +492,9 @@ impl fmt::Display for Latency {
 mod tests {
     use super::*;
     use crate::classify::ServerErrorsFailureClass;
+    use crate::test_helpers::Body;
     use bytes::Bytes;
     use http::{HeaderMap, Request, Response};
-    use hyper::Body;
     use once_cell::sync::Lazy;
     use std::{
         sync::atomic::{AtomicU32, Ordering},
@@ -542,7 +552,9 @@ mod tests {
         assert_eq!(0, ON_EOS.load(Ordering::SeqCst), "eos");
         assert_eq!(0, ON_FAILURE.load(Ordering::SeqCst), "failure");
 
-        hyper::body::to_bytes(res.into_body()).await.unwrap();
+        crate::test_helpers::to_bytes(res.into_body())
+            .await
+            .unwrap();
         assert_eq!(1, ON_BODY_CHUNK_COUNT.load(Ordering::SeqCst), "body chunk");
         assert_eq!(0, ON_EOS.load(Ordering::SeqCst), "eos");
         assert_eq!(0, ON_FAILURE.load(Ordering::SeqCst), "failure");
@@ -595,7 +607,9 @@ mod tests {
         assert_eq!(0, ON_EOS.load(Ordering::SeqCst), "eos");
         assert_eq!(0, ON_FAILURE.load(Ordering::SeqCst), "failure");
 
-        hyper::body::to_bytes(res.into_body()).await.unwrap();
+        crate::test_helpers::to_bytes(res.into_body())
+            .await
+            .unwrap();
         assert_eq!(3, ON_BODY_CHUNK_COUNT.load(Ordering::SeqCst), "body chunk");
         assert_eq!(0, ON_EOS.load(Ordering::SeqCst), "eos");
         assert_eq!(0, ON_FAILURE.load(Ordering::SeqCst), "failure");
@@ -606,7 +620,7 @@ mod tests {
     }
 
     async fn streaming_body(_req: Request<Body>) -> Result<Response<Body>, BoxError> {
-        use futures::stream::iter;
+        use futures_util::stream::iter;
 
         let stream = iter(vec![
             Ok::<_, BoxError>(Bytes::from("one")),
@@ -614,7 +628,7 @@ mod tests {
             Ok::<_, BoxError>(Bytes::from("three")),
         ]);
 
-        let body = Body::wrap_stream(stream);
+        let body = Body::from_stream(stream);
 
         Ok(Response::new(body))
     }

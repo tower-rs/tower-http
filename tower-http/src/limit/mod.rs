@@ -24,15 +24,15 @@
 //! use bytes::Bytes;
 //! use std::convert::Infallible;
 //! use http::{Request, Response, StatusCode, HeaderValue, header::CONTENT_LENGTH};
-//! use http_body::{Limited, LengthLimitError};
+//! use http_body_util::{LengthLimitError};
 //! use tower::{Service, ServiceExt, ServiceBuilder};
-//! use tower_http::limit::RequestBodyLimitLayer;
-//! use hyper::Body;
+//! use tower_http::{body::Limited, limit::RequestBodyLimitLayer};
+//! use http_body_util::Full;
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! async fn handle(req: Request<Limited<Body>>) -> Result<Response<Body>, Infallible> {
-//!     panic!("This will not be hit")
+//! async fn handle(req: Request<Limited<Full<Bytes>>>) -> Result<Response<Full<Bytes>>, Infallible> {
+//!     panic!("This should not be hit")
 //! }
 //!
 //! let mut svc = ServiceBuilder::new()
@@ -43,10 +43,11 @@
 //! // Call the service with a header that indicates the body is too large.
 //! let mut request = Request::builder()
 //!     .header(CONTENT_LENGTH, HeaderValue::from_static("5000"))
-//!     .body(Body::empty())
+//!     .body(Full::<Bytes>::default())
 //!     .unwrap();
 //!
-//! let response = svc.ready().await?.call(request).await?;
+//! // let response = svc.ready().await?.call(request).await?;
+//! let response = svc.call(request).await?;
 //!
 //! assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
 //! #
@@ -58,8 +59,8 @@
 //!
 //! If a `Content-Length` header is not present, then the body will be read
 //! until the configured limit has been reached. If the payload is larger than
-//! the limit, the [`http_body::Limited`] body will return an error. This
-//! error can be inspected to determine if it is a [`http_body::LengthLimitError`]
+//! the limit, the [`http_body_util::Limited`] body will return an error. This
+//! error can be inspected to determine if it is a [`http_body_util::LengthLimitError`]
 //! and return an appropriate response in such case.
 //!
 //! Note that no error will be generated if the body is never read. Similarly,
@@ -71,19 +72,20 @@
 //! # use bytes::Bytes;
 //! # use std::convert::Infallible;
 //! # use http::{Request, Response, StatusCode};
-//! # use http_body::{Limited, LengthLimitError};
+//! # use http_body_util::LengthLimitError;
 //! # use tower::{Service, ServiceExt, ServiceBuilder, BoxError};
-//! # use tower_http::limit::RequestBodyLimitLayer;
-//! # use hyper::Body;
+//! # use tower_http::{body::Limited, limit::RequestBodyLimitLayer};
+//! # use http_body_util::Full;
+//! # use http_body_util::BodyExt;
 //! #
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), BoxError> {
-//! async fn handle(req: Request<Limited<Body>>) -> Result<Response<Body>, BoxError> {
-//!     let data = match hyper::body::to_bytes(req.into_body()).await {
-//!         Ok(data) => data,
+//! async fn handle(req: Request<Limited<Full<Bytes>>>) -> Result<Response<Full<Bytes>>, BoxError> {
+//!     let data = match req.into_body().collect().await {
+//!         Ok(collected) => collected.to_bytes(),
 //!         Err(err) => {
 //!             if let Some(_) = err.downcast_ref::<LengthLimitError>() {
-//!                 let mut resp = Response::new(Body::empty());
+//!                 let mut resp = Response::new(Full::default());
 //!                 *resp.status_mut() = StatusCode::PAYLOAD_TOO_LARGE;
 //!                 return Ok(resp);
 //!             } else {
@@ -92,7 +94,7 @@
 //!         }
 //!     };
 //!
-//!     Ok(Response::new(Body::empty()))
+//!     Ok(Response::new(Full::default()))
 //! }
 //!
 //! let mut svc = ServiceBuilder::new()
@@ -101,14 +103,14 @@
 //!     .service_fn(handle);
 //!
 //! // Call the service.
-//! let request = Request::new(Body::empty());
+//! let request = Request::new(Full::<Bytes>::default());
 //!
 //! let response = svc.ready().await?.call(request).await?;
 //!
 //! assert_eq!(response.status(), StatusCode::OK);
 //!
 //! // Call the service with a body that is too large.
-//! let request = Request::new(Body::from(Bytes::from(vec![0u8; 4097])));
+//! let request = Request::new(Full::<Bytes>::from(Bytes::from(vec![0u8; 4097])));
 //!
 //! let response = svc.ready().await?.call(request).await?;
 //!
@@ -123,7 +125,7 @@
 //! If enforcement of body size limits is desired without preemptively
 //! handling requests with a `Content-Length` header indicating an over-sized
 //! request, consider using [`MapRequestBody`] to wrap the request body with
-//! [`http_body::Limited`] and checking for [`http_body::LengthLimitError`]
+//! [`http_body_util::Limited`] and checking for [`http_body_util::LengthLimitError`]
 //! like in the previous example.
 //!
 //! [`MapRequestBody`]: crate::map_request_body

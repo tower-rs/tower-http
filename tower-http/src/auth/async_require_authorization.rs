@@ -6,10 +6,11 @@
 //!
 //! ```
 //! use tower_http::auth::{AsyncRequireAuthorizationLayer, AsyncAuthorizeRequest};
-//! use hyper::{Request, Response, Body, Error};
-//! use http::{StatusCode, header::AUTHORIZATION};
-//! use tower::{Service, ServiceExt, ServiceBuilder, service_fn};
+//! use http::{Request, Response, StatusCode, header::AUTHORIZATION};
+//! use tower::{Service, ServiceExt, ServiceBuilder, service_fn, BoxError};
 //! use futures_util::future::BoxFuture;
+//! use bytes::Bytes;
+//! use http_body_util::Full;
 //!
 //! #[derive(Clone, Copy)]
 //! struct MyAuth;
@@ -19,7 +20,7 @@
 //!     B: Send + Sync + 'static,
 //! {
 //!     type RequestBody = B;
-//!     type ResponseBody = Body;
+//!     type ResponseBody = Full<Bytes>;
 //!     type Future = BoxFuture<'static, Result<Request<B>, Response<Self::ResponseBody>>>;
 //!
 //!     fn authorize(&mut self, mut request: Request<B>) -> Self::Future {
@@ -33,7 +34,7 @@
 //!             } else {
 //!                 let unauthorized_response = Response::builder()
 //!                     .status(StatusCode::UNAUTHORIZED)
-//!                     .body(Body::empty())
+//!                     .body(Full::<Bytes>::default())
 //!                     .unwrap();
 //!
 //!                 Err(unauthorized_response)
@@ -47,10 +48,10 @@
 //!     # None
 //! }
 //!
-//! #[derive(Debug)]
+//! #[derive(Debug, Clone)]
 //! struct UserId(String);
 //!
-//! async fn handle(request: Request<Body>) -> Result<Response<Body>, Error> {
+//! async fn handle(request: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, BoxError> {
 //!     // Access the `UserId` that was set in `on_authorized`. If `handle` gets called the
 //!     // request was authorized and `UserId` will be present.
 //!     let user_id = request
@@ -60,11 +61,11 @@
 //!
 //!     println!("request from {:?}", user_id);
 //!
-//!     Ok(Response::new(Body::empty()))
+//!     Ok(Response::new(Full::default()))
 //! }
 //!
 //! # #[tokio::main]
-//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn main() -> Result<(), BoxError> {
 //! let service = ServiceBuilder::new()
 //!     // Authorize requests using `MyAuth`
 //!     .layer(AsyncRequireAuthorizationLayer::new(MyAuth))
@@ -77,10 +78,11 @@
 //!
 //! ```
 //! use tower_http::auth::{AsyncRequireAuthorizationLayer, AsyncAuthorizeRequest};
-//! use hyper::{Request, Response, Body, Error};
-//! use http::StatusCode;
-//! use tower::{Service, ServiceExt, ServiceBuilder};
+//! use http::{Request, Response, StatusCode};
+//! use tower::{Service, ServiceExt, ServiceBuilder, BoxError};
 //! use futures_util::future::BoxFuture;
+//! use http_body_util::Full;
+//! use bytes::Bytes;
 //!
 //! async fn check_auth<B>(request: &Request<B>) -> Option<UserId> {
 //!     // ...
@@ -90,21 +92,21 @@
 //! #[derive(Debug)]
 //! struct UserId(String);
 //!
-//! async fn handle(request: Request<Body>) -> Result<Response<Body>, Error> {
+//! async fn handle(request: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, BoxError> {
 //!     # todo!();
 //!     // ...
 //! }
 //!
 //! # #[tokio::main]
-//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn main() -> Result<(), BoxError> {
 //! let service = ServiceBuilder::new()
-//!     .layer(AsyncRequireAuthorizationLayer::new(|request: Request<Body>| async move {
+//!     .layer(AsyncRequireAuthorizationLayer::new(|request: Request<Full<Bytes>>| async move {
 //!         if let Some(user_id) = check_auth(&request).await {
 //!             Ok(request)
 //!         } else {
 //!             let unauthorized_response = Response::builder()
 //!                 .status(StatusCode::UNAUTHORIZED)
-//!                 .body(Body::empty())
+//!                 .body(Full::<Bytes>::default())
 //!                 .unwrap();
 //!
 //!             Err(unauthorized_response)
@@ -115,13 +117,12 @@
 //! # }
 //! ```
 
-use futures_core::ready;
 use http::{Request, Response};
 use pin_project_lite::pin_project;
 use std::{
     future::Future,
     pin::Pin,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
 };
 use tower_layer::Layer;
 use tower_service::Service;
@@ -307,9 +308,9 @@ where
 mod tests {
     #[allow(unused_imports)]
     use super::*;
+    use crate::test_helpers::Body;
     use futures_util::future::BoxFuture;
     use http::{header, StatusCode};
-    use hyper::Body;
     use tower::{BoxError, ServiceBuilder, ServiceExt};
 
     #[derive(Clone, Copy)]
@@ -347,7 +348,7 @@ mod tests {
         }
     }
 
-    #[derive(Debug)]
+    #[derive(Clone, Debug)]
     struct UserId(String);
 
     #[tokio::test]

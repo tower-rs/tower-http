@@ -1,12 +1,13 @@
 use self::future::ResponseFuture;
 use crate::{
+    body::UnsyncBoxBody,
     content_encoding::{encodings, SupportedEncodings},
     set_status::SetStatus,
 };
 use bytes::Bytes;
 use futures_util::FutureExt;
 use http::{header, HeaderValue, Method, Request, Response, StatusCode};
-use http_body::{combinators::UnsyncBoxBody, Body, Empty};
+use http_body_util::{BodyExt, Empty};
 use percent_encoding::percent_decode;
 use std::{
     convert::Infallible,
@@ -47,15 +48,6 @@ const DEFAULT_CAPACITY: usize = 65536;
 /// // This will serve files in the "assets" directory and
 /// // its subdirectories
 /// let service = ServeDir::new("assets");
-///
-/// # async {
-/// // Run our service using `hyper`
-/// let addr = std::net::SocketAddr::from(([127, 0, 0, 1], 3000));
-/// hyper::Server::bind(&addr)
-///     .serve(tower::make::Shared::new(service))
-///     .await
-///     .expect("server error");
-/// # };
 /// ```
 #[derive(Clone, Debug)]
 pub struct ServeDir<F = DefaultServeDirFallback> {
@@ -216,15 +208,6 @@ impl<F> ServeDir<F> {
     /// let service = ServeDir::new("assets")
     ///     // respond with `not_found.html` for missing files
     ///     .fallback(ServeFile::new("assets/not_found.html"));
-    ///
-    /// # async {
-    /// // Run our service using `hyper`
-    /// let addr = std::net::SocketAddr::from(([127, 0, 0, 1], 3000));
-    /// hyper::Server::bind(&addr)
-    ///     .serve(tower::make::Shared::new(service))
-    ///     .await
-    ///     .expect("server error");
-    /// # };
     /// ```
     pub fn fallback<F2>(self, new_fallback: F2) -> ServeDir<F2> {
         ServeDir {
@@ -251,15 +234,6 @@ impl<F> ServeDir<F> {
     /// let service = ServeDir::new("assets")
     ///     // respond with `404 Not Found` and the contents of `not_found.html` for missing files
     ///     .not_found_service(ServeFile::new("assets/not_found.html"));
-    ///
-    /// # async {
-    /// // Run our service using `hyper`
-    /// let addr = std::net::SocketAddr::from(([127, 0, 0, 1], 3000));
-    /// hyper::Server::bind(&addr)
-    ///     .serve(tower::make::Shared::new(service))
-    ///     .await
-    ///     .expect("server error");
-    /// # };
     /// ```
     ///
     /// Setups like this are often found in single page applications.
@@ -292,13 +266,13 @@ impl<F> ServeDir<F> {
     /// use tower_http::services::ServeDir;
     /// use std::{io, convert::Infallible};
     /// use http::{Request, Response, StatusCode};
-    /// use http_body::{combinators::UnsyncBoxBody, Body as _};
-    /// use hyper::Body;
+    /// use http_body::Body as _;
+    /// use http_body_util::{Full, BodyExt, combinators::UnsyncBoxBody};
     /// use bytes::Bytes;
     /// use tower::{service_fn, ServiceExt, BoxError};
     ///
     /// async fn serve_dir(
-    ///     request: Request<Body>
+    ///     request: Request<Full<Bytes>>
     /// ) -> Result<Response<UnsyncBoxBody<Bytes, BoxError>>, Infallible> {
     ///     let mut service = ServeDir::new("assets");
     ///
@@ -307,7 +281,7 @@ impl<F> ServeDir<F> {
     ///     //
     ///     // Its shown here for demonstration but you can do `service.try_call(request)`
     ///     // otherwise
-    ///     let ready_service = match ServiceExt::<Request<Body>>::ready(&mut service).await {
+    ///     let ready_service = match ServiceExt::<Request<Full<Bytes>>>::ready(&mut service).await {
     ///         Ok(ready_service) => ready_service,
     ///         Err(infallible) => match infallible {},
     ///     };
@@ -317,7 +291,7 @@ impl<F> ServeDir<F> {
     ///             Ok(response.map(|body| body.map_err(Into::into).boxed_unsync()))
     ///         }
     ///         Err(err) => {
-    ///             let body = Body::from("Something went wrong...")
+    ///             let body = Full::from("Something went wrong...")
     ///                 .map_err(Into::into)
     ///                 .boxed_unsync();
     ///             let response = Response::builder()
@@ -328,15 +302,6 @@ impl<F> ServeDir<F> {
     ///         }
     ///     }
     /// }
-    ///
-    /// # async {
-    /// // Run our service using `hyper`
-    /// let addr = std::net::SocketAddr::from(([127, 0, 0, 1], 3000));
-    /// hyper::Server::bind(&addr)
-    ///     .serve(tower::make::Shared::new(service_fn(serve_dir)))
-    ///     .await
-    ///     .expect("server error");
-    /// # };
     /// ```
     pub fn try_call<ReqBody, FResBody>(
         &mut self,
@@ -400,10 +365,11 @@ impl<F> ServeDir<F> {
             .and_then(|value| value.to_str().ok())
             .map(|s| s.to_owned());
 
-        let negotiated_encodings = encodings(
+        let negotiated_encodings: Vec<_> = encodings(
             req.headers(),
             self.precompressed_variants.unwrap_or_default(),
-        );
+        )
+        .collect();
 
         let variant = self.variant.clone();
 
@@ -447,8 +413,9 @@ where
                 let response = result.unwrap_or_else(|err| {
                     tracing::error!(error = %err, "Failed to read file");
 
-                    let body =
-                        ResponseBody::new(Empty::new().map_err(|err| match err {}).boxed_unsync());
+                    let body = ResponseBody::new(UnsyncBoxBody::new(
+                        Empty::new().map_err(|err| match err {}).boxed_unsync(),
+                    ));
                     Response::builder()
                         .status(StatusCode::INTERNAL_SERVER_ERROR)
                         .body(body)
