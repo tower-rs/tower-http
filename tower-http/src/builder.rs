@@ -63,6 +63,17 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
         value: T,
     ) -> ServiceBuilder<Stack<crate::add_extension::AddExtensionLayer<T>, L>>;
 
+    /// Conditionally bypass the inner service by providing an "early" response.
+    ///
+    /// See [`tower_http::conditional_response`] for more details.
+    ///
+    /// [`tower_http::conditional_response`]: crate::conditional_response
+    #[cfg(feature = "conditional-response")]
+    fn conditional_response<R>(
+        self,
+        responder: R,
+    ) -> ServiceBuilder<Stack<crate::conditional_response::ConditionalResponseLayer<R>, L>>;
+
     /// Apply a transformation to the request body.
     ///
     /// See [`tower_http::map_request_body`] for more details.
@@ -383,6 +394,14 @@ impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
         value: T,
     ) -> ServiceBuilder<Stack<crate::add_extension::AddExtensionLayer<T>, L>> {
         self.layer(crate::add_extension::AddExtensionLayer::new(value))
+    }
+
+    #[cfg(feature = "conditional-response")]
+    fn conditional_response<R>(
+        self,
+        responder: R,
+    ) -> ServiceBuilder<Stack<crate::conditional_response::ConditionalResponseLayer<R>, L>> {
+        self.layer(crate::conditional_response::ConditionalResponseLayer::new(responder))
     }
 
     #[cfg(feature = "map-request-body")]

@@ -19,6 +19,8 @@ http = "1.0"
 http-body = "1.0.0"
 http-body-util = "0.1.0"
 pin-project-lite = "0.2.7"
+# Required for some semantics in some middlewares that pin-project-lite does not support
+pin-project = "1.1.3"
 tower-layer = "0.3"
 tower-service = "0.3"
 
@@ -62,6 +64,7 @@ full = [
     "auth",
     "catch-panic",
     "compression-full",
+    "conditional-response",
     "cors",
     "decompression-full",
     "follow-redirect",
@@ -86,6 +89,7 @@ full = [
 add-extension = []
 auth = ["base64", "validate-request"]
 catch-panic = ["tracing", "futures-util/std"]
+conditional-response = []
 cors = []
 follow-redirect = ["futures-util", "iri-string", "tower/util"]
 fs = ["futures-util", "tokio/fs", "tokio-util/io", "tokio/io-util", "dep:http-range-header", "mime_guess", "mime", "percent-encoding", "httpdate", "set-status", "futures-util/alloc", "tracing"]

@@ -321,6 +321,9 @@ pub mod request_id;
 #[cfg(feature = "catch-panic")]
 pub mod catch_panic;
 
+#[cfg(feature = "conditional-response")]
+pub mod conditional_response;
+
 #[cfg(feature = "set-status")]
 pub mod set_status;
 
