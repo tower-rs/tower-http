@@ -453,7 +453,7 @@ impl ServeVariant {
     fn build_and_validate_path(&self, base_path: &Path, requested_path: &str) -> Option<PathBuf> {
         match self {
             ServeVariant::Directory {
-                append_index_html_on_directories: _,
+                append_index_html_on_directories,
             } => {
                 let path = requested_path.trim_start_matches('/');
 
@@ -480,6 +480,11 @@ impl ServeVariant {
                         }
                     }
                 }
+
+                if *append_index_html_on_directories && path_to_file.is_dir() {
+                    path_to_file.push("index.html");
+                }
+
                 Some(path_to_file)
             }
             ServeVariant::SingleFile { mime: _ } => Some(base_path.to_path_buf()),
