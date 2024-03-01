@@ -1,49 +1,50 @@
 use super::{ClassifiedResponse, ClassifyEos, ClassifyResponse, SharedClassifier};
 use bitflags::bitflags;
 use http::{HeaderMap, Response};
-use std::{fmt, num::NonZeroI32};
+use percent_encoding::percent_decode;
+use std::fmt;
 
 /// gRPC status codes.
 ///
 /// These variants match the [gRPC status codes].
 ///
 /// [gRPC status codes]: https://github.com/grpc/grpc/blob/master/doc/statuscodes.md#status-codes-and-their-use-in-grpc
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GrpcCode {
     /// The operation completed successfully.
-    Ok,
+    Ok = 0,
     /// The operation was cancelled.
-    Cancelled,
+    Cancelled = 1,
     /// Unknown error.
-    Unknown,
+    Unknown = 2,
     /// Client specified an invalid argument.
-    InvalidArgument,
+    InvalidArgument = 3,
     /// Deadline expired before operation could complete.
-    DeadlineExceeded,
+    DeadlineExceeded = 4,
     /// Some requested entity was not found.
-    NotFound,
+    NotFound = 5,
     /// Some entity that we attempted to create already exists.
-    AlreadyExists,
+    AlreadyExists = 6,
     /// The caller does not have permission to execute the specified operation.
-    PermissionDenied,
+    PermissionDenied = 7,
     /// Some resource has been exhausted.
-    ResourceExhausted,
+    ResourceExhausted = 8,
     /// The system is not in a state required for the operation's execution.
-    FailedPrecondition,
+    FailedPrecondition = 9,
     /// The operation was aborted.
-    Aborted,
+    Aborted = 10,
     /// Operation was attempted past the valid range.
-    OutOfRange,
+    OutOfRange = 11,
     /// Operation is not implemented or not supported.
-    Unimplemented,
+    Unimplemented = 12,
     /// Internal error.
-    Internal,
+    Internal = 13,
     /// The service is currently unavailable.
-    Unavailable,
+    Unavailable = 14,
     /// Unrecoverable data loss or corruption.
-    DataLoss,
+    DataLoss = 15,
     /// The request does not have valid authentication credentials
-    Unauthenticated,
+    Unauthenticated = 16,
 }
 
 impl GrpcCode {
@@ -66,6 +67,35 @@ impl GrpcCode {
             Self::Unavailable => GrpcCodeBitmask::UNAVAILABLE,
             Self::DataLoss => GrpcCodeBitmask::DATA_LOSS,
             Self::Unauthenticated => GrpcCodeBitmask::UNAUTHENTICATED,
+        }
+    }
+
+    fn from_bytes(bytes: &[u8]) -> Option<GrpcCode> {
+        match bytes.len() {
+            1 => match bytes[0] {
+                b'0' => Some(GrpcCode::Ok),
+                b'1' => Some(GrpcCode::Cancelled),
+                b'2' => Some(GrpcCode::Unknown),
+                b'3' => Some(GrpcCode::InvalidArgument),
+                b'4' => Some(GrpcCode::DeadlineExceeded),
+                b'5' => Some(GrpcCode::NotFound),
+                b'6' => Some(GrpcCode::AlreadyExists),
+                b'7' => Some(GrpcCode::PermissionDenied),
+                b'8' => Some(GrpcCode::ResourceExhausted),
+                b'9' => Some(GrpcCode::FailedPrecondition),
+                _ => None,
+            },
+            2 => match (bytes[0], bytes[1]) {
+                (b'1', b'0') => Some(GrpcCode::Aborted),
+                (b'1', b'1') => Some(GrpcCode::OutOfRange),
+                (b'1', b'2') => Some(GrpcCode::Unimplemented),
+                (b'1', b'3') => Some(GrpcCode::Internal),
+                (b'1', b'4') => Some(GrpcCode::Unavailable),
+                (b'1', b'5') => Some(GrpcCode::DataLoss),
+                (b'1', b'6') => Some(GrpcCode::Unauthenticated),
+                _ => None,
+            },
+            _ => None,
         }
     }
 }
@@ -93,27 +123,26 @@ bitflags! {
     }
 }
 
-impl GrpcCodeBitmask {
-    fn try_from_u32(code: u32) -> Option<Self> {
+impl From<GrpcCode> for GrpcCodeBitmask {
+    fn from(code: GrpcCode) -> Self {
         match code {
-            0 => Some(Self::OK),
-            1 => Some(Self::CANCELLED),
-            2 => Some(Self::UNKNOWN),
-            3 => Some(Self::INVALID_ARGUMENT),
-            4 => Some(Self::DEADLINE_EXCEEDED),
-            5 => Some(Self::NOT_FOUND),
-            6 => Some(Self::ALREADY_EXISTS),
-            7 => Some(Self::PERMISSION_DENIED),
-            8 => Some(Self::RESOURCE_EXHAUSTED),
-            9 => Some(Self::FAILED_PRECONDITION),
-            10 => Some(Self::ABORTED),
-            11 => Some(Self::OUT_OF_RANGE),
-            12 => Some(Self::UNIMPLEMENTED),
-            13 => Some(Self::INTERNAL),
-            14 => Some(Self::UNAVAILABLE),
-            15 => Some(Self::DATA_LOSS),
-            16 => Some(Self::UNAUTHENTICATED),
-            _ => None,
+            GrpcCode::Ok => GrpcCodeBitmask::OK,
+            GrpcCode::Cancelled => GrpcCodeBitmask::CANCELLED,
+            GrpcCode::Unknown => GrpcCodeBitmask::UNKNOWN,
+            GrpcCode::InvalidArgument => GrpcCodeBitmask::INVALID_ARGUMENT,
+            GrpcCode::DeadlineExceeded => GrpcCodeBitmask::DEADLINE_EXCEEDED,
+            GrpcCode::NotFound => GrpcCodeBitmask::NOT_FOUND,
+            GrpcCode::AlreadyExists => GrpcCodeBitmask::ALREADY_EXISTS,
+            GrpcCode::PermissionDenied => GrpcCodeBitmask::PERMISSION_DENIED,
+            GrpcCode::ResourceExhausted => GrpcCodeBitmask::RESOURCE_EXHAUSTED,
+            GrpcCode::FailedPrecondition => GrpcCodeBitmask::FAILED_PRECONDITION,
+            GrpcCode::Aborted => GrpcCodeBitmask::ABORTED,
+            GrpcCode::OutOfRange => GrpcCodeBitmask::OUT_OF_RANGE,
+            GrpcCode::Unimplemented => GrpcCodeBitmask::UNIMPLEMENTED,
+            GrpcCode::Internal => GrpcCodeBitmask::INTERNAL,
+            GrpcCode::Unavailable => GrpcCodeBitmask::UNAVAILABLE,
+            GrpcCode::DataLoss => GrpcCodeBitmask::DATA_LOSS,
+            GrpcCode::Unauthenticated => GrpcCodeBitmask::UNAUTHENTICATED,
         }
     }
 }
@@ -191,11 +220,11 @@ impl ClassifyResponse for GrpcErrorsAsFailures {
         res: &Response<B>,
     ) -> ClassifiedResponse<Self::FailureClass, Self::ClassifyEos> {
         match classify_grpc_metadata(res.headers(), self.success_codes) {
-            ParsedGrpcStatus::Success
-            | ParsedGrpcStatus::HeaderNotString
-            | ParsedGrpcStatus::HeaderNotInt => ClassifiedResponse::Ready(Ok(())),
+            ParsedGrpcStatus::Success | ParsedGrpcStatus::HeaderNotGrpcCode => {
+                ClassifiedResponse::Ready(Ok(()))
+            }
             ParsedGrpcStatus::NonSuccess(status) => {
-                ClassifiedResponse::Ready(Err(GrpcFailureClass::Code(status)))
+                ClassifiedResponse::Ready(Err(GrpcFailureClass::Status(status)))
             }
             ParsedGrpcStatus::GrpcStatusHeaderMissing => {
                 ClassifiedResponse::RequiresEos(GrpcEosErrorsAsFailures {
@@ -227,9 +256,8 @@ impl ClassifyEos for GrpcEosErrorsAsFailures {
             match classify_grpc_metadata(trailers, self.success_codes) {
                 ParsedGrpcStatus::Success
                 | ParsedGrpcStatus::GrpcStatusHeaderMissing
-                | ParsedGrpcStatus::HeaderNotString
-                | ParsedGrpcStatus::HeaderNotInt => Ok(()),
-                ParsedGrpcStatus::NonSuccess(status) => Err(GrpcFailureClass::Code(status)),
+                | ParsedGrpcStatus::HeaderNotGrpcCode => Ok(()),
+                ParsedGrpcStatus::NonSuccess(status) => Err(GrpcFailureClass::Status(status)),
             }
         } else {
             Ok(())
@@ -248,7 +276,7 @@ impl ClassifyEos for GrpcEosErrorsAsFailures {
 #[derive(Debug)]
 pub enum GrpcFailureClass {
     /// A gRPC response was classified as a failure with the corresponding status.
-    Code(std::num::NonZeroI32),
+    Status(GrpcStatus),
     /// A gRPC response was classified as an error with the corresponding error description.
     Error(String),
 }
@@ -256,7 +284,9 @@ pub enum GrpcFailureClass {
 impl fmt::Display for GrpcFailureClass {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::Code(code) => write!(f, "Code: {}", code),
+            Self::Status(status) => {
+                write!(f, "Status: {}", status)
+            }
             Self::Error(error) => write!(f, "Error: {}", error),
         }
     }
@@ -276,28 +306,53 @@ pub(crate) fn classify_grpc_metadata(
         };
     }
 
-    let status = or_else!(headers.get("grpc-status"), GrpcStatusHeaderMissing);
-    let status = or_else!(status.to_str().ok(), HeaderNotString);
-    let status = or_else!(status.parse::<i32>().ok(), HeaderNotInt);
+    let code = or_else!(headers.get("grpc-status"), GrpcStatusHeaderMissing);
+    let code = or_else!(GrpcCode::from_bytes(code.as_ref()), HeaderNotGrpcCode);
 
-    if GrpcCodeBitmask::try_from_u32(status as _)
-        .filter(|code| success_codes.contains(*code))
-        .is_some()
-    {
+    if success_codes.contains(GrpcCodeBitmask::from(code)) {
         ParsedGrpcStatus::Success
     } else {
-        ParsedGrpcStatus::NonSuccess(NonZeroI32::new(status).unwrap())
+        ParsedGrpcStatus::NonSuccess(GrpcStatus {
+            code,
+            message: headers.get("grpc-message").and_then(|header| {
+                percent_decode(header.as_bytes())
+                    .decode_utf8()
+                    .map(|cow| cow.to_string())
+                    .ok()
+            }),
+        })
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct GrpcStatus {
+    code: GrpcCode,
+    message: Option<String>,
+}
+
+impl GrpcStatus {
+    pub(crate) fn code(&self) -> GrpcCode {
+        self.code
+    }
+}
+
+impl fmt::Display for GrpcStatus {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self.code)?;
+        if let Some(message) = self.message.as_ref() {
+            write!(f, ": {}", message)?;
+        }
+        Ok(())
     }
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum ParsedGrpcStatus {
     Success,
-    NonSuccess(NonZeroI32),
+    NonSuccess(GrpcStatus),
     GrpcStatusHeaderMissing,
-    // these two are treated as `Success` but kept separate for clarity
-    HeaderNotString,
-    HeaderNotInt,
+    // this is treated as `Success` but kept separate for clarity
+    HeaderNotGrpcCode,
 }
 
 #[cfg(test)]
@@ -311,10 +366,28 @@ mod tests {
             success_flags: $success_flags:expr,
             expected: $expected:expr,
         ) => {
+            classify_grpc_metadata_test!(
+                name: $name,
+                status: $status,
+                message: "",
+                success_flags: $success_flags,
+                expected: $expected,
+            );
+        };
+        (
+            name: $name:ident,
+            status: $status:expr,
+            message: $message:expr,
+            success_flags: $success_flags:expr,
+            expected: $expected:expr,
+        ) => {
             #[test]
             fn $name() {
                 let mut headers = HeaderMap::new();
                 headers.insert("grpc-status", $status.parse().unwrap());
+                if !$message.is_empty() {
+                    headers.insert("grpc-message", $message.parse().unwrap());
+                }
                 let status = classify_grpc_metadata(&headers, $success_flags);
                 assert_eq!(status, $expected);
             }
@@ -332,7 +405,10 @@ mod tests {
         name: basic_error,
         status: "1",
         success_flags: GrpcCodeBitmask::OK,
-        expected: ParsedGrpcStatus::NonSuccess(NonZeroI32::new(1).unwrap()),
+        expected: ParsedGrpcStatus::NonSuccess(GrpcStatus{
+            code: GrpcCode::Cancelled,
+            message: None,
+        }),
     }
 
     classify_grpc_metadata_test! {
@@ -352,7 +428,11 @@ mod tests {
     classify_grpc_metadata_test! {
         name: two_success_codes_none_matches,
         status: "16",
+        message: "mock message",
         success_flags: GrpcCodeBitmask::OK | GrpcCodeBitmask::INVALID_ARGUMENT,
-        expected: ParsedGrpcStatus::NonSuccess(NonZeroI32::new(16).unwrap()),
+        expected: ParsedGrpcStatus::NonSuccess(GrpcStatus{
+            code: GrpcCode::Unauthenticated,
+            message: Some("mock message".to_string()),
+        }),
     }
 }

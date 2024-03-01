@@ -101,7 +101,7 @@ sensitive-headers = []
 set-header = []
 set-status = []
 timeout = ["tokio/time"]
-trace = ["tracing"]
+trace = ["percent-encoding", "tracing"]
 util = ["tower"]
 validate-request = ["mime"]
 
