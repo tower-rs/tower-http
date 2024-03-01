@@ -62,6 +62,7 @@ full = [
     "auth",
     "catch-panic",
     "compression-full",
+    "concurrency-limit",
     "cors",
     "decompression-full",
     "follow-redirect",
@@ -86,6 +87,7 @@ full = [
 add-extension = []
 auth = ["base64", "validate-request"]
 catch-panic = ["tracing", "futures-util/std"]
+concurrency-limit = ["tokio", "tokio-util"]
 cors = []
 follow-redirect = ["futures-util", "iri-string", "tower/util"]
 fs = ["futures-util", "tokio/fs", "tokio-util/io", "tokio/io-util", "dep:http-range-header", "mime_guess", "mime", "percent-encoding", "httpdate", "set-status", "futures-util/alloc", "tracing"]
