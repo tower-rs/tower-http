@@ -343,6 +343,15 @@ pub use self::builder::ServiceBuilderExt;
 #[cfg(feature = "validate-request")]
 pub mod validate_request;
 
+#[cfg(any(
+    feature = "catch-panic",
+    feature = "decompression-br",
+    feature = "decompression-deflate",
+    feature = "decompression-gzip",
+    feature = "decompression-zstd",
+    feature = "fs",
+    feature = "limit",
+))]
 pub mod body;
 
 /// The latency unit used to report latencies by middleware.
