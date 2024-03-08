@@ -87,11 +87,14 @@ impl AllowOrigin {
     /// See [`CorsLayer::allow_origin`] for more details.
     ///
     /// [`CorsLayer::allow_origin`]: super::CorsLayer::allow_origin
-    pub fn future<F>(f: F) -> Self
+    pub fn async_predicate<F, Fut>(f: F) -> Self
     where
-        F: Fn(&HeaderValue, &RequestParts) -> BoxFuture<'static, bool> + Send + Sync + 'static,
+        F: Fn(&HeaderValue, &RequestParts) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = bool> + Send + Sync + 'static,
     {
-        Self(OriginInner::Future(Arc::new(f)))
+        Self(OriginInner::AsyncPredicate(Arc::new(move |v, p| {
+            f(v, p).boxed()
+        })))
     }
 
     /// Allow any origin, by mirroring the request origin
@@ -128,7 +131,7 @@ impl AllowOrigin {
                     .filter(|origin| c(origin, parts))
                     .map(|o| (name, o.clone())),
             ),
-            OriginInner::Future(f) => {
+            OriginInner::AsyncPredicate(f) => {
                 if let Some(origin) = origin.cloned() {
                     AllowOriginFuture::fut(
                         f(&origin, parts)
@@ -191,7 +194,7 @@ impl fmt::Debug for AllowOrigin {
             OriginInner::Const(inner) => f.debug_tuple("Const").field(inner).finish(),
             OriginInner::List(inner) => f.debug_tuple("List").field(inner).finish(),
             OriginInner::Predicate(_) => f.debug_tuple("Predicate").finish(),
-            OriginInner::Future(_) => f.debug_tuple("Future").finish(),
+            OriginInner::AsyncPredicate(_) => f.debug_tuple("Future").finish(),
         }
     }
 }
@@ -228,7 +231,7 @@ enum OriginInner {
     Predicate(
         Arc<dyn for<'a> Fn(&'a HeaderValue, &'a RequestParts) -> bool + Send + Sync + 'static>,
     ),
-    Future(
+    AsyncPredicate(
         Arc<
             dyn for<'a> Fn(&'a HeaderValue, &'a RequestParts) -> BoxFuture<'static, bool>
                 + Send

@@ -49,6 +49,7 @@
 
 #![allow(clippy::enum_variant_names)]
 
+use allow_origin::AllowOriginFuture;
 use bytes::{BufMut, BytesMut};
 use http::{
     header::{self, HeaderName},
@@ -79,7 +80,7 @@ mod tests;
 
 pub use self::{
     allow_credentials::AllowCredentials, allow_headers::AllowHeaders, allow_methods::AllowMethods,
-    allow_origin::{AllowOrigin, AllowOriginFuture}, allow_private_network::AllowPrivateNetwork,
+    allow_origin::AllowOrigin, allow_private_network::AllowPrivateNetwork,
     expose_headers::ExposeHeaders, max_age::MaxAge, vary::Vary,
 };
 
