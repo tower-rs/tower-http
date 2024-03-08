@@ -86,7 +86,7 @@ full = [
 ]
 
 add-extension = []
-auth = ["base64", "dep:http-body", "validate-request"]
+auth = ["base64", "validate-request"]
 catch-panic = ["tracing", "futures-util/std", "dep:http-body", "dep:http-body-util"]
 cors = []
 follow-redirect = ["futures-util", "dep:http-body", "iri-string", "tower/util"]
