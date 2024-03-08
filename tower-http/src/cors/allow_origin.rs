@@ -1,7 +1,3 @@
-use futures_core::{
-    future::{BoxFuture, Future},
-    ready,
-};
 use futures_util::FutureExt;
 use http::{
     header::{self, HeaderName, HeaderValue},
@@ -10,8 +6,9 @@ use http::{
 use pin_project_lite::pin_project;
 use std::{array, fmt, sync::Arc};
 use std::{
+    future::Future,
     pin::Pin,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
 };
 
 use super::{Any, WILDCARD};
@@ -154,7 +151,7 @@ pin_project! {
         },
         Future{
             #[pin]
-            future: BoxFuture<'static, Option<(HeaderName, HeaderValue)>>
+            future: Pin<Box<dyn Future<Output = Option<(HeaderName, HeaderValue)>> + Send + 'static>>
         },
     }
 }
@@ -233,7 +230,10 @@ enum OriginInner {
     ),
     AsyncPredicate(
         Arc<
-            dyn for<'a> Fn(&'a HeaderValue, &'a RequestParts) -> BoxFuture<'static, bool>
+            dyn for<'a> Fn(
+                    &'a HeaderValue,
+                    &'a RequestParts,
+                ) -> Pin<Box<dyn Future<Output = bool> + Send + 'static>>
                 + Send
                 + Sync
                 + 'static,
