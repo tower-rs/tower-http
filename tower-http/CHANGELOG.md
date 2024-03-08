@@ -5,18 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-# Unreleased
+# 0.5.2
 
 ## Added:
 
 - **compression:** Will now send a `vary: accept-encoding` header on compressed responses ([#399])
+- **compression:** Support `x-gzip` as equivalent to `gzip` in `accept-encoding` request header ([#467])
 
 ## Fixed
 
 - **compression:** Skip compression for range requests ([#446])
+- **compression:** Skip compression for SSE responses by default ([#465])
+- **cors:** *Actually* keep Vary headers set by the inner service when setting response headers ([#473])
+  - Version 0.5.1 intended to ship this, but the implementation was buggy and didn't actually do anything
 
 [#399]: https://github.com/tower-rs/tower-http/pull/399
 [#446]: https://github.com/tower-rs/tower-http/pull/446
+[#465]: https://github.com/tower-rs/tower-http/pull/465
+[#467]: https://github.com/tower-rs/tower-http/pull/467
+[#473]: https://github.com/tower-rs/tower-http/pull/473
 
 # 0.5.1 (January 14, 2024)
 

@@ -1,7 +1,7 @@
 use std::convert::Infallible;
 
+use crate::test_helpers::Body;
 use http::{header, HeaderValue, Request, Response};
-use hyper::Body;
 use tower::{service_fn, util::ServiceExt, Layer};
 
 use crate::cors::CorsLayer;
