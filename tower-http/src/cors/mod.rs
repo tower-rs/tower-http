@@ -327,6 +327,42 @@ impl CorsLayer {
     /// ));
     /// ```
     ///
+    /// Additionally, you can use a closure that returns a future:
+    ///
+    /// Because the future must be static, you must only pass owned values into it.
+    ///
+    /// ```
+    /// # #[derive(Clone)]
+    /// # struct Client;
+    /// # fn get_api_client() -> Client {
+    /// #     Client
+    /// # }
+    /// # impl Client {
+    /// #     async fn fetch_allowed_origins(&self, path: String) -> Vec<HeaderValue> {
+    /// #         vec![]
+    /// #     }
+    /// # }
+    /// use tower_http::cors::{CorsLayer, AllowOrigin};
+    /// use http::{request::Parts as RequestParts, HeaderValue};
+    ///
+    /// let client = get_api_client();
+    ///
+    /// let layer = CorsLayer::new().allow_origin(AllowOrigin::async_predicate(
+    ///     move |origin: &HeaderValue, request_parts: &RequestParts| {
+    ///         let client = client.clone();
+    ///         let origin = origin.clone();
+    ///         let path = request_parts.uri.path().to_owned();
+    ///
+    ///         async move {
+    ///             // fetch list of origins that are allowed for this path
+    ///             let origins = client.fetch_allowed_origins(path).await;
+    ///
+    ///             origins.contains(&origin)
+    ///         }
+    ///     },
+    /// ));
+    /// ```
+    ///
     /// Note that multiple calls to this method will override any previous
     /// calls.
     ///
@@ -702,8 +738,7 @@ where
                 headers,
             } => {
                 if !*allow_origin_complete {
-                    let allow_origin_header = ready!(allow_origin_future.poll(cx));
-                    headers.extend(allow_origin_header);
+                    headers.extend(ready!(allow_origin_future.poll(cx)));
                     *allow_origin_complete = true;
                 }
 
@@ -725,8 +760,9 @@ where
                 allow_origin_future,
                 headers,
             } => {
-                let mut response = Response::new(B::default());
                 headers.extend(ready!(allow_origin_future.poll(cx)));
+
+                let mut response = Response::new(B::default());
                 mem::swap(response.headers_mut(), headers);
 
                 Poll::Ready(Ok(response))

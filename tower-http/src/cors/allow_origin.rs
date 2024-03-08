@@ -1,14 +1,14 @@
-use futures_util::FutureExt;
 use http::{
     header::{self, HeaderName, HeaderValue},
     request::Parts as RequestParts,
 };
 use pin_project_lite::pin_project;
-use std::{array, fmt, sync::Arc};
 use std::{
+    array, fmt,
     future::Future,
     pin::Pin,
-    task::{ready, Context, Poll},
+    sync::Arc,
+    task::{Context, Poll},
 };
 
 use super::{Any, WILDCARD};
@@ -90,7 +90,7 @@ impl AllowOrigin {
         Fut: Future<Output = bool> + Send + Sync + 'static,
     {
         Self(OriginInner::AsyncPredicate(Arc::new(move |v, p| {
-            f(v, p).boxed()
+            Box::pin(f(v, p))
         })))
     }
 
@@ -130,11 +130,8 @@ impl AllowOrigin {
             ),
             OriginInner::AsyncPredicate(f) => {
                 if let Some(origin) = origin.cloned() {
-                    AllowOriginFuture::fut(
-                        f(&origin, parts)
-                            .map(|b| b.then_some((name, origin)))
-                            .boxed(),
-                    )
+                    let fut = f(&origin, parts);
+                    AllowOriginFuture::fut(async move { fut.await.then_some((name, origin)) })
                 } else {
                     AllowOriginFuture::ok(None)
                 }
@@ -165,7 +162,7 @@ impl AllowOriginFuture {
         future: F,
     ) -> Self {
         Self::Future {
-            future: future.boxed(),
+            future: Box::pin(future),
         }
     }
 }
@@ -176,11 +173,7 @@ impl Future for AllowOriginFuture {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match self.project() {
             AllowOriginFutureProj::Ok { res } => Poll::Ready(res.take()),
-            AllowOriginFutureProj::Future { future } => {
-                let res = ready!(future.poll(cx));
-
-                Poll::Ready(res)
-            }
+            AllowOriginFutureProj::Future { future } => future.poll(cx),
         }
     }
 }
