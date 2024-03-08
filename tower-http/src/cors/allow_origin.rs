@@ -111,7 +111,7 @@ impl AllowOrigin {
         matches!(&self.0, OriginInner::Const(v) if v == WILDCARD)
     }
 
-    pub(super) fn to_header(
+    pub(super) fn to_future(
         &self,
         origin: Option<&HeaderValue>,
         parts: &RequestParts,
@@ -184,7 +184,7 @@ impl fmt::Debug for AllowOrigin {
             OriginInner::Const(inner) => f.debug_tuple("Const").field(inner).finish(),
             OriginInner::List(inner) => f.debug_tuple("List").field(inner).finish(),
             OriginInner::Predicate(_) => f.debug_tuple("Predicate").finish(),
-            OriginInner::AsyncPredicate(_) => f.debug_tuple("Future").finish(),
+            OriginInner::AsyncPredicate(_) => f.debug_tuple("AsyncPredicate").finish(),
         }
     }
 }

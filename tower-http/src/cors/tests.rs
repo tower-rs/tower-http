@@ -61,7 +61,7 @@ async fn test_allow_origin_async_predicate() {
     let parts = http::Request::new("hello world").into_parts().0;
 
     let header = allow_origin
-        .to_header(Some(&valid_origin), &parts)
+        .to_future(Some(&valid_origin), &parts)
         .await
         .unwrap();
     assert_eq!(header.0, header::ACCESS_CONTROL_ALLOW_ORIGIN);
@@ -70,6 +70,6 @@ async fn test_allow_origin_async_predicate() {
     let invalid_origin = HeaderValue::from_static("http://example.org");
     let parts = http::Request::new("hello world").into_parts().0;
 
-    let res = allow_origin.to_header(Some(&invalid_origin), &parts).await;
+    let res = allow_origin.to_future(Some(&invalid_origin), &parts).await;
     assert!(res.is_none());
 }

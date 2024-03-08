@@ -663,7 +663,7 @@ where
         headers.extend(self.layer.allow_private_network.to_header(origin, &parts));
         headers.extend(self.layer.vary.to_header());
 
-        let allow_origin_future = self.layer.allow_origin.to_header(origin, &parts);
+        let allow_origin_future = self.layer.allow_origin.to_future(origin, &parts);
 
         // Return results immediately upon preflight request
         if parts.method == Method::OPTIONS {
