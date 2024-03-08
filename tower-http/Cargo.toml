@@ -105,7 +105,7 @@ set-status = []
 timeout = ["dep:http-body", "tokio/time"]
 trace = ["dep:http-body", "tracing"]
 util = ["tower"]
-validate-request = ["dep:http-body", "mime"]
+validate-request = ["mime"]
 
 compression-br = ["async-compression/brotli", "futures-core", "dep:http-body", "tokio-util", "tokio"]
 compression-deflate = ["async-compression/zlib", "futures-core", "dep:http-body", "tokio-util", "tokio"]
