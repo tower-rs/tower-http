@@ -117,7 +117,6 @@
 //! ```
 
 use http::{header, Request, Response, StatusCode};
-use http_body::Body;
 use mime::{Mime, MimeIter};
 use pin_project_lite::pin_project;
 use std::{
@@ -163,7 +162,7 @@ impl<ResBody> ValidateRequestHeaderLayer<AcceptHeader<ResBody>> {
     /// [`Accept`]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept
     pub fn accept(value: &str) -> Self
     where
-        ResBody: Body + Default,
+        ResBody: Default,
     {
         Self::custom(AcceptHeader::new(value))
     }
@@ -215,7 +214,7 @@ impl<S, ResBody> ValidateRequestHeader<S, AcceptHeader<ResBody>> {
     /// See `AcceptHeader::new` for when this method panics.
     pub fn accept(inner: S, value: &str) -> Self
     where
-        ResBody: Body + Default,
+        ResBody: Default,
     {
         Self::custom(inner, AcceptHeader::new(value))
     }
@@ -339,7 +338,7 @@ impl<ResBody> AcceptHeader<ResBody> {
     /// Panics if `header_value` is not in the form: `type/subtype`, such as `application/json`
     fn new(header_value: &str) -> Self
     where
-        ResBody: Body + Default,
+        ResBody: Default,
     {
         Self {
             header_value: Arc::new(
@@ -371,7 +370,7 @@ impl<ResBody> fmt::Debug for AcceptHeader<ResBody> {
 
 impl<B, ResBody> ValidateRequest<B> for AcceptHeader<ResBody>
 where
-    ResBody: Body + Default,
+    ResBody: Default,
 {
     type ResponseBody = ResBody;
 
