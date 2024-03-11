@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+# Unreleased
+
+## Changed:
+
+- `body` module is disabled except for `catch-panic`, `decompression-*`, `fs`, or `limit` features (BREAKING) ([#477])
+
+[#477]: https://github.com/tower-rs/tower-http/pull/477
+
 # 0.5.2
 
 ## Added:
@@ -54,7 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Fixed
 
-- Accepts range headers with ranges where the end of range goes past the end of the document by bumping 
+- Accepts range headers with ranges where the end of range goes past the end of the document by bumping
 http-range-header to `0.4`
 
 [#418]: https://github.com/tower-rs/tower-http/pull/418
