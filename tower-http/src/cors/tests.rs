@@ -46,8 +46,6 @@ async fn test_allow_origin_async_predicate() {
     let client = Client;
 
     let allow_origin = AllowOrigin::async_predicate(move |origin, parts| {
-        let origin = origin.clone();
-        let client = client.clone();
         let path = parts.uri.path().to_owned();
 
         async move {

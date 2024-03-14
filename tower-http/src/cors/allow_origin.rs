@@ -86,11 +86,11 @@ impl AllowOrigin {
     /// [`CorsLayer::allow_origin`]: super::CorsLayer::allow_origin
     pub fn async_predicate<F, Fut>(f: F) -> Self
     where
-        F: Fn(&HeaderValue, &RequestParts) -> Fut + Send + Sync + 'static,
+        F: FnOnce(HeaderValue, &RequestParts) -> Fut + Send + Sync + 'static + Clone,
         Fut: Future<Output = bool> + Send + Sync + 'static,
     {
         Self(OriginInner::AsyncPredicate(Arc::new(move |v, p| {
-            Box::pin(f(v, p))
+            Box::pin((f.clone())(v, p))
         })))
     }
 
@@ -130,7 +130,7 @@ impl AllowOrigin {
             ),
             OriginInner::AsyncPredicate(f) => {
                 if let Some(origin) = origin.cloned() {
-                    let fut = f(&origin, parts);
+                    let fut = f(origin.clone(), parts);
                     AllowOriginFuture::fut(async move { fut.await.then_some((name, origin)) })
                 } else {
                     AllowOriginFuture::ok(None)
@@ -224,7 +224,7 @@ enum OriginInner {
     AsyncPredicate(
         Arc<
             dyn for<'a> Fn(
-                    &'a HeaderValue,
+                    HeaderValue,
                     &'a RequestParts,
                 ) -> Pin<Box<dyn Future<Output = bool> + Send + 'static>>
                 + Send
