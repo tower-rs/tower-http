@@ -355,30 +355,11 @@ impl CorsLayer {
     ///         origins.contains(&origin)
     ///     },
     /// ));
-    /// ```
-    ///
-    /// If you want to use request parts in the future,
-    /// you must first own the values before passing them to the async closure:
-    ///
-    /// ```
-    /// # #[derive(Clone)]
-    /// # struct Client;
-    /// # fn get_api_client() -> Client {
-    /// #     Client
-    /// # }
-    /// # impl Client {
-    /// #     async fn fetch_allowed_origins(&self) -> Vec<HeaderValue> {
-    /// #         vec![HeaderValue::from_static("http://example.com")]
-    /// #     }
-    /// #     async fn fetch_allowed_origins_for_path(&self, _path: String) -> Vec<HeaderValue> {
-    /// #         vec![HeaderValue::from_static("http://example.com")]
-    /// #     }
-    /// # }
-    /// use tower_http::cors::{CorsLayer, AllowOrigin};
-    /// use http::{request::Parts as RequestParts, HeaderValue};
     ///
     /// let client = get_api_client();
     ///
+    /// // if using &RequestParts, make sure all the values are owned
+    /// // before passing into the future
     /// let layer = CorsLayer::new().allow_origin(AllowOrigin::async_predicate(
     ///     |origin: HeaderValue, parts: &RequestParts| {
     ///         let path = parts.uri.path().to_owned();
