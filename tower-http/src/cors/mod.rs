@@ -327,9 +327,7 @@ impl CorsLayer {
     /// ));
     /// ```
     ///
-    /// Additionally, you can use a closure that returns a future:
-    ///
-    /// Because the future must be static, you must only pass owned values into it.
+    /// You can also use an async closure:
     ///
     /// ```
     /// # #[derive(Clone)]
@@ -338,8 +336,11 @@ impl CorsLayer {
     /// #     Client
     /// # }
     /// # impl Client {
-    /// #     async fn fetch_allowed_origins(&self, path: String) -> Vec<HeaderValue> {
-    /// #         vec![]
+    /// #     async fn fetch_allowed_origins(&self) -> Vec<HeaderValue> {
+    /// #         vec![HeaderValue::from_static("http://example.com")]
+    /// #     }
+    /// #     async fn fetch_allowed_origins_for_path(&self, _path: String) -> Vec<HeaderValue> {
+    /// #         vec![HeaderValue::from_static("http://example.com")]
     /// #     }
     /// # }
     /// use tower_http::cors::{CorsLayer, AllowOrigin};
@@ -348,15 +349,43 @@ impl CorsLayer {
     /// let client = get_api_client();
     ///
     /// let layer = CorsLayer::new().allow_origin(AllowOrigin::async_predicate(
-    ///     move |origin: &HeaderValue, request_parts: &RequestParts| {
-    ///         let client = client.clone();
-    ///         let origin = origin.clone();
-    ///         let path = request_parts.uri.path().to_owned();
+    ///     |origin: HeaderValue, _request_parts: &RequestParts| async move {
+    ///         // fetch list of origins that are allowed
+    ///         let origins = client.fetch_allowed_origins().await;
+    ///         origins.contains(&origin)
+    ///     },
+    /// ));
+    /// ```
+    ///
+    /// If you want to use request parts in the future,
+    /// you must first own the values before passing them to the async closure:
+    ///
+    /// ```
+    /// # #[derive(Clone)]
+    /// # struct Client;
+    /// # fn get_api_client() -> Client {
+    /// #     Client
+    /// # }
+    /// # impl Client {
+    /// #     async fn fetch_allowed_origins(&self) -> Vec<HeaderValue> {
+    /// #         vec![HeaderValue::from_static("http://example.com")]
+    /// #     }
+    /// #     async fn fetch_allowed_origins_for_path(&self, _path: String) -> Vec<HeaderValue> {
+    /// #         vec![HeaderValue::from_static("http://example.com")]
+    /// #     }
+    /// # }
+    /// use tower_http::cors::{CorsLayer, AllowOrigin};
+    /// use http::{request::Parts as RequestParts, HeaderValue};
+    ///
+    /// let client = get_api_client();
+    ///
+    /// let layer = CorsLayer::new().allow_origin(AllowOrigin::async_predicate(
+    ///     |origin: HeaderValue, parts: &RequestParts| {
+    ///         let path = parts.uri.path().to_owned();
     ///
     ///         async move {
     ///             // fetch list of origins that are allowed for this path
-    ///             let origins = client.fetch_allowed_origins(path).await;
-    ///
+    ///             let origins = client.fetch_allowed_origins_for_path(path).await;
     ///             origins.contains(&origin)
     ///         }
     ///     },

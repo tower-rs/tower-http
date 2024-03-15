@@ -38,18 +38,18 @@ async fn test_allow_origin_async_predicate() {
     struct Client;
 
     impl Client {
-        async fn fetch_allowed_origins(&self, _path: String) -> Vec<HeaderValue> {
+        async fn fetch_allowed_origins_for_path(&self, _path: String) -> Vec<HeaderValue> {
             vec![HeaderValue::from_static("http://example.com")]
         }
     }
 
     let client = Client;
 
-    let allow_origin = AllowOrigin::async_predicate(move |origin, parts| {
+    let allow_origin = AllowOrigin::async_predicate(|origin, parts| {
         let path = parts.uri.path().to_owned();
 
         async move {
-            let origins = client.fetch_allowed_origins(path).await;
+            let origins = client.fetch_allowed_origins_for_path(path).await;
 
             origins.contains(&origin)
         }
