@@ -47,15 +47,27 @@ pub(super) enum FileRequestExtent {
     Head(Metadata),
 }
 
+pub(super) struct OpenFileConfig {
+    pub(super) variant: ServeVariant,
+    pub(super) redirect_path_prefix: String,
+    pub(super) buf_chunk_size: usize,
+    pub(super) precompression_configured: bool,
+}
+
 pub(super) async fn open_file(
-    variant: ServeVariant,
+    config: OpenFileConfig,
     mut path_to_file: PathBuf,
     req: Request<Empty<Bytes>>,
     negotiated_encodings: Vec<(Encoding, QValue)>,
     range_header: Option<String>,
-    buf_chunk_size: usize,
-    precompression_configured: bool,
 ) -> io::Result<OpenFileOutput> {
+    let OpenFileConfig {
+        variant,
+        redirect_path_prefix,
+        buf_chunk_size,
+        precompression_configured,
+    } = config;
+
     let preconditions = Preconditions {
         if_match: req
             .headers()
@@ -84,6 +96,7 @@ pub(super) async fn open_file(
             // returned which corresponds to a Some(output). Otherwise the path might be
             // modified and proceed to the open file/metadata future.
             if let Some(output) = maybe_redirect_or_append_path(
+                &redirect_path_prefix,
                 &mut path_to_file,
                 req.uri(),
                 append_index_html_on_directories,
@@ -377,6 +390,7 @@ async fn file_metadata_with_fallback(
 }
 
 async fn maybe_redirect_or_append_path(
+    redirect_path_prefix: &str,
     path_to_file: &mut PathBuf,
     uri: &Uri,
     append_index_html_on_directories: bool,
@@ -408,7 +422,7 @@ async fn maybe_redirect_or_append_path(
         path_to_file.push("index.html");
         None
     } else {
-        let uri = match append_slash_on_path(uri.clone()) {
+        let uri = match append_slash_on_path(uri.clone(), redirect_path_prefix) {
             Ok(uri) => uri,
             Err(err) => return Some(err),
         };
@@ -434,7 +448,7 @@ async fn is_dir(path_to_file: &Path) -> Option<bool> {
         .map(|meta_data| meta_data.is_dir())
 }
 
-fn append_slash_on_path(uri: Uri) -> Result<Uri, OpenFileOutput> {
+fn append_slash_on_path(uri: Uri, redirect_path_prefix: &str) -> Result<Uri, OpenFileOutput> {
     let http::uri::Parts {
         scheme,
         authority,
@@ -454,12 +468,16 @@ fn append_slash_on_path(uri: Uri) -> Result<Uri, OpenFileOutput> {
 
     let uri_builder = if let Some(path_and_query) = path_and_query {
         if let Some(query) = path_and_query.query() {
-            uri_builder.path_and_query(format!("{}/?{}", path_and_query.path(), query))
+            uri_builder.path_and_query(format!(
+                "{redirect_path_prefix}{}/?{}",
+                path_and_query.path(),
+                query
+            ))
         } else {
-            uri_builder.path_and_query(format!("{}/", path_and_query.path()))
+            uri_builder.path_and_query(format!("{redirect_path_prefix}{}/", path_and_query.path()))
         }
     } else {
-        uri_builder.path_and_query("/")
+        uri_builder.path_and_query(format!("{redirect_path_prefix}/"))
     };
 
     uri_builder.build().map_err(|_err| {
