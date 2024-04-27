@@ -40,6 +40,7 @@ pub(super) enum FileRequestExtent {
 
 pub(super) async fn open_file(
     variant: ServeVariant,
+    prepend_path: String,
     mut path_to_file: PathBuf,
     req: Request<Empty<Bytes>>,
     negotiated_encodings: Vec<(Encoding, QValue)>,
@@ -64,6 +65,7 @@ pub(super) async fn open_file(
             // returned which corresponds to a Some(output). Otherwise the path might be
             // modified and proceed to the open file/metadata future.
             if let Some(output) = maybe_redirect_or_append_path(
+                &prepend_path,
                 &mut path_to_file,
                 req.uri(),
                 append_index_html_on_directories,
@@ -251,6 +253,7 @@ async fn file_metadata_with_fallback(
 }
 
 async fn maybe_redirect_or_append_path(
+    prepend_path: &str,
     path_to_file: &mut PathBuf,
     uri: &Uri,
     append_index_html_on_directories: bool,
@@ -267,8 +270,10 @@ async fn maybe_redirect_or_append_path(
         path_to_file.push("index.html");
         None
     } else {
-        let location =
-            HeaderValue::from_str(&append_slash_on_path(uri.clone()).to_string()).unwrap();
+        let location_string = format!("{prepend_path}{}", append_slash_on_path(uri.clone()));
+
+        let location = HeaderValue::from_str(&location_string).unwrap();
+
         Some(OpenFileOutput::Redirect { location })
     }
 }

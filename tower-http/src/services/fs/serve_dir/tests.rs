@@ -385,6 +385,19 @@ async fn redirect_to_trailing_slash_on_dir() {
 }
 
 #[tokio::test]
+async fn redirect_to_trailing_slash_with_prepend_path() {
+    let svc = ServeDir::new(".").prepend_path("/foo".to_string());
+
+    let req = Request::builder().uri("/src").body(Body::empty()).unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+
+    assert_eq!(res.status(), StatusCode::TEMPORARY_REDIRECT);
+
+    let location = &res.headers()[http::header::LOCATION];
+    assert_eq!(location, "/foo/src/");
+}
+
+#[tokio::test]
 async fn empty_directory_without_index() {
     let svc = ServeDir::new(".").append_index_html_on_directories(false);
 
