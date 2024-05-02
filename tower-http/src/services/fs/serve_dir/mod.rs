@@ -52,7 +52,7 @@ const DEFAULT_CAPACITY: usize = 65536;
 #[derive(Clone, Debug)]
 pub struct ServeDir<F = DefaultServeDirFallback> {
     base: PathBuf,
-    prepend_path: String,
+    redirect_path_prefix: String,
     buf_chunk_size: usize,
     precompressed_variants: Option<PrecompressedVariants>,
     // This is used to specialise implementation for
@@ -73,7 +73,7 @@ impl ServeDir<DefaultServeDirFallback> {
 
         Self {
             base,
-            prepend_path: "".to_string(),
+            redirect_path_prefix: "".to_string(),
             buf_chunk_size: DEFAULT_CAPACITY,
             precompressed_variants: None,
             variant: ServeVariant::Directory {
@@ -90,7 +90,7 @@ impl ServeDir<DefaultServeDirFallback> {
     {
         Self {
             base: path.as_ref().to_owned(),
-            prepend_path: "".to_string(),
+            redirect_path_prefix: "".to_string(),
             buf_chunk_size: DEFAULT_CAPACITY,
             precompressed_variants: None,
             variant: ServeVariant::SingleFile { mime },
@@ -126,8 +126,8 @@ impl<F> ServeDir<F> {
     /// redirect to `/<path>/` but instead to `/static/<path>/`
     ///
     /// The default is the empty string.
-    pub fn prepend_path(mut self, path: String) -> Self {
-        self.prepend_path = path;
+    pub fn redirect_path_prefix(mut self, path: String) -> Self {
+        self.redirect_path_prefix = path;
         self
     }
 
@@ -227,7 +227,7 @@ impl<F> ServeDir<F> {
     /// ```
     pub fn fallback<F2>(self, new_fallback: F2) -> ServeDir<F2> {
         ServeDir {
-            prepend_path: "".to_string(),
+            redirect_path_prefix: "".to_string(),
             base: self.base,
             buf_chunk_size: self.buf_chunk_size,
             precompressed_variants: self.precompressed_variants,
@@ -375,7 +375,7 @@ impl<F> ServeDir<F> {
             }
         };
 
-        let prepend_path = self.prepend_path.clone();
+        let prepend_path = self.redirect_path_prefix.clone();
 
         let buf_chunk_size = self.buf_chunk_size;
         let range_header = req

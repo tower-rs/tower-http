@@ -385,8 +385,8 @@ async fn redirect_to_trailing_slash_on_dir() {
 }
 
 #[tokio::test]
-async fn redirect_to_trailing_slash_with_prepend_path() {
-    let svc = ServeDir::new(".").prepend_path("/foo".to_string());
+async fn redirect_to_trailing_slash_with_redirect_path_prefix() {
+    let svc = ServeDir::new(".").redirect_path_prefix("/foo".to_string());
 
     let req = Request::builder().uri("/src").body(Body::empty()).unwrap();
     let res = svc.oneshot(req).await.unwrap();
