@@ -55,7 +55,7 @@ tokio = { version = "1", features = ["full"] }
 tower = { version = "0.4.10", features = ["buffer", "util", "retry", "make", "timeout"] }
 tracing-subscriber = "0.3"
 uuid = { version = "1.0", features = ["v4"] }
-zstd = "0.12"
+zstd = "0.13"
 
 [features]
 default = []
