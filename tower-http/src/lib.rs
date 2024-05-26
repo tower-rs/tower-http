@@ -372,6 +372,6 @@ pub enum LatencyUnit {
 pub type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
 mod sealed {
-    #[allow(unreachable_pub)]
+    #[allow(unreachable_pub, unused)]
     pub trait Sealed<T> {}
 }
