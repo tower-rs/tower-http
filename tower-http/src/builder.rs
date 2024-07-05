@@ -169,7 +169,7 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     where
         I: IntoIterator<Item = HeaderName>;
 
-    /// Mark headers as [sensitive] on both requests.
+    /// Mark headers as [sensitive] on requests.
     ///
     /// See [`tower_http::sensitive_headers`] for more details.
     ///
@@ -181,7 +181,7 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
         headers: std::sync::Arc<[HeaderName]>,
     ) -> ServiceBuilder<Stack<crate::sensitive_headers::SetSensitiveRequestHeadersLayer, L>>;
 
-    /// Mark headers as [sensitive] on both responses.
+    /// Mark headers as [sensitive] on responses.
     ///
     /// See [`tower_http::sensitive_headers`] for more details.
     ///
