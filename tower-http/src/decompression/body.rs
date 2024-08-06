@@ -15,7 +15,7 @@ use async_compression::tokio::bufread::ZlibDecoder;
 use async_compression::tokio::bufread::ZstdDecoder;
 use bytes::{Buf, Bytes};
 use http::HeaderMap;
-use http_body::Body;
+use http_body::{Body, SizeHint};
 use pin_project_lite::pin_project;
 use std::task::Context;
 use std::{
@@ -324,6 +324,13 @@ where
             BodyInnerProj::Brotli { inner } => match inner.0 {},
             #[cfg(not(feature = "decompression-zstd"))]
             BodyInnerProj::Zstd { inner } => match inner.0 {},
+        }
+    }
+
+    fn size_hint(&self) -> SizeHint {
+        match self.inner {
+            BodyInner::Identity { ref inner } => inner.size_hint(),
+            _ => SizeHint::default(),
         }
     }
 }
