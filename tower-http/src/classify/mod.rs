@@ -397,12 +397,12 @@ mod usable_for_retries {
         Request<ReqB>: Clone,
         E: std::error::Error + 'static,
     {
-        type Future = std::future::Ready<RetryBasedOnClassification<C>>;
+        type Future = std::future::Ready<()>;
 
         fn retry(
-            &self,
-            _req: &Request<ReqB>,
-            res: Result<&Response<ResB>, &E>,
+            &mut self,
+            _req: &mut Request<ReqB>,
+            res: &mut Result<Response<ResB>, E>,
         ) -> Option<Self::Future> {
             match res {
                 Ok(res) => {
@@ -410,7 +410,7 @@ mod usable_for_retries {
                         self.classifier.clone().classify_response(res)
                     {
                         if class.err()?.is_retryable() {
-                            return Some(std::future::ready(self.clone()));
+                            return Some(std::future::ready(()));
                         }
                     }
 
@@ -421,11 +421,11 @@ mod usable_for_retries {
                     .clone()
                     .classify_error(err)
                     .is_retryable()
-                    .then(|| std::future::ready(self.clone())),
+                    .then(|| std::future::ready(())),
             }
         }
 
-        fn clone_request(&self, req: &Request<ReqB>) -> Option<Request<ReqB>> {
+        fn clone_request(&mut self, req: &Request<ReqB>) -> Option<Request<ReqB>> {
             Some(req.clone())
         }
     }
