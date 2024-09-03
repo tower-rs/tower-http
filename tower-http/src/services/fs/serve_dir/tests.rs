@@ -253,6 +253,29 @@ async fn missing_precompressed_variant_fallbacks_to_uncompressed_for_head_reques
 }
 
 #[tokio::test]
+async fn precompressed_without_extension() {
+    let svc = ServeDir::new("../test-files").precompressed_gzip();
+
+    let request = Request::builder()
+        .uri("/extensionless_precompressed")
+        .header("Accept-Encoding", "gzip")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(request).await.unwrap();
+
+    assert_eq!(res.status(), StatusCode::OK);
+
+    assert_eq!(res.headers()["content-type"], "application/octet-stream");
+    assert_eq!(res.headers()["content-encoding"], "gzip");
+
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let mut decoder = GzDecoder::new(&body[..]);
+    let mut decompressed = String::new();
+    decoder.read_to_string(&mut decompressed).unwrap();
+    assert!(decompressed.starts_with("Content."));
+}
+
+#[tokio::test]
 async fn access_to_sub_dirs() {
     let svc = ServeDir::new("..");
 
