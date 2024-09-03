@@ -276,6 +276,27 @@ async fn precompressed_without_extension() {
 }
 
 #[tokio::test]
+async fn missing_precompressed_without_extension_fallbacks_to_uncompressed() {
+    let svc = ServeDir::new("../test-files").precompressed_gzip();
+
+    let request = Request::builder()
+        .uri("/extensionless_precompressed_missing")
+        .header("Accept-Encoding", "gzip")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(request).await.unwrap();
+
+    assert_eq!(res.status(), StatusCode::OK);
+
+    assert_eq!(res.headers()["content-type"], "application/octet-stream");
+    assert!(res.headers().get("content-encoding").is_none());
+
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let body = String::from_utf8(body.to_vec()).unwrap();
+    assert!(body.starts_with("Content."));
+}
+
+#[tokio::test]
 async fn access_to_sub_dirs() {
     let svc = ServeDir::new("..");
 
