@@ -23,19 +23,19 @@ tower-service = "0.3"
 # optional dependencies
 async-compression = { version = "0.4", optional = true, features = ["tokio"] }
 base64 = { version = "0.22", optional = true }
-futures-core = { version = "0.3", optional = true, default_features = false }
-futures-util = { version = "0.3.14", optional = true, default_features = false }
+futures-core = { version = "0.3", optional = true, default-features = false }
+futures-util = { version = "0.3.14", optional = true, default-features = false }
 http-body = { version = "1.0.0", optional = true }
 http-body-util = { version = "0.1.0", optional = true }
 http-range-header = { version = "0.4.0", optional = true }
 iri-string = { version = "0.7.0", optional = true }
-mime = { version = "0.3.17", optional = true, default_features = false }
-mime_guess = { version = "2", optional = true, default_features = false }
+mime = { version = "0.3.17", optional = true, default-features = false }
+mime_guess = { version = "2", optional = true, default-features = false }
 percent-encoding = { version = "2.1.0", optional = true }
-tokio = { version = "1.6", optional = true, default_features = false }
-tokio-util = { version = "0.7", optional = true, default_features = false, features = ["io"] }
+tokio = { version = "1.6", optional = true, default-features = false }
+tokio-util = { version = "0.7", optional = true, default-features = false, features = ["io"] }
 tower = { version = "0.5", optional = true }
-tracing = { version = "0.1", default_features = false, optional = true }
+tracing = { version = "0.1", default-features = false, optional = true }
 httpdate = { version = "1.0", optional = true }
 uuid = { version = "1.0", features = ["v4"], optional = true }
 
