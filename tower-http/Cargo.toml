@@ -17,7 +17,7 @@ bitflags = "2.0.2"
 bytes = "1"
 http = "1.0"
 pin-project-lite = "0.2.7"
-tower-layer = "0.3"
+tower-layer = "0.3.3"
 tower-service = "0.3"
 
 # optional dependencies
