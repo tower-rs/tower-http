@@ -114,7 +114,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - uses: dtolnay/rust-toolchain@nightly
+    # Pinned version due to failing `cargo-public-api-crates`.
+    - uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: nightly-2024-06-06
     - uses: Swatinem/rust-cache@v2
     - name: Install cargo-public-api-crates
       run: |
