@@ -122,5 +122,8 @@ jobs:
     - name: Install cargo-public-api-crates
       run: |
         cargo install --git https://github.com/davidpdrsn/cargo-public-api-crates
+    - name: Build rustdoc
+      run: |
+        cargo rustdoc --all-features --manifest-path tower-http/Cargo.toml -- -Z unstable-options --output-format json
     - name: cargo public-api-crates check
-      run: cargo public-api-crates --manifest-path tower-http/Cargo.toml check
+      run: cargo public-api-crates --manifest-path tower-http/Cargo.toml --skip-build check
