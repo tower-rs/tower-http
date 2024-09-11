@@ -10,7 +10,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@stable
     - name: Install protoc
       uses: taiki-e/install-action@v2
@@ -21,7 +21,7 @@ jobs:
   check-docs:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@stable
     - name: Install protoc
       uses: taiki-e/install-action@v2
@@ -36,7 +36,7 @@ jobs:
   cargo-hack:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@stable
     - uses: taiki-e/install-action@cargo-hack
     - name: Install protoc
@@ -57,7 +57,7 @@ jobs:
       matrix:
         rust: [stable, beta, nightly]
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@master
       with:
         toolchain: ${{ matrix.rust }}
@@ -71,7 +71,7 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@1.66
     - name: Install protoc
       uses: taiki-e/install-action@v2
@@ -84,7 +84,7 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@stable
       with:
         components: rustfmt
@@ -104,7 +104,7 @@ jobs:
         - advisories
         - bans licenses sources
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - uses: EmbarkStudios/cargo-deny-action@v1
       with:
         manifest-path: tower-http/Cargo.toml
@@ -113,7 +113,7 @@ jobs:
   cargo-public-api-crates:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@nightly
     - uses: Swatinem/rust-cache@v2
     - name: Install cargo-public-api-crates
