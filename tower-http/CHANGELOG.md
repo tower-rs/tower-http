@@ -12,8 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `body` module is disabled except for `catch-panic`, `decompression-*`, `fs`, or `limit` features (BREAKING) ([#477])
 - Update to `tower` 0.5 ([#503])
 
+## Fixed
+
+- **fs:** Precompression of static files now supports files without a file extension ([#507])
+
 [#477]: https://github.com/tower-rs/tower-http/pull/477
 [#503]: https://github.com/tower-rs/tower-http/pull/503
+[#507]: https://github.com/tower-rs/tower-http/pull/507
 
 # 0.5.2
 

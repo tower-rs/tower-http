@@ -142,7 +142,7 @@ pub(crate) struct QValue(u16);
 ))]
 impl QValue {
     #[inline]
-    fn one() -> Self {
+    pub(crate) fn one() -> Self {
         Self(1000)
     }
 

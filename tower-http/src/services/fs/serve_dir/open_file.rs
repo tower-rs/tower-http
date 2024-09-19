@@ -181,16 +181,16 @@ fn preferred_encoding(
     if let Some(file_extension) =
         preferred_encoding.and_then(|encoding| encoding.to_file_extension())
     {
-        let new_extension = path
-            .extension()
-            .map(|extension| {
-                let mut os_string = extension.to_os_string();
+        let new_file_name = path
+            .file_name()
+            .map(|file_name| {
+                let mut os_string = file_name.to_os_string();
                 os_string.push(file_extension);
                 os_string
             })
             .unwrap_or_else(|| file_extension.to_os_string());
 
-        path.set_extension(new_extension);
+        path.set_file_name(new_file_name);
     }
 
     preferred_encoding
@@ -318,4 +318,18 @@ fn append_slash_on_path(uri: Uri) -> Uri {
     };
 
     uri_builder.build().unwrap()
+}
+
+#[test]
+fn preferred_encoding_with_extension() {
+    let mut path = PathBuf::from("hello.txt");
+    preferred_encoding(&mut path, &[(Encoding::Gzip, QValue::one())]);
+    assert_eq!(path, PathBuf::from("hello.txt.gz"));
+}
+
+#[test]
+fn preferred_encoding_without_extension() {
+    let mut path = PathBuf::from("hello");
+    preferred_encoding(&mut path, &[(Encoding::Gzip, QValue::one())]);
+    assert_eq!(path, PathBuf::from("hello.gz"));
 }

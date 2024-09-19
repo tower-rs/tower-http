@@ -9,6 +9,7 @@ use http::{Request, StatusCode};
 use http_body::Body as HttpBody;
 use http_body_util::BodyExt;
 use std::convert::Infallible;
+use std::fs;
 use std::io::Read;
 use tower::{service_fn, ServiceExt};
 
@@ -250,6 +251,54 @@ async fn missing_precompressed_variant_fallbacks_to_uncompressed_for_head_reques
     assert!(res.headers().get("content-encoding").is_none());
 
     assert!(res.into_body().frame().await.is_none());
+}
+
+#[tokio::test]
+async fn precompressed_without_extension() {
+    let svc = ServeDir::new("../test-files").precompressed_gzip();
+
+    let request = Request::builder()
+        .uri("/extensionless_precompressed")
+        .header("Accept-Encoding", "gzip")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(request).await.unwrap();
+
+    assert_eq!(res.status(), StatusCode::OK);
+
+    assert_eq!(res.headers()["content-type"], "application/octet-stream");
+    assert_eq!(res.headers()["content-encoding"], "gzip");
+
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let mut decoder = GzDecoder::new(&body[..]);
+    let mut decompressed = String::new();
+    decoder.read_to_string(&mut decompressed).unwrap();
+
+    let correct = fs::read_to_string("../test-files/extensionless_precompressed").unwrap();
+    assert_eq!(decompressed, correct);
+}
+
+#[tokio::test]
+async fn missing_precompressed_without_extension_fallbacks_to_uncompressed() {
+    let svc = ServeDir::new("../test-files").precompressed_gzip();
+
+    let request = Request::builder()
+        .uri("/extensionless_precompressed_missing")
+        .header("Accept-Encoding", "gzip")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(request).await.unwrap();
+
+    assert_eq!(res.status(), StatusCode::OK);
+
+    assert_eq!(res.headers()["content-type"], "application/octet-stream");
+    assert!(res.headers().get("content-encoding").is_none());
+
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let body = String::from_utf8(body.to_vec()).unwrap();
+
+    let correct = fs::read_to_string("../test-files/extensionless_precompressed_missing").unwrap();
+    assert_eq!(body, correct);
 }
 
 #[tokio::test]
