@@ -9,6 +9,7 @@ use http::{Request, StatusCode};
 use http_body::Body as HttpBody;
 use http_body_util::BodyExt;
 use std::convert::Infallible;
+use std::fs;
 use std::io::Read;
 use tower::{service_fn, ServiceExt};
 
@@ -272,7 +273,9 @@ async fn precompressed_without_extension() {
     let mut decoder = GzDecoder::new(&body[..]);
     let mut decompressed = String::new();
     decoder.read_to_string(&mut decompressed).unwrap();
-    assert_eq!(&decompressed, "Content.\n");
+
+    let correct = fs::read_to_string("../test-files/extensionless_precompressed").unwrap();
+    assert_eq!(decompressed, correct);
 }
 
 #[tokio::test]
@@ -293,7 +296,9 @@ async fn missing_precompressed_without_extension_fallbacks_to_uncompressed() {
 
     let body = res.into_body().collect().await.unwrap().to_bytes();
     let body = String::from_utf8(body.to_vec()).unwrap();
-    assert_eq!(&body, "Content.\n");
+
+    let correct = fs::read_to_string("../test-files/extensionless_precompressed_missing").unwrap();
+    assert_eq!(body, correct);
 }
 
 #[tokio::test]
