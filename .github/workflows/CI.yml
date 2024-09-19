@@ -78,6 +78,7 @@ jobs:
       with:
         tool: protoc@3.20.3
     - run: cargo update -p tokio --precise 1.38.1
+    - run: cargo update -p tokio-util --precise 0.7.11
     - run: cargo test -p tower-http --all-features
 
   style:
