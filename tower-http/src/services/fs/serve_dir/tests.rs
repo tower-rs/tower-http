@@ -272,7 +272,7 @@ async fn precompressed_without_extension() {
     let mut decoder = GzDecoder::new(&body[..]);
     let mut decompressed = String::new();
     decoder.read_to_string(&mut decompressed).unwrap();
-    assert!(decompressed.starts_with("Content."));
+    assert_eq!(&decompressed, "Content.\n");
 }
 
 #[tokio::test]
@@ -293,7 +293,7 @@ async fn missing_precompressed_without_extension_fallbacks_to_uncompressed() {
 
     let body = res.into_body().collect().await.unwrap().to_bytes();
     let body = String::from_utf8(body.to_vec()).unwrap();
-    assert!(body.starts_with("Content."));
+    assert_eq!(&body, "Content.\n");
 }
 
 #[tokio::test]
