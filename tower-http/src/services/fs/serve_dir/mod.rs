@@ -76,6 +76,7 @@ impl ServeDir<DefaultServeDirFallback> {
             precompressed_variants: None,
             variant: ServeVariant::Directory {
                 append_index_html_on_directories: true,
+                html_as_default_extension: true,
             },
             fallback: None,
             call_fallback_on_method_not_allowed: false,
@@ -105,10 +106,21 @@ impl<F> ServeDir<F> {
     /// Defaults to `true`.
     pub fn append_index_html_on_directories(mut self, append: bool) -> Self {
         match &mut self.variant {
-            ServeVariant::Directory {
-                append_index_html_on_directories,
-            } => {
+            ServeVariant::Directory { append_index_html_on_directories, .. } => {
                 *append_index_html_on_directories = append;
+                self
+            }
+            ServeVariant::SingleFile { mime: _ } => self,
+        }
+    }
+
+    /// If the requested path doesn't specify a file extension, append `.html`.
+    ///
+    /// Defaults to `true`.
+    pub fn html_as_default_extension(mut self, append: bool) -> Self {
+        match &mut self.variant {
+            ServeVariant::Directory { html_as_default_extension, .. } => {
+                *html_as_default_extension = append;
                 self
             }
             ServeVariant::SingleFile { mime: _ } => self,
@@ -443,6 +455,7 @@ opaque_future! {
 enum ServeVariant {
     Directory {
         append_index_html_on_directories: bool,
+        html_as_default_extension: bool,
     },
     SingleFile {
         mime: HeaderValue,
@@ -454,6 +467,7 @@ impl ServeVariant {
         match self {
             ServeVariant::Directory {
                 append_index_html_on_directories: _,
+                html_as_default_extension: _,
             } => {
                 let path = requested_path.trim_start_matches('/');
 
