@@ -309,6 +309,9 @@ pub mod follow_redirect;
 #[cfg(feature = "limit")]
 pub mod limit;
 
+#[cfg(feature = "task-local")]
+pub mod task_local;
+
 #[cfg(feature = "metrics")]
 pub mod metrics;
 

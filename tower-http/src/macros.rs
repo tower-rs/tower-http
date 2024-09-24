@@ -68,10 +68,15 @@ macro_rules! opaque_body {
 
 #[allow(unused_macros)]
 macro_rules! opaque_future {
-    ($(#[$m:meta])* pub type $name:ident<$($param:ident),+> = $actual:ty;) => {
+    (
+        $(#[$m:meta])*
+        pub type $name:ident<$($param:ident),+> = $actual:ty
+        $( where $($tt:tt)* )?
+        ;
+    ) => {
         pin_project_lite::pin_project! {
             $(#[$m])*
-            pub struct $name<$($param),+> {
+            pub struct $name<$($param),+> $( where $($tt)* )? {
                 #[pin]
                 inner: $actual
             }
