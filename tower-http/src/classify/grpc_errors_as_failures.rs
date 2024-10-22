@@ -70,6 +70,32 @@ impl GrpcCode {
     }
 }
 
+impl From<i32> for GrpcCode {
+    fn from(value: i32) -> Self {
+        match value {
+            0 => GrpcCode::Ok,
+            1 => GrpcCode::Cancelled,
+            2 => GrpcCode::Unknown,
+            3 => GrpcCode::InvalidArgument,
+            4 => GrpcCode::DeadlineExceeded,
+            5 => GrpcCode::NotFound,
+            6 => GrpcCode::AlreadyExists,
+            7 => GrpcCode::PermissionDenied,
+            8 => GrpcCode::ResourceExhausted,
+            9 => GrpcCode::FailedPrecondition,
+            10 => GrpcCode::Aborted,
+            11 => GrpcCode::OutOfRange,
+            12 => GrpcCode::Unimplemented,
+            13 => GrpcCode::Internal,
+            14 => GrpcCode::Unavailable,
+            15 => GrpcCode::DataLoss,
+            16 => GrpcCode::Unauthenticated,
+
+            _ => GrpcCode::Unknown,
+        }
+    }
+}
+
 bitflags! {
     #[derive(Debug, Clone, Copy)]
     pub(crate) struct GrpcCodeBitmask: u32 {
