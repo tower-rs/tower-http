@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+# 0.6.2
+
+## Changed:
+
+- `CompressionBody<B>` now propagates `B`'s size hint in its `http_body::Body`
+  implementation, if compression is disabled ([#531])
+  - this allows a `content-length` to be included in an HTTP message with this
+    body for those cases
+
+[#531]: https://github.com/tower-rs/tower-http/pull/531
+
 # 0.6.1
 
 ## Fixed
