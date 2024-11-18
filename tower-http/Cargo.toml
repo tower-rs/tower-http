@@ -132,6 +132,7 @@ allowed = [
     "http",
     "http_body",
     "mime",
+    "pin-project-lite",
     "tokio",
     "tower",
     "tower_layer",
