@@ -269,6 +269,14 @@ where
             },
         }
     }
+
+    fn size_hint(&self) -> http_body::SizeHint {
+        if let BodyInner::Identity { inner } = &self.inner {
+            inner.size_hint()
+        } else {
+            http_body::SizeHint::new()
+        }
+    }
 }
 
 #[cfg(feature = "compression-gzip")]
