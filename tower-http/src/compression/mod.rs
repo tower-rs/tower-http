@@ -99,6 +99,7 @@ mod tests {
         ACCEPT_ENCODING, ACCEPT_RANGES, CONTENT_ENCODING, CONTENT_RANGE, CONTENT_TYPE, RANGE,
     };
     use http::{HeaderMap, HeaderName, HeaderValue, Request, Response};
+    use http_body::Body as _;
     use http_body_util::BodyExt;
     use std::convert::Infallible;
     use std::io::Read;
@@ -494,5 +495,17 @@ mod tests {
         assert!(!headers.contains_key(ACCEPT_RANGES));
         assert_eq!(headers[CONTENT_ENCODING], "gzip");
         assert_eq!(decompressed, "Hello, World!");
+    }
+
+    #[tokio::test]
+    async fn size_hint_identity() {
+        let msg = "Hello, world!";
+        let svc = service_fn(|_| async { Ok::<_, std::io::Error>(Response::new(Body::from(msg))) });
+        let mut svc = Compression::new(svc);
+
+        let req = Request::new(Body::empty());
+        let res = svc.ready().await.unwrap().call(req).await.unwrap();
+        let body = res.into_body();
+        assert_eq!(body.size_hint().exact().unwrap(), msg.len() as u64);
     }
 }
