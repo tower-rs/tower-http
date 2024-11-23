@@ -5,7 +5,7 @@ fn main() {
 /*
 use bytes::Bytes;
 use clap::Parser;
-use futures::StreamExt;
+use futures_util::StreamExt;
 use hyper::{
     body::HttpBody,
     header::{self, HeaderValue},
