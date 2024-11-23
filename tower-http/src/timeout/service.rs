@@ -165,7 +165,6 @@ impl<S> RequestBodyTimeout<S> {
 impl<S, ReqBody> Service<Request<ReqBody>> for RequestBodyTimeout<S>
 where
     S: Service<Request<TimeoutBody<ReqBody>>>,
-    S::Error: Into<Box<dyn std::error::Error>>,
 {
     type Response = S::Response;
     type Error = S::Error;
@@ -212,7 +211,6 @@ pub struct ResponseBodyTimeout<S> {
 impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for ResponseBodyTimeout<S>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
-    S::Error: Into<Box<dyn std::error::Error>>,
 {
     type Response = Response<TimeoutBody<ResBody>>;
     type Error = S::Error;
