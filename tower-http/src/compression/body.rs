@@ -277,6 +277,14 @@ where
             http_body::SizeHint::new()
         }
     }
+
+    fn is_end_stream(&self) -> bool {
+        if let BodyInner::Identity { inner } = &self.inner {
+            inner.is_end_stream()
+        } else {
+            false
+        }
+    }
 }
 
 #[cfg(feature = "compression-gzip")]
