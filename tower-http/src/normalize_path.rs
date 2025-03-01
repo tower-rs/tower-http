@@ -291,7 +291,7 @@ mod tests {
         }
 
         let mut svc = ServiceBuilder::new()
-            .layer(NormalizePathLayer::new(NormalizeMode::Trim))
+            .layer(NormalizePathLayer::new(NormalizeMode::Append))
             .service_fn(handle);
 
         let body = svc
