@@ -397,7 +397,7 @@ where
     type Output = ZstdDecoder<Self::Input>;
 
     fn apply(input: Self::Input, _quality: CompressionLevel) -> Self::Output {
-        let decoder = ZstdDecoder::new(input);
+        let mut decoder = ZstdDecoder::new(input);
         decoder.multiple_members(true);
         decoder
     }
