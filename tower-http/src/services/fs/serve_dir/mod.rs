@@ -52,6 +52,7 @@ const DEFAULT_CAPACITY: usize = 65536;
 #[derive(Clone, Debug)]
 pub struct ServeDir<F = DefaultServeDirFallback> {
     base: PathBuf,
+    redirect_path_prefix: String,
     buf_chunk_size: usize,
     precompressed_variants: Option<PrecompressedVariants>,
     // This is used to specialise implementation for
@@ -72,6 +73,7 @@ impl ServeDir<DefaultServeDirFallback> {
 
         Self {
             base,
+            redirect_path_prefix: "".to_string(),
             buf_chunk_size: DEFAULT_CAPACITY,
             precompressed_variants: None,
             variant: ServeVariant::Directory {
@@ -88,6 +90,7 @@ impl ServeDir<DefaultServeDirFallback> {
     {
         Self {
             base: path.as_ref().to_owned(),
+            redirect_path_prefix: "".to_string(),
             buf_chunk_size: DEFAULT_CAPACITY,
             precompressed_variants: None,
             variant: ServeVariant::SingleFile { mime },
@@ -113,6 +116,19 @@ impl<F> ServeDir<F> {
             }
             ServeVariant::SingleFile { mime: _ } => self,
         }
+    }
+
+    /// Sets a path to be prepended when performing a trailing slash redirect.
+    ///
+    /// This is useful when you want to serve the files at another location than "/", for example
+    /// when you are using multiple services and want this instance to handle `/static/<path>`.
+    /// In that example, you should pass in "/static" so that a trailing slash redirect does not
+    /// redirect to `/<path>/` but instead to `/static/<path>/`
+    ///
+    /// The default is the empty string.
+    pub fn redirect_path_prefix(mut self, path: String) -> Self {
+        self.redirect_path_prefix = path;
+        self
     }
 
     /// Set a specific read buffer chunk size.
@@ -211,6 +227,7 @@ impl<F> ServeDir<F> {
     /// ```
     pub fn fallback<F2>(self, new_fallback: F2) -> ServeDir<F2> {
         ServeDir {
+            redirect_path_prefix: "".to_string(),
             base: self.base,
             buf_chunk_size: self.buf_chunk_size,
             precompressed_variants: self.precompressed_variants,
@@ -358,6 +375,8 @@ impl<F> ServeDir<F> {
             }
         };
 
+        let prepend_path = self.redirect_path_prefix.clone();
+
         let buf_chunk_size = self.buf_chunk_size;
         let range_header = req
             .headers()
@@ -375,6 +394,7 @@ impl<F> ServeDir<F> {
 
         let open_file_future = Box::pin(open_file::open_file(
             variant,
+            prepend_path,
             path_to_file,
             req,
             negotiated_encodings,
