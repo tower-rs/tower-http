@@ -217,6 +217,15 @@ impl<'a> Attempt<'a> {
     pub fn previous(&self) -> &'a Uri {
         self.previous
     }
+
+    /// Creates a new `Attempt`.
+    pub fn new(status: StatusCode, location: &'a Uri, previous: &'a Uri) -> Self {
+        Self {
+            status,
+            location,
+            previous,
+        }
+    }
 }
 
 /// A value returned by [`Policy::redirect`] which indicates the action
