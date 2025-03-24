@@ -302,10 +302,7 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     where
         M: crate::request_id::MakeRequestId,
     {
-        self.set_request_id(
-            HeaderName::from_static(crate::request_id::X_REQUEST_ID),
-            make_request_id,
-        )
+        self.set_request_id(crate::request_id::X_REQUEST_ID, make_request_id)
     }
 
     /// Propgate request ids from requests to responses.
@@ -328,7 +325,7 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     fn propagate_x_request_id(
         self,
     ) -> ServiceBuilder<Stack<crate::request_id::PropagateRequestIdLayer, L>> {
-        self.propagate_request_id(HeaderName::from_static(crate::request_id::X_REQUEST_ID))
+        self.propagate_request_id(crate::request_id::X_REQUEST_ID)
     }
 
     /// Catch panics and convert them into `500 Internal Server` responses.
