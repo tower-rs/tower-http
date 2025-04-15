@@ -477,7 +477,7 @@ impl ServeVariant {
                                     return None;
                                 }
                             }
-                            
+
                             path_to_file.push(comp);
                         }
                         Component::CurDir => {}
