@@ -259,6 +259,7 @@ where
         let mut res = ready!(this.future.as_mut().poll(cx)?);
         res.extensions_mut().insert(RequestUri(this.uri.clone()));
 
+        let previous_method = &this.method.clone();
         let drop_payload_headers = |headers: &mut HeaderMap| {
             for header in &[
                 CONTENT_TYPE,
@@ -309,7 +310,9 @@ where
 
         let attempt = Attempt {
             status: res.status(),
+            next_method: &this.method,
             location: &location,
+            previous_method,
             previous: this.uri,
         };
         match this.policy.redirect(&attempt)? {

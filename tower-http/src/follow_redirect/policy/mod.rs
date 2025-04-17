@@ -18,7 +18,7 @@ pub use self::{
     same_origin::SameOrigin,
 };
 
-use http::{uri::Scheme, Request, StatusCode, Uri};
+use http::{uri::Scheme, Method, Request, StatusCode, Uri};
 
 /// Trait for the policy on handling redirection responses.
 ///
@@ -198,7 +198,9 @@ pub type Standard = And<Limited, FilterCredentials>;
 /// A type that holds information on a redirection attempt.
 pub struct Attempt<'a> {
     pub(crate) status: StatusCode,
+    pub(crate) next_method: &'a Method,
     pub(crate) location: &'a Uri,
+    pub(crate) previous_method: &'a Method,
     pub(crate) previous: &'a Uri,
 }
 
@@ -208,9 +210,19 @@ impl<'a> Attempt<'a> {
         self.status
     }
 
+    /// Returns the method for the next request, after applying redirection logic.
+    pub fn next_method(&self) -> &Method {
+        self.next_method
+    }
+
     /// Returns the destination URI of the redirection.
     pub fn location(&self) -> &'a Uri {
         self.location
+    }
+
+    /// Returns the method for the previous request, before redirection.
+    pub fn previous_method(&self) -> &Method {
+        self.previous_method
     }
 
     /// Returns the URI of the original request.
