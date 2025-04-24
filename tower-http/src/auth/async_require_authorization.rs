@@ -121,6 +121,7 @@ use http::{Request, Response};
 use pin_project_lite::pin_project;
 use std::{
     future::Future,
+    mem,
     pin::Pin,
     task::{ready, Context, Poll},
 };
@@ -202,8 +203,10 @@ where
     }
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
-        let inner = self.inner.clone();
+        let mut inner = self.inner.clone();
         let authorize = self.auth.authorize(req);
+        // mem::swap due to https://docs.rs/tower/latest/tower/trait.Service.html#be-careful-when-cloning-inner-services
+        mem::swap(&mut self.inner, &mut inner);
 
         ResponseFuture {
             state: State::Authorize { authorize },
