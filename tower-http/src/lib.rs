@@ -370,8 +370,3 @@ pub enum LatencyUnit {
 
 /// Alias for a type-erased error type.
 pub type BoxError = Box<dyn std::error::Error + Send + Sync>;
-
-mod sealed {
-    #[allow(unreachable_pub, unused)]
-    pub trait Sealed<T> {}
-}
