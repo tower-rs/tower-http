@@ -327,7 +327,7 @@ mod tests {
         type ResponseBody = Body;
         type Future = BoxFuture<'static, Result<Request<B>, Response<Self::ResponseBody>>>;
 
-        fn authorize(&mut self, mut request: Request<B>) -> Self::Future {
+        fn authorize(&mut self, request: Request<B>) -> Self::Future {
             Box::pin(async move {
                 let authorized = request
                     .headers()
@@ -338,8 +338,6 @@ mod tests {
                     .unwrap_or(false);
 
                 if authorized {
-                    let user_id = UserId("6969".to_owned());
-                    request.extensions_mut().insert(user_id);
                     Ok(request)
                 } else {
                     Err(Response::builder()
@@ -350,9 +348,6 @@ mod tests {
             })
         }
     }
-
-    #[derive(Clone, Debug)]
-    struct UserId(String);
 
     #[tokio::test]
     async fn require_async_auth_works() {
