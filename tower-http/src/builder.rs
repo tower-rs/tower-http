@@ -5,6 +5,11 @@ use http::header::HeaderName;
 #[allow(unused_imports)]
 use tower_layer::Stack;
 
+mod sealed {
+    #[allow(unreachable_pub, unused)]
+    pub trait Sealed<T> {}
+}
+
 /// Extension trait that adds methods to [`tower::ServiceBuilder`] for adding middleware from
 /// tower-http.
 ///
@@ -39,7 +44,7 @@ use tower_layer::Stack;
 /// ```
 #[cfg(feature = "util")]
 // ^ work around rustdoc not inferring doc(cfg)s for cfg's from surrounding scopes
-pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
+pub trait ServiceBuilderExt<L>: sealed::Sealed<L> + Sized {
     /// Propagate a header from the request to the response.
     ///
     /// See [`tower_http::propagate_header`] for more details.
@@ -363,7 +368,7 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     ) -> ServiceBuilder<Stack<crate::normalize_path::NormalizePathLayer, L>>;
 }
 
-impl<L> crate::sealed::Sealed<L> for ServiceBuilder<L> {}
+impl<L> sealed::Sealed<L> for ServiceBuilder<L> {}
 
 impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
     #[cfg(feature = "propagate-header")]
