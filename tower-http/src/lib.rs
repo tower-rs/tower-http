@@ -334,10 +334,12 @@ pub mod services;
 
 #[cfg(feature = "util")]
 mod builder;
+#[cfg(feature = "util")]
+mod service_ext;
 
 #[cfg(feature = "util")]
 #[doc(inline)]
-pub use self::builder::ServiceBuilderExt;
+pub use self::{builder::ServiceBuilderExt, service_ext::ServiceExt};
 
 #[cfg(feature = "validate-request")]
 pub mod validate_request;
