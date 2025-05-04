@@ -216,10 +216,9 @@ async fn open_file_with_fallback(
                 // Remove the encoding from the negotiated_encodings since the file doesn't exist
                 negotiated_encoding
                     .retain(|(negotiated_encoding, _)| *negotiated_encoding != encoding);
-                continue;
             }
             (Err(err), _) => return Err(err),
-        };
+        }
     };
     Ok((file, encoding))
 }
@@ -243,10 +242,9 @@ async fn file_metadata_with_fallback(
                 // Remove the encoding from the negotiated_encodings since the file doesn't exist
                 negotiated_encoding
                     .retain(|(negotiated_encoding, _)| *negotiated_encoding != encoding);
-                continue;
             }
             (Err(err), _) => return Err(err),
-        };
+        }
     };
     Ok((file, encoding))
 }
