@@ -332,10 +332,8 @@ mod tests {
                 let authorized = request
                     .headers()
                     .get(header::AUTHORIZATION)
-                    .and_then(|it| it.to_str().ok())
-                    .and_then(|it| it.strip_prefix("Bearer "))
-                    .map(|it| it == "69420")
-                    .unwrap_or(false);
+                    .and_then(|auth| auth.to_str().ok()?.strip_prefix("Bearer "))
+                    == Some("69420");
 
                 if authorized {
                     Ok(request)
