@@ -231,6 +231,9 @@ pub mod auth;
 #[cfg(feature = "set-header")]
 pub mod set_header;
 
+#[cfg(feature = "propagate-extension")]
+pub mod propagate_extension;
+
 #[cfg(feature = "propagate-header")]
 pub mod propagate_header;
 
