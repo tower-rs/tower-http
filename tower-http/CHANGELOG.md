@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-# 0.6.3
+# Unreleased
 
 ## Added
 
@@ -31,6 +31,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#556]: https://github.com/tower-rs/tower-http/pull/556
 [#561]: https://github.com/tower-rs/tower-http/pull/561
 [#563]: https://github.com/tower-rs/tower-http/pull/563
+
+# 0.6.3
+
+*This release was yanked because its definition of `ServiceExt` was quite unhelpful, in a way that's very unlikely that anybody would start depending on within the small timeframe before this was yanked, but that was technically breaking to change.*
 
 # 0.6.2
 
