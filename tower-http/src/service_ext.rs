@@ -1,28 +1,23 @@
 #[allow(unused_imports)]
 use http::header::HeaderName;
 
-mod sealed {
-    #[allow(unreachable_pub, unused)]
-    pub trait Sealed<R> {}
-}
-
 /// Extension trait that adds methods to any [`Service`] for adding middleware from
 /// tower-http.
 ///
 /// [`Service`]: tower::Service
 #[cfg(feature = "util")]
 // ^ work around rustdoc not inferring doc(cfg)s for cfg's from surrounding scopes
-pub trait ServiceExt<R>: sealed::Sealed<R> + tower::Service<R> + Sized {
+pub trait ServiceExt {
     /// Propagate a header from the request to the response.
     ///
     /// See [`tower_http::propagate_header`] for more details.
     ///
     /// [`tower_http::propagate_header`]: crate::propagate_header
     #[cfg(feature = "propagate-header")]
-    fn propagate_header(
-        self,
-        header: HeaderName,
-    ) -> crate::propagate_header::PropagateHeader<Self> {
+    fn propagate_header(self, header: HeaderName) -> crate::propagate_header::PropagateHeader<Self>
+    where
+        Self: Sized,
+    {
         crate::propagate_header::PropagateHeader::new(self, header)
     }
 
@@ -33,7 +28,10 @@ pub trait ServiceExt<R>: sealed::Sealed<R> + tower::Service<R> + Sized {
     /// [`tower_http::add_extension`]: crate::add_extension
     /// [request extensions]: https://docs.rs/http/latest/http/struct.Extensions.html
     #[cfg(feature = "add-extension")]
-    fn add_extension<T>(self, value: T) -> crate::add_extension::AddExtension<Self, T> {
+    fn add_extension<T>(self, value: T) -> crate::add_extension::AddExtension<Self, T>
+    where
+        Self: Sized,
+    {
         crate::add_extension::AddExtension::new(self, value)
     }
 
@@ -43,7 +41,10 @@ pub trait ServiceExt<R>: sealed::Sealed<R> + tower::Service<R> + Sized {
     ///
     /// [`tower_http::map_request_body`]: crate::map_request_body
     #[cfg(feature = "map-request-body")]
-    fn map_request_body<F>(self, f: F) -> crate::map_request_body::MapRequestBody<Self, F> {
+    fn map_request_body<F>(self, f: F) -> crate::map_request_body::MapRequestBody<Self, F>
+    where
+        Self: Sized,
+    {
         crate::map_request_body::MapRequestBody::new(self, f)
     }
 
@@ -53,7 +54,10 @@ pub trait ServiceExt<R>: sealed::Sealed<R> + tower::Service<R> + Sized {
     ///
     /// [`tower_http::map_response_body`]: crate::map_response_body
     #[cfg(feature = "map-response-body")]
-    fn map_response_body<F>(self, f: F) -> crate::map_response_body::MapResponseBody<Self, F> {
+    fn map_response_body<F>(self, f: F) -> crate::map_response_body::MapResponseBody<Self, F>
+    where
+        Self: Sized,
+    {
         crate::map_response_body::MapResponseBody::new(self, f)
     }
 
@@ -68,7 +72,10 @@ pub trait ServiceExt<R>: sealed::Sealed<R> + tower::Service<R> + Sized {
         feature = "compression-gzip",
         feature = "compression-zstd",
     ))]
-    fn compression(self) -> crate::compression::Compression<Self> {
+    fn compression(self) -> crate::compression::Compression<Self>
+    where
+        Self: Sized,
+    {
         crate::compression::Compression::new(self)
     }
 
@@ -83,7 +90,10 @@ pub trait ServiceExt<R>: sealed::Sealed<R> + tower::Service<R> + Sized {
         feature = "decompression-gzip",
         feature = "decompression-zstd",
     ))]
-    fn decompression(self) -> crate::decompression::Decompression<Self> {
+    fn decompression(self) -> crate::decompression::Decompression<Self>
+    where
+        Self: Sized,
+    {
         crate::decompression::Decompression::new(self)
     }
 
@@ -97,7 +107,10 @@ pub trait ServiceExt<R>: sealed::Sealed<R> + tower::Service<R> + Sized {
     /// [`tower_http::trace`]: crate::trace
     /// [`TraceLayer`]: crate::trace::TraceLayer
     #[cfg(feature = "trace")]
-    fn trace_for_http(self) -> crate::trace::Trace<Self, crate::trace::HttpMakeClassifier> {
+    fn trace_for_http(self) -> crate::trace::Trace<Self, crate::trace::HttpMakeClassifier>
+    where
+        Self: Sized,
+    {
         crate::trace::Trace::new_for_http(self)
     }
 
@@ -111,7 +124,10 @@ pub trait ServiceExt<R>: sealed::Sealed<R> + tower::Service<R> + Sized {
     /// [`tower_http::trace`]: crate::trace
     /// [`TraceLayer`]: crate::trace::TraceLayer
     #[cfg(feature = "trace")]
-    fn trace_for_grpc(self) -> crate::trace::Trace<Self, crate::trace::GrpcMakeClassifier> {
+    fn trace_for_grpc(self) -> crate::trace::Trace<Self, crate::trace::GrpcMakeClassifier>
+    where
+        Self: Sized,
+    {
         crate::trace::Trace::new_for_grpc(self)
     }
 
@@ -125,6 +141,8 @@ pub trait ServiceExt<R>: sealed::Sealed<R> + tower::Service<R> + Sized {
     fn follow_redirects(
         self,
     ) -> crate::follow_redirect::FollowRedirect<Self, crate::follow_redirect::policy::Standard>
+    where
+        Self: Sized,
     {
         crate::follow_redirect::FollowRedirect::new(self)
     }
@@ -139,7 +157,10 @@ pub trait ServiceExt<R>: sealed::Sealed<R> + tower::Service<R> + Sized {
     fn sensitive_headers(
         self,
         headers: impl IntoIterator<Item = HeaderName>,
-    ) -> crate::sensitive_headers::SetSensitiveHeaders<Self> {
+    ) -> crate::sensitive_headers::SetSensitiveHeaders<Self>
+    where
+        Self: Sized,
+    {
         use tower_layer::Layer as _;
         crate::sensitive_headers::SetSensitiveHeadersLayer::new(headers).layer(self)
     }
@@ -154,7 +175,10 @@ pub trait ServiceExt<R>: sealed::Sealed<R> + tower::Service<R> + Sized {
     fn sensitive_request_headers(
         self,
         headers: impl IntoIterator<Item = HeaderName>,
-    ) -> crate::sensitive_headers::SetSensitiveRequestHeaders<Self> {
+    ) -> crate::sensitive_headers::SetSensitiveRequestHeaders<Self>
+    where
+        Self: Sized,
+    {
         crate::sensitive_headers::SetSensitiveRequestHeaders::new(self, headers)
     }
 
@@ -168,7 +192,10 @@ pub trait ServiceExt<R>: sealed::Sealed<R> + tower::Service<R> + Sized {
     fn sensitive_response_headers(
         self,
         headers: impl IntoIterator<Item = HeaderName>,
-    ) -> crate::sensitive_headers::SetSensitiveResponseHeaders<Self> {
+    ) -> crate::sensitive_headers::SetSensitiveResponseHeaders<Self>
+    where
+        Self: Sized,
+    {
         crate::sensitive_headers::SetSensitiveResponseHeaders::new(self, headers)
     }
 
@@ -185,7 +212,10 @@ pub trait ServiceExt<R>: sealed::Sealed<R> + tower::Service<R> + Sized {
         self,
         header_name: HeaderName,
         make: M,
-    ) -> crate::set_header::SetRequestHeader<Self, M> {
+    ) -> crate::set_header::SetRequestHeader<Self, M>
+    where
+        Self: Sized,
+    {
         crate::set_header::SetRequestHeader::overriding(self, header_name, make)
     }
 
@@ -201,7 +231,10 @@ pub trait ServiceExt<R>: sealed::Sealed<R> + tower::Service<R> + Sized {
         self,
         header_name: HeaderName,
         make: M,
-    ) -> crate::set_header::SetRequestHeader<Self, M> {
+    ) -> crate::set_header::SetRequestHeader<Self, M>
+    where
+        Self: Sized,
+    {
         crate::set_header::SetRequestHeader::appending(self, header_name, make)
     }
 
@@ -215,7 +248,10 @@ pub trait ServiceExt<R>: sealed::Sealed<R> + tower::Service<R> + Sized {
         self,
         header_name: HeaderName,
         make: M,
-    ) -> crate::set_header::SetRequestHeader<Self, M> {
+    ) -> crate::set_header::SetRequestHeader<Self, M>
+    where
+        Self: Sized,
+    {
         crate::set_header::SetRequestHeader::if_not_present(self, header_name, make)
     }
 
@@ -232,7 +268,10 @@ pub trait ServiceExt<R>: sealed::Sealed<R> + tower::Service<R> + Sized {
         self,
         header_name: HeaderName,
         make: M,
-    ) -> crate::set_header::SetResponseHeader<Self, M> {
+    ) -> crate::set_header::SetResponseHeader<Self, M>
+    where
+        Self: Sized,
+    {
         crate::set_header::SetResponseHeader::overriding(self, header_name, make)
     }
 
@@ -248,7 +287,10 @@ pub trait ServiceExt<R>: sealed::Sealed<R> + tower::Service<R> + Sized {
         self,
         header_name: HeaderName,
         make: M,
-    ) -> crate::set_header::SetResponseHeader<Self, M> {
+    ) -> crate::set_header::SetResponseHeader<Self, M>
+    where
+        Self: Sized,
+    {
         crate::set_header::SetResponseHeader::appending(self, header_name, make)
     }
 
@@ -262,7 +304,10 @@ pub trait ServiceExt<R>: sealed::Sealed<R> + tower::Service<R> + Sized {
         self,
         header_name: HeaderName,
         make: M,
-    ) -> crate::set_header::SetResponseHeader<Self, M> {
+    ) -> crate::set_header::SetResponseHeader<Self, M>
+    where
+        Self: Sized,
+    {
         crate::set_header::SetResponseHeader::if_not_present(self, header_name, make)
     }
 
@@ -278,6 +323,7 @@ pub trait ServiceExt<R>: sealed::Sealed<R> + tower::Service<R> + Sized {
         make_request_id: M,
     ) -> crate::request_id::SetRequestId<Self, M>
     where
+        Self: Sized,
         M: crate::request_id::MakeRequestId,
     {
         crate::request_id::SetRequestId::new(self, header_name, make_request_id)
@@ -291,6 +337,7 @@ pub trait ServiceExt<R>: sealed::Sealed<R> + tower::Service<R> + Sized {
     #[cfg(feature = "request-id")]
     fn set_x_request_id<M>(self, make_request_id: M) -> crate::request_id::SetRequestId<Self, M>
     where
+        Self: Sized,
         M: crate::request_id::MakeRequestId,
     {
         self.set_request_id(crate::request_id::X_REQUEST_ID, make_request_id)
@@ -305,7 +352,10 @@ pub trait ServiceExt<R>: sealed::Sealed<R> + tower::Service<R> + Sized {
     fn propagate_request_id(
         self,
         header_name: HeaderName,
-    ) -> crate::request_id::PropagateRequestId<Self> {
+    ) -> crate::request_id::PropagateRequestId<Self>
+    where
+        Self: Sized,
+    {
         crate::request_id::PropagateRequestId::new(self, header_name)
     }
 
@@ -315,7 +365,10 @@ pub trait ServiceExt<R>: sealed::Sealed<R> + tower::Service<R> + Sized {
     ///
     /// [`tower_http::request_id`]: crate::request_id
     #[cfg(feature = "request-id")]
-    fn propagate_x_request_id(self) -> crate::request_id::PropagateRequestId<Self> {
+    fn propagate_x_request_id(self) -> crate::request_id::PropagateRequestId<Self>
+    where
+        Self: Sized,
+    {
         self.propagate_request_id(crate::request_id::X_REQUEST_ID)
     }
 
@@ -327,7 +380,10 @@ pub trait ServiceExt<R>: sealed::Sealed<R> + tower::Service<R> + Sized {
     #[cfg(feature = "catch-panic")]
     fn catch_panic(
         self,
-    ) -> crate::catch_panic::CatchPanic<Self, crate::catch_panic::DefaultResponseForPanic> {
+    ) -> crate::catch_panic::CatchPanic<Self, crate::catch_panic::DefaultResponseForPanic>
+    where
+        Self: Sized,
+    {
         crate::catch_panic::CatchPanic::new(self)
     }
 
@@ -338,7 +394,10 @@ pub trait ServiceExt<R>: sealed::Sealed<R> + tower::Service<R> + Sized {
     ///
     /// [`tower_http::limit`]: crate::limit
     #[cfg(feature = "limit")]
-    fn request_body_limit(self, limit: usize) -> crate::limit::RequestBodyLimit<Self> {
+    fn request_body_limit(self, limit: usize) -> crate::limit::RequestBodyLimit<Self>
+    where
+        Self: Sized,
+    {
         crate::limit::RequestBodyLimit::new(self, limit)
     }
 
@@ -348,10 +407,23 @@ pub trait ServiceExt<R>: sealed::Sealed<R> + tower::Service<R> + Sized {
     ///
     /// [`tower_http::normalize_path`]: crate::normalize_path
     #[cfg(feature = "normalize-path")]
-    fn trim_trailing_slash(self) -> crate::normalize_path::NormalizePath<Self> {
+    fn trim_trailing_slash(self) -> crate::normalize_path::NormalizePath<Self>
+    where
+        Self: Sized,
+    {
         crate::normalize_path::NormalizePath::trim_trailing_slash(self)
     }
 }
 
-impl<R, T> sealed::Sealed<R> for T where T: tower::Service<R> {}
-impl<R, T> ServiceExt<R> for T where T: tower::Service<R> {}
+impl<T> ServiceExt for T {}
+
+#[cfg(all(test, feature = "fs", feature = "add-extension"))]
+mod tests {
+    use super::ServiceExt;
+    use crate::services;
+
+    #[allow(dead_code)]
+    fn test_type_inference() {
+        let _svc = services::fs::ServeDir::new(".").add_extension("&'static str");
+    }
+}
