@@ -1,6 +1,6 @@
 //! Middleware that normalizes paths.
 //!
-//! Normalizes the request paths based on the provided `NormalizeMode`
+//! Normalizes the request paths
 //!
 //! # Example
 //!
@@ -87,15 +87,9 @@ impl<S> Layer<S> for NormalizePathLayer {
     type Service = NormalizePath<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        match self.mode {
-            NormalizeMode::Trim => NormalizePath {
-                mode: NormalizeMode::Trim,
-                inner,
-            },
-            NormalizeMode::Append => NormalizePath {
-                mode: NormalizeMode::Append,
-                inner,
-            },
+        NormalizePath {
+            mode: self.mode,
+            inner,
         }
     }
 }
@@ -111,7 +105,7 @@ pub struct NormalizePath<S> {
 
 impl<S> NormalizePath<S> {
     /// Construct a new [`NormalizePath`] with trim mode.
-    pub fn trim(inner: S) -> Self {
+    pub fn trim_trailing_slash(inner: S) -> Self {
         Self {
             mode: NormalizeMode::Trim,
             inner,
@@ -119,7 +113,7 @@ impl<S> NormalizePath<S> {
     }
 
     /// Construct a new [`NormalizePath`] with append mode.
-    pub fn append(inner: S) -> Self {
+    pub fn append_trailing_slash(inner: S) -> Self {
         Self {
             mode: NormalizeMode::Append,
             inner,
@@ -189,14 +183,14 @@ fn append_trailing_slash(uri: &mut Uri) {
     let new_path = if trimmed.is_empty() {
         "/".to_string()
     } else {
-        format!("/{}/", trimmed)
+        format!("/{trimmed}/")
     };
 
     let mut parts = uri.clone().into_parts();
 
     let new_path_and_query = if let Some(path_and_query) = &parts.path_and_query {
         let new_path_and_query = if let Some(query) = path_and_query.query() {
-            Cow::Owned(format!("{}?{}", new_path, query))
+            Cow::Owned(format!("{new_path}?{query}"))
         } else {
             new_path.into()
         }
