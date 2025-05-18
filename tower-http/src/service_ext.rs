@@ -411,7 +411,7 @@ pub trait ServiceExt {
     where
         Self: Sized,
     {
-        crate::normalize_path::NormalizePath::trim_trailing_slash(self)
+        crate::normalize_path::NormalizePath::new(self, crate::normalize_path::NormalizeMode::Trim)
     }
 }
 
