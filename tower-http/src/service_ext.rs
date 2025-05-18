@@ -411,7 +411,20 @@ pub trait ServiceExt {
     where
         Self: Sized,
     {
-        crate::normalize_path::NormalizePath::new(self, crate::normalize_path::NormalizeMode::Trim)
+        crate::normalize_path::NormalizePath::trim(self)
+    }
+
+    /// Append trailing slash to paths.
+    ///
+    /// See [`tower_http::normalize_path`] for more details.
+    ///
+    /// [`tower_http::normalize_path`]: crate::normalize_path
+    #[cfg(feature = "normalize-path")]
+    fn append_trailing_slash(self) -> crate::normalize_path::NormalizePath<Self>
+    where
+        Self: Sized,
+    {
+        crate::normalize_path::NormalizePath::append(self)
     }
 }
 

@@ -367,15 +367,14 @@ pub trait ServiceBuilderExt<L>: sealed::Sealed<L> + Sized {
         self,
     ) -> ServiceBuilder<Stack<crate::normalize_path::NormalizePathLayer, L>>;
 
-    /// Normalize paths based on the specified `mode`.
+    /// Append trailing slash to paths.
     ///
     /// See [`tower_http::normalize_path`] for more details.
     ///
     /// [`tower_http::normalize_path`]: crate::normalize_path
     #[cfg(feature = "normalize-path")]
-    fn normalize_path(
+    fn append_trailing_slash(
         self,
-        mode: crate::normalize_path::NormalizeMode,
     ) -> ServiceBuilder<Stack<crate::normalize_path::NormalizePathLayer, L>>;
 }
 
@@ -607,11 +606,11 @@ impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
     ) -> ServiceBuilder<Stack<crate::normalize_path::NormalizePathLayer, L>> {
         self.layer(crate::normalize_path::NormalizePathLayer::trim_trailing_slash())
     }
+
     #[cfg(feature = "normalize-path")]
-    fn normalize_path(
+    fn append_trailing_slash(
         self,
-        mode: crate::normalize_path::NormalizeMode,
     ) -> ServiceBuilder<Stack<crate::normalize_path::NormalizePathLayer, L>> {
-        self.layer(crate::normalize_path::NormalizePathLayer::new(mode))
+        self.layer(crate::normalize_path::NormalizePathLayer::append_trailing_slash())
     }
 }

@@ -5,7 +5,7 @@
 //! # Example
 //!
 //! ```
-//! use tower_http::normalize_path::{NormalizePathLayer, NormalizeMode};
+//! use tower_http::normalize_path::NormalizePathLayer;
 //! use http::{Request, Response, StatusCode};
 //! use http_body_util::Full;
 //! use bytes::Bytes;
@@ -21,7 +21,7 @@
 //!
 //! let mut service = ServiceBuilder::new()
 //!     // trim trailing slashes from paths
-//!     .layer(NormalizePathLayer::new(NormalizeMode::Trim))
+//!     .layer(NormalizePathLayer::trim_trailing_slash())
 //!     .service_fn(handle);
 //!
 //! // call the service
@@ -46,7 +46,7 @@ use tower_service::Service;
 
 /// Different modes of normalizing paths
 #[derive(Debug, Copy, Clone)]
-pub enum NormalizeMode {
+enum NormalizeMode {
     /// Normalizes paths by trimming the trailing slashes, e.g. /foo/ -> /foo
     Trim,
     /// Normalizes paths by appending trailing slash, e.g. /foo -> /foo/
@@ -74,9 +74,12 @@ impl NormalizePathLayer {
 
     /// Create a new [`NormalizePathLayer`].
     ///
-    /// Creates a new `NormalizePathLayer` with the specified mode.
-    pub fn new(mode: NormalizeMode) -> Self {
-        NormalizePathLayer { mode }
+    /// Request paths without trailing slash will be appended with a trailing slash. For example, a request with `/foo`
+    /// will be changed to `/foo/` before reaching the inner service.
+    pub fn append_trailing_slash() -> Self {
+        NormalizePathLayer {
+            mode: NormalizeMode::Append,
+        }
     }
 }
 
@@ -84,7 +87,16 @@ impl<S> Layer<S> for NormalizePathLayer {
     type Service = NormalizePath<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        NormalizePath::new(inner, self.mode)
+        match self.mode {
+            NormalizeMode::Trim => NormalizePath {
+                mode: NormalizeMode::Trim,
+                inner,
+            },
+            NormalizeMode::Append => NormalizePath {
+                mode: NormalizeMode::Append,
+                inner,
+            },
+        }
     }
 }
 
@@ -98,11 +110,20 @@ pub struct NormalizePath<S> {
 }
 
 impl<S> NormalizePath<S> {
-    /// Create a new [`NormalizePath`].
-    ///
-    /// Normalize path based on the specified `mode`
-    pub fn new(inner: S, mode: NormalizeMode) -> Self {
-        Self { mode, inner }
+    /// Construct a new [`NormalizePath`] with trim mode.
+    pub fn trim(inner: S) -> Self {
+        Self {
+            mode: NormalizeMode::Trim,
+            inner,
+        }
+    }
+
+    /// Construct a new [`NormalizePath`] with append mode.
+    pub fn append(inner: S) -> Self {
+        Self {
+            mode: NormalizeMode::Append,
+            inner,
+        }
     }
 
     define_inner_service_accessors!();
@@ -291,7 +312,7 @@ mod tests {
         }
 
         let mut svc = ServiceBuilder::new()
-            .layer(NormalizePathLayer::new(NormalizeMode::Append))
+            .layer(NormalizePathLayer::append_trailing_slash())
             .service_fn(handle);
 
         let body = svc
