@@ -1,7 +1,7 @@
 [package]
 name = "tower-http"
 description = "Tower middleware and utilities for HTTP clients and servers"
-version = "0.6.2"
+version = "0.6.4"
 authors = ["Tower Maintainers <team@tower-rs.com>"]
 edition = "2018"
 license = "MIT"
@@ -10,7 +10,7 @@ repository = "https://github.com/tower-rs/tower-http"
 homepage = "https://github.com/tower-rs/tower-http"
 categories = ["asynchronous", "network-programming", "web-programming"]
 keywords = ["io", "async", "futures", "service", "http"]
-rust-version = "1.66"
+rust-version = "1.64"
 
 [dependencies]
 bitflags = "2.0.2"

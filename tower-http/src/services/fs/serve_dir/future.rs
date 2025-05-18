@@ -122,6 +122,12 @@ where
                         break Poll::Ready(Ok(response_with_status(StatusCode::NOT_MODIFIED)));
                     }
 
+                    Ok(OpenFileOutput::InvalidRedirectUri) => {
+                        break Poll::Ready(Ok(response_with_status(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                        )));
+                    }
+
                     Err(err) => {
                         #[cfg(unix)]
                         // 20 = libc::ENOTDIR => "not a directory
@@ -263,12 +269,18 @@ fn build_response(output: FileOpened) -> Response<ResponseBody> {
                         empty_body()
                     };
 
+                    let content_length = if size == 0 {
+                        0
+                    } else {
+                        range.end() - range.start() + 1
+                    };
+
                     builder
                         .header(
                             header::CONTENT_RANGE,
                             format!("bytes {}-{}/{}", range.start(), range.end(), size),
                         )
-                        .header(header::CONTENT_LENGTH, range.end() - range.start() + 1)
+                        .header(header::CONTENT_LENGTH, content_length)
                         .status(StatusCode::PARTIAL_CONTENT)
                         .body(body)
                         .unwrap()

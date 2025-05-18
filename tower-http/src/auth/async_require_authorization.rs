@@ -121,6 +121,7 @@ use http::{Request, Response};
 use pin_project_lite::pin_project;
 use std::{
     future::Future,
+    mem,
     pin::Pin,
     task::{ready, Context, Poll},
 };
@@ -202,8 +203,10 @@ where
     }
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
-        let inner = self.inner.clone();
+        let mut inner = self.inner.clone();
         let authorize = self.auth.authorize(req);
+        // mem::swap due to https://docs.rs/tower/latest/tower/trait.Service.html#be-careful-when-cloning-inner-services
+        mem::swap(&mut self.inner, &mut inner);
 
         ResponseFuture {
             state: State::Authorize { authorize },
@@ -324,19 +327,15 @@ mod tests {
         type ResponseBody = Body;
         type Future = BoxFuture<'static, Result<Request<B>, Response<Self::ResponseBody>>>;
 
-        fn authorize(&mut self, mut request: Request<B>) -> Self::Future {
+        fn authorize(&mut self, request: Request<B>) -> Self::Future {
             Box::pin(async move {
                 let authorized = request
                     .headers()
                     .get(header::AUTHORIZATION)
-                    .and_then(|it| it.to_str().ok())
-                    .and_then(|it| it.strip_prefix("Bearer "))
-                    .map(|it| it == "69420")
-                    .unwrap_or(false);
+                    .and_then(|auth| auth.to_str().ok()?.strip_prefix("Bearer "))
+                    == Some("69420");
 
                 if authorized {
-                    let user_id = UserId("6969".to_owned());
-                    request.extensions_mut().insert(user_id);
                     Ok(request)
                 } else {
                     Err(Response::builder()
@@ -347,9 +346,6 @@ mod tests {
             })
         }
     }
-
-    #[derive(Clone, Debug)]
-    struct UserId(String);
 
     #[tokio::test]
     async fn require_async_auth_works() {

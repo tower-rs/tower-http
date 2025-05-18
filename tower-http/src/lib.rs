@@ -189,7 +189,6 @@
     clippy::needless_borrow,
     clippy::match_wildcard_for_single_variants,
     clippy::if_let_mutex,
-    clippy::mismatched_target_os,
     clippy::await_holding_lock,
     clippy::match_on_vec_items,
     clippy::imprecise_flops,
@@ -335,10 +334,12 @@ pub mod services;
 
 #[cfg(feature = "util")]
 mod builder;
+#[cfg(feature = "util")]
+mod service_ext;
 
 #[cfg(feature = "util")]
 #[doc(inline)]
-pub use self::builder::ServiceBuilderExt;
+pub use self::{builder::ServiceBuilderExt, service_ext::ServiceExt};
 
 #[cfg(feature = "validate-request")]
 pub mod validate_request;
@@ -370,8 +371,3 @@ pub enum LatencyUnit {
 
 /// Alias for a type-erased error type.
 pub type BoxError = Box<dyn std::error::Error + Send + Sync>;
-
-mod sealed {
-    #[allow(unreachable_pub, unused)]
-    pub trait Sealed<T> {}
-}

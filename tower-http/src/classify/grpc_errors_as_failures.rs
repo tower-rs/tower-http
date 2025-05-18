@@ -126,7 +126,6 @@ impl GrpcCodeBitmask {
 /// Responses are considered successful if
 ///
 /// - `grpc-status` header value contains a success value.
-/// default).
 /// - `grpc-status` header is missing.
 /// - `grpc-status` header value isn't a valid `String`.
 /// - `grpc-status` header value can't parsed into an `i32`.

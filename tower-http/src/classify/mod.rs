@@ -362,7 +362,7 @@ pub enum ServerErrorsFailureClass {
 }
 
 impl fmt::Display for ServerErrorsFailureClass {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::StatusCode(code) => write!(f, "Status code: {}", code),
             Self::Error(error) => write!(f, "Error: {}", error),
@@ -373,10 +373,14 @@ impl fmt::Display for ServerErrorsFailureClass {
 // Just verify that we can actually use this response classifier to determine retries as well
 #[cfg(test)]
 mod usable_for_retries {
-    #[allow(unused_imports)]
-    use super::*;
+    #![allow(dead_code)]
+
+    use std::fmt;
+
     use http::{Request, Response};
     use tower::retry::Policy;
+
+    use super::{ClassifiedResponse, ClassifyResponse};
 
     trait IsRetryable {
         fn is_retryable(&self) -> bool;

@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+# 0.6.4
+
+## Added
+
+- decompression: Support HTTP responses containing multiple ZSTD frames ([#548])
+- The `ServiceExt` trait for chaining layers onto an arbitrary http service just
+  like `ServiceBuilderExt` allows for `ServiceBuilder` ([#563])
+
+## Fixed
+
+- Remove unnecessary trait bounds on `S::Error` for `Service` impls of
+  `RequestBodyTimeout<S>` and `ResponseBodyTimeout<S>` ([#533])
+- compression: Respect `is_end_stream` ([#535])
+- Fix a rare panic in `fs::ServeDir` ([#553])
+- Fix invalid `content-lenght` of 1 in response to range requests to empty
+  files ([#556])
+- In `AsyncRequireAuthorization`, use the original inner service after it is
+  ready, instead of using a clone ([#561])
+
+[#533]: https://github.com/tower-rs/tower-http/pull/533
+[#535]: https://github.com/tower-rs/tower-http/pull/535
+[#548]: https://github.com/tower-rs/tower-http/pull/548
+[#553]: https://github.com/tower-rs/tower-http/pull/556
+[#556]: https://github.com/tower-rs/tower-http/pull/556
+[#561]: https://github.com/tower-rs/tower-http/pull/561
+[#563]: https://github.com/tower-rs/tower-http/pull/563
+
+# 0.6.3
+
+*This release was yanked because its definition of `ServiceExt` was quite unhelpful, in a way that's very unlikely that anybody would start depending on within the small timeframe before this was yanked, but that was technically breaking to change.*
+
 # 0.6.2
 
 ## Changed:
