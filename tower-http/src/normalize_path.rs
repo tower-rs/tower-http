@@ -1,7 +1,5 @@
 //! Middleware that normalizes paths.
 //!
-//! Normalizes the request paths
-//!
 //! # Example
 //!
 //! ```
