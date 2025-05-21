@@ -257,6 +257,7 @@ where
         let mut res = ready!(this.future.as_mut().poll(cx)?);
         res.extensions_mut().insert(RequestUri(this.uri.clone()));
 
+        let previous_method = &this.method.clone();
         match res.status() {
             StatusCode::MOVED_PERMANENTLY | StatusCode::FOUND => {
                 // User agents MAY change the request method from POST to GET
@@ -295,7 +296,9 @@ where
 
         let attempt = Attempt {
             status: res.status(),
+            next_method: &this.method,
             location: &location,
+            previous_method,
             previous: this.uri,
         };
         match this.policy.redirect(&attempt)? {
