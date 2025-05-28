@@ -12,10 +12,10 @@ use tokio::time::{sleep, Sleep};
 pin_project! {
     /// Middleware that applies a timeout to request and response bodies.
     ///
-    /// Wrapper around a [`http_body::Body`] to time out if data is not ready within the specified duration. 
-    /// Note that this timeout only applies between consecutive [`http_body::Frame`] polls, and the timeout resets after each [`http_body::Frame`] poll.
-    /// In other words, the time to produce a [`http_body::Body`] could exceed the timeout duration without causing 
-    /// a [`TimeoutError`], as long as no time interval between [`http_body::Frame`] polls exceeds the timeout
+    /// Wrapper around a [`Body`][`http_body::Body`] to time out if data is not ready within the specified duration.
+    /// Note that this timeout only applies between consecutive [`Frame`][`http_body::Frame`] polls, and the timeout resets after each [`Frame`][`http_body::Frame`] poll.
+    /// In other words, the time to produce a [`Body`][`http_body::Body`] could exceed the timeout duration without causing
+    /// a [`TimeoutError`], as long as no time interval between [`Frame`][`http_body::Frame`] polls exceeds the timeout.
     ///
     /// Bodies must produce data at most within the specified timeout.
     /// If the body does not produce a requested data frame within the timeout period, it will return an error.
