@@ -8,7 +8,7 @@
 //! use tower_http::auth::{AsyncRequireAuthorizationLayer, AsyncAuthorizeRequest};
 //! use http::{Request, Response, StatusCode, header::AUTHORIZATION};
 //! use tower::{Service, ServiceExt, ServiceBuilder, service_fn, BoxError};
-//! use futures_util::future::BoxFuture;
+//! use futures_core::future::BoxFuture;
 //! use bytes::Bytes;
 //! use http_body_util::Full;
 //!
@@ -80,7 +80,7 @@
 //! use tower_http::auth::{AsyncRequireAuthorizationLayer, AsyncAuthorizeRequest};
 //! use http::{Request, Response, StatusCode};
 //! use tower::{Service, ServiceExt, ServiceBuilder, BoxError};
-//! use futures_util::future::BoxFuture;
+//! use futures_core::future::BoxFuture;
 //! use http_body_util::Full;
 //! use bytes::Bytes;
 //!
@@ -312,7 +312,7 @@ mod tests {
     #[allow(unused_imports)]
     use super::*;
     use crate::test_helpers::Body;
-    use futures_util::future::BoxFuture;
+    use futures_core::future::BoxFuture;
     use http::{header, StatusCode};
     use tower::{BoxError, ServiceBuilder, ServiceExt};
 

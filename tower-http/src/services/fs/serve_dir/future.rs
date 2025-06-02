@@ -6,7 +6,8 @@ use crate::{
     body::UnsyncBoxBody, content_encoding::Encoding, services::fs::AsyncReadBody, BoxError,
 };
 use bytes::Bytes;
-use futures_util::future::{BoxFuture, FutureExt, TryFutureExt};
+use futures_core::future::BoxFuture;
+use futures_util::future::{FutureExt, TryFutureExt};
 use http::{
     header::{self, ALLOW},
     HeaderValue, Request, Response, StatusCode,

@@ -1,7 +1,7 @@
 //! File system related services.
 
 use bytes::Bytes;
-use futures_util::Stream;
+use futures_core::Stream;
 use http_body::{Body, Frame};
 use pin_project_lite::pin_project;
 use std::{
