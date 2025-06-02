@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+# 0.6.5
+
+## Added
+
+- normalize_path: add `append_trailing_slash()` mode ([#547])
+
+## Fixed
+
+- redirect: remove payload headers if redirect changes method to GET ([#575])
+- compression: avoid setting `vary: accept-encoding` if already set ([#572])
+
+[#547]: https://github.com/tower-rs/tower-http/pull/547
+[#572]: https://github.com/tower-rs/tower-http/pull/572
+[#575]: https://github.com/tower-rs/tower-http/pull/575
+
 # 0.6.4
 
 ## Added
