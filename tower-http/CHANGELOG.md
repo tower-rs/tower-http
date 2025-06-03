@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+# 0.6.6
+
+## Fixed
+
+- compression: fix panic when looking in vary header ([#578])
+
+[#578]: https://github.com/tower-rs/tower-http/pull/578
+
 # 0.6.5
 
 ## Added
