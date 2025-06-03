@@ -122,7 +122,7 @@ where
 }
 
 fn contains_ignore_ascii_case(mut haystack: &[u8], needle: &[u8]) -> bool {
-    while haystack.len() <= needle.len() {
+    while needle.len() <= haystack.len() {
         if haystack[..needle.len()].eq_ignore_ascii_case(needle) {
             return true;
         }
