@@ -556,7 +556,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(1, ON_BODY_CHUNK_COUNT.load(Ordering::SeqCst), "body chunk");
-        assert_eq!(0, ON_EOS.load(Ordering::SeqCst), "eos");
+        assert_eq!(1, ON_EOS.load(Ordering::SeqCst), "eos");
         assert_eq!(0, ON_FAILURE.load(Ordering::SeqCst), "failure");
     }
 
@@ -611,7 +611,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(3, ON_BODY_CHUNK_COUNT.load(Ordering::SeqCst), "body chunk");
-        assert_eq!(0, ON_EOS.load(Ordering::SeqCst), "eos");
+        assert_eq!(1, ON_EOS.load(Ordering::SeqCst), "eos");
         assert_eq!(0, ON_FAILURE.load(Ordering::SeqCst), "failure");
     }
 
