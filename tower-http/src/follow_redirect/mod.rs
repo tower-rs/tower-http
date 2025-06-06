@@ -6,7 +6,7 @@
 //! redirections.
 //!
 //! The middleware tries to clone the original [`Request`] when making a redirected request.
-//! Also, the request body cannot always be cloned. When the
+//! However, the request body cannot always be cloned. When the
 //! original body is known to be empty by [`Body::size_hint`], the middleware uses `Default`
 //! implementation of the body type to create a new request body. If you know that the body can be
 //! cloned in some way, you can tell the middleware to clone it by configuring a [`policy`].
