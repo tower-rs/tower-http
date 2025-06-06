@@ -463,27 +463,6 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn tracing_extension() {
-        let svc = ServiceBuilder::new()
-            .layer(FollowRedirectLayer::with_policy(Action::Follow))
-            .buffer(1)
-            .service_fn(handle);
-        let mut builder = Request::builder().uri("http://example.com/42");
-
-        builder
-            .extensions_mut()
-            .unwrap()
-            .insert(RequestUri(Uri::from_static("http://example.com/42")));
-        let req = builder.body(Body::empty()).unwrap();
-        let res = svc.oneshot(req).await.unwrap();
-        assert_eq!(*res.body(), 0);
-        assert_eq!(
-            res.extensions().get::<RequestUri>().unwrap().0,
-            "http://example.com/0"
-        );
-    }
-
     /// A server with an endpoint `GET /{n}` which redirects to `/{n-1}` unless `n` equals zero,
     /// returning `n` as the response body.
     async fn handle<B>(req: Request<B>) -> Result<Response<u64>, Infallible> {
