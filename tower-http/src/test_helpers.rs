@@ -128,7 +128,6 @@ pub(crate) async fn to_bytes<T>(body: T) -> Result<Bytes, T::Error>
 where
     T: http_body::Body,
 {
-    futures_util::pin_mut!(body);
     Ok(body.collect().await?.to_bytes())
 }
 

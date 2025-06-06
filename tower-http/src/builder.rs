@@ -5,6 +5,11 @@ use http::header::HeaderName;
 #[allow(unused_imports)]
 use tower_layer::Stack;
 
+mod sealed {
+    #[allow(unreachable_pub, unused)]
+    pub trait Sealed<T> {}
+}
+
 /// Extension trait that adds methods to [`tower::ServiceBuilder`] for adding middleware from
 /// tower-http.
 ///
@@ -39,7 +44,7 @@ use tower_layer::Stack;
 /// ```
 #[cfg(feature = "util")]
 // ^ work around rustdoc not inferring doc(cfg)s for cfg's from surrounding scopes
-pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
+pub trait ServiceBuilderExt<L>: sealed::Sealed<L> + Sized {
     /// Propagate a header from the request to the response.
     ///
     /// See [`tower_http::propagate_header`] for more details.
@@ -302,10 +307,7 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     where
         M: crate::request_id::MakeRequestId,
     {
-        self.set_request_id(
-            HeaderName::from_static(crate::request_id::X_REQUEST_ID),
-            make_request_id,
-        )
+        self.set_request_id(crate::request_id::X_REQUEST_ID, make_request_id)
     }
 
     /// Propgate request ids from requests to responses.
@@ -328,7 +330,7 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     fn propagate_x_request_id(
         self,
     ) -> ServiceBuilder<Stack<crate::request_id::PropagateRequestIdLayer, L>> {
-        self.propagate_request_id(HeaderName::from_static(crate::request_id::X_REQUEST_ID))
+        self.propagate_request_id(crate::request_id::X_REQUEST_ID)
     }
 
     /// Catch panics and convert them into `500 Internal Server` responses.
@@ -364,9 +366,19 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     fn trim_trailing_slash(
         self,
     ) -> ServiceBuilder<Stack<crate::normalize_path::NormalizePathLayer, L>>;
+
+    /// Append trailing slash to paths.
+    ///
+    /// See [`tower_http::normalize_path`] for more details.
+    ///
+    /// [`tower_http::normalize_path`]: crate::normalize_path
+    #[cfg(feature = "normalize-path")]
+    fn append_trailing_slash(
+        self,
+    ) -> ServiceBuilder<Stack<crate::normalize_path::NormalizePathLayer, L>>;
 }
 
-impl<L> crate::sealed::Sealed<L> for ServiceBuilder<L> {}
+impl<L> sealed::Sealed<L> for ServiceBuilder<L> {}
 
 impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
     #[cfg(feature = "propagate-header")]
@@ -593,5 +605,12 @@ impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
         self,
     ) -> ServiceBuilder<Stack<crate::normalize_path::NormalizePathLayer, L>> {
         self.layer(crate::normalize_path::NormalizePathLayer::trim_trailing_slash())
+    }
+
+    #[cfg(feature = "normalize-path")]
+    fn append_trailing_slash(
+        self,
+    ) -> ServiceBuilder<Stack<crate::normalize_path::NormalizePathLayer, L>> {
+        self.layer(crate::normalize_path::NormalizePathLayer::append_trailing_slash())
     }
 }

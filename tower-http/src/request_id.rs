@@ -181,7 +181,7 @@ use tower_layer::Layer;
 use tower_service::Service;
 use uuid::Uuid;
 
-pub(crate) const X_REQUEST_ID: &str = "x-request-id";
+pub(crate) const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
 
 /// Trait for producing [`RequestId`]s.
 ///
@@ -246,7 +246,7 @@ impl<M> SetRequestIdLayer<M> {
     where
         M: MakeRequestId,
     {
-        SetRequestIdLayer::new(HeaderName::from_static(X_REQUEST_ID), make_request_id)
+        SetRequestIdLayer::new(X_REQUEST_ID, make_request_id)
     }
 }
 
@@ -299,11 +299,7 @@ impl<S, M> SetRequestId<S, M> {
     where
         M: MakeRequestId,
     {
-        Self::new(
-            inner,
-            HeaderName::from_static(X_REQUEST_ID),
-            make_request_id,
-        )
+        Self::new(inner, X_REQUEST_ID, make_request_id)
     }
 
     define_inner_service_accessors!();
@@ -365,7 +361,7 @@ impl PropagateRequestIdLayer {
 
     /// Create a new `PropagateRequestIdLayer` that uses `x-request-id` as the header name.
     pub fn x_request_id() -> Self {
-        Self::new(HeaderName::from_static(X_REQUEST_ID))
+        Self::new(X_REQUEST_ID)
     }
 }
 
@@ -397,7 +393,7 @@ impl<S> PropagateRequestId<S> {
 
     /// Create a new `PropagateRequestId` that uses `x-request-id` as the header name.
     pub fn x_request_id(inner: S) -> Self {
-        Self::new(inner, HeaderName::from_static(X_REQUEST_ID))
+        Self::new(inner, X_REQUEST_ID)
     }
 
     define_inner_service_accessors!();

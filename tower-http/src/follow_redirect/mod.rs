@@ -97,7 +97,9 @@ pub mod policy;
 use self::policy::{Action, Attempt, Policy, Standard};
 use futures_util::future::Either;
 use http::{
-    header::LOCATION, HeaderMap, HeaderValue, Method, Request, Response, StatusCode, Uri, Version,
+    header::CONTENT_ENCODING, header::CONTENT_LENGTH, header::CONTENT_TYPE, header::LOCATION,
+    header::TRANSFER_ENCODING, HeaderMap, HeaderValue, Method, Request, Response, StatusCode, Uri,
+    Version,
 };
 use http_body::Body;
 use iri_string::types::{UriAbsoluteString, UriReferenceStr};
@@ -257,6 +259,16 @@ where
         let mut res = ready!(this.future.as_mut().poll(cx)?);
         res.extensions_mut().insert(RequestUri(this.uri.clone()));
 
+        let drop_payload_headers = |headers: &mut HeaderMap| {
+            for header in &[
+                CONTENT_TYPE,
+                CONTENT_LENGTH,
+                CONTENT_ENCODING,
+                TRANSFER_ENCODING,
+            ] {
+                headers.remove(header);
+            }
+        };
         match res.status() {
             StatusCode::MOVED_PERMANENTLY | StatusCode::FOUND => {
                 // User agents MAY change the request method from POST to GET
@@ -264,6 +276,7 @@ where
                 if *this.method == Method::POST {
                     *this.method = Method::GET;
                     *this.body = BodyRepr::Empty;
+                    drop_payload_headers(this.headers);
                 }
             }
             StatusCode::SEE_OTHER => {
@@ -272,6 +285,7 @@ where
                     *this.method = Method::GET;
                 }
                 *this.body = BodyRepr::Empty;
+                drop_payload_headers(this.headers);
             }
             StatusCode::TEMPORARY_REDIRECT | StatusCode::PERMANENT_REDIRECT => {}
             _ => return Poll::Ready(Ok(res)),

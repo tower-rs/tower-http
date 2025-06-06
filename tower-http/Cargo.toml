@@ -1,7 +1,7 @@
 [package]
 name = "tower-http"
 description = "Tower middleware and utilities for HTTP clients and servers"
-version = "0.6.2"
+version = "0.6.6"
 authors = ["Tower Maintainers <team@tower-rs.com>"]
 edition = "2018"
 license = "MIT"
@@ -10,7 +10,7 @@ repository = "https://github.com/tower-rs/tower-http"
 homepage = "https://github.com/tower-rs/tower-http"
 categories = ["asynchronous", "network-programming", "web-programming"]
 keywords = ["io", "async", "futures", "service", "http"]
-rust-version = "1.66"
+rust-version = "1.64"
 
 [dependencies]
 bitflags = "2.0.2"
@@ -90,7 +90,7 @@ auth = ["base64", "validate-request"]
 catch-panic = ["tracing", "futures-util/std", "dep:http-body", "dep:http-body-util"]
 cors = []
 follow-redirect = ["futures-util", "dep:http-body", "iri-string", "tower/util"]
-fs = ["futures-util", "dep:http-body", "dep:http-body-util", "tokio/fs", "tokio-util/io", "tokio/io-util", "dep:http-range-header", "mime_guess", "mime", "percent-encoding", "httpdate", "set-status", "futures-util/alloc", "tracing"]
+fs = ["futures-core", "futures-util", "dep:http-body", "dep:http-body-util", "tokio/fs", "tokio-util/io", "tokio/io-util", "dep:http-range-header", "mime_guess", "mime", "percent-encoding", "httpdate", "set-status", "futures-util/alloc", "tracing"]
 limit = ["dep:http-body", "dep:http-body-util"]
 map-request-body = []
 map-response-body = []

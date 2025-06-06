@@ -6,7 +6,8 @@ use crate::{
     body::UnsyncBoxBody, content_encoding::Encoding, services::fs::AsyncReadBody, BoxError,
 };
 use bytes::Bytes;
-use futures_util::future::{BoxFuture, FutureExt, TryFutureExt};
+use futures_core::future::BoxFuture;
+use futures_util::future::{FutureExt, TryFutureExt};
 use http::{
     header::{self, ALLOW},
     HeaderValue, Request, Response, StatusCode,
@@ -120,6 +121,12 @@ where
 
                     Ok(OpenFileOutput::NotModified) => {
                         break Poll::Ready(Ok(response_with_status(StatusCode::NOT_MODIFIED)));
+                    }
+
+                    Ok(OpenFileOutput::InvalidRedirectUri) => {
+                        break Poll::Ready(Ok(response_with_status(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                        )));
                     }
 
                     Err(err) => {
@@ -263,12 +270,18 @@ fn build_response(output: FileOpened) -> Response<ResponseBody> {
                         empty_body()
                     };
 
+                    let content_length = if size == 0 {
+                        0
+                    } else {
+                        range.end() - range.start() + 1
+                    };
+
                     builder
                         .header(
                             header::CONTENT_RANGE,
                             format!("bytes {}-{}/{}", range.start(), range.end(), size),
                         )
-                        .header(header::CONTENT_LENGTH, range.end() - range.start() + 1)
+                        .header(header::CONTENT_LENGTH, content_length)
                         .status(StatusCode::PARTIAL_CONTENT)
                         .body(body)
                         .unwrap()

@@ -112,7 +112,7 @@ pub enum StatusInRangeFailureClass {
 }
 
 impl fmt::Display for StatusInRangeFailureClass {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::StatusCode(code) => write!(f, "Status code: {}", code),
             Self::Error(error) => write!(f, "Error: {}", error),
@@ -131,23 +131,23 @@ mod tests {
         let classifier = StatusInRangeAsFailures::new(400..=599);
 
         assert!(matches!(
-            dbg!(classifier
+            classifier
                 .clone()
-                .classify_response(&response_with_status(200))),
+                .classify_response(&response_with_status(200)),
             ClassifiedResponse::Ready(Ok(())),
         ));
 
         assert!(matches!(
-            dbg!(classifier
+            classifier
                 .clone()
-                .classify_response(&response_with_status(400))),
+                .classify_response(&response_with_status(400)),
             ClassifiedResponse::Ready(Err(StatusInRangeFailureClass::StatusCode(
                 StatusCode::BAD_REQUEST
             ))),
         ));
 
         assert!(matches!(
-            dbg!(classifier.classify_response(&response_with_status(500))),
+            classifier.classify_response(&response_with_status(500)),
             ClassifiedResponse::Ready(Err(StatusInRangeFailureClass::StatusCode(
                 StatusCode::INTERNAL_SERVER_ERROR
             ))),
