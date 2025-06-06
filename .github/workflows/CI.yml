@@ -81,6 +81,7 @@ jobs:
     - run: cargo update -p tokio-util --precise 0.7.11
     - run: cargo update -p flate2 --precise 1.0.35
     - run: cargo update -p once_cell --precise 1.20.3
+    - run: cargo update -p tracing-core --precise 0.1.33
     - run: cargo check -p tower-http --all-features
 
   style:
