@@ -92,6 +92,7 @@
 //! # }
 //! ```
 
+pub mod extension;
 pub mod policy;
 
 use self::policy::{Action, Attempt, Policy, Standard};
@@ -134,7 +135,7 @@ impl FollowRedirectLayer {
 impl<P> FollowRedirectLayer<P> {
     /// Create a new [`FollowRedirectLayer`] with the given redirection [`Policy`].
     pub fn with_policy(policy: P) -> Self {
-        FollowRedirectLayer { policy }
+        Self { policy }
     }
 }
 
@@ -209,20 +210,14 @@ where
 
     fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
         let service = self.inner.clone();
-        let mut service = mem::replace(&mut self.inner, service);
-        let mut policy = self.policy.clone();
-        let mut body = BodyRepr::None;
-        body.try_clone_from(req.body(), &policy);
-        policy.on_request(&mut req);
+        let mut request = RedirectingRequest::new(
+            mem::replace(&mut self.inner, service),
+            self.policy.clone(),
+            &mut req,
+        );
         ResponseFuture {
-            method: req.method().clone(),
-            uri: req.uri().clone(),
-            version: req.version(),
-            headers: req.headers().clone(),
-            body,
-            future: Either::Left(service.call(req)),
-            service,
-            policy,
+            future: Either::Left(request.service.call(req)),
+            request,
         }
     }
 }
@@ -236,13 +231,7 @@ pin_project! {
     {
         #[pin]
         future: Either<S::Future, Oneshot<S, Request<B>>>,
-        service: S,
-        policy: P,
-        method: Method,
-        uri: Uri,
-        version: Version,
-        headers: HeaderMap<HeaderValue>,
-        body: BodyRepr<B>,
+        request: RedirectingRequest<S, B, P>
     }
 }
 
@@ -257,7 +246,64 @@ where
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut this = self.project();
         let mut res = ready!(this.future.as_mut().poll(cx)?);
-        res.extensions_mut().insert(RequestUri(this.uri.clone()));
+        match this.request.handle_response(&mut res) {
+            Ok(Some(pending)) => {
+                this.future.set(Either::Right(pending));
+                cx.waker().wake_by_ref();
+                Poll::Pending
+            }
+            Ok(None) => Poll::Ready(Ok(res)),
+            Err(e) => Poll::Ready(Err(e)),
+        }
+    }
+}
+
+/// Wraps a [`http::Request`] with a [`policy::Policy`] to apply,
+/// and an underlying service in case further requests are required.
+#[derive(Debug)]
+struct RedirectingRequest<S, B, P> {
+    service: S,
+    policy: P,
+    method: Method,
+    uri: Uri,
+    version: Version,
+    headers: HeaderMap<HeaderValue>,
+    body: BodyRepr<B>,
+}
+
+impl<S, ReqBody, ResBody, P> RedirectingRequest<S, ReqBody, P>
+where
+    S: Service<Request<ReqBody>, Response = Response<ResBody>> + Clone,
+    ReqBody: Body + Default,
+    P: Policy<ReqBody, S::Error>,
+{
+    #[inline]
+    /// Build a [`RedirectingRequest`] from a service, attached policy and original [`http::Request`]
+    fn new(service: S, mut policy: P, req: &mut Request<ReqBody>) -> Self {
+        let mut body = BodyRepr::None;
+        body.try_clone_from(req.body(), &policy);
+        policy.on_request(req);
+        Self {
+            method: req.method().clone(),
+            uri: req.uri().clone(),
+            version: req.version(),
+            headers: req.headers().clone(),
+            service,
+            body,
+            policy,
+        }
+    }
+
+    /// Handle an incoming [`http::Response`] from the underlying service.
+    /// Returns an error if the policy failed.
+    /// Returns a future if there is more work to do.
+    /// Otherwise, returns an empty result.
+    #[inline]
+    fn handle_response(
+        &mut self,
+        res: &mut Response<ResBody>,
+    ) -> Result<Option<Oneshot<S, Request<ReqBody>>>, S::Error> {
+        res.extensions_mut().insert(RequestUri(self.uri.clone()));
 
         let drop_payload_headers = |headers: &mut HeaderMap| {
             for header in &[
@@ -273,63 +319,59 @@ where
             StatusCode::MOVED_PERMANENTLY | StatusCode::FOUND => {
                 // User agents MAY change the request method from POST to GET
                 // (RFC 7231 section 6.4.2. and 6.4.3.).
-                if *this.method == Method::POST {
-                    *this.method = Method::GET;
-                    *this.body = BodyRepr::Empty;
-                    drop_payload_headers(this.headers);
+                if self.method == Method::POST {
+                    self.method = Method::GET;
+                    self.body = BodyRepr::Empty;
+                    drop_payload_headers(&mut self.headers);
                 }
             }
             StatusCode::SEE_OTHER => {
                 // A user agent can perform a GET or HEAD request (RFC 7231 section 6.4.4.).
-                if *this.method != Method::HEAD {
-                    *this.method = Method::GET;
+                if self.method != Method::HEAD {
+                    self.method = Method::GET;
                 }
-                *this.body = BodyRepr::Empty;
-                drop_payload_headers(this.headers);
+                self.body = BodyRepr::Empty;
+                drop_payload_headers(&mut self.headers);
             }
             StatusCode::TEMPORARY_REDIRECT | StatusCode::PERMANENT_REDIRECT => {}
-            _ => return Poll::Ready(Ok(res)),
+            _ => return Ok(None),
         };
 
-        let body = if let Some(body) = this.body.take() {
+        let body = if let Some(body) = self.body.take() {
             body
         } else {
-            return Poll::Ready(Ok(res));
+            return Ok(None);
         };
 
         let location = res
             .headers()
             .get(&LOCATION)
-            .and_then(|loc| resolve_uri(str::from_utf8(loc.as_bytes()).ok()?, this.uri));
+            .and_then(|loc| resolve_uri(str::from_utf8(loc.as_bytes()).ok()?, &self.uri));
         let location = if let Some(loc) = location {
             loc
         } else {
-            return Poll::Ready(Ok(res));
+            return Ok(None);
         };
 
         let attempt = Attempt {
             status: res.status(),
             location: &location,
-            previous: this.uri,
+            previous: &self.uri,
         };
-        match this.policy.redirect(&attempt)? {
+        match self.policy.redirect(&attempt)? {
             Action::Follow => {
-                *this.uri = location;
-                this.body.try_clone_from(&body, &this.policy);
+                self.uri = location;
+                self.body.try_clone_from(&body, &self.policy);
 
                 let mut req = Request::new(body);
-                *req.uri_mut() = this.uri.clone();
-                *req.method_mut() = this.method.clone();
-                *req.version_mut() = *this.version;
-                *req.headers_mut() = this.headers.clone();
-                this.policy.on_request(&mut req);
-                this.future
-                    .set(Either::Right(Oneshot::new(this.service.clone(), req)));
-
-                cx.waker().wake_by_ref();
-                Poll::Pending
+                *req.uri_mut() = self.uri.clone();
+                *req.method_mut() = self.method.clone();
+                *req.version_mut() = self.version;
+                *req.headers_mut() = self.headers.clone();
+                self.policy.on_request(&mut req);
+                Ok(Some(Oneshot::new(self.service.clone(), req)))
             }
-            Action::Stop => Poll::Ready(Ok(res)),
+            Action::Stop => Ok(None),
         }
     }
 }
@@ -463,7 +505,7 @@ mod tests {
 
     /// A server with an endpoint `GET /{n}` which redirects to `/{n-1}` unless `n` equals zero,
     /// returning `n` as the response body.
-    async fn handle<B>(req: Request<B>) -> Result<Response<u64>, Infallible> {
+    pub(crate) async fn handle<B>(req: Request<B>) -> Result<Response<u64>, Infallible> {
         let n: u64 = req.uri().path()[1..].parse().unwrap();
         let mut res = Response::builder();
         if n > 0 {

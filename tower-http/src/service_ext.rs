@@ -147,6 +147,26 @@ pub trait ServiceExt {
         crate::follow_redirect::FollowRedirect::new(self)
     }
 
+    /// Follow redirect responses using the [`Standard`] policy,
+    /// storing it as an extension
+    ///
+    /// See [`tower_http::follow_redirect::extension`] for more details.
+    ///
+    /// [`tower_http::follow_redirect::extension`]: crate::follow_redirect::extension
+    /// [`Standard`]: crate::follow_redirect::policy::Standard
+    #[cfg(feature = "follow-redirect")]
+    fn follow_redirects_extension(
+        self,
+    ) -> crate::follow_redirect::extension::FollowRedirectExtension<
+        Self,
+        crate::follow_redirect::policy::Standard,
+    >
+    where
+        Self: Sized,
+    {
+        crate::follow_redirect::extension::FollowRedirectExtension::new(self)
+    }
+
     /// Mark headers as [sensitive] on both requests and responses.
     ///
     /// See [`tower_http::sensitive_headers`] for more details.
