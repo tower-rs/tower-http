@@ -36,8 +36,8 @@ impl<S> Layer<S> for TimeoutLayer {
 
 /// Middleware which apply a timeout to requests.
 ///
-/// If the request does not complete within the specified timeout it will be aborted and a `408
-/// Request Timeout` response will be sent.
+/// If the request does not complete within the specified timeout it will be aborted and a `503
+/// Service Unavailable` response will be sent.
 ///
 /// See the [module docs](super) for an example.
 #[derive(Debug, Clone, Copy)]
@@ -107,7 +107,7 @@ where
 
         if this.sleep.poll(cx).is_ready() {
             let mut res = Response::new(B::default());
-            *res.status_mut() = StatusCode::REQUEST_TIMEOUT;
+            *res.status_mut() = StatusCode::SERVICE_UNAVAILABLE;
             return Poll::Ready(Ok(res));
         }
 
