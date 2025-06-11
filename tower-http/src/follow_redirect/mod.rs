@@ -197,7 +197,7 @@ impl<ReqBody, ResBody, S, P> Service<Request<ReqBody>> for FollowRedirect<S, P>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>> + Clone,
     ReqBody: Body + Default,
-    P: Policy<ReqBody, S::Error> + Clone,
+    P: Policy<ReqBody, S::Error> + Clone + Send + Sync + 'static,
 {
     type Response = Response<ResBody>;
     type Error = S::Error;
@@ -250,7 +250,7 @@ impl<S, ReqBody, ResBody, P> Future for ResponseFuture<S, ReqBody, P>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>> + Clone,
     ReqBody: Body + Default,
-    P: Policy<ReqBody, S::Error>,
+    P: Policy<ReqBody, S::Error> + Clone + Send + Sync + 'static,
 {
     type Output = Result<Response<ResBody>, S::Error>;
 
@@ -258,6 +258,8 @@ where
         let mut this = self.project();
         let mut res = ready!(this.future.as_mut().poll(cx)?);
         res.extensions_mut().insert(RequestUri(this.uri.clone()));
+        res.extensions_mut()
+            .insert(FollowedPolicy(this.policy.clone()));
 
         let drop_payload_headers = |headers: &mut HeaderMap| {
             for header in &[
@@ -342,6 +344,11 @@ where
 #[derive(Clone)]
 pub struct RequestUri(pub Uri);
 
+/// Response [`Extensions`][http::Extensions] value that contains the redirect [`Policy`] that
+/// was run before the last request of the redirect chain by a [`FollowRedirect`] middleware.
+#[derive(Clone)]
+pub struct FollowedPolicy<P>(pub P);
+
 #[derive(Debug)]
 enum BodyRepr<B> {
     Some(B),
@@ -423,6 +430,12 @@ mod tests {
             res.extensions().get::<RequestUri>().unwrap().0,
             "http://example.com/0"
         );
+        assert!(res
+            .extensions()
+            .get::<FollowedPolicy<Action>>()
+            .unwrap()
+            .0
+            .is_follow());
     }
 
     #[tokio::test]
@@ -441,6 +454,12 @@ mod tests {
             res.extensions().get::<RequestUri>().unwrap().0,
             "http://example.com/42"
         );
+        assert!(res
+            .extensions()
+            .get::<FollowedPolicy<Action>>()
+            .unwrap()
+            .0
+            .is_stop());
     }
 
     #[tokio::test]
@@ -458,6 +477,14 @@ mod tests {
         assert_eq!(
             res.extensions().get::<RequestUri>().unwrap().0,
             "http://example.com/32"
+        );
+        assert_eq!(
+            res.extensions()
+                .get::<FollowedPolicy<Limited>>()
+                .unwrap()
+                .0
+                .remaining,
+            0
         );
     }
 
