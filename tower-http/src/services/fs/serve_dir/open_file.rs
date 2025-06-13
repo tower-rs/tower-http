@@ -23,6 +23,7 @@ pub(super) enum OpenFileOutput {
     PreconditionFailed,
     NotModified,
     InvalidRedirectUri,
+    InvalidFilename,
 }
 
 pub(super) struct FileOpened {
@@ -43,7 +44,7 @@ pub(super) async fn open_file(
     variant: ServeVariant,
     mut path_to_file: PathBuf,
     req: Request<Empty<Bytes>>,
-    negotiated_encodings: Vec<(Encoding, QValue)>,
+    mut negotiated_encodings: Vec<(Encoding, QValue)>,
     range_header: Option<String>,
     buf_chunk_size: usize,
 ) -> io::Result<OpenFileOutput> {
@@ -109,8 +110,29 @@ pub(super) async fn open_file(
             last_modified,
         })))
     } else {
-        let (mut file, maybe_encoding) =
-            open_file_with_fallback(path_to_file, negotiated_encodings).await?;
+        // Attempts to open the file with any of the possible negotiated_encodings in the
+        // preferred order. If none of the negotiated_encodings have a corresponding precompressed
+        // file the uncompressed file is used as a fallback.
+        let (mut file, maybe_encoding) = loop {
+            // Get the preferred encoding among the negotiated ones.
+            let encoding = preferred_encoding(&mut path_to_file, &negotiated_encodings);
+            match (File::open(&path_to_file).await, encoding) {
+                (Ok(file), maybe_encoding) => break (file, maybe_encoding),
+                (Err(err), Some(encoding)) if err.kind() == io::ErrorKind::NotFound => {
+                    // Remove the extension corresponding to a precompressed file (.gz, .br, .zz)
+                    // to reset the path before the next iteration.
+                    path_to_file.set_extension(OsStr::new(""));
+                    // Remove the encoding from the negotiated_encodings since the file doesn't exist
+                    negotiated_encodings
+                        .retain(|(negotiated_encodings, _)| *negotiated_encodings != encoding);
+                }
+                (Err(err), _) if is_invalid_filename_error(&err) => {
+                    return Ok(OpenFileOutput::InvalidFilename)
+                }
+                (Err(err), _) => return Err(err),
+            }
+        };
+
         let meta = file.metadata().await?;
         let last_modified = meta.modified().ok().map(LastModified::from);
         if let Some(output) = check_modified_headers(
@@ -139,6 +161,27 @@ pub(super) async fn open_file(
             last_modified,
         })))
     }
+}
+
+// FIXME: Remove when MSRV >= 1.87.
+// `io::ErrorKind::InvalidFilename` is stabilized in v1.87
+fn is_invalid_filename_error(err: &io::Error) -> bool {
+    if err.raw_os_error().is_none() {
+        return false;
+    }
+
+    let raw_err = err.raw_os_error().unwrap();
+
+    #[cfg(windows)]
+    {
+        // https://github.com/rust-lang/rust/blob/master/library/std/src/sys/pal/windows/mod.rs
+        // Lines 81 and 115
+        if (raw_err == 123) || (raw_err == 161) || (raw_err == 206) {
+            return true;
+        }
+    }
+
+    false
 }
 
 fn check_modified_headers(
@@ -195,32 +238,6 @@ fn preferred_encoding(
     }
 
     preferred_encoding
-}
-
-// Attempts to open the file with any of the possible negotiated_encodings in the
-// preferred order. If none of the negotiated_encodings have a corresponding precompressed
-// file the uncompressed file is used as a fallback.
-async fn open_file_with_fallback(
-    mut path: PathBuf,
-    mut negotiated_encoding: Vec<(Encoding, QValue)>,
-) -> io::Result<(File, Option<Encoding>)> {
-    let (file, encoding) = loop {
-        // Get the preferred encoding among the negotiated ones.
-        let encoding = preferred_encoding(&mut path, &negotiated_encoding);
-        match (File::open(&path).await, encoding) {
-            (Ok(file), maybe_encoding) => break (file, maybe_encoding),
-            (Err(err), Some(encoding)) if err.kind() == io::ErrorKind::NotFound => {
-                // Remove the extension corresponding to a precompressed file (.gz, .br, .zz)
-                // to reset the path before the next iteration.
-                path.set_extension(OsStr::new(""));
-                // Remove the encoding from the negotiated_encodings since the file doesn't exist
-                negotiated_encoding
-                    .retain(|(negotiated_encoding, _)| *negotiated_encoding != encoding);
-            }
-            (Err(err), _) => return Err(err),
-        }
-    };
-    Ok((file, encoding))
 }
 
 // Attempts to get the file metadata with any of the possible negotiated_encodings in the
