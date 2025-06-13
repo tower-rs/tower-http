@@ -10,7 +10,7 @@ use http_range_header::RangeUnsatisfiableError;
 use std::{
     ffi::OsStr,
     fs::Metadata,
-    io::{self, SeekFrom},
+    io::{self, ErrorKind, SeekFrom},
     ops::RangeInclusive,
     path::{Path, PathBuf},
 };
@@ -163,9 +163,14 @@ pub(super) async fn open_file(
     }
 }
 
-// FIXME: Remove when MSRV >= 1.87.
-// `io::ErrorKind::InvalidFilename` is stabilized in v1.87
 fn is_invalid_filename_error(err: &io::Error) -> bool {
+    // Only applies to NULL bytes
+    if err.kind() == ErrorKind::InvalidInput {
+        return true;
+    }
+
+    // FIXME: Remove when MSRV >= 1.87.
+    // `io::ErrorKind::InvalidFilename` is stabilized in v1.87
     if err.raw_os_error().is_none() {
         return false;
     }
