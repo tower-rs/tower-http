@@ -175,10 +175,10 @@ fn is_invalid_filename_error(err: &io::Error) -> bool {
         return false;
     }
 
-    let raw_err = err.raw_os_error().unwrap();
-
     #[cfg(windows)]
     {
+        let raw_err = err.raw_os_error().unwrap();
+
         // https://github.com/rust-lang/rust/blob/master/library/std/src/sys/pal/windows/mod.rs
         // Lines 81 and 115
         if (raw_err == 123) || (raw_err == 161) || (raw_err == 206) {
