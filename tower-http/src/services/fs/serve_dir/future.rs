@@ -105,7 +105,7 @@ where
                         break Poll::Ready(Ok(res));
                     }
 
-                    Ok(OpenFileOutput::FileNotFound) => {
+                    Ok(OpenFileOutput::FileNotFound | OpenFileOutput::InvalidFilename) => {
                         if let Some((mut fallback, request)) = fallback_and_request.take() {
                             call_fallback(&mut fallback, request)
                         } else {
