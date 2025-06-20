@@ -7,8 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
+## Fixed
+
+- `on_eos` is now called even for successful responses. ([#580])
 - `ServeDir`: call fallback when filename is invalid ([#586])
 
+[#580]: https://github.com/tower-rs/tower-http/pull/580
 [#586]: https://github.com/tower-rs/tower-http/pull/586
 
 # 0.6.6
