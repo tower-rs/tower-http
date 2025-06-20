@@ -179,7 +179,7 @@ fn is_invalid_filename_error(err: &io::Error) -> bool {
     {
         let raw_err = err.raw_os_error().unwrap();
 
-        // https://github.com/rust-lang/rust/blob/master/library/std/src/sys/pal/windows/mod.rs
+        // https://github.com/rust-lang/rust/blob/70e2b4a4d197f154bed0eb3dcb5cac6a948ff3a3/library/std/src/sys/pal/windows/mod.rs
         // Lines 81 and 115
         if (raw_err == 123) || (raw_err == 161) || (raw_err == 206) {
             return true;
