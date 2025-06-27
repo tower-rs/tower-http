@@ -3,7 +3,8 @@ use super::{Action, Attempt, Policy};
 /// A redirection [`Policy`] that limits the number of successive redirections.
 #[derive(Clone, Copy, Debug)]
 pub struct Limited {
-    pub(crate) remaining: usize,
+    /// The number or possible redirections remaining.
+    pub remaining: usize,
 }
 
 impl Limited {

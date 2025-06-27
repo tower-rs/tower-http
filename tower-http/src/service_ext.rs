@@ -150,9 +150,9 @@ pub trait ServiceExt {
     /// Follow redirect responses using the [`Standard`] policy,
     /// storing it as an extension
     ///
-    /// See [`tower_http::follow_redirect::extension`] for more details.
+    /// See [`tower_http::follow_redirect`] for more details.
     ///
-    /// [`tower_http::follow_redirect::extension`]: crate::follow_redirect::extension
+    /// [`tower_http::follow_redirect`]: crate::follow_redirect
     /// [`Standard`]: crate::follow_redirect::policy::Standard
     #[cfg(feature = "follow-redirect")]
     fn follow_redirects_extension(
@@ -160,7 +160,7 @@ pub trait ServiceExt {
     ) -> crate::follow_redirect::FollowRedirect<
         Self,
         crate::follow_redirect::policy::Standard,
-        crate::follow_redirect::PolicyExtension,
+        crate::follow_redirect::UriAndPolicyExtensions,
     >
     where
         Self: Sized,

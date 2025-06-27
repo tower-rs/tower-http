@@ -174,7 +174,7 @@ pub trait ServiceBuilderExt<L>: sealed::Sealed<L> + Sized {
         Stack<
             crate::follow_redirect::FollowRedirectLayer<
                 crate::follow_redirect::policy::Standard,
-                crate::follow_redirect::PolicyExtension,
+                crate::follow_redirect::UriAndPolicyExtensions,
             >,
             L,
         >,
@@ -486,7 +486,7 @@ impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
         Stack<
             crate::follow_redirect::FollowRedirectLayer<
                 crate::follow_redirect::policy::Standard,
-                crate::follow_redirect::PolicyExtension,
+                crate::follow_redirect::UriAndPolicyExtensions,
             >,
             L,
         >,
