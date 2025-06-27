@@ -302,10 +302,7 @@ where
 }
 
 /// Called on each new response, can be used for example to add [`http::Extensions`]
-trait ResponseHandler<ReqBody, ResBody, S, P>: Sized
-where
-    S: Service<Request<ReqBody>>,
-{
+trait ResponseHandler<ReqBody, ResBody, S, P> {
     fn on_response(res: &mut Response<ResBody>, req: &RedirectingRequest<S, ReqBody, P>);
 }
 
@@ -313,10 +310,7 @@ where
 #[derive(Default, Clone, Copy)]
 pub struct UriExtension {}
 
-impl<ReqBody, ResBody, S, P> ResponseHandler<ReqBody, ResBody, S, P> for UriExtension
-where
-    S: Service<Request<ReqBody>>,
-{
+impl<ReqBody, ResBody, S, P> ResponseHandler<ReqBody, ResBody, S, P> for UriExtension {
     #[inline]
     fn on_response(res: &mut Response<ResBody>, req: &RedirectingRequest<S, ReqBody, P>) {
         res.extensions_mut().insert(RequestUri(req.uri.clone()));
@@ -329,7 +323,6 @@ pub struct UriAndPolicyExtensions {}
 
 impl<ReqBody, ResBody, S, P> ResponseHandler<ReqBody, ResBody, S, P> for UriAndPolicyExtensions
 where
-    S: Service<Request<ReqBody>>,
     P: Clone + Send + Sync + 'static,
 {
     #[inline]
