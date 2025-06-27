@@ -157,14 +157,15 @@ pub trait ServiceExt {
     #[cfg(feature = "follow-redirect")]
     fn follow_redirects_extension(
         self,
-    ) -> crate::follow_redirect::extension::FollowRedirectExtension<
+    ) -> crate::follow_redirect::FollowRedirect<
         Self,
         crate::follow_redirect::policy::Standard,
+        crate::follow_redirect::PolicyExtension,
     >
     where
         Self: Sized,
     {
-        crate::follow_redirect::extension::FollowRedirectExtension::new(self)
+        crate::follow_redirect::FollowRedirect::with_extension(self)
     }
 
     /// Mark headers as [sensitive] on both requests and responses.

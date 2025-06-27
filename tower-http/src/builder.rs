@@ -161,19 +161,20 @@ pub trait ServiceBuilderExt<L>: sealed::Sealed<L> + Sized {
     >;
 
     /// Follow redirect responses using the [`Standard`] policy,
-    /// storing it as an extension
+    /// storing it as an extension.
     ///
-    /// See [`tower_http::follow_redirect::extension`] for more details.
+    /// See [`tower_http::follow_redirect`] for more details.
     ///
-    /// [`tower_http::follow_redirect::extension`]: crate::follow_redirect::extension
+    /// [`tower_http::follow_redirect`]: crate::follow_redirect
     /// [`Standard`]: crate::follow_redirect::policy::Standard
     #[cfg(feature = "follow-redirect")]
     fn follow_redirects_extension(
         self,
     ) -> ServiceBuilder<
         Stack<
-            crate::follow_redirect::extension::FollowRedirectExtensionLayer<
+            crate::follow_redirect::FollowRedirectLayer<
                 crate::follow_redirect::policy::Standard,
+                crate::follow_redirect::PolicyExtension,
             >,
             L,
         >,
@@ -483,13 +484,18 @@ impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
         self,
     ) -> ServiceBuilder<
         Stack<
-            crate::follow_redirect::extension::FollowRedirectExtensionLayer<
+            crate::follow_redirect::FollowRedirectLayer<
                 crate::follow_redirect::policy::Standard,
+                crate::follow_redirect::PolicyExtension,
             >,
             L,
         >,
     > {
-        self.layer(crate::follow_redirect::extension::FollowRedirectExtensionLayer::new())
+        self.layer(
+            crate::follow_redirect::FollowRedirectLayer::with_policy_extension(
+                crate::follow_redirect::policy::Standard::default(),
+            ),
+        )
     }
 
     #[cfg(feature = "sensitive-headers")]

@@ -92,7 +92,6 @@
 //! # }
 //! ```
 
-pub mod extension;
 pub mod policy;
 
 use self::policy::{Action, Attempt, Policy, Standard};
@@ -121,8 +120,9 @@ use tower_service::Service;
 ///
 /// See the [module docs](self) for more details.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct FollowRedirectLayer<P = Standard> {
+pub struct FollowRedirectLayer<P = Standard, CB = NoOp> {
     policy: P,
+    callback: CB,
 }
 
 impl FollowRedirectLayer {
@@ -135,19 +135,37 @@ impl FollowRedirectLayer {
 impl<P> FollowRedirectLayer<P> {
     /// Create a new [`FollowRedirectLayer`] with the given redirection [`Policy`].
     pub fn with_policy(policy: P) -> Self {
-        Self { policy }
+        Self {
+            policy,
+            callback: NoOp::default(),
+        }
     }
 }
 
-impl<S, P> Layer<S> for FollowRedirectLayer<P>
+impl<P> FollowRedirectLayer<P, PolicyExtension>
+where
+    P: Send + Sync + 'static,
+{
+    /// Create a new [`FollowRedirectLayer`] with the given redirection [`Policy`],
+    /// that adds a [`FollowedPolicy`] extension.
+    pub fn with_policy_extension(policy: P) -> Self {
+        Self {
+            policy,
+            callback: PolicyExtension::default(),
+        }
+    }
+}
+
+impl<S, P, CB> Layer<S> for FollowRedirectLayer<P, CB>
 where
     S: Clone,
     P: Clone,
+    CB: Copy,
 {
-    type Service = FollowRedirect<S, P>;
+    type Service = FollowRedirect<S, P, CB>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        FollowRedirect::with_policy(inner, self.policy.clone())
+        FollowRedirect::with_policy_callback(inner, self.policy.clone(), self.callback)
     }
 }
 
@@ -155,9 +173,10 @@ where
 ///
 /// See the [module docs](self) for more details.
 #[derive(Clone, Copy, Debug)]
-pub struct FollowRedirect<S, P = Standard> {
+pub struct FollowRedirect<S, P = Standard, CB = NoOp> {
     inner: S,
     policy: P,
+    callback: CB,
 }
 
 impl<S> FollowRedirect<S> {
@@ -174,13 +193,33 @@ impl<S> FollowRedirect<S> {
     }
 }
 
+impl<S> FollowRedirect<S, Standard, PolicyExtension> {
+    /// Create a new [`FollowRedirect`] with a [`Standard`] redirection policy,
+    /// that inserts the [`FollowedPolicy`] extension.
+    pub fn with_extension(inner: S) -> Self {
+        Self::with_policy_callback(inner, Standard::default(), PolicyExtension::default())
+    }
+
+    /// Returns a new [`Layer`] that wraps services with a `FollowRedirect` middleware
+    /// that inserts the [`FollowedPolicy`] extension.
+    ///
+    /// [`Layer`]: tower_layer::Layer
+    pub fn layer_with_extension() -> FollowRedirectLayer<Standard, PolicyExtension> {
+        FollowRedirectLayer::with_policy_extension(Standard::default())
+    }
+}
+
 impl<S, P> FollowRedirect<S, P>
 where
     P: Clone,
 {
     /// Create a new [`FollowRedirect`] with the given redirection [`Policy`].
     pub fn with_policy(inner: S, policy: P) -> Self {
-        FollowRedirect { inner, policy }
+        FollowRedirect {
+            inner,
+            policy,
+            callback: NoOp::default(),
+        }
     }
 
     /// Returns a new [`Layer`] that wraps services with a `FollowRedirect` middleware
@@ -190,19 +229,74 @@ where
     pub fn layer_with_policy(policy: P) -> FollowRedirectLayer<P> {
         FollowRedirectLayer::with_policy(policy)
     }
+}
+
+impl<S, P, CB> FollowRedirect<S, P, CB>
+where
+    P: Clone,
+{
+    /// Create a new [`FollowRedirect`] with the given redirection [`Policy`] and [`ResponseCallback`].
+    fn with_policy_callback(inner: S, policy: P, callback: CB) -> Self {
+        FollowRedirect {
+            inner,
+            policy,
+            callback,
+        }
+    }
 
     define_inner_service_accessors!();
 }
 
-impl<ReqBody, ResBody, S, P> Service<Request<ReqBody>> for FollowRedirect<S, P>
+/// Called on each new response, can be used for example to add [`http::Extensions`]
+trait ResponseCallback<ReqBody, ResBody, S, P>: Sized
+where
+    S: Service<Request<ReqBody>>,
+{
+    fn handle(res: &mut Response<ResBody>, req: &RedirectingRequest<S, ReqBody, P>);
+}
+
+/// Default behavior: doesn't do anything
+#[derive(Default, Clone, Copy)]
+pub struct NoOp {}
+
+impl<ReqBody, ResBody, S, P> ResponseCallback<ReqBody, ResBody, S, P> for NoOp
+where
+    S: Service<Request<ReqBody>>,
+{
+    fn handle(_res: &mut Response<ResBody>, _req: &RedirectingRequest<S, ReqBody, P>) {}
+}
+
+/// Response [`Extensions`][http::Extensions] value that contains the redirect [`Policy`] that
+/// was run before the last request of the redirect chain by a [`FollowRedirectExtension`] middleware.
+#[derive(Clone)]
+pub struct FollowedPolicy<P>(pub P);
+
+/// Adds a [`FollowedPolicy`] extension to the response
+
+#[derive(Default, Clone, Copy)]
+pub struct PolicyExtension {}
+
+impl<ReqBody, ResBody, S, P> ResponseCallback<ReqBody, ResBody, S, P> for PolicyExtension
+where
+    S: Service<Request<ReqBody>>,
+    P: Clone + Send + Sync + 'static,
+{
+    fn handle(res: &mut Response<ResBody>, req: &RedirectingRequest<S, ReqBody, P>) {
+        res.extensions_mut()
+            .insert(FollowedPolicy(req.policy.clone()));
+    }
+}
+
+impl<ReqBody, ResBody, S, P, CB> Service<Request<ReqBody>> for FollowRedirect<S, P, CB>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>> + Clone,
     ReqBody: Body + Default,
     P: Policy<ReqBody, S::Error> + Clone,
+    CB: ResponseCallback<ReqBody, ResBody, S, P> + Copy,
 {
     type Response = Response<ResBody>;
     type Error = S::Error;
-    type Future = ResponseFuture<S, ReqBody, P>;
+    type Future = ResponseFuture<S, ReqBody, P, CB>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx)
@@ -218,6 +312,7 @@ where
         ResponseFuture {
             future: Either::Left(request.service.call(req)),
             request,
+            callback: self.callback,
         }
     }
 }
@@ -225,27 +320,31 @@ where
 pin_project! {
     /// Response future for [`FollowRedirect`].
     #[derive(Debug)]
-    pub struct ResponseFuture<S, B, P>
+    pub struct ResponseFuture<S, B, P, CB>
     where
         S: Service<Request<B>>,
     {
         #[pin]
         future: Either<S::Future, Oneshot<S, Request<B>>>,
-        request: RedirectingRequest<S, B, P>
+        request: RedirectingRequest<S, B, P>,
+        callback: CB
     }
 }
 
-impl<S, ReqBody, ResBody, P> Future for ResponseFuture<S, ReqBody, P>
+impl<S, ReqBody, ResBody, P, CB> Future for ResponseFuture<S, ReqBody, P, CB>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>> + Clone,
     ReqBody: Body + Default,
     P: Policy<ReqBody, S::Error>,
+    CB: ResponseCallback<ReqBody, ResBody, S, P>,
 {
     type Output = Result<Response<ResBody>, S::Error>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut this = self.project();
         let mut res = ready!(this.future.as_mut().poll(cx)?);
+        CB::handle(&mut res, &this.request);
+
         match this.request.handle_response(&mut res) {
             Ok(Some(pending)) => {
                 this.future.set(Either::Right(pending));
