@@ -320,9 +320,9 @@ impl<F> ServeDir<F> {
                         inner: future::call_fallback(fallback, req),
                     };
                 }
-            } else {
-                return ResponseFuture::method_not_allowed();
             }
+
+            return ResponseFuture::method_not_allowed();
         }
 
         // `ServeDir` doesn't care about the request body but the fallback might. So move out the
