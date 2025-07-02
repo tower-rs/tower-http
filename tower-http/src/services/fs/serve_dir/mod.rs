@@ -82,6 +82,22 @@ impl ServeDir<DefaultServeDirFallback> {
         }
     }
 
+    pub fn new_absolute<P>(path: P) -> Self
+    where
+        P: AsRef<Path>,
+    {
+        Self {
+            base: PathBuf::from(path.as_ref()),
+            buf_chunk_size: DEFAULT_CAPACITY,
+            precompressed_variants: None,
+            variant: ServeVariant::Directory {
+                append_index_html_on_directories: true,
+            },
+            fallback: None,
+            call_fallback_on_method_not_allowed: false,
+        }
+    }
+
     pub(crate) fn new_single_file<P>(path: P, mime: HeaderValue) -> Self
     where
         P: AsRef<Path>,
