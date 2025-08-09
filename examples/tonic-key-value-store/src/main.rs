@@ -1,15 +1,8 @@
-fn main() {
-    eprint!("this example has not yet been updated to hyper 1.0");
-}
-
-/*
 use bytes::Bytes;
 use clap::Parser;
 use futures_util::StreamExt;
-use hyper::{
-    body::HttpBody,
-    header::{self, HeaderValue},
-};
+use http::{header, HeaderValue};
+use http_body::Body as HttpBody;
 use proto::{
     key_value_store_client::KeyValueStoreClient, key_value_store_server, GetReply, GetRequest,
     SetReply, SetRequest, SubscribeReply, SubscribeRequest,
@@ -31,7 +24,7 @@ use tokio_stream::{
     wrappers::{BroadcastStream, TcpListenerStream},
     Stream,
 };
-use tonic::{async_trait, body::BoxBody, transport::Channel, Code, Request, Response, Status};
+use tonic::{async_trait, body::Body, transport::Channel, Code, Request, Response, Status};
 use tower::{BoxError, Service, ServiceBuilder};
 use tower_http::{
     classify::{GrpcCode, GrpcErrorsAsFailures, SharedClassifier},
@@ -268,10 +261,8 @@ async fn make_client(
 ) -> Result<
     KeyValueStoreClient<
         impl Service<
-                hyper::Request<BoxBody>,
-                Response = hyper::Response<
-                    impl HttpBody<Data = Bytes, Error = impl Into<BoxError>>,
-                >,
+                http::Request<Body>,
+                Response = http::Response<impl HttpBody<Data = Bytes, Error = impl Into<BoxError>>>,
                 Error = impl Into<BoxError>,
             > + Clone
             + Send
@@ -375,4 +366,3 @@ mod tests {
         addr
     }
 }
-*/

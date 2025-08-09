@@ -8,12 +8,14 @@ license = "MIT"
 
 [dependencies]
 bytes = "1"
-hyper = { version = "0.14.4", features = ["full"] }
-prost = "0.11"
+http = "1"
+http-body = "1"
+prost = "0.14"
 tokio = { version = "1.2.0", features = ["full"] }
 futures-util = { version = "0.3", default-features = false }
 tokio-stream = { version = "0.1", features = ["sync", "net"] }
-tonic = "0.9"
+tonic = "0.14"
+tonic-prost = "0.14"
 tower = { version = "0.5", features = ["full"] }
 tower-http = { path = "../../tower-http", features = ["full"] }
 tracing = "0.1"
@@ -21,4 +23,4 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 clap = { version = "4.3.16", features = ["derive"] }
 
 [build-dependencies]
-tonic-build = "0.9"
+tonic-prost-build = "0.14"
