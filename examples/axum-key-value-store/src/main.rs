@@ -25,7 +25,7 @@ use tower_http::{
 #[derive(Debug, Parser)]
 struct Config {
     /// The port to listen on
-    #[clap(short = 'p', long, default_value = "3000")]
+    #[arg(short = 'p', long, default_value = "3000")]
     port: u16,
 }
 
