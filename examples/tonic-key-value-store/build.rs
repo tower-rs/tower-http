@@ -1,5 +1,5 @@
 fn main() {
-    tonic_build::configure()
-        .compile(&["key_value_store.proto"], &["proto"])
+    tonic_prost_build::configure()
+        .compile_protos(&["key_value_store.proto"], &["proto"])
         .unwrap();
 }
