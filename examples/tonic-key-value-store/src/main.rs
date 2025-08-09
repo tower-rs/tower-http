@@ -43,10 +43,10 @@ mod proto {
 #[derive(Debug, Parser)]
 struct Config {
     /// The port to listen on
-    #[clap(short = 'p', long, default_value = "3000")]
+    #[arg(short = 'p', long, default_value = "3000")]
     port: u16,
 
-    #[clap(subcommand)]
+    #[command(subcommand)]
     command: Command,
 }
 
@@ -56,14 +56,14 @@ enum Command {
     Server,
     /// Get the value at some key
     Get {
-        #[clap(short = 'k', long)]
+        #[arg(short = 'k', long)]
         key: String,
     },
     /// Set a value at some key.
     ///
     /// The value will be read from stdin.
     Set {
-        #[structopt(short = 'k', long)]
+        #[arg(short = 'k', long)]
         key: String,
     },
     /// Subscribe to a stream of inserted keys
