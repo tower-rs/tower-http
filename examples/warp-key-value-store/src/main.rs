@@ -1,21 +1,16 @@
-fn main() {
-    eprint!("this example has not yet been updated to hyper 1.0");
-}
-
-/*
 use bytes::Bytes;
 use clap::Parser;
 use hyper::{
-    body::HttpBody,
+    body::Body as HttpBody,
     header::{self, HeaderValue},
-    Body, Response, Server, StatusCode,
+    Response, StatusCode,
 };
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::net::TcpListener;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
-use tower::{make::Shared, ServiceBuilder};
+use tokio::net::TcpListener;
+use tower::ServiceBuilder;
 use tower_http::{
     add_extension::AddExtensionLayer,
     compression::CompressionLayer,
@@ -50,7 +45,7 @@ async fn main() {
 
     // Create a `TcpListener`
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
-    let listener = TcpListener::bind(addr).unwrap();
+    let listener = TcpListener::bind(addr).await.unwrap();
 
     // Run our service
     serve_forever(listener).await.expect("server error");
@@ -59,7 +54,7 @@ async fn main() {
 // Run our service with the given `TcpListener`.
 //
 // We make this a separate function so we're able to call it from tests.
-async fn serve_forever(listener: TcpListener) -> Result<(), hyper::Error> {
+async fn serve_forever(listener: TcpListener) -> std::io::Result<()> {
     // Build our database for holding the key/value pairs
     let state = State {
         db: Arc::new(RwLock::new(HashMap::new())),
@@ -111,12 +106,22 @@ async fn serve_forever(listener: TcpListener) -> Result<(), hyper::Error> {
 
     tracing::info!("Listening on {}", addr);
 
-    Server::from_tcp(listener)
-        .unwrap()
-        .serve(Shared::new(service))
-        .await?;
+    let service = hyper_util::service::TowerToHyperService::new(service);
 
-    Ok(())
+    loop {
+        let (tcp, _) = listener.accept().await?;
+        let io = hyper_util::rt::TokioIo::new(tcp);
+        let service = service.clone();
+
+        tokio::spawn(async move {
+            if let Err(err) = hyper::server::conn::http1::Builder::new()
+                .serve_connection(io, service)
+                .await
+            {
+                tracing::error!(?err, "Error occurred on serving connection");
+            }
+        });
+    }
 }
 
 // Filter for looking up a key
@@ -128,11 +133,11 @@ pub fn get() -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
             let state = state.db.read().unwrap();
 
             if let Some(value) = state.get(&path).cloned() {
-                Response::new(Body::from(value))
+                Response::new(value)
             } else {
                 Response::builder()
                     .status(StatusCode::NOT_FOUND)
-                    .body(Body::empty())
+                    .body(Bytes::new())
                     .unwrap()
             }
         })
@@ -149,7 +154,7 @@ pub fn set() -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
 
             state.insert(path, value);
 
-            Response::new(Body::empty())
+            Response::new(Bytes::new())
         })
 }
 
@@ -179,11 +184,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::TcpListener;
+    use tokio::net::TcpListener;
 
     #[tokio::test]
     async fn get_and_set_value() {
-        let addr = run_in_background();
+        let addr = run_in_background().await;
 
         let client = reqwest::Client::builder().gzip(true).build().unwrap();
 
@@ -213,8 +218,10 @@ mod tests {
     }
 
     // Run our service in a background task.
-    fn run_in_background() -> SocketAddr {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("Could not bind ephemeral socket");
+    async fn run_in_background() -> SocketAddr {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("Could not bind ephemeral socket");
         let addr = listener.local_addr().unwrap();
 
         // just for debugging
@@ -227,4 +234,3 @@ mod tests {
         addr
     }
 }
-*/
