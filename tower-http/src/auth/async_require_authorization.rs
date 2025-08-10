@@ -17,7 +17,7 @@
 //!
 //! impl<B> AsyncAuthorizeRequest<B> for MyAuth
 //! where
-//!     B: Send + Sync + 'static,
+//!     B: Send + 'static,
 //! {
 //!     type RequestBody = B;
 //!     type ResponseBody = Full<Bytes>;
