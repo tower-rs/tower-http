@@ -27,15 +27,12 @@ impl TimeoutLayer {
     /// To customize the response status code, use the `with_status_code` method.
     #[deprecated(since = "0.6.7", note = "Use `TimeoutLayer::with_status_code` instead")]
     pub fn new(timeout: Duration) -> Self {
-        TimeoutLayer {
-            timeout,
-            status_code: StatusCode::REQUEST_TIMEOUT,
-        }
+        Self::with_status_code(StatusCode::REQUEST_TIMEOUT, timeout)
     }
 
-    /// Creates a new [`TimeoutLayer`] with a custom status code for the timeout response.
-    pub fn with_status_code(timeout: Duration, status_code: StatusCode) -> Self {
-        TimeoutLayer {
+    /// Creates a new [`TimeoutLayer`] with the specified status code for the timeout response.
+    pub fn with_status_code(status_code: StatusCode, timeout: Duration) -> Self {
+        Self {
             timeout,
             status_code,
         }
@@ -46,7 +43,7 @@ impl<S> Layer<S> for TimeoutLayer {
     type Service = Timeout<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        Timeout::with_status_code(inner, self.timeout, self.status_code)
+        Timeout::with_status_code(inner, self.status_code, self.timeout)
     }
 }
 
@@ -67,15 +64,11 @@ impl<S> Timeout<S> {
     /// To customize the response status code, use the `with_status_code` method.
     #[deprecated(since = "0.6.7", note = "Use `Timeout::with_status_code` instead")]
     pub fn new(inner: S, timeout: Duration) -> Self {
-        Self {
-            inner,
-            timeout,
-            status_code: StatusCode::REQUEST_TIMEOUT,
-        }
+        Self::with_status_code(inner, StatusCode::REQUEST_TIMEOUT, timeout)
     }
 
-    /// Creates a new [`Timeout`] with a custom status code for the timeout response.
-    pub fn with_status_code(inner: S, timeout: Duration, status_code: StatusCode) -> Self {
+    /// Creates a new [`Timeout`] with the specified status code for the timeout response.
+    pub fn with_status_code(inner: S, status_code: StatusCode, timeout: Duration) -> Self {
         Self {
             inner,
             timeout,
@@ -93,12 +86,12 @@ impl<S> Timeout<S> {
         note = "Use `Timeout::layer_with_status_code` instead"
     )]
     pub fn layer(timeout: Duration) -> TimeoutLayer {
-        TimeoutLayer::with_status_code(timeout, StatusCode::REQUEST_TIMEOUT)
+        TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, timeout)
     }
 
-    /// Returns a new [`Layer`] that wraps services with a `Timeout` middleware with a custom status code.
-    pub fn layer_with_status_code(timeout: Duration, status_code: StatusCode) -> TimeoutLayer {
-        TimeoutLayer::with_status_code(timeout, status_code)
+    /// Returns a new [`Layer`] that wraps services with a `Timeout` middleware with the specified status code.
+    pub fn layer_with_status_code(status_code: StatusCode, timeout: Duration) -> TimeoutLayer {
+        TimeoutLayer::with_status_code(status_code, timeout)
     }
 }
 
@@ -324,8 +317,8 @@ mod tests {
     async fn request_completes_within_timeout() {
         let mut service = ServiceBuilder::new()
             .layer(TimeoutLayer::with_status_code(
-                Duration::from_secs(1),
                 StatusCode::GATEWAY_TIMEOUT,
+                Duration::from_secs(1),
             ))
             .service_fn(fast_handler);
 
@@ -339,8 +332,8 @@ mod tests {
     async fn timeout_middleware_with_custom_status_code() {
         let timeout_service = Timeout::with_status_code(
             tower::service_fn(slow_handler),
-            Duration::from_millis(10),
             StatusCode::REQUEST_TIMEOUT,
+            Duration::from_millis(10),
         );
 
         let mut service = ServiceBuilder::new().service(timeout_service);
@@ -355,8 +348,8 @@ mod tests {
     async fn timeout_response_has_empty_body() {
         let mut service = ServiceBuilder::new()
             .layer(TimeoutLayer::with_status_code(
-                Duration::from_millis(10),
                 StatusCode::GATEWAY_TIMEOUT,
+                Duration::from_millis(10),
             ))
             .service_fn(slow_handler);
 

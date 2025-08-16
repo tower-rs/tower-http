@@ -76,7 +76,7 @@ fn app() -> Router {
         )
         .sensitive_response_headers(sensitive_headers)
         // Set a timeout
-        .layer(TimeoutLayer::with_status_code(Duration::from_secs(10), StatusCode::REQUEST_TIMEOUT))
+        .layer(TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, Duration::from_secs(10)))
         // Compress responses
         .compression()
         // Set a `Content-Type` if there isn't one already.

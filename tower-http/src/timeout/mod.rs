@@ -10,7 +10,7 @@
 //! what you want as returning errors will terminate the connection without sending a response.
 //!
 //! This middleware won't change the error type and instead returns a response with an empty body
-//! and a custom status code. That means if your service's error type is [`Infallible`] it will
+//! and the specified status code. That means if your service's error type is [`Infallible`], it will
 //! still be [`Infallible`] after applying this middleware.
 //!
 //! # Example
@@ -31,8 +31,8 @@
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let svc = ServiceBuilder::new()
-//!     // Timeout requests after 30 seconds with a custom status code
-//!     .layer(TimeoutLayer::with_status_code(Duration::from_secs(30), StatusCode::REQUEST_TIMEOUT))
+//!     // Timeout requests after 30 seconds with the specified status code
+//!     .layer(TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, Duration::from_secs(30)))
 //!     .service_fn(handle);
 //! # Ok(())
 //! # }
