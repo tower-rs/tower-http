@@ -1,5 +1,4 @@
 fn main() {
-    tonic_prost_build::configure()
-        .compile_protos(&["key_value_store.proto"], &["proto"])
-        .unwrap();
+    let fds = protox::compile(["key_value_store.proto"], ["proto"]).unwrap();
+    tonic_prost_build::compile_fds(fds).unwrap();
 }
