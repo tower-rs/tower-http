@@ -57,6 +57,8 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@1.64
+    - name: Remove the example crates to exclude effects to dependencies from them
+      run: rm -r ./examples/* && cargo new --lib --edition 2021 examples/dummy
     - run: cargo update -p tokio --precise 1.38.1
     - run: cargo update -p tokio-util --precise 0.7.11
     - run: cargo update -p flate2 --precise 1.0.35

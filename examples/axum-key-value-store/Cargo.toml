@@ -12,5 +12,8 @@ tower = { version = "0.5", features = ["full"] }
 tower-http = { path = "../../tower-http", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
-axum = "0.7"
+axum = "0.8"
 clap = { version = "4.4.4", features = ["derive"] }
+
+[dev-dependencies]
+http-body-util = "0.1"

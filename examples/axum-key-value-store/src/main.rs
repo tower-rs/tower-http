@@ -87,7 +87,7 @@ fn app() -> Router {
 
     // Build route service
     Router::new()
-        .route("/:key", get(get_key).post(set_key))
+        .route("/{key}", get(get_key).post(set_key))
         .layer(middleware)
         .with_state(state)
 }
@@ -109,3 +109,37 @@ async fn set_key(Path(path): Path<String>, state: State<AppState>, value: Bytes)
 
 // See https://github.com/tokio-rs/axum/blob/main/examples/testing/src/main.rs for an example of
 // how to test axum apps
+#[cfg(test)]
+mod tests {
+    use axum::{body::Body, http::Request};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn get_and_set_value() -> Result<(), Box<dyn std::error::Error>> {
+        let app = app();
+
+        let response = app
+            .clone()
+            .oneshot(Request::get("/foo").body(Body::empty())?)
+            .await?;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+        let response = app
+            .clone()
+            .oneshot(Request::post("/foo").body(Body::from("Hello, World!"))?)
+            .await?;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let response = app
+            .oneshot(Request::get("/foo").body(Body::empty())?)
+            .await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response.into_body().collect().await?.to_bytes();
+        assert_eq!(body.as_ref(), b"Hello, World!");
+
+        Ok(())
+    }
+}
