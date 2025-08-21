@@ -23,4 +23,5 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 clap = { version = "4.3.16", features = ["derive"] }
 
 [build-dependencies]
+protox = "0.9"
 tonic-prost-build = "0.14"
