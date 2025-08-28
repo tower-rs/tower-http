@@ -10,14 +10,14 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - uses: dtolnay/rust-toolchain@stable
     - run: cargo check --workspace --all-features --all-targets
 
   check-docs:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - uses: dtolnay/rust-toolchain@stable
     - name: cargo doc
       working-directory: ${{ matrix.subcrate }}
@@ -28,7 +28,7 @@ jobs:
   cargo-hack:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - uses: dtolnay/rust-toolchain@stable
     - uses: taiki-e/install-action@cargo-hack
     - name: cargo hack check
@@ -45,7 +45,7 @@ jobs:
       matrix:
         rust: [stable, beta, nightly]
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - uses: dtolnay/rust-toolchain@master
       with:
         toolchain: ${{ matrix.rust }}
@@ -55,7 +55,7 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - uses: dtolnay/rust-toolchain@1.64
     - name: Remove the example crates to exclude effects to dependencies from them
       run: rm -r ./examples/* && cargo new --lib --edition 2021 examples/dummy
@@ -71,7 +71,7 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - uses: dtolnay/rust-toolchain@stable
       with:
         components: rustfmt
@@ -87,7 +87,7 @@ jobs:
         - advisories
         - bans licenses sources
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - uses: EmbarkStudios/cargo-deny-action@v1
       with:
         manifest-path: tower-http/Cargo.toml
@@ -96,7 +96,7 @@ jobs:
   cargo-public-api-crates:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     # Pinned version due to failing `cargo-public-api-crates`.
     - uses: dtolnay/rust-toolchain@master
       with:
