@@ -1,7 +1,7 @@
 //! Middleware that applies a timeout to requests.
 //!
-//! If the request does not complete within the specified timeout it will be aborted and a `408
-//! Request Timeout` response will be sent.
+//! If the request does not complete within the specified timeout it will be aborted and a `503
+//! Service Unavailable` response will be sent.
 //!
 //! # Differences from `tower::timeout`
 //!
@@ -9,7 +9,7 @@
 //! it changes the error type to [`BoxError`](tower::BoxError). For HTTP services that is rarely
 //! what you want as returning errors will terminate the connection without sending a response.
 //!
-//! This middleware won't change the error type and instead return a `408 Request Timeout`
+//! This middleware won't change the error type and instead return a `503 Service Unavailable`
 //! response. That means if your service's error type is [`Infallible`] it will still be
 //! [`Infallible`] after applying this middleware.
 //!
