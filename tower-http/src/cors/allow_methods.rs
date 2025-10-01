@@ -1,4 +1,4 @@
-use std::{fmt};
+use std::fmt;
 
 use http::{
     header::{self, HeaderName, HeaderValue},

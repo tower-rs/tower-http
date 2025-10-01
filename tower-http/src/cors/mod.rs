@@ -818,4 +818,3 @@ pub fn preflight_request_headers() -> impl Iterator<Item = HeaderName> {
         header::ACCESS_CONTROL_REQUEST_HEADERS,
     ])
 }
-
