@@ -1,4 +1,4 @@
-use std::{array, fmt};
+use std::{fmt};
 
 use http::{
     header::{self, HeaderName, HeaderValue},
@@ -69,16 +69,12 @@ impl From<Any> for ExposeHeaders {
     }
 }
 
-impl<const N: usize> From<[HeaderName; N]> for ExposeHeaders {
-    fn from(arr: [HeaderName; N]) -> Self {
-        #[allow(deprecated)] // Can be changed when MSRV >= 1.53
-        Self::list(array::IntoIter::new(arr))
-    }
-}
-
-impl From<Vec<HeaderName>> for ExposeHeaders {
-    fn from(vec: Vec<HeaderName>) -> Self {
-        Self::list(vec)
+impl<I> From<I> for ExposeHeaders
+where
+    I: IntoIterator<Item = HeaderName>,
+{
+    fn from(iter: I) -> Self {
+        Self::list(iter)
     }
 }
 
