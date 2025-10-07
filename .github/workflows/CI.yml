@@ -18,11 +18,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v5
-    - uses: dtolnay/rust-toolchain@stable
+    - uses: dtolnay/rust-toolchain@nightly
     - name: cargo doc
       working-directory: ${{ matrix.subcrate }}
       env:
-        RUSTDOCFLAGS: "-D rustdoc::broken_intra_doc_links"
+        RUSTDOCFLAGS: "-D rustdoc::broken_intra_doc_links --cfg docsrs"
       run: cargo doc --all-features --no-deps
 
   cargo-hack:
