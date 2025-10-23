@@ -411,7 +411,10 @@ where
             .try_call(req)
             .map(|result: Result<_, _>| -> Result<_, Infallible> {
                 let response = result.unwrap_or_else(|err| {
+                    #[cfg(feature = "tracing")]
                     tracing::error!(error = %err, "Failed to read file");
+                    #[cfg(not(feature = "tracing"))]
+                    let _ = err;
 
                     let body = ResponseBody::new(UnsyncBoxBody::new(
                         Empty::new().map_err(|err| match err {}).boxed_unsync(),
