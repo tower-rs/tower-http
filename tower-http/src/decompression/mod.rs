@@ -230,4 +230,28 @@ mod tests {
         let _: Response<DecompressionBody<_>> =
             client.ready().await.unwrap().call(req).await.unwrap();
     }
+
+    #[tokio::test]
+    async fn decompress_empty() {
+        let mut client = Decompression::new(Compression::new(service_fn(handle_empty)));
+
+        let req = Request::builder()
+            .header("accept-encoding", "gzip")
+            .body(Body::empty())
+            .unwrap();
+        let res = client.ready().await.unwrap().call(req).await.unwrap();
+
+        let body = res.into_body();
+        let decompressed_data =
+            String::from_utf8(body.collect().await.unwrap().to_bytes().to_vec()).unwrap();
+
+        assert_eq!(decompressed_data, "");
+    }
+
+    async fn handle_empty(_req: Request<Body>) -> Result<Response<Body>, Infallible> {
+        let mut res = Response::new(Body::empty());
+        res.headers_mut()
+            .insert("content-encoding", "gzip".parse().unwrap());
+        Ok(res)
+    }
 }
