@@ -61,10 +61,10 @@ jobs:
       run: rm -r ./examples/* && cargo new --lib --edition 2021 examples/dummy
     - run: cargo update -p tokio --precise 1.38.1
     - run: cargo update -p tokio-util --precise 0.7.11
-    - run: cargo update -p flate2 --precise 1.0.35
     - run: cargo update -p once_cell --precise 1.20.3
     - run: cargo update -p tracing-core --precise 0.1.33
     - run: cargo update -p async-compression --precise 0.4.23
+    - run: cargo update -p flate2 --precise 1.0.35
     - run: cargo check -p tower-http --all-features
 
   style:
@@ -100,11 +100,11 @@ jobs:
     # Pinned version due to failing `cargo-public-api-crates`.
     - uses: dtolnay/rust-toolchain@master
       with:
-        toolchain: nightly-2024-06-06
+        toolchain: nightly-2025-11-23
     - uses: Swatinem/rust-cache@v2
     - name: Install cargo-public-api-crates
       run: |
-        cargo install --git https://github.com/davidpdrsn/cargo-public-api-crates
+        cargo install --git https://github.com/jplatte/cargo-public-api-crates
     - name: Build rustdoc
       run: |
         cargo rustdoc --all-features --manifest-path tower-http/Cargo.toml -- -Z unstable-options --output-format json
