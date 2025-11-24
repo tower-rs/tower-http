@@ -7,13 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
+# 0.6.7
+
+## Added
+
+- `TimeoutLayer::with_status_code(status)` to define the status code returned
+  when timeout is reached. ([#599])
+
+## Deprecated
+
+- `auth::require_authorization` is too basic for real-world. ([#591])
+- `TimeoutLayer::new()` should be replaced with
+  `TimeoutLayer::with_status_code()`. (Previously was
+  `StatusCode::REQUEST_TIMEOUT`) ([#599])
+
 ## Fixed
 
 - `on_eos` is now called even for successful responses. ([#580])
 - `ServeDir`: call fallback when filename is invalid ([#586])
+- `decompression` will not fail when body is empty ([#618])
 
 [#580]: https://github.com/tower-rs/tower-http/pull/580
 [#586]: https://github.com/tower-rs/tower-http/pull/586
+[#591]: https://github.com/tower-rs/tower-http/pull/591
+[#599]: https://github.com/tower-rs/tower-http/pull/599
+[#618]: https://github.com/tower-rs/tower-http/pull/618
 
 # 0.6.6
 
