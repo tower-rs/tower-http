@@ -186,4 +186,36 @@ mod tests {
             .insert("content-encoding", "gzip".parse().unwrap());
         Ok(res)
     }
+
+    #[tokio::test]
+    async fn decompress_empty_with_trailers() {
+        let mut client =
+            Decompression::new(Compression::new(service_fn(handle_empty_with_trailers)));
+
+        let req = Request::builder()
+            .header("accept-encoding", "gzip")
+            .body(Body::empty())
+            .unwrap();
+        let res = client.ready().await.unwrap().call(req).await.unwrap();
+
+        let body = res.into_body();
+        let collected = body.collect().await.unwrap();
+        let trailers = collected.trailers().cloned().unwrap();
+        let decompressed_data = String::from_utf8(collected.to_bytes().to_vec()).unwrap();
+
+        assert_eq!(decompressed_data, "");
+        assert_eq!(trailers["foo"], "bar");
+    }
+
+    async fn handle_empty_with_trailers(
+        _req: Request<Body>,
+    ) -> Result<Response<WithTrailers<Body>>, Infallible> {
+        let mut trailers = HeaderMap::new();
+        trailers.insert(HeaderName::from_static("foo"), "bar".parse().unwrap());
+        let body = Body::empty().with_trailers(trailers);
+        Ok(Response::builder()
+            .header("content-encoding", "gzip")
+            .body(body)
+            .unwrap())
+    }
 }
