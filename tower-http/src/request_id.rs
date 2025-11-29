@@ -181,6 +181,7 @@ use tower_layer::Layer;
 use tower_service::Service;
 use uuid::Uuid;
 
+pub(crate) const REQUEST_ID: HeaderName = HeaderName::from_static("request-id");
 pub(crate) const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
 
 /// Trait for producing [`RequestId`]s.
@@ -241,6 +242,14 @@ impl<M> SetRequestIdLayer<M> {
         }
     }
 
+    /// Create a new `SetRequestIdLayer` that uses `request-id` as the header name.
+    pub fn request_id(make_request_id: M) -> Self
+    where
+        M: MakeRequestId,
+    {
+        SetRequestIdLayer::new(REQUEST_ID, make_request_id)
+    }
+
     /// Create a new `SetRequestIdLayer` that uses `x-request-id` as the header name.
     pub fn x_request_id(make_request_id: M) -> Self
     where
@@ -292,6 +301,14 @@ impl<S, M> SetRequestId<S, M> {
             header_name,
             make_request_id,
         }
+    }
+
+    /// Create a new `SetRequestId` that uses `request-id` as the header name.
+    pub fn request_id(inner: S, make_request_id: M) -> Self
+    where
+        M: MakeRequestId,
+    {
+        Self::new(inner, REQUEST_ID, make_request_id)
     }
 
     /// Create a new `SetRequestId` that uses `x-request-id` as the header name.
@@ -357,6 +374,11 @@ impl PropagateRequestIdLayer {
     /// Create a new `PropagateRequestIdLayer`.
     pub fn new(header_name: HeaderName) -> Self {
         PropagateRequestIdLayer { header_name }
+    }
+
+    /// Create a new `PropagateRequestIdLayer` that uses `request-id` as the header name.
+    pub fn request_id() -> Self {
+        Self::new(REQUEST_ID)
     }
 
     /// Create a new `PropagateRequestIdLayer` that uses `x-request-id` as the header name.
