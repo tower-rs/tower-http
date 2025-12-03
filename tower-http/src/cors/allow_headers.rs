@@ -86,12 +86,15 @@ impl From<Any> for AllowHeaders {
     }
 }
 
-impl<I> From<I> for AllowHeaders
-where
-    I: IntoIterator<Item = HeaderName>,
-{
-    fn from(iter: I) -> Self {
-        Self::list(iter)
+impl<const N: usize> From<[HeaderName; N]> for AllowHeaders {
+    fn from(arr: [HeaderName; N]) -> Self {
+        Self::list(arr)
+    }
+}
+
+impl From<Vec<HeaderName>> for AllowHeaders {
+    fn from(vec: Vec<HeaderName>) -> Self {
+        Self::list(vec)
     }
 }
 

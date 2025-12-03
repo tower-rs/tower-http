@@ -69,12 +69,15 @@ impl From<Any> for ExposeHeaders {
     }
 }
 
-impl<I> From<I> for ExposeHeaders
-where
-    I: IntoIterator<Item = HeaderName>,
-{
-    fn from(iter: I) -> Self {
-        Self::list(iter)
+impl<const N: usize> From<[HeaderName; N]> for ExposeHeaders {
+    fn from(arr: [HeaderName; N]) -> Self {
+        Self::list(arr)
+    }
+}
+
+impl From<Vec<HeaderName>> for ExposeHeaders {
+    fn from(vec: Vec<HeaderName>) -> Self {
+        Self::list(vec)
     }
 }
 

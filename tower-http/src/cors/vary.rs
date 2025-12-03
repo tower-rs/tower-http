@@ -44,11 +44,14 @@ impl Default for Vary {
     }
 }
 
-impl<I> From<I> for Vary
-where
-    I: IntoIterator<Item = HeaderName>,
-{
-    fn from(iter: I) -> Self {
-        Self::list(iter)
+impl<const N: usize> From<[HeaderName; N]> for Vary {
+    fn from(arr: [HeaderName; N]) -> Self {
+        Self::list(arr)
+    }
+}
+
+impl From<Vec<HeaderName>> for Vary {
+    fn from(vec: Vec<HeaderName>) -> Self {
+        Self::list(vec)
     }
 }
