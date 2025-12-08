@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
+# 0.6.8
+
+## Fixed
+
+- Disable `multiple_members` in Gzip decoder, since HTTP context only uses one
+  member. ([#621])
+
+[#621]: https://github.com/tower-rs/tower-http/pull/621
+
 # 0.6.7
 
 ## Added
