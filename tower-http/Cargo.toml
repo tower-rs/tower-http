@@ -1,7 +1,7 @@
 [package]
 name = "tower-http"
 description = "Tower middleware and utilities for HTTP clients and servers"
-version = "0.6.6"
+version = "0.6.7"
 authors = ["Tower Maintainers <team@tower-rs.com>"]
 edition = "2018"
 license = "MIT"
@@ -124,17 +124,16 @@ rustdoc-args = ["--cfg", "docsrs"]
 [package.metadata.playground]
 features = ["full"]
 
-[package.metadata.cargo-public-api-crates]
-allowed = [
-    "bytes",
-    "http",
-    "http_body",
-    "mime",
-    "pin-project-lite",
-    "tokio",
-    "tower",
-    "tower_layer",
-    "tower_service",
-    "tracing",
-    "tracing_core",
+[package.metadata.cargo_check_external_types]
+allowed_external_types = [
+    "bytes::*",
+    "http::*",
+    "http_body::*",
+    "mime::*",
+    "tokio::*",
+    "tower::*",
+    "tower_layer::*",
+    "tower_service::*",
+    "tracing::*",
+    "tracing_core::*",
 ]
