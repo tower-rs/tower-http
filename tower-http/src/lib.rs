@@ -72,7 +72,7 @@
 //!         .layer(SetResponseHeaderLayer::overriding(CONTENT_TYPE, content_length_from_response))
 //!         // Authorize requests using a token
 //!         .layer(ValidateRequestHeaderLayer::bearer("passwordlol"))
-//!         // Accept only application/json, application/* and */* in a request's ACCEPT header
+//!         // Accept only application/json, application/* and */* in a request's Accept header
 //!         .layer(ValidateRequestHeaderLayer::accept("application/json"))
 //!         // Wrap a `Service` in our middleware stack
 //!         .service_fn(handler);
