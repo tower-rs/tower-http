@@ -60,7 +60,7 @@ jobs:
     - name: Remove the example crates to exclude effects to dependencies from them
       run: rm -r ./examples/* && cargo new --lib --edition 2021 examples/dummy
     # we could probably replace all these with the cargo MSRV resolver ...
-    - run: cargo update -p tokio --precise 1.38.1
+    - run: cargo update -p tokio --precise 1.38.1 --all-features
     - run: cargo update -p tokio-util --precise 0.7.11
     - run: cargo update -p once_cell --precise 1.20.3
     - run: cargo update -p tracing --precise 0.1.41
