@@ -59,16 +59,12 @@ jobs:
     - uses: dtolnay/rust-toolchain@1.64
     - name: Remove the example crates to exclude effects to dependencies from them
       run: rm -r ./examples/* && cargo new --lib --edition 2021 examples/dummy
-    # we could probably replace all these with the cargo MSRV resolver ...
-    - run: cargo update -p tokio --precise 1.38.1
-    - run: cargo update -p tokio-util --precise 0.7.11
-    - run: cargo update -p once_cell --precise 1.20.3
-    - run: cargo update -p tracing --precise 0.1.41
-    - run: cargo update -p tracing-subscriber --precise 0.3.19
-    - run: cargo update -p tracing-core --precise 0.1.33
-    - run: cargo update -p async-compression --precise 0.4.23
-    - run: cargo update -p flate2 --precise 1.0.35
-    - run: cargo update -p itoa --precise 1.0.15
+
+    - name: Resolve MSRV aware dependencies
+      run: cargo update
+      env:
+        CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS: fallback
+
     - run: cargo check -p tower-http --all-features
 
   style:
