@@ -329,6 +329,9 @@ pub mod timeout;
 #[cfg(feature = "normalize-path")]
 pub mod normalize_path;
 
+#[cfg(feature = "on-early-drop")]
+pub mod on_early_drop;
+
 pub mod classify;
 pub mod services;
 
