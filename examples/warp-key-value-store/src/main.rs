@@ -26,7 +26,7 @@ use warp::{Filter, Rejection, Reply};
 #[derive(Debug, Parser)]
 struct Config {
     /// The port to listen on
-    #[arg(short = 'p', long, default_value = "3000")]
+    #[arg(short = 'p', long, default_value_t = 3000)]
     port: u16,
 }
 
