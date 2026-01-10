@@ -62,6 +62,10 @@ jobs:
       run: cargo update
       env:
         CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS: fallback
+    # Apparently the MSRV resolver is buggy :(
+    # Still better to maintain fewer manual version overrides though.
+    - run: cargo update -p async-compression --precise 0.4.23
+    - run: cargo update -p flate2 --precise 1.0.35
     - uses: dtolnay/rust-toolchain@1.64
     - run: cargo check -p tower-http --all-features
 
