@@ -56,15 +56,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v6
-    - uses: dtolnay/rust-toolchain@1.64
     - name: Remove the example crates to exclude effects to dependencies from them
       run: rm -r ./examples/* && cargo new --lib --edition 2021 examples/dummy
-
     - name: Resolve MSRV aware dependencies
       run: cargo update
       env:
         CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS: fallback
-
+    - uses: dtolnay/rust-toolchain@1.64
     - run: cargo check -p tower-http --all-features
 
   style:
