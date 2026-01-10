@@ -193,14 +193,14 @@ mod tests {
         let client = reqwest::Client::builder().gzip(true).build().unwrap();
 
         let response = client
-            .get(&format!("http://{}/foo", addr))
+            .get(format!("http://{}/foo", addr))
             .send()
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
 
         let response = client
-            .post(&format!("http://{}/foo", addr))
+            .post(format!("http://{}/foo", addr))
             .body("Hello, World!")
             .send()
             .await
@@ -208,7 +208,7 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
 
         let response = client
-            .get(&format!("http://{}/foo", addr))
+            .get(format!("http://{}/foo", addr))
             .send()
             .await
             .unwrap();
