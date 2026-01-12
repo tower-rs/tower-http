@@ -19,4 +19,4 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 warp = "0.4"
 
 [dev-dependencies]
-reqwest = { version = "0.12", features = ["gzip"] }
+reqwest = { version = "0.12", default-features = false, features = ["gzip"] }
