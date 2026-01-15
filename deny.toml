@@ -1,3 +1,7 @@
+[graph]
+exclude-dev = true
+exclude-unpublished = true
+
 [advisories]
 unmaintained = "none"
 ignore = []
@@ -7,7 +11,6 @@ allow = [
    "MIT",
    "Apache-2.0",
    "BSD-3-Clause",
-   "Unicode-3.0",
 ]
 confidence-threshold = 0.8
 exceptions = [
