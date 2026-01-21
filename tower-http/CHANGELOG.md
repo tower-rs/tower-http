@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
+## Changed:
+
+- The implicit `async-compression` feature is removed (BREAKING) ([#642])
+
+[#642]: https://github.com/tower-rs/tower-http/pull/642
+
 # 0.6.8
 
 ## Fixed
