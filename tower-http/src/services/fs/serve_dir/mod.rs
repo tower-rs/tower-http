@@ -493,6 +493,12 @@ opaque_body! {
     pub type ResponseBody = UnsyncBoxBody<Bytes, io::Error>;
 }
 
+impl From<ResponseBody> for http_body_util::combinators::UnsyncBoxBody<Bytes, io::Error> {
+    fn from(body: ResponseBody) -> Self {
+        body.inner.inner
+    }
+}
+
 /// The default fallback service used with [`ServeDir`].
 #[derive(Debug, Clone, Copy)]
 pub struct DefaultServeDirFallback(Infallible);
