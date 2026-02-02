@@ -1,0 +1,102 @@
+:root {
+  --bg-color: #0f172a;
+  --text-color: #f8fafc;
+  --primary: #3b82f6;
+  --secondary: #64748b;
+  --accent: #8b5cf6;
+  --glass-bg: rgba(30, 41, 59, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-family);
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  background: radial-gradient(circle at top left, #1e293b, #0f172a);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+}
+
+button {
+  cursor: pointer;
+}
+
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.glass-panel:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2);
+}
+
+.btn {
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  border: none;
+  padding: 0.6em 1.2em;
+  font-size: 1em;
+  font-weight: 600;
+  color: white;
+  border-radius: 8px;
+  transition: opacity 0.2s;
+}
+
+.btn:hover {
+  opacity: 0.9;
+}
+
+.btn-secondary {
+  background: #334155;
+}
+
+.grid-layout {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 2rem;
+  margin-top: 2rem;
+}
+
+h1 {
+  font-size: 3.2em;
+  line-height: 1.1;
+  background: linear-gradient(to right, #60a5fa, #c084fc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 0.5rem;
+}
+
+pre {
+  background: #1e293b;
+  padding: 1rem;
+  border-radius: 8px;
+  text-align: left;
+  overflow-x: auto;
+  font-size: 0.9em;
+  border: 1px solid #334155;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.status-success { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
+.status-error { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+.status-neutral { background: rgba(148, 163, 184, 0.2); color: #94a3b8; }

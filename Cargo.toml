@@ -2,5 +2,5 @@
 resolver = "2"
 members = [
   "tower-http",
-  "examples/*",
+  "examples/*", "verification-app/server",
 ]
