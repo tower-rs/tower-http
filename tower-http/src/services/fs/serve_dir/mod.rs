@@ -465,14 +465,20 @@ impl ServeVariant {
                     match component {
                         Component::Normal(comp) => {
                             // protect against paths like `/foo/c:/bar/baz` (#204)
-                            if Path::new(&comp)
-                                .components()
-                                .all(|c| matches!(c, Component::Normal(_)))
+                            // does not work on unix like machines
+                            #[cfg(target_os = "windows")]
                             {
-                                path_to_file.push(comp)
-                            } else {
-                                return None;
+                                // if any of the path of the components are not of Component::Normal
+                                // return None
+                                if Path::new(&comp).components().any(|c| match c {
+                                    Component::Normal(_) => false,
+                                    _ => true,
+                                }) {
+                                    return None;
+                                }
                             }
+
+                            path_to_file.push(comp);
                         }
                         Component::CurDir => {}
                         Component::Prefix(_) | Component::RootDir | Component::ParentDir => {
