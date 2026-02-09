@@ -12,6 +12,9 @@ jobs:
     steps:
     - uses: actions/checkout@v6
     - uses: dtolnay/rust-toolchain@stable
+    - uses: Swatinem/rust-cache@v2
+      with:
+        save-if: ${{ github.ref == 'refs/heads/main' }}
     - run: cargo check --workspace --all-features --all-targets
 
   check-docs:
@@ -30,6 +33,9 @@ jobs:
     steps:
     - uses: actions/checkout@v6
     - uses: dtolnay/rust-toolchain@stable
+    - uses: Swatinem/rust-cache@v2
+      with:
+        save-if: ${{ github.ref == 'refs/heads/main' }}
     - uses: taiki-e/install-action@cargo-hack
     - name: cargo hack check
       working-directory: ${{ matrix.subcrate }}
@@ -49,6 +55,10 @@ jobs:
     - uses: dtolnay/rust-toolchain@master
       with:
         toolchain: ${{ matrix.rust }}
+    - uses: Swatinem/rust-cache@v2
+      if: matrix.rust != 'nightly'
+      with:
+        save-if: ${{ github.ref == 'refs/heads/main' }}
     - run: cargo test --workspace --all-features
 
   test-msrv:
@@ -67,6 +77,9 @@ jobs:
     - run: cargo update -p async-compression --precise 0.4.23
     - run: cargo update -p flate2 --precise 1.0.35
     - uses: dtolnay/rust-toolchain@1.64
+    - uses: Swatinem/rust-cache@v2
+      with:
+        save-if: ${{ github.ref == 'refs/heads/main' }}
     - run: cargo check -p tower-http --all-features
 
   style:
@@ -107,5 +120,7 @@ jobs:
       with:
         tool: cargo-check-external-types@0.4.0
     - uses: Swatinem/rust-cache@v2
+      with:
+        save-if: ${{ github.ref == 'refs/heads/main' }}
     - run: cargo check-external-types --all-features
       working-directory: tower-http
