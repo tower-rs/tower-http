@@ -104,11 +104,7 @@ use http::{
 use http_body::Body;
 use pin_project_lite::pin_project;
 use std::{
-    future::Future,
-    mem,
-    pin::Pin,
-    str,
-    task::{ready, Context, Poll},
+    convert::TryFrom, future::Future, mem, pin::Pin, str, task::{Context, Poll, ready}
 };
 use tower::util::Oneshot;
 use tower_layer::Layer;
@@ -394,7 +390,7 @@ where
 fn resolve_uri(relative: &str, base: &Uri) -> Option<Uri> {
     let base_url = Url::parse(&base.to_string()).ok()?;
     let resolved = base_url.join(relative).ok()?;
-    resolved.as_str().parse().ok()
+    Uri::try_from(String::from(resolved)).ok()
 }
 
 #[cfg(test)]
