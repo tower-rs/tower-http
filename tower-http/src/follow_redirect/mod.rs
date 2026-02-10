@@ -104,7 +104,12 @@ use http::{
 use http_body::Body;
 use pin_project_lite::pin_project;
 use std::{
-    convert::TryFrom, future::Future, mem, pin::Pin, str, task::{Context, Poll, ready}
+    convert::TryFrom,
+    future::Future,
+    mem,
+    pin::Pin,
+    str,
+    task::{ready, Context, Poll},
 };
 use tower::util::Oneshot;
 use tower_layer::Layer;
