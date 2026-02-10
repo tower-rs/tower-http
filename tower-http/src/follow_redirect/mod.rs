@@ -102,7 +102,6 @@ use http::{
     Version,
 };
 use http_body::Body;
-use url::Url;
 use pin_project_lite::pin_project;
 use std::{
     future::Future,
@@ -114,6 +113,7 @@ use std::{
 use tower::util::Oneshot;
 use tower_layer::Layer;
 use tower_service::Service;
+use url::Url;
 
 /// [`Layer`] for retrying requests with a [`Service`] to follow redirection responses.
 ///
@@ -479,13 +479,22 @@ mod tests {
         let relative = "/café";
         let resolved = resolve_uri(relative, &base);
         assert!(resolved.is_some(), "Should resolve URI with unicode path");
-        assert_eq!(resolved.unwrap().to_string(), "https://example.com/caf%C3%A9");
+        assert_eq!(
+            resolved.unwrap().to_string(),
+            "https://example.com/caf%C3%A9"
+        );
 
         // Case 2: IDNA (Unicode in domain)
         let relative_domain = "https://münchen.com/";
         let resolved_domain = resolve_uri(relative_domain, &base);
-        assert!(resolved_domain.is_some(), "Should resolve URI with unicode domain");
+        assert!(
+            resolved_domain.is_some(),
+            "Should resolve URI with unicode domain"
+        );
         // München is encoded as punycode: xn--mnchen-3ya
-        assert_eq!(resolved_domain.unwrap().to_string(), "https://xn--mnchen-3ya.com/");
+        assert_eq!(
+            resolved_domain.unwrap().to_string(),
+            "https://xn--mnchen-3ya.com/"
+        );
     }
 }
