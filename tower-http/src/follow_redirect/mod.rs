@@ -102,10 +102,9 @@ use http::{
     Version,
 };
 use http_body::Body;
-use iri_string::types::{UriAbsoluteString, UriReferenceStr};
+use url::Url;
 use pin_project_lite::pin_project;
 use std::{
-    convert::TryFrom,
     future::Future,
     mem,
     pin::Pin,
@@ -393,10 +392,9 @@ where
 
 /// Try to resolve a URI reference `relative` against a base URI `base`.
 fn resolve_uri(relative: &str, base: &Uri) -> Option<Uri> {
-    let relative = UriReferenceStr::new(relative).ok()?;
-    let base = UriAbsoluteString::try_from(base.to_string()).ok()?;
-    let uri = relative.resolve_against(&base).to_string();
-    Uri::try_from(uri).ok()
+    let base_url = Url::parse(&base.to_string()).ok()?;
+    let resolved = base_url.join(relative).ok()?;
+    resolved.as_str().parse().ok()
 }
 
 #[cfg(test)]
@@ -472,5 +470,22 @@ mod tests {
                 .header(LOCATION, format!("/{}", n - 1));
         }
         Ok::<_, Infallible>(res.body(n).unwrap())
+    }
+
+    #[tokio::test]
+    async fn test_resolve_uri_unicode() {
+        let base = Uri::from_static("https://example.com/api");
+        // Case 1: Unicode in path
+        let relative = "/café";
+        let resolved = resolve_uri(relative, &base);
+        assert!(resolved.is_some(), "Should resolve URI with unicode path");
+        assert_eq!(resolved.unwrap().to_string(), "https://example.com/caf%C3%A9");
+
+        // Case 2: IDNA (Unicode in domain)
+        let relative_domain = "https://münchen.com/";
+        let resolved_domain = resolve_uri(relative_domain, &base);
+        assert!(resolved_domain.is_some(), "Should resolve URI with unicode domain");
+        // München is encoded as punycode: xn--mnchen-3ya
+        assert_eq!(resolved_domain.unwrap().to_string(), "https://xn--mnchen-3ya.com/");
     }
 }
