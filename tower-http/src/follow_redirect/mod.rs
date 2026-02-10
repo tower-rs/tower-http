@@ -97,9 +97,8 @@ pub mod policy;
 use self::policy::{Action, Attempt, Policy, Standard};
 use futures_util::future::Either;
 use http::{
-    header::CONTENT_ENCODING, header::CONTENT_LENGTH, header::CONTENT_TYPE, header::LOCATION,
-    header::TRANSFER_ENCODING, HeaderMap, HeaderValue, Method, Request, Response, StatusCode, Uri,
-    Version,
+    header::{CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE, LOCATION, TRANSFER_ENCODING},
+    Extensions, HeaderMap, HeaderValue, Method, Request, Response, StatusCode, Uri, Version,
 };
 use http_body::Body;
 use iri_string::types::{UriAbsoluteString, UriReferenceStr};
@@ -219,6 +218,7 @@ where
             uri: req.uri().clone(),
             version: req.version(),
             headers: req.headers().clone(),
+            extensions: req.extensions().clone(),
             body,
             future: Either::Left(service.call(req)),
             service,
@@ -242,6 +242,7 @@ pin_project! {
         uri: Uri,
         version: Version,
         headers: HeaderMap<HeaderValue>,
+        extensions: Extensions,
         body: BodyRepr<B>,
     }
 }
@@ -322,6 +323,7 @@ where
                 *req.method_mut() = this.method.clone();
                 *req.version_mut() = *this.version;
                 *req.headers_mut() = this.headers.clone();
+                *req.extensions_mut() = this.extensions.clone();
                 this.policy.on_request(&mut req);
                 this.future
                     .set(Either::Right(Oneshot::new(this.service.clone(), req)));
@@ -461,6 +463,25 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn clone_extension() {
+        let svc = ServiceBuilder::new()
+            .layer(FollowRedirectLayer::new())
+            .service_fn(handle);
+        let req = Request::builder()
+            .uri("http://example.com/2")
+            .extension(String::from("extension"))
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+        assert_eq!(res.extensions().get::<String>().unwrap(), "extension");
+        assert_eq!(*res.body(), 0);
+        assert_eq!(
+            res.extensions().get::<RequestUri>().unwrap().0,
+            "http://example.com/0"
+        );
+    }
+
     /// A server with an endpoint `GET /{n}` which redirects to `/{n-1}` unless `n` equals zero,
     /// returning `n` as the response body.
     async fn handle<B>(req: Request<B>) -> Result<Response<u64>, Infallible> {
@@ -471,6 +492,7 @@ mod tests {
                 .status(StatusCode::MOVED_PERMANENTLY)
                 .header(LOCATION, format!("/{}", n - 1));
         }
+        *res.extensions_mut().unwrap() = req.extensions().clone();
         Ok::<_, Infallible>(res.body(n).unwrap())
     }
 }
