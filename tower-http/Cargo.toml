@@ -19,6 +19,7 @@ http = "1.0"
 pin-project-lite = "0.2.7"
 tower-layer = "0.3.3"
 tower-service = "0.3"
+url = "2.5"
 
 # optional dependencies
 async-compression = { version = "0.4", optional = true, features = ["tokio"] }
