@@ -28,10 +28,10 @@ futures-util = { version = "0.3.14", optional = true, default-features = false }
 http-body = { version = "1.0.0", optional = true }
 http-body-util = { version = "0.1.0", optional = true }
 http-range-header = { version = "0.4.0", optional = true }
-iri-string = { version = "0.7.0", optional = true }
 mime = { version = "0.3.17", optional = true, default-features = false }
 mime_guess = { version = "2", optional = true, default-features = false }
 percent-encoding = { version = "2.1.0", optional = true }
+url = { version = "2.5", optional = true }
 tokio = { version = "1.6", optional = true, default-features = false }
 tokio-util = { version = "0.7", optional = true, default-features = false, features = ["io"] }
 tower = { version = "0.5", optional = true }
@@ -87,7 +87,7 @@ add-extension = []
 auth = ["base64", "validate-request"]
 catch-panic = ["tracing", "futures-util/std", "dep:http-body", "dep:http-body-util"]
 cors = []
-follow-redirect = ["futures-util", "dep:http-body", "iri-string", "tower/util"]
+follow-redirect = ["futures-util", "dep:http-body", "dep:url", "tower/util"]
 fs = ["futures-core", "futures-util", "dep:http-body", "dep:http-body-util", "tokio/fs", "tokio-util/io", "tokio/io-util", "dep:http-range-header", "mime_guess", "mime", "percent-encoding", "httpdate", "set-status", "futures-util/alloc", "tracing"]
 limit = ["dep:http-body", "dep:http-body-util"]
 map-request-body = []
