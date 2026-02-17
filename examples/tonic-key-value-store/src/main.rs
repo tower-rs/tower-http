@@ -261,13 +261,10 @@ async fn make_client(
 ) -> Result<
     KeyValueStoreClient<
         impl Service<
-                http::Request<Body>,
-                Response = http::Response<impl HttpBody<Data = Bytes, Error = impl Into<BoxError>>>,
-                Error = impl Into<BoxError>,
-            > + Clone
-            + Send
-            + Sync
-            + 'static,
+            http::Request<Body>,
+            Response = http::Response<impl HttpBody<Data = Bytes, Error = impl Into<BoxError>>>,
+            Error = impl Into<BoxError>,
+        >,
     >,
     tonic::transport::Error,
 > {
