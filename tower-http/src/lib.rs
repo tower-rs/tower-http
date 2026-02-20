@@ -12,7 +12,7 @@
 //! # Example server
 //!
 //! This example shows how to apply middleware from `tower-http` to a [`Service`] and then run
-//! that service using [`hyper`] and [`hyper-util`].
+//! that service using [hyper] and [hyper-util].
 //!
 //! ```rust,no_run
 //! use tower_http::{
@@ -147,6 +147,7 @@
 //! [http]: https://crates.io/crates/http
 //! [http-body]: https://crates.io/crates/http-body
 //! [hyper]: https://crates.io/crates/hyper
+//! [hyper-util]: https://crates.io/crates/hyper-util
 //! [guides]: https://github.com/tower-rs/tower/tree/master/guides
 //! [tonic]: https://crates.io/crates/tonic
 //! [warp]: https://crates.io/crates/warp
