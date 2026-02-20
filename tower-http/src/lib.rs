@@ -42,7 +42,7 @@
 //!
 //!         tokio::spawn(async move {
 //!             let socket = TokioIo::new(socket);
-//!             
+//!
 //!             // Build our middleware stack
 //!             let service = ServiceBuilder::new()
 //!                 .layer(TraceLayer::new_for_http())
