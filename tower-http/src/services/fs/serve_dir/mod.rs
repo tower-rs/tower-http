@@ -411,11 +411,9 @@ where
         let future = self
             .try_call(req)
             .map(|result: Result<_, _>| -> Result<_, Infallible> {
-                let response = result.unwrap_or_else(|err| {
+                let response = result.unwrap_or_else(|_err| {
                     #[cfg(feature = "tracing")]
-                    tracing::error!(error = %err, "Failed to read file");
-                    #[cfg(not(feature = "tracing"))]
-                    let _ = err;
+                    tracing::error!(error = %_err, "Failed to read file");
 
                     let body = ResponseBody::new(UnsyncBoxBody::new(
                         Empty::new().map_err(|err| match err {}).boxed_unsync(),
