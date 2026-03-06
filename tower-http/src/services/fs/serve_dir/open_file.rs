@@ -350,7 +350,7 @@ fn append_slash_on_path(uri: Uri) -> Result<Uri, OpenFileOutput> {
 
     uri_builder.build().map_err(|_err| {
         #[cfg(feature = "tracing")]
-        tracing::error!(?_err, "redirect uri failed to build");
+        tracing::error!(err = ?_err, "redirect uri failed to build");
 
         OpenFileOutput::InvalidRedirectUri
     })
