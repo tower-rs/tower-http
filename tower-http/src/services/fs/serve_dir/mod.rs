@@ -255,7 +255,8 @@ impl<F> ServeDir<F> {
     /// By default `<ServeDir as Service<_>>::call` will handle IO errors and convert them into
     /// responses. It does that by converting [`std::io::ErrorKind::NotFound`] and
     /// [`std::io::ErrorKind::PermissionDenied`] to `404 Not Found` and any other error to `500
-    /// Internal Server Error`. The error will also be logged with `tracing`.
+    /// Internal Server Error`. The error will also be logged with `tracing` in case the `tracing`
+    /// crate feature is enabled.
     ///
     /// If you want to manually control how the error response is generated you can make a new
     /// service that wraps a `ServeDir` and calls `try_call` instead of `call`.
@@ -410,8 +411,9 @@ where
         let future = self
             .try_call(req)
             .map(|result: Result<_, _>| -> Result<_, Infallible> {
-                let response = result.unwrap_or_else(|err| {
-                    tracing::error!(error = %err, "Failed to read file");
+                let response = result.unwrap_or_else(|_err| {
+                    #[cfg(feature = "tracing")]
+                    tracing::error!(error = %_err, "Failed to read file");
 
                     let body = ResponseBody::new(UnsyncBoxBody::new(
                         Empty::new().map_err(|err| match err {}).boxed_unsync(),
