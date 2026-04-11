@@ -39,6 +39,10 @@ tracing = { version = "0.1", default-features = false, optional = true }
 httpdate = { version = "1.0", optional = true }
 uuid = { version = "1.0", features = ["v4"], optional = true }
 
+# linux only dependencies
+[target.'cfg(target_os = "linux")'.dependencies]
+rustix = { version = "1", features = ["fs"] }
+
 [dev-dependencies]
 brotli = "8"
 bytes = "1"
@@ -55,6 +59,7 @@ tokio = { version = "1", features = ["full"] }
 tower = { version = "0.5", features = ["buffer", "util", "retry", "make", "timeout"] }
 tracing-subscriber = "0.3"
 zstd = "0.13"
+tempfile = "3"
 
 [features]
 default = []

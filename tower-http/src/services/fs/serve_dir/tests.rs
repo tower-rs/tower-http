@@ -10,7 +10,9 @@ use http_body::Body as HttpBody;
 use http_body_util::BodyExt;
 use std::convert::Infallible;
 use std::fs;
-use std::io::Read;
+use std::fs::{create_dir, File};
+use std::io::{Read, Write};
+use std::os::unix::fs::symlink;
 use tower::{service_fn, ServiceExt};
 
 #[tokio::test]
@@ -628,6 +630,23 @@ async fn read_partial_errs_on_bad_range() {
 }
 
 #[tokio::test]
+async fn read_partial_errs_on_bad_range_follow_symlinks() {
+    let svc = ServeDir::new("..").follow_symlinks_outside_base(true);
+    let req = Request::builder()
+        .uri("/README.md")
+        .header("Range", "bytes=-1-15")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::RANGE_NOT_SATISFIABLE);
+    let file_contents = std::fs::read("../README.md").unwrap();
+    assert_eq!(
+        res.headers()["content-range"],
+        &format!("bytes */{}", file_contents.len())
+    )
+}
+
+#[tokio::test]
 async fn accept_encoding_identity() {
     let svc = ServeDir::new("..");
     let req = Request::builder()
@@ -876,4 +895,56 @@ async fn calls_fallback_on_null() {
     let res = svc.oneshot(req).await.unwrap();
 
     assert_eq!(res.headers()["from-fallback"], "1");
+}
+
+#[tokio::test]
+async fn returns_500_if_symlink_outside_base() {
+    let tmp = tempfile::tempdir().unwrap();
+    let base = tmp.path().join("base");
+    create_dir(&base).unwrap();
+    let file_outside = tmp.path().join("file_outside.txt");
+    let mut outside = File::create(&file_outside).unwrap();
+    write!(outside, "{}", "outside").unwrap();
+    let file_inside = base.join("inside.txt");
+    symlink(file_outside, file_inside).unwrap();
+
+    let svc = ServeDir::new(base);
+
+    let request = Request::builder()
+        .header("Accept-Encoding", "deflate")
+        .method(Method::GET)
+        .uri("/inside.txt")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(request).await.unwrap();
+
+    assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert!(res.headers().get(header::CONTENT_TYPE).is_none());
+}
+
+#[tokio::test]
+async fn allow_symlink_outside_base() {
+    let tmp = tempfile::tempdir().unwrap();
+    let base = tmp.path().join("base");
+    create_dir(&base).unwrap();
+    let file_outside = tmp.path().join("file_outside.txt");
+    let mut outside = File::create(&file_outside).unwrap();
+    write!(outside, "{}", "outside").unwrap();
+    let file_inside = base.join("inside.txt");
+    symlink(file_outside, file_inside).unwrap();
+
+    let svc = ServeDir::new(base).follow_symlinks_outside_base(true);
+
+    let request = Request::builder()
+        .header("Accept-Encoding", "deflate")
+        .method(Method::GET)
+        .uri("/inside.txt")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(request).await.unwrap();
+
+    assert_eq!(res.status(), StatusCode::OK);
+    assert!(res.headers().get(header::CONTENT_TYPE).is_some());
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!("outside", String::from_utf8_lossy(&body));
 }

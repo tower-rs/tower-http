@@ -40,6 +40,10 @@ const DEFAULT_CAPACITY: usize = 65536;
 ///   existing file (`/file.html/something`)
 /// - We don't have necessary permissions to read the file
 ///
+/// On linux, if a file is a symlink to a file outside the base directory,
+/// a 500 error will be returned, unless `follow_symlinks_outside_base`
+/// is set to true.
+///
 /// # Example
 ///
 /// ```
@@ -59,6 +63,7 @@ pub struct ServeDir<F = DefaultServeDirFallback> {
     variant: ServeVariant,
     fallback: Option<F>,
     call_fallback_on_method_not_allowed: bool,
+    follow_symlinks_outside_base: bool,
 }
 
 impl ServeDir<DefaultServeDirFallback> {
@@ -79,6 +84,7 @@ impl ServeDir<DefaultServeDirFallback> {
             },
             fallback: None,
             call_fallback_on_method_not_allowed: false,
+            follow_symlinks_outside_base: false,
         }
     }
 
@@ -93,6 +99,7 @@ impl ServeDir<DefaultServeDirFallback> {
             variant: ServeVariant::SingleFile { mime },
             fallback: None,
             call_fallback_on_method_not_allowed: false,
+            follow_symlinks_outside_base: false,
         }
     }
 }
@@ -217,6 +224,7 @@ impl<F> ServeDir<F> {
             variant: self.variant,
             fallback: Some(new_fallback),
             call_fallback_on_method_not_allowed: self.call_fallback_on_method_not_allowed,
+            follow_symlinks_outside_base: self.follow_symlinks_outside_base,
         }
     }
 
@@ -246,6 +254,16 @@ impl<F> ServeDir<F> {
     /// Defaults to not calling the fallback and instead returning `405 Method Not Allowed`.
     pub fn call_fallback_on_method_not_allowed(mut self, call_fallback: bool) -> Self {
         self.call_fallback_on_method_not_allowed = call_fallback;
+        self
+    }
+
+    /// Start following symlinks outside the base directory.
+    ///
+    /// Warning: if you have a writeable directory inside the base directory, this
+    /// means that a local user can exfiltrate any file that the server process have
+    /// read access to.
+    pub fn follow_symlinks_outside_base(mut self, follow_symlinks_outside_base: bool) -> Self {
+        self.follow_symlinks_outside_base = follow_symlinks_outside_base;
         self
     }
 
@@ -381,6 +399,8 @@ impl<F> ServeDir<F> {
             negotiated_encodings,
             range_header,
             buf_chunk_size,
+            self.base.clone(),
+            self.follow_symlinks_outside_base,
         ));
 
         ResponseFuture::open_file_future(open_file_future, fallback_and_request)

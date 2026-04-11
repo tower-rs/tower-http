@@ -40,6 +40,7 @@ pub(super) enum FileRequestExtent {
     Head(Metadata),
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn open_file(
     variant: ServeVariant,
     mut path_to_file: PathBuf,
@@ -47,6 +48,8 @@ pub(super) async fn open_file(
     negotiated_encodings: Vec<(Encoding, QValue)>,
     range_header: Option<String>,
     buf_chunk_size: usize,
+    base_path: PathBuf,
+    follow_symlinks_outside_base: bool,
 ) -> io::Result<OpenFileOutput> {
     let if_unmodified_since = req
         .headers()
@@ -110,15 +113,21 @@ pub(super) async fn open_file(
             last_modified,
         })))
     } else {
-        let (mut file, maybe_encoding) =
-            match open_file_with_fallback(path_to_file, negotiated_encodings).await {
-                Ok(result) => result,
+        let (mut file, maybe_encoding) = match open_file_with_fallback(
+            path_to_file,
+            negotiated_encodings,
+            &base_path,
+            follow_symlinks_outside_base,
+        )
+        .await
+        {
+            Ok(result) => result,
 
-                Err(err) if is_invalid_filename_error(&err) => {
-                    return Ok(OpenFileOutput::InvalidFilename)
-                }
-                Err(err) => return Err(err),
-            };
+            Err(err) if is_invalid_filename_error(&err) => {
+                return Ok(OpenFileOutput::InvalidFilename)
+            }
+            Err(err) => return Err(err),
+        };
 
         let meta = file.metadata().await?;
         let last_modified = meta.modified().ok().map(LastModified::from);
@@ -226,17 +235,74 @@ fn preferred_encoding(
     preferred_encoding
 }
 
+fn canonicalize_and_openat2(base_path: &Path, path: &Path) -> io::Result<File> {
+    let (path, base_path2) = if base_path.is_file() || !base_path.exists() {
+        let base_path = base_path.parent().unwrap().canonicalize()?;
+        let path = path
+            .canonicalize()?
+            .strip_prefix(&base_path)
+            .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?
+            .to_owned();
+        (
+            path,
+            rustix::fs::open(
+                base_path,
+                rustix::fs::OFlags::RDONLY,
+                rustix::fs::Mode::empty(),
+            )?,
+        )
+    } else {
+        let base_path = base_path.canonicalize()?;
+        let path = path
+            .canonicalize()?
+            .strip_prefix(&base_path)
+            .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?
+            .to_owned();
+        (
+            path,
+            rustix::fs::open(
+                base_path,
+                rustix::fs::OFlags::RDONLY,
+                rustix::fs::Mode::empty(),
+            )?,
+        )
+    };
+
+    rustix::fs::openat2(
+        base_path2,
+        &path,
+        rustix::fs::OFlags::RDONLY,
+        rustix::fs::Mode::empty(),
+        rustix::fs::ResolveFlags::BENEATH,
+    )
+    .map(std::fs::File::from)
+    .map(File::from)
+    .map_err(|err| io::Error::new(io::ErrorKind::Other, err))
+}
+
 // Attempts to open the file with any of the possible negotiated_encodings in the
 // preferred order. If none of the negotiated_encodings have a corresponding precompressed
 // file the uncompressed file is used as a fallback.
 async fn open_file_with_fallback(
     mut path: PathBuf,
     mut negotiated_encoding: Vec<(Encoding, QValue)>,
+    base_path: &Path,
+    follow_symlinks_outside_base: bool,
 ) -> io::Result<(File, Option<Encoding>)> {
     let (file, encoding) = loop {
         // Get the preferred encoding among the negotiated ones.
         let encoding = preferred_encoding(&mut path, &negotiated_encoding);
-        match (File::open(&path).await, encoding) {
+        let file = {
+            #[cfg(target_os = "linux")]
+            if follow_symlinks_outside_base {
+                File::open(&path).await
+            } else {
+                canonicalize_and_openat2(base_path, &path)
+            }
+            #[cfg(not(target_os = "linux"))]
+            File::open(&path).await
+        };
+        match (file, encoding) {
             (Ok(file), maybe_encoding) => break (file, maybe_encoding),
             (Err(err), Some(encoding)) if err.kind() == io::ErrorKind::NotFound => {
                 // Remove the extension corresponding to a precompressed file (.gz, .br, .zz)
