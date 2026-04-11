@@ -105,6 +105,16 @@ impl ServeFile {
         Self(self.0.with_buf_chunk_size(chunk_size))
     }
 
+    /// Disallow following symlinks outside the base directory on Linux.
+    /// Setting this to false on Linux introduces a dependency on at least
+    /// kernel version 5.6, as the openat2 syscall was introduced in that version.
+    pub fn follow_symlinks_outside_base(self, follow_symlinks_outside_base: bool) -> Self {
+        Self(
+            self.0
+                .follow_symlinks_outside_base(follow_symlinks_outside_base),
+        )
+    }
+
     /// Call the service and get a future that contains any `std::io::Error` that might have
     /// happened.
     ///
@@ -152,7 +162,10 @@ mod tests {
     use http::{Request, StatusCode};
     use http_body_util::BodyExt;
     use mime::Mime;
+    use std::fs::{create_dir, File};
     use std::io::Read;
+    use std::io::Write;
+    use std::os::unix::fs::symlink;
     use std::str::FromStr;
     use tokio::io::AsyncReadExt;
     use tower::ServiceExt;
@@ -493,6 +506,31 @@ mod tests {
         let res = svc.oneshot(request).await.unwrap();
 
         assert_eq!(res.status(), StatusCode::NOT_FOUND);
+        assert!(res.headers().get(header::CONTENT_TYPE).is_none());
+    }
+
+    #[tokio::test]
+    async fn returns_500_if_symlink_outside_base() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = tmp.path().join("base");
+        create_dir(&base).unwrap();
+        let file_outside = tmp.path().join("file_outside.txt");
+        let mut outside = File::create(&file_outside).unwrap();
+        write!(outside, "{}", "outside").unwrap();
+        let file_inside = base.join("inside.txt");
+        symlink(file_outside, file_inside).unwrap();
+
+        let svc = ServeFile::new(base).follow_symlinks_outside_base(false);
+
+        let request = Request::builder()
+            .header("Accept-Encoding", "deflate")
+            .method(Method::GET)
+            .uri("/inside.txt")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(request).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
         assert!(res.headers().get(header::CONTENT_TYPE).is_none());
     }
 
