@@ -898,6 +898,7 @@ async fn calls_fallback_on_null() {
 }
 
 #[tokio::test]
+#[cfg(target_os = "linux")]
 async fn returns_500_if_symlink_outside_base() {
     let tmp = tempfile::tempdir().unwrap();
     let base = tmp.path().join("base");
@@ -908,7 +909,7 @@ async fn returns_500_if_symlink_outside_base() {
     let file_inside = base.join("inside.txt");
     symlink(file_outside, file_inside).unwrap();
 
-    let svc = ServeDir::new(base);
+    let svc = ServeDir::new(base).follow_symlinks_outside_base(false);
 
     let request = Request::builder()
         .header("Accept-Encoding", "deflate")
@@ -933,7 +934,7 @@ async fn allow_symlink_outside_base() {
     let file_inside = base.join("inside.txt");
     symlink(file_outside, file_inside).unwrap();
 
-    let svc = ServeDir::new(base).follow_symlinks_outside_base(true);
+    let svc = ServeDir::new(base);
 
     let request = Request::builder()
         .header("Accept-Encoding", "deflate")

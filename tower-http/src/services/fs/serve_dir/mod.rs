@@ -40,9 +40,9 @@ const DEFAULT_CAPACITY: usize = 65536;
 ///   existing file (`/file.html/something`)
 /// - We don't have necessary permissions to read the file
 ///
-/// On linux, if a file is a symlink to a file outside the base directory,
-/// a 500 error will be returned, unless `follow_symlinks_outside_base`
-/// is set to true.
+/// If the requested file is a symlink, it will be followed, even outside `base`.
+/// On Linux this behaviour can be modified to only allow symlinks below `base`
+/// with `follow_symlinks_outside_base`.
 ///
 /// # Example
 ///
@@ -84,7 +84,7 @@ impl ServeDir<DefaultServeDirFallback> {
             },
             fallback: None,
             call_fallback_on_method_not_allowed: false,
-            follow_symlinks_outside_base: false,
+            follow_symlinks_outside_base: true,
         }
     }
 
@@ -99,7 +99,7 @@ impl ServeDir<DefaultServeDirFallback> {
             variant: ServeVariant::SingleFile { mime },
             fallback: None,
             call_fallback_on_method_not_allowed: false,
-            follow_symlinks_outside_base: false,
+            follow_symlinks_outside_base: true,
         }
     }
 }
@@ -257,11 +257,9 @@ impl<F> ServeDir<F> {
         self
     }
 
-    /// Start following symlinks outside the base directory.
-    ///
-    /// Warning: if you have a writeable directory inside the base directory, this
-    /// means that a local user can exfiltrate any file that the server process have
-    /// read access to.
+    /// Disallow following symlinks outside the base directory on Linux.
+    /// Setting this to false on Linux introduces a dependency on at least
+    /// kernel version 5.6, as the openat2 syscall was introduced in that version.
     pub fn follow_symlinks_outside_base(mut self, follow_symlinks_outside_base: bool) -> Self {
         self.follow_symlinks_outside_base = follow_symlinks_outside_base;
         self

@@ -235,6 +235,7 @@ fn preferred_encoding(
     preferred_encoding
 }
 
+#[cfg(target_os = "linux")]
 fn canonicalize_and_openat2(base_path: &Path, path: &Path) -> io::Result<File> {
     let (path, base_path2) = if base_path.is_file() || !base_path.exists() {
         let base_path = base_path.parent().unwrap().canonicalize()?;
