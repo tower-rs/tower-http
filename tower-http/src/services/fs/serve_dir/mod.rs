@@ -471,6 +471,15 @@ impl ServeVariant {
                                 .components()
                                 .all(|c| matches!(c, Component::Normal(_)))
                             {
+                                #[cfg(windows)]
+                                {
+                                    use std::os::windows::ffi::OsStrExt;
+                                    let wide: Vec<u16> = comp.encode_wide().collect();
+                                    if is_reserved_dos_name(&wide) {
+                                        return None;
+                                    }
+                                }
+
                                 path_to_file.push(comp)
                             } else {
                                 return None;
@@ -487,6 +496,105 @@ impl ServeVariant {
             ServeVariant::SingleFile { mime: _ } => Some(base_path.to_path_buf()),
         }
     }
+}
+
+/// Check whether a component name matches a reserved Windows DOS device name.
+/// See: https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file#naming-conventions
+///
+/// We explicitly check for Unicode superscript characters `¹` (0x00B9), `²` (0x00B2),
+/// and `³` (0x00B3) because older character tables (ISO/IEC 8859-1) define these values,
+/// which legacy Win32 file parsing resolves natively as valid port numbers (0..9).
+#[cfg(any(windows, test))]
+fn is_reserved_dos_name(wide_chars: &[u16]) -> bool {
+    const CON: [u16; 3] = [b'C' as u16, b'O' as u16, b'N' as u16];
+    const PRN: [u16; 3] = [b'P' as u16, b'R' as u16, b'N' as u16];
+    const AUX: [u16; 3] = [b'A' as u16, b'U' as u16, b'X' as u16];
+    const NUL: [u16; 3] = [b'N' as u16, b'U' as u16, b'L' as u16];
+    const CONIN: [u16; 6] = [
+        b'C' as u16,
+        b'O' as u16,
+        b'N' as u16,
+        b'I' as u16,
+        b'N' as u16,
+        b'$' as u16,
+    ];
+    const CONOUT: [u16; 7] = [
+        b'C' as u16,
+        b'O' as u16,
+        b'N' as u16,
+        b'O' as u16,
+        b'U' as u16,
+        b'T' as u16,
+        b'$' as u16,
+    ];
+
+    const COM: [u16; 3] = [b'C' as u16, b'O' as u16, b'M' as u16];
+    const LPT: [u16; 3] = [b'L' as u16, b'P' as u16, b'T' as u16];
+
+    const ZERO: u16 = b'0' as u16;
+    const NINE: u16 = b'9' as u16;
+    const SUPERSCRIPT_ONE: u16 = 0x00B9;
+    const SUPERSCRIPT_TWO: u16 = 0x00B2;
+    const SUPERSCRIPT_THREE: u16 = 0x00B3;
+
+    // Find first '.' or ':'
+    let len = wide_chars
+        .iter()
+        .position(|&c| c == b'.' as u16 || c == b':' as u16)
+        .unwrap_or(wide_chars.len());
+    let mut sub = &wide_chars[..len];
+
+    // Trim trailing ASCII whitespace and spacing (0x0020, 0x0009..=0x000D, 0x000B)
+    while let Some((&last, rest)) = sub.split_last() {
+        if last <= 0x7F && ((last as u8).is_ascii_whitespace() || last == 0x000B) {
+            sub = rest;
+        } else {
+            break;
+        }
+    }
+
+    if sub.is_empty() {
+        return false;
+    }
+
+    let normalized: Vec<u16> = sub
+        .iter()
+        .map(|&c| {
+            if c <= 0x7F {
+                (c as u8).to_ascii_uppercase() as u16
+            } else {
+                c
+            }
+        })
+        .collect();
+
+    // Check basic fixed-length strings
+    if normalized == CON
+        || normalized == PRN
+        || normalized == AUX
+        || normalized == NUL
+        || normalized == CONIN
+        || normalized == CONOUT
+    {
+        return true;
+    }
+
+    // COMx / LPTx
+    if normalized.len() == 4 {
+        let prefix = &normalized[..3];
+        let suffix = normalized[3];
+
+        if (prefix == COM || prefix == LPT)
+            && matches!(
+                suffix,
+                ZERO..=NINE | SUPERSCRIPT_ONE | SUPERSCRIPT_TWO | SUPERSCRIPT_THREE
+            )
+        {
+            return true;
+        }
+    }
+
+    false
 }
 
 opaque_body! {
