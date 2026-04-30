@@ -474,8 +474,7 @@ impl ServeVariant {
                                 #[cfg(windows)]
                                 {
                                     use std::os::windows::ffi::OsStrExt;
-                                    let wide: Vec<u16> = comp.encode_wide().collect();
-                                    if is_reserved_dos_name(&wide) {
+                                    if is_reserved_dos_name(|| comp.encode_wide()) {
                                         return None;
                                     }
                                 }
@@ -504,8 +503,17 @@ impl ServeVariant {
 /// We explicitly check for Unicode superscript characters `¹` (0x00B9), `²` (0x00B2),
 /// and `³` (0x00B3) because older character tables (ISO/IEC 8859-1) define these values,
 /// which legacy Win32 file parsing resolves natively as valid port numbers (0..9).
+///
+/// This uses an iterator and stack array to avoid allocating. A closure is used because it
+/// iterates the characters twice. The closure must return the same iterator each time it is
+/// called.
 #[cfg(any(windows, test))]
-fn is_reserved_dos_name(wide_chars: &[u16]) -> bool {
+#[cfg(any(windows, test))]
+fn is_reserved_dos_name<F, I>(mut get_iter: F) -> bool
+where
+    F: FnMut() -> I,
+    I: Iterator<Item = u16>,
+{
     const CON: [u16; 3] = [b'C' as u16, b'O' as u16, b'N' as u16];
     const PRN: [u16; 3] = [b'P' as u16, b'R' as u16, b'N' as u16];
     const AUX: [u16; 3] = [b'A' as u16, b'U' as u16, b'X' as u16];
@@ -537,59 +545,62 @@ fn is_reserved_dos_name(wide_chars: &[u16]) -> bool {
     const SUPERSCRIPT_TWO: u16 = 0x00B2;
     const SUPERSCRIPT_THREE: u16 = 0x00B3;
 
-    // Find first '.' or ':'
-    let len = wide_chars
-        .iter()
-        .position(|&c| c == b'.' as u16 || c == b':' as u16)
-        .unwrap_or(wide_chars.len());
-    let mut sub = &wide_chars[..len];
-
-    // Trim trailing ASCII whitespace and spacing (0x0020, 0x0009..=0x000D, 0x000B)
-    while let Some((&last, rest)) = sub.split_last() {
-        if last <= 0x7F && ((last as u8).is_ascii_whitespace() || last == 0x000B) {
-            sub = rest;
-        } else {
-            break;
-        }
+    fn is_whitespace(c: u16) -> bool {
+        c <= 0x7F && ((c as u8).is_ascii_whitespace() || c == 0x000B)
     }
 
-    if sub.is_empty() {
+    // In a first pass over the string, obtain the length of the basename.
+    let trimmed_len = get_iter()
+        .enumerate()
+        // We want the base name, so stop at '.' or ':' characters.
+        .take_while(|&(_idx, c)| c != b'.' as u16 && c != b':' as u16)
+        // We want to trim whitespace from the end, so ignore whitespace chars.
+        .filter(|&(_idx, c)| !is_whitespace(c))
+        // Get the last non-whitespace char before the first '.'/':' character.
+        .last()
+        // Convert index of that char into length of string.
+        .map(|(idx, _)| idx + 1)
+        .unwrap_or(0);
+
+    // If the trimmed base name is longer than 7, it cannot be a reserved name.
+    if trimmed_len > 7 {
         return false;
     }
 
-    let normalized: Vec<u16> = sub
-        .iter()
-        .map(|&c| {
-            if c <= 0x7F {
-                (c as u8).to_ascii_uppercase() as u16
-            } else {
-                c
-            }
-        })
-        .collect();
+    // At this point, we can store the string in an array, which is more convenient to work with.
+    let mut buf = [0u16; 7];
+    get_iter()
+        .take(trimmed_len)
+        .enumerate()
+        .for_each(|(i, c)| buf[i] = c);
+
+    for b in &mut buf {
+        if *b <= 0x7F {
+            *b = (*b as u8).to_ascii_uppercase() as u16;
+        }
+        if *b == SUPERSCRIPT_ONE {
+            *b = b'1' as u16;
+        }
+        if *b == SUPERSCRIPT_TWO {
+            *b = b'2' as u16;
+        }
+        if *b == SUPERSCRIPT_THREE {
+            *b = b'3' as u16;
+        }
+    }
+    let name = &buf[..trimmed_len];
 
     // Check basic fixed-length strings
-    if normalized == CON
-        || normalized == PRN
-        || normalized == AUX
-        || normalized == NUL
-        || normalized == CONIN
-        || normalized == CONOUT
-    {
+    if name == CON || name == PRN || name == AUX || name == NUL || name == CONIN || name == CONOUT {
         return true;
     }
 
     // COMx / LPTx
-    if normalized.len() == 4 {
-        let prefix = &normalized[..3];
-        let suffix = normalized[3];
+    if name.len() == 4 {
+        let prefix = &name[..3];
+        let suffix = name[3];
 
-        if (prefix == COM || prefix == LPT)
-            && matches!(
-                suffix,
-                ZERO..=NINE | SUPERSCRIPT_ONE | SUPERSCRIPT_TWO | SUPERSCRIPT_THREE
-            )
-        {
+        if (prefix == COM || prefix == LPT) && matches!(suffix, ZERO..=NINE) {
             return true;
         }
     }

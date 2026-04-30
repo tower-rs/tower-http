@@ -959,8 +959,11 @@ fn test_is_reserved_dos_name() {
     ];
 
     for name in positives {
-        let wide: Vec<u16> = name.encode_utf16().collect();
-        assert!(is_reserved_dos_name(&wide), "Expected true for {:?}", name);
+        assert!(
+            is_reserved_dos_name(|| name.encode_utf16()),
+            "Expected true for {:?}",
+            name
+        );
 
         #[cfg(windows)]
         verify_windows_device(name, true);
@@ -984,9 +987,8 @@ fn test_is_reserved_dos_name() {
     ];
 
     for name in negatives {
-        let wide: Vec<u16> = name.encode_utf16().collect();
         assert!(
-            !is_reserved_dos_name(&wide),
+            !is_reserved_dos_name(|| name.encode_utf16()),
             "Expected false for {:?}",
             name
         );
