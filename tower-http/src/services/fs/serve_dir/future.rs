@@ -13,6 +13,7 @@ use http::{
     HeaderValue, Request, Response, StatusCode,
 };
 use http_body_util::{BodyExt, Empty, Full};
+use http_range_header::RangeUnsatisfiableError;
 use pin_project_lite::pin_project;
 use std::{
     convert::Infallible,
@@ -296,6 +297,14 @@ fn build_response(output: FileOpened) -> Response<ResponseBody> {
                     .unwrap()
             }
         }
+
+        Some(Err(RangeUnsatisfiableError::OverlappingRanges)) => builder
+            .header(header::CONTENT_RANGE, format!("bytes */{}", size))
+            .status(StatusCode::RANGE_NOT_SATISFIABLE)
+            .body(body_from_bytes(Bytes::from(
+                "Cannot serve multipart range requests",
+            )))
+            .unwrap(),
 
         Some(Err(_)) => builder
             .header(header::CONTENT_RANGE, format!("bytes */{}", size))
