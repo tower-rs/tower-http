@@ -102,7 +102,7 @@ jobs:
       uses: taiki-e/install-action@v2
       with:
         tool: protoc@3.20.3
-    - run: cargo clippy --workspace --all-features --all-targets
+    - run: cargo clippy --workspace --all-features --lib --bins --examples -- -D warnings
 
   deny-check:
     name: cargo-deny check
