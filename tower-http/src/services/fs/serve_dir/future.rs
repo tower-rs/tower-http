@@ -2,24 +2,24 @@ use super::{
     open_file::{FileOpened, FileRequestExtent, OpenFileOutput},
     DefaultServeDirFallback, ResponseBody,
 };
-use crate::{content_encoding::Encoding, services::fs::AsyncReadBody, BoxError};
-use bytes::Bytes;
-use futures_util::{
-    future::{BoxFuture, FutureExt, TryFutureExt},
-    ready,
+use crate::{
+    body::UnsyncBoxBody, content_encoding::Encoding, services::fs::AsyncReadBody, BoxError,
 };
+use bytes::Bytes;
+use futures_core::future::BoxFuture;
+use futures_util::future::{FutureExt, TryFutureExt};
 use http::{
     header::{self, ALLOW},
     HeaderValue, Request, Response, StatusCode,
 };
-use http_body::{Body, Empty, Full};
+use http_body_util::{BodyExt, Empty, Full};
 use pin_project_lite::pin_project;
 use std::{
     convert::Infallible,
     future::Future,
     io,
     pin::Pin,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
 };
 use tower_service::Service;
 
@@ -105,7 +105,7 @@ where
                         break Poll::Ready(Ok(res));
                     }
 
-                    Ok(OpenFileOutput::FileNotFound) => {
+                    Ok(OpenFileOutput::FileNotFound | OpenFileOutput::InvalidFilename) => {
                         if let Some((mut fallback, request)) = fallback_and_request.take() {
                             call_fallback(&mut fallback, request)
                         } else {
@@ -121,6 +121,12 @@ where
 
                     Ok(OpenFileOutput::NotModified) => {
                         break Poll::Ready(Ok(response_with_status(StatusCode::NOT_MODIFIED)));
+                    }
+
+                    Ok(OpenFileOutput::InvalidRedirectUri) => {
+                        break Poll::Ready(Ok(response_with_status(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                        )));
                     }
 
                     Err(err) => {
@@ -202,11 +208,13 @@ where
         .map_ok(|response| {
             response
                 .map(|body| {
-                    body.map_err(|err| match err.into().downcast::<io::Error>() {
-                        Ok(err) => *err,
-                        Err(err) => io::Error::new(io::ErrorKind::Other, err),
-                    })
-                    .boxed_unsync()
+                    UnsyncBoxBody::new(
+                        body.map_err(|err| match err.into().downcast::<io::Error>() {
+                            Ok(err) => *err,
+                            Err(err) => io::Error::new(io::ErrorKind::Other, err),
+                        })
+                        .boxed_unsync(),
+                    )
                 })
                 .map(ResponseBody::new)
         })
@@ -250,16 +258,22 @@ fn build_response(output: FileOpened) -> Response<ResponseBody> {
                 } else {
                     let body = if let Some(file) = maybe_file {
                         let range_size = range.end() - range.start() + 1;
-                        ResponseBody::new(
+                        ResponseBody::new(UnsyncBoxBody::new(
                             AsyncReadBody::with_capacity_limited(
                                 file,
                                 output.chunk_size,
                                 range_size,
                             )
                             .boxed_unsync(),
-                        )
+                        ))
                     } else {
                         empty_body()
+                    };
+
+                    let content_length = if size == 0 {
+                        0
+                    } else {
+                        range.end() - range.start() + 1
                     };
 
                     builder
@@ -267,7 +281,7 @@ fn build_response(output: FileOpened) -> Response<ResponseBody> {
                             header::CONTENT_RANGE,
                             format!("bytes {}-{}/{}", range.start(), range.end(), size),
                         )
-                        .header(header::CONTENT_LENGTH, range.end() - range.start() + 1)
+                        .header(header::CONTENT_LENGTH, content_length)
                         .status(StatusCode::PARTIAL_CONTENT)
                         .body(body)
                         .unwrap()
@@ -292,15 +306,15 @@ fn build_response(output: FileOpened) -> Response<ResponseBody> {
         // Not a range request
         None => {
             let body = if let Some(file) = maybe_file {
-                ResponseBody::new(
+                ResponseBody::new(UnsyncBoxBody::new(
                     AsyncReadBody::with_capacity(file, output.chunk_size).boxed_unsync(),
-                )
+                ))
             } else {
                 empty_body()
             };
 
             builder
-                .header(header::CONTENT_LENGTH, size.to_string())
+                .header(header::CONTENT_LENGTH, size)
                 .body(body)
                 .unwrap()
         }
@@ -309,10 +323,10 @@ fn build_response(output: FileOpened) -> Response<ResponseBody> {
 
 fn body_from_bytes(bytes: Bytes) -> ResponseBody {
     let body = Full::from(bytes).map_err(|err| match err {}).boxed_unsync();
-    ResponseBody::new(body)
+    ResponseBody::new(UnsyncBoxBody::new(body))
 }
 
 fn empty_body() -> ResponseBody {
     let body = Empty::new().map_err(|err| match err {}).boxed_unsync();
-    ResponseBody::new(body)
+    ResponseBody::new(UnsyncBoxBody::new(body))
 }

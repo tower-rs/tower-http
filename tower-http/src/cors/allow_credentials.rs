@@ -57,7 +57,7 @@ impl AllowCredentials {
             AllowCredentialsInner::Predicate(c) => c(origin?, parts),
         };
 
-        allow_creds.then(|| (header::ACCESS_CONTROL_ALLOW_CREDENTIALS, TRUE))
+        allow_creds.then_some((header::ACCESS_CONTROL_ALLOW_CREDENTIALS, TRUE))
     }
 }
 
@@ -80,17 +80,12 @@ impl fmt::Debug for AllowCredentials {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 enum AllowCredentialsInner {
     Yes,
+    #[default]
     No,
     Predicate(
         Arc<dyn for<'a> Fn(&'a HeaderValue, &'a RequestParts) -> bool + Send + Sync + 'static>,
     ),
-}
-
-impl Default for AllowCredentialsInner {
-    fn default() -> Self {
-        Self::No
-    }
 }

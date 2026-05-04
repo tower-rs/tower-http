@@ -192,7 +192,7 @@ pub trait ClassifyResponse {
     ///     ClassifyResponse, ClassifiedResponse
     /// };
     /// use http::{Response, StatusCode};
-    /// use http_body::Empty;
+    /// use http_body_util::Empty;
     /// use bytes::Bytes;
     ///
     /// fn transform_failure_class(class: ServerErrorsFailureClass) -> NewFailureClass {
@@ -362,7 +362,7 @@ pub enum ServerErrorsFailureClass {
 }
 
 impl fmt::Display for ServerErrorsFailureClass {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::StatusCode(code) => write!(f, "Status code: {}", code),
             Self::Error(error) => write!(f, "Error: {}", error),
@@ -373,10 +373,14 @@ impl fmt::Display for ServerErrorsFailureClass {
 // Just verify that we can actually use this response classifier to determine retries as well
 #[cfg(test)]
 mod usable_for_retries {
-    #[allow(unused_imports)]
-    use super::*;
-    use hyper::{Request, Response};
+    #![allow(dead_code)]
+
+    use std::fmt;
+
+    use http::{Request, Response};
     use tower::retry::Policy;
+
+    use super::{ClassifiedResponse, ClassifyResponse};
 
     trait IsRetryable {
         fn is_retryable(&self) -> bool;
@@ -397,12 +401,12 @@ mod usable_for_retries {
         Request<ReqB>: Clone,
         E: std::error::Error + 'static,
     {
-        type Future = futures::future::Ready<RetryBasedOnClassification<C>>;
+        type Future = std::future::Ready<()>;
 
         fn retry(
-            &self,
-            _req: &Request<ReqB>,
-            res: Result<&Response<ResB>, &E>,
+            &mut self,
+            _req: &mut Request<ReqB>,
+            res: &mut Result<Response<ResB>, E>,
         ) -> Option<Self::Future> {
             match res {
                 Ok(res) => {
@@ -410,7 +414,7 @@ mod usable_for_retries {
                         self.classifier.clone().classify_response(res)
                     {
                         if class.err()?.is_retryable() {
-                            return Some(futures::future::ready(self.clone()));
+                            return Some(std::future::ready(()));
                         }
                     }
 
@@ -421,11 +425,11 @@ mod usable_for_retries {
                     .clone()
                     .classify_error(err)
                     .is_retryable()
-                    .then(|| futures::future::ready(self.clone())),
+                    .then(|| std::future::ready(())),
             }
         }
 
-        fn clone_request(&self, req: &Request<ReqB>) -> Option<Request<ReqB>> {
+        fn clone_request(&mut self, req: &Request<ReqB>) -> Option<Request<ReqB>> {
             Some(req.clone())
         }
     }

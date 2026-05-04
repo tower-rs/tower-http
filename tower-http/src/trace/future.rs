@@ -1,4 +1,7 @@
-use super::{OnBodyChunk, OnEos, OnFailure, OnResponse, ResponseBody};
+use super::{
+    DefaultOnBodyChunk, DefaultOnEos, DefaultOnFailure, DefaultOnResponse, OnBodyChunk, OnEos,
+    OnFailure, OnResponse, ResponseBody,
+};
 use crate::classify::{ClassifiedResponse, ClassifyResponse};
 use http::Response;
 use http_body::Body;
@@ -6,7 +9,7 @@ use pin_project_lite::pin_project;
 use std::{
     future::Future,
     pin::Pin,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
     time::Instant,
 };
 use tracing::Span;
@@ -15,7 +18,7 @@ pin_project! {
     /// Response future for [`Trace`].
     ///
     /// [`Trace`]: super::Trace
-    pub struct ResponseFuture<F, C, OnResponse, OnBodyChunk, OnEos, OnFailure> {
+    pub struct ResponseFuture<F, C, OnResponse = DefaultOnResponse, OnBodyChunk = DefaultOnBodyChunk, OnEos = DefaultOnEos, OnFailure = DefaultOnFailure> {
         #[pin]
         pub(crate) inner: F,
         pub(crate) span: Span,
@@ -49,7 +52,7 @@ where
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
         let _guard = this.span.enter();
-        let result = futures_util::ready!(this.inner.poll(cx));
+        let result = ready!(this.inner.poll(cx));
         let latency = this.start.elapsed();
 
         let classifier = this.classifier.take().unwrap();
@@ -77,7 +80,7 @@ where
                         let res = res.map(|body| ResponseBody {
                             inner: body,
                             classify_eos: None,
-                            on_eos: None,
+                            on_eos: on_eos.zip(Some(Instant::now())),
                             on_body_chunk,
                             on_failure: Some(on_failure),
                             start,

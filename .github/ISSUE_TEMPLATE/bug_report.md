@@ -4,13 +4,15 @@ about: If something isn't working as expected 🤔.
 
 ---
 
-## Bug Report
-
 <!--
 Thank you for reporting an issue.
 
 Please fill in as much of the template below as you're able.
 -->
+
+- [ ] I have looked for existing issues (including closed) about this
+
+## Bug Report
 
 ### Version
 

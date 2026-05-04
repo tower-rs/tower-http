@@ -1,5 +1,6 @@
 use super::future::RequestDecompressionFuture as ResponseFuture;
 use super::layer::RequestDecompressionLayer;
+use crate::body::UnsyncBoxBody;
 use crate::compression_utils::CompressionLevel;
 use crate::{
     compression_utils::AcceptEncoding, decompression::body::BodyInner,
@@ -7,7 +8,7 @@ use crate::{
 };
 use bytes::Buf;
 use http::{header, Request, Response};
-use http_body::{combinators::UnsyncBoxBody, Body};
+use http_body::Body;
 use std::task::{Context, Poll};
 use tower_service::Service;
 
@@ -42,16 +43,15 @@ where
     S: Service<Request<DecompressionBody<ReqBody>>, Response = Response<ResBody>>,
     ReqBody: Body,
     ResBody: Body<Data = D> + Send + 'static,
-    S::Error: Into<BoxError>,
     <ResBody as Body>::Error: Into<BoxError>,
     D: Buf + 'static,
 {
     type Response = Response<UnsyncBoxBody<D, BoxError>>;
-    type Error = BoxError;
+    type Error = S::Error;
     type Future = ResponseFuture<S::Future, ResBody, S::Error>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.inner.poll_ready(cx).map_err(Into::into)
+        self.inner.poll_ready(cx)
     }
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {

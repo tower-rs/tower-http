@@ -18,7 +18,8 @@
 //!
 //! ```
 //! use http::{Request, Response};
-//! use hyper::Body;
+//! use bytes::Bytes;
+//! use http_body_util::Full;
 //! use tower::{Service, ServiceBuilder, ServiceExt};
 //! use tower_http::follow_redirect::{FollowRedirectLayer, RequestUri};
 //!
@@ -32,7 +33,7 @@
 //! #             .status(http::StatusCode::MOVED_PERMANENTLY)
 //! #             .header(http::header::LOCATION, dest);
 //! #     }
-//! #     Ok::<_, std::convert::Infallible>(res.body(Body::empty()).unwrap())
+//! #     Ok::<_, std::convert::Infallible>(res.body(Full::<Bytes>::default()).unwrap())
 //! # });
 //! let mut client = ServiceBuilder::new()
 //!     .layer(FollowRedirectLayer::new())
@@ -40,7 +41,7 @@
 //!
 //! let request = Request::builder()
 //!     .uri("https://rust-lang.org/")
-//!     .body(Body::empty())
+//!     .body(Full::<Bytes>::default())
 //!     .unwrap();
 //!
 //! let response = client.ready().await?.call(request).await?;
@@ -56,7 +57,8 @@
 //!
 //! ```
 //! use http::{Request, Response};
-//! use hyper::Body;
+//! use http_body_util::Full;
+//! use bytes::Bytes;
 //! use tower::{Service, ServiceBuilder, ServiceExt};
 //! use tower_http::follow_redirect::{
 //!     policy::{self, PolicyExt},
@@ -65,14 +67,14 @@
 //!
 //! #[derive(Debug)]
 //! enum MyError {
-//!     Hyper(hyper::Error),
 //!     TooManyRedirects,
+//!     Other(tower::BoxError),
 //! }
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), MyError> {
 //! # let http_client =
-//! #     tower::service_fn(|_: Request<Body>| async { Ok(Response::new(Body::empty())) });
+//! #     tower::service_fn(|_: Request<Full<Bytes>>| async { Ok(Response::new(Full::<Bytes>::default())) });
 //! let policy = policy::Limited::new(10) // Set the maximum number of redirections to 10.
 //!     // Return an error when the limit was reached.
 //!     .or::<_, (), _>(policy::redirect_fn(|_| Err(MyError::TooManyRedirects)))
@@ -81,7 +83,7 @@
 //!
 //! let mut client = ServiceBuilder::new()
 //!     .layer(FollowRedirectLayer::with_policy(policy))
-//!     .map_err(MyError::Hyper)
+//!     .map_err(MyError::Other)
 //!     .service(http_client);
 //!
 //! // ...
@@ -93,13 +95,13 @@
 pub mod policy;
 
 use self::policy::{Action, Attempt, Policy, Standard};
-use futures_core::ready;
 use futures_util::future::Either;
 use http::{
-    header::LOCATION, HeaderMap, HeaderValue, Method, Request, Response, StatusCode, Uri, Version,
+    header::CONTENT_ENCODING, header::CONTENT_LENGTH, header::CONTENT_TYPE, header::LOCATION,
+    header::TRANSFER_ENCODING, HeaderMap, HeaderValue, Method, Request, Response, StatusCode, Uri,
+    Version,
 };
 use http_body::Body;
-use iri_string::types::{UriAbsoluteString, UriReferenceStr};
 use pin_project_lite::pin_project;
 use std::{
     convert::TryFrom,
@@ -107,11 +109,12 @@ use std::{
     mem,
     pin::Pin,
     str,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
 };
 use tower::util::Oneshot;
 use tower_layer::Layer;
 use tower_service::Service;
+use url::Url;
 
 /// [`Layer`] for retrying requests with a [`Service`] to follow redirection responses.
 ///
@@ -256,6 +259,16 @@ where
         let mut res = ready!(this.future.as_mut().poll(cx)?);
         res.extensions_mut().insert(RequestUri(this.uri.clone()));
 
+        let drop_payload_headers = |headers: &mut HeaderMap| {
+            for header in &[
+                CONTENT_TYPE,
+                CONTENT_LENGTH,
+                CONTENT_ENCODING,
+                TRANSFER_ENCODING,
+            ] {
+                headers.remove(header);
+            }
+        };
         match res.status() {
             StatusCode::MOVED_PERMANENTLY | StatusCode::FOUND => {
                 // User agents MAY change the request method from POST to GET
@@ -263,6 +276,7 @@ where
                 if *this.method == Method::POST {
                     *this.method = Method::GET;
                     *this.body = BodyRepr::Empty;
+                    drop_payload_headers(this.headers);
                 }
             }
             StatusCode::SEE_OTHER => {
@@ -271,6 +285,7 @@ where
                     *this.method = Method::GET;
                 }
                 *this.body = BodyRepr::Empty;
+                drop_payload_headers(this.headers);
             }
             StatusCode::TEMPORARY_REDIRECT | StatusCode::PERMANENT_REDIRECT => {}
             _ => return Poll::Ready(Ok(res)),
@@ -324,6 +339,7 @@ where
 ///
 /// The value differs from the original request's effective URI if the middleware has followed
 /// redirections.
+#[derive(Clone)]
 pub struct RequestUri(pub Uri);
 
 #[derive(Debug)]
@@ -377,16 +393,16 @@ where
 
 /// Try to resolve a URI reference `relative` against a base URI `base`.
 fn resolve_uri(relative: &str, base: &Uri) -> Option<Uri> {
-    let relative = UriReferenceStr::new(relative).ok()?;
-    let base = UriAbsoluteString::try_from(base.to_string()).ok()?;
-    let uri = relative.resolve_against(&base).to_string();
-    Uri::try_from(uri).ok()
+    let base_url = Url::parse(&base.to_string()).ok()?;
+    let resolved = base_url.join(relative).ok()?;
+    Uri::try_from(String::from(resolved)).ok()
 }
 
 #[cfg(test)]
 mod tests {
     use super::{policy::*, *};
-    use hyper::{header::LOCATION, Body};
+    use crate::test_helpers::Body;
+    use http::header::LOCATION;
     use std::convert::Infallible;
     use tower::{ServiceBuilder, ServiceExt};
 
@@ -455,5 +471,31 @@ mod tests {
                 .header(LOCATION, format!("/{}", n - 1));
         }
         Ok::<_, Infallible>(res.body(n).unwrap())
+    }
+
+    #[tokio::test]
+    async fn test_resolve_uri_unicode() {
+        let base = Uri::from_static("https://example.com/api");
+        // Case 1: Unicode in path
+        let relative = "/café";
+        let resolved = resolve_uri(relative, &base);
+        assert!(resolved.is_some(), "Should resolve URI with unicode path");
+        assert_eq!(
+            resolved.unwrap().to_string(),
+            "https://example.com/caf%C3%A9"
+        );
+
+        // Case 2: IDNA (Unicode in domain)
+        let relative_domain = "https://münchen.com/";
+        let resolved_domain = resolve_uri(relative_domain, &base);
+        assert!(
+            resolved_domain.is_some(),
+            "Should resolve URI with unicode domain"
+        );
+        // München is encoded as punycode: xn--mnchen-3ya
+        assert_eq!(
+            resolved_domain.unwrap().to_string(),
+            "https://xn--mnchen-3ya.com/"
+        );
     }
 }

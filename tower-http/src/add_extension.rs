@@ -8,7 +8,8 @@
 //! use tower_http::add_extension::AddExtensionLayer;
 //! use tower::{Service, ServiceExt, ServiceBuilder, service_fn};
 //! use http::{Request, Response};
-//! use hyper::Body;
+//! use bytes::Bytes;
+//! use http_body_util::Full;
 //! use std::{sync::Arc, convert::Infallible};
 //!
 //! # struct DatabaseConnectionPool;
@@ -21,11 +22,11 @@
 //!     pool: DatabaseConnectionPool,
 //! }
 //!
-//! async fn handle(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+//! async fn handle(req: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, Infallible> {
 //!     // Grab the state from the request extensions.
 //!     let state = req.extensions().get::<Arc<State>>().unwrap();
 //!
-//!     Ok(Response::new(Body::empty()))
+//!     Ok(Response::new(Full::default()))
 //! }
 //!
 //! # #[tokio::main]
@@ -44,7 +45,7 @@
 //! let response = service
 //!     .ready()
 //!     .await?
-//!     .call(Request::new(Body::empty()))
+//!     .call(Request::new(Full::default()))
 //!     .await?;
 //! # Ok(())
 //! # }
@@ -137,8 +138,8 @@ where
 mod tests {
     #[allow(unused_imports)]
     use super::*;
+    use crate::test_helpers::Body;
     use http::Response;
-    use hyper::Body;
     use std::{convert::Infallible, sync::Arc};
     use tower::{service_fn, ServiceBuilder, ServiceExt};
 

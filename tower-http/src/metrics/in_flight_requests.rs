@@ -10,12 +10,13 @@
 //! use tower::{Service, ServiceExt, ServiceBuilder};
 //! use tower_http::metrics::InFlightRequestsLayer;
 //! use http::{Request, Response};
-//! use hyper::Body;
+//! use bytes::Bytes;
+//! use http_body_util::Full;
 //! use std::{time::Duration, convert::Infallible};
 //!
-//! async fn handle(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+//! async fn handle(req: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, Infallible> {
 //!     // ...
-//!     # Ok(Response::new(Body::empty()))
+//!     # Ok(Response::new(Full::default()))
 //! }
 //!
 //! async fn update_in_flight_requests_metric(count: usize) {
@@ -44,13 +45,12 @@
 //! let response = service
 //!     .ready()
 //!     .await?
-//!     .call(Request::new(Body::empty()))
+//!     .call(Request::new(Full::default()))
 //!     .await?;
 //! # Ok(())
 //! # }
 //! ```
 
-use futures_util::ready;
 use http::{Request, Response};
 use http_body::Body;
 use pin_project_lite::pin_project;
@@ -61,7 +61,7 @@ use std::{
         atomic::{AtomicUsize, Ordering},
         Arc,
     },
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
     time::Duration,
 };
 use tower_layer::Layer;
@@ -267,19 +267,11 @@ where
     type Error = B::Error;
 
     #[inline]
-    fn poll_data(
+    fn poll_frame(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-    ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
-        self.project().inner.poll_data(cx)
-    }
-
-    #[inline]
-    fn poll_trailers(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<Option<http::HeaderMap>, Self::Error>> {
-        self.project().inner.poll_trailers(cx)
+    ) -> Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
+        self.project().inner.poll_frame(cx)
     }
 
     #[inline]
@@ -297,8 +289,8 @@ where
 mod tests {
     #[allow(unused_imports)]
     use super::*;
+    use crate::test_helpers::Body;
     use http::Request;
-    use hyper::Body;
     use tower::{BoxError, ServiceBuilder};
 
     #[tokio::test]
@@ -311,7 +303,7 @@ mod tests {
         assert_eq!(counter.get(), 0);
 
         // driving service to ready shouldn't increment the counter
-        futures::future::poll_fn(|cx| service.poll_ready(cx))
+        std::future::poll_fn(|cx| service.poll_ready(cx))
             .await
             .unwrap();
         assert_eq!(counter.get(), 0);
@@ -325,7 +317,7 @@ mod tests {
         assert_eq!(counter.get(), 1);
 
         let body = response.into_body();
-        hyper::body::to_bytes(body).await.unwrap();
+        crate::test_helpers::to_bytes(body).await.unwrap();
         assert_eq!(counter.get(), 0);
     }
 

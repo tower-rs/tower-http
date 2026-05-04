@@ -7,22 +7,198 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
-## Added
+## Changed:
 
-- None.
-
-## Changed
-
-- None.
-
-## Removed
-
-- None.
+- The implicit `async-compression` feature is removed (BREAKING) ([#642])
+- The implicit `tokio` feature is removed (BREAKING) ([#628])
 
 ## Fixed
 
-- Accepts range headers with ranges where the end of range goes past the end of the document by bumping 
+- `trace`: restore failure classification at end-of-stream ([#483])
+
+[#483]: https://github.com/tower-rs/tower-http/pull/483
+[#628]: https://github.com/tower-rs/tower-http/pull/628
+[#642]: https://github.com/tower-rs/tower-http/pull/642
+
+# 0.6.8
+
+## Fixed
+
+- Disable `multiple_members` in Gzip decoder, since HTTP context only uses one
+  member. ([#621])
+
+[#621]: https://github.com/tower-rs/tower-http/pull/621
+
+# 0.6.7
+
+## Added
+
+- `TimeoutLayer::with_status_code(status)` to define the status code returned
+  when timeout is reached. ([#599])
+
+## Deprecated
+
+- `auth::require_authorization` is too basic for real-world. ([#591])
+- `TimeoutLayer::new()` should be replaced with
+  `TimeoutLayer::with_status_code()`. (Previously was
+  `StatusCode::REQUEST_TIMEOUT`) ([#599])
+
+## Fixed
+
+- `on_eos` is now called even for successful responses. ([#580])
+- `ServeDir`: call fallback when filename is invalid ([#586])
+- `decompression` will not fail when body is empty ([#618])
+
+[#580]: https://github.com/tower-rs/tower-http/pull/580
+[#586]: https://github.com/tower-rs/tower-http/pull/586
+[#591]: https://github.com/tower-rs/tower-http/pull/591
+[#599]: https://github.com/tower-rs/tower-http/pull/599
+[#618]: https://github.com/tower-rs/tower-http/pull/618
+
+# 0.6.6
+
+## Fixed
+
+- compression: fix panic when looking in vary header ([#578])
+
+[#578]: https://github.com/tower-rs/tower-http/pull/578
+
+# 0.6.5
+
+## Added
+
+- normalize_path: add `append_trailing_slash()` mode ([#547])
+
+## Fixed
+
+- redirect: remove payload headers if redirect changes method to GET ([#575])
+- compression: avoid setting `vary: accept-encoding` if already set ([#572])
+
+[#547]: https://github.com/tower-rs/tower-http/pull/547
+[#572]: https://github.com/tower-rs/tower-http/pull/572
+[#575]: https://github.com/tower-rs/tower-http/pull/575
+
+# 0.6.4
+
+## Added
+
+- decompression: Support HTTP responses containing multiple ZSTD frames ([#548])
+- The `ServiceExt` trait for chaining layers onto an arbitrary http service just
+  like `ServiceBuilderExt` allows for `ServiceBuilder` ([#563])
+
+## Fixed
+
+- Remove unnecessary trait bounds on `S::Error` for `Service` impls of
+  `RequestBodyTimeout<S>` and `ResponseBodyTimeout<S>` ([#533])
+- compression: Respect `is_end_stream` ([#535])
+- Fix a rare panic in `fs::ServeDir` ([#553])
+- Fix invalid `content-lenght` of 1 in response to range requests to empty
+  files ([#556])
+- In `AsyncRequireAuthorization`, use the original inner service after it is
+  ready, instead of using a clone ([#561])
+
+[#533]: https://github.com/tower-rs/tower-http/pull/533
+[#535]: https://github.com/tower-rs/tower-http/pull/535
+[#548]: https://github.com/tower-rs/tower-http/pull/548
+[#553]: https://github.com/tower-rs/tower-http/pull/556
+[#556]: https://github.com/tower-rs/tower-http/pull/556
+[#561]: https://github.com/tower-rs/tower-http/pull/561
+[#563]: https://github.com/tower-rs/tower-http/pull/563
+
+# 0.6.3
+
+*This release was yanked because its definition of `ServiceExt` was quite unhelpful, in a way that's very unlikely that anybody would start depending on within the small timeframe before this was yanked, but that was technically breaking to change.*
+
+# 0.6.2
+
+## Changed:
+
+- `CompressionBody<B>` now propagates `B`'s size hint in its `http_body::Body`
+  implementation, if compression is disabled ([#531])
+  - this allows a `content-length` to be included in an HTTP message with this
+    body for those cases
+
+[#531]: https://github.com/tower-rs/tower-http/pull/531
+
+# 0.6.1
+
+## Fixed
+
+- **decompression:** reuse scratch buffer to significantly reduce allocations and improve performance ([#521])
+
+[#521]: https://github.com/tower-rs/tower-http/pull/521
+
+# 0.6.0
+
+## Changed:
+
+- `body` module is disabled except for `catch-panic`, `decompression-*`, `fs`, or `limit` features (BREAKING) ([#477])
+- Update to `tower` 0.5 ([#503])
+
+## Fixed
+
+- **fs:** Precompression of static files now supports files without a file extension ([#507])
+
+[#477]: https://github.com/tower-rs/tower-http/pull/477
+[#503]: https://github.com/tower-rs/tower-http/pull/503
+[#507]: https://github.com/tower-rs/tower-http/pull/507
+
+# 0.5.2
+
+## Added:
+
+- **compression:** Will now send a `vary: accept-encoding` header on compressed responses ([#399])
+- **compression:** Support `x-gzip` as equivalent to `gzip` in `accept-encoding` request header ([#467])
+
+## Fixed
+
+- **compression:** Skip compression for range requests ([#446])
+- **compression:** Skip compression for SSE responses by default ([#465])
+- **cors:** *Actually* keep Vary headers set by the inner service when setting response headers ([#473])
+  - Version 0.5.1 intended to ship this, but the implementation was buggy and didn't actually do anything
+
+[#399]: https://github.com/tower-rs/tower-http/pull/399
+[#446]: https://github.com/tower-rs/tower-http/pull/446
+[#465]: https://github.com/tower-rs/tower-http/pull/465
+[#467]: https://github.com/tower-rs/tower-http/pull/467
+[#473]: https://github.com/tower-rs/tower-http/pull/473
+
+# 0.5.1 (January 14, 2024)
+
+## Added
+
+- **fs:** Support files precompressed with `zstd` in `ServeFile`
+- **trace:** Add default generic parameters for `ResponseBody` and `ResponseFuture` ([#455])
+- **trace:** Add type aliases `HttpMakeClassifier` and `GrpcMakeClassifier` ([#455])
+
+## Fixed
+
+- **cors:** Keep Vary headers set by the inner service when setting response headers ([#398])
+- **fs:** `ServeDir` now no longer redirects from `/directory` to `/directory/`
+  if `append_index_html_on_directories` is disabled ([#421])
+
+[#398]: https://github.com/tower-rs/tower-http/pull/398
+[#421]: https://github.com/tower-rs/tower-http/pull/421
+[#455]: https://github.com/tower-rs/tower-http/pull/455
+
+# 0.5.0 (November 21, 2023)
+
+## Changed
+
+- Bump Minimum Supported Rust Version to 1.66 ([#433])
+- Update to http-body 1.0 ([#348])
+- Update to http 1.0 ([#348])
+- Preserve service error type in RequestDecompression ([#368])
+
+## Fixed
+
+- Accepts range headers with ranges where the end of range goes past the end of the document by bumping
 http-range-header to `0.4`
+
+[#418]: https://github.com/tower-rs/tower-http/pull/418
+[#433]: https://github.com/tower-rs/tower-http/pull/433
+[#348]: https://github.com/tower-rs/tower-http/pull/348
+[#368]: https://github.com/tower-rs/tower-http/pull/368
 
 # 0.4.2 (July 19, 2023)
 

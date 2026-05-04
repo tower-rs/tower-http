@@ -5,12 +5,12 @@ use super::{
 use crate::content_encoding::{Encoding, QValue};
 use bytes::Bytes;
 use http::{header, HeaderValue, Method, Request, Uri};
-use http_body::Empty;
+use http_body_util::Empty;
 use http_range_header::RangeUnsatisfiableError;
 use std::{
     ffi::OsStr,
     fs::Metadata,
-    io::{self, SeekFrom},
+    io::{self, ErrorKind, SeekFrom},
     ops::RangeInclusive,
     path::{Path, PathBuf},
 };
@@ -22,6 +22,8 @@ pub(super) enum OpenFileOutput {
     FileNotFound,
     PreconditionFailed,
     NotModified,
+    InvalidRedirectUri,
+    InvalidFilename,
 }
 
 pub(super) struct FileOpened {
@@ -109,7 +111,15 @@ pub(super) async fn open_file(
         })))
     } else {
         let (mut file, maybe_encoding) =
-            open_file_with_fallback(path_to_file, negotiated_encodings).await?;
+            match open_file_with_fallback(path_to_file, negotiated_encodings).await {
+                Ok(result) => result,
+
+                Err(err) if is_invalid_filename_error(&err) => {
+                    return Ok(OpenFileOutput::InvalidFilename)
+                }
+                Err(err) => return Err(err),
+            };
+
         let meta = file.metadata().await?;
         let last_modified = meta.modified().ok().map(LastModified::from);
         if let Some(output) = check_modified_headers(
@@ -138,6 +148,26 @@ pub(super) async fn open_file(
             last_modified,
         })))
     }
+}
+
+fn is_invalid_filename_error(err: &io::Error) -> bool {
+    // Only applies to NULL bytes
+    if err.kind() == ErrorKind::InvalidInput {
+        return true;
+    }
+
+    // FIXME: Remove when MSRV >= 1.87.
+    // `io::ErrorKind::InvalidFilename` is stabilized in v1.87
+    #[cfg(windows)]
+    if let Some(raw_err) = err.raw_os_error() {
+        // https://github.com/rust-lang/rust/blob/70e2b4a4d197f154bed0eb3dcb5cac6a948ff3a3/library/std/src/sys/pal/windows/mod.rs
+        // Lines 81 and 115
+        if (raw_err == 123) || (raw_err == 161) || (raw_err == 206) {
+            return true;
+        }
+    }
+
+    false
 }
 
 fn check_modified_headers(
@@ -176,21 +206,21 @@ fn preferred_encoding(
     path: &mut PathBuf,
     negotiated_encoding: &[(Encoding, QValue)],
 ) -> Option<Encoding> {
-    let preferred_encoding = Encoding::preferred_encoding(negotiated_encoding);
+    let preferred_encoding = Encoding::preferred_encoding(negotiated_encoding.iter().copied());
 
     if let Some(file_extension) =
         preferred_encoding.and_then(|encoding| encoding.to_file_extension())
     {
-        let new_extension = path
-            .extension()
-            .map(|extension| {
-                let mut os_string = extension.to_os_string();
+        let new_file_name = path
+            .file_name()
+            .map(|file_name| {
+                let mut os_string = file_name.to_os_string();
                 os_string.push(file_extension);
                 os_string
             })
             .unwrap_or_else(|| file_extension.to_os_string());
 
-        path.set_extension(new_extension);
+        path.set_file_name(new_file_name);
     }
 
     preferred_encoding
@@ -215,10 +245,9 @@ async fn open_file_with_fallback(
                 // Remove the encoding from the negotiated_encodings since the file doesn't exist
                 negotiated_encoding
                     .retain(|(negotiated_encoding, _)| *negotiated_encoding != encoding);
-                continue;
             }
             (Err(err), _) => return Err(err),
-        };
+        }
     };
     Ok((file, encoding))
 }
@@ -242,10 +271,9 @@ async fn file_metadata_with_fallback(
                 // Remove the encoding from the negotiated_encodings since the file doesn't exist
                 negotiated_encoding
                     .retain(|(negotiated_encoding, _)| *negotiated_encoding != encoding);
-                continue;
             }
             (Err(err), _) => return Err(err),
-        };
+        }
     };
     Ok((file, encoding))
 }
@@ -255,23 +283,24 @@ async fn maybe_redirect_or_append_path(
     uri: &Uri,
     append_index_html_on_directories: bool,
 ) -> Option<OpenFileOutput> {
-    if !uri.path().ends_with('/') {
-        if is_dir(path_to_file).await {
-            let location =
-                HeaderValue::from_str(&append_slash_on_path(uri.clone()).to_string()).unwrap();
-            Some(OpenFileOutput::Redirect { location })
-        } else {
-            None
-        }
-    } else if is_dir(path_to_file).await {
-        if append_index_html_on_directories {
-            path_to_file.push("index.html");
-            None
-        } else {
-            Some(OpenFileOutput::FileNotFound)
-        }
-    } else {
+    if !is_dir(path_to_file).await {
+        return None;
+    }
+
+    if !append_index_html_on_directories {
+        return Some(OpenFileOutput::FileNotFound);
+    }
+
+    if uri.path().ends_with('/') {
+        path_to_file.push("index.html");
         None
+    } else {
+        let uri = match append_slash_on_path(uri.clone()) {
+            Ok(uri) => uri,
+            Err(err) => return Some(err),
+        };
+        let location = HeaderValue::from_str(&uri.to_string()).unwrap();
+        Some(OpenFileOutput::Redirect { location })
     }
 }
 
@@ -291,7 +320,7 @@ async fn is_dir(path_to_file: &Path) -> bool {
         .map_or(false, |meta_data| meta_data.is_dir())
 }
 
-fn append_slash_on_path(uri: Uri) -> Uri {
+fn append_slash_on_path(uri: Uri) -> Result<Uri, OpenFileOutput> {
     let http::uri::Parts {
         scheme,
         authority,
@@ -319,5 +348,24 @@ fn append_slash_on_path(uri: Uri) -> Uri {
         uri_builder.path_and_query("/")
     };
 
-    uri_builder.build().unwrap()
+    uri_builder.build().map_err(|_err| {
+        #[cfg(feature = "tracing")]
+        tracing::error!(err = ?_err, "redirect uri failed to build");
+
+        OpenFileOutput::InvalidRedirectUri
+    })
+}
+
+#[test]
+fn preferred_encoding_with_extension() {
+    let mut path = PathBuf::from("hello.txt");
+    preferred_encoding(&mut path, &[(Encoding::Gzip, QValue::one())]);
+    assert_eq!(path, PathBuf::from("hello.txt.gz"));
+}
+
+#[test]
+fn preferred_encoding_without_extension() {
+    let mut path = PathBuf::from("hello");
+    preferred_encoding(&mut path, &[(Encoding::Gzip, QValue::one())]);
+    assert_eq!(path, PathBuf::from("hello.gz"));
 }

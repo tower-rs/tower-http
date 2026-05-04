@@ -7,15 +7,16 @@
 //! ```
 //! use tower_http::validate_request::{ValidateRequestHeader, ValidateRequestHeaderLayer};
 //! use tower_http::auth::AddAuthorizationLayer;
-//! use hyper::{Request, Response, Body, Error};
-//! use http::{StatusCode, header::AUTHORIZATION};
-//! use tower::{Service, ServiceExt, ServiceBuilder, service_fn};
-//! # async fn handle(request: Request<Body>) -> Result<Response<Body>, Error> {
-//! #     Ok(Response::new(Body::empty()))
+//! use http::{Request, Response, StatusCode, header::AUTHORIZATION};
+//! use tower::{Service, ServiceExt, ServiceBuilder, service_fn, BoxError};
+//! use http_body_util::Full;
+//! use bytes::Bytes;
+//! # async fn handle(request: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, BoxError> {
+//! #     Ok(Response::new(Full::default()))
 //! # }
 //!
 //! # #[tokio::main]
-//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn main() -> Result<(), BoxError> {
 //! # let service_that_requires_auth = ValidateRequestHeader::basic(
 //! #     tower::service_fn(handle),
 //! #     "username",
@@ -30,7 +31,7 @@
 //! let response = client
 //!     .ready()
 //!     .await?
-//!     .call(Request::new(Body::empty()))
+//!     .call(Request::new(Full::default()))
 //!     .await?;
 //!
 //! assert_eq!(StatusCode::OK, response.status());
@@ -84,7 +85,7 @@ impl AddAuthorizationLayer {
     ///
     /// # Panics
     ///
-    /// Panics if the token is not a valid [`HeaderValue`](http::header::HeaderValue).
+    /// Panics if the token is not a valid [`HeaderValue`].
     pub fn bearer(token: &str) -> Self {
         let value =
             HeaderValue::try_from(format!("Bearer {}", token)).expect("token is not valid header");
@@ -147,7 +148,7 @@ impl<S> AddAuthorization<S> {
     ///
     /// # Panics
     ///
-    /// Panics if the token is not a valid [`HeaderValue`](http::header::HeaderValue).
+    /// Panics if the token is not a valid [`HeaderValue`].
     pub fn bearer(inner: S, token: &str) -> Self {
         AddAuthorizationLayer::bearer(token).layer(inner)
     }
@@ -187,12 +188,11 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::validate_request::ValidateRequestHeaderLayer;
-
-    #[allow(unused_imports)]
     use super::*;
+    use crate::test_helpers::Body;
+    use crate::validate_request::ValidateRequestHeaderLayer;
     use http::{Response, StatusCode};
-    use hyper::Body;
+    use std::convert::Infallible;
     use tower::{BoxError, Service, ServiceBuilder, ServiceExt};
 
     #[tokio::test]
@@ -245,7 +245,7 @@ mod tests {
                 let auth = request.headers().get(http::header::AUTHORIZATION).unwrap();
                 assert!(auth.is_sensitive());
 
-                Ok::<_, hyper::Error>(Response::new(Body::empty()))
+                Ok::<_, Infallible>(Response::new(Body::empty()))
             });
 
         let mut client = AddAuthorization::bearer(svc, "foo").as_sensitive(true);

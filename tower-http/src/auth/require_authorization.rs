@@ -1,3 +1,4 @@
+#![deprecated(since = "0.6.7", note = "too basic to be useful in real applications")]
 //! Authorize requests using [`ValidateRequest`].
 //!
 //! [`Authorization`]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Authorization
@@ -6,16 +7,17 @@
 //!
 //! ```
 //! use tower_http::validate_request::{ValidateRequest, ValidateRequestHeader, ValidateRequestHeaderLayer};
-//! use hyper::{Request, Response, Body, Error};
-//! use http::{StatusCode, header::AUTHORIZATION};
-//! use tower::{Service, ServiceExt, ServiceBuilder, service_fn};
+//! use http::{Request, Response, StatusCode, header::AUTHORIZATION};
+//! use tower::{Service, ServiceExt, ServiceBuilder, service_fn, BoxError};
+//! use bytes::Bytes;
+//! use http_body_util::Full;
 //!
-//! async fn handle(request: Request<Body>) -> Result<Response<Body>, Error> {
-//!     Ok(Response::new(Body::empty()))
+//! async fn handle(request: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, BoxError> {
+//!     Ok(Response::new(Full::default()))
 //! }
 //!
 //! # #[tokio::main]
-//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn main() -> Result<(), BoxError> {
 //! let mut service = ServiceBuilder::new()
 //!     // Require the `Authorization` header to be `Bearer passwordlol`
 //!     .layer(ValidateRequestHeaderLayer::bearer("passwordlol"))
@@ -24,7 +26,7 @@
 //! // Requests with the correct token are allowed through
 //! let request = Request::builder()
 //!     .header(AUTHORIZATION, "Bearer passwordlol")
-//!     .body(Body::empty())
+//!     .body(Full::default())
 //!     .unwrap();
 //!
 //! let response = service
@@ -37,7 +39,7 @@
 //!
 //! // Requests with an invalid token get a `401 Unauthorized` response
 //! let request = Request::builder()
-//!     .body(Body::empty())
+//!     .body(Full::default())
 //!     .unwrap();
 //!
 //! let response = service
@@ -59,7 +61,6 @@ use http::{
     header::{self, HeaderValue},
     Request, Response, StatusCode,
 };
-use http_body::Body;
 use std::{fmt, marker::PhantomData};
 
 const BASE64: base64::engine::GeneralPurpose = base64::engine::general_purpose::STANDARD;
@@ -74,7 +75,7 @@ impl<S, ResBody> ValidateRequestHeader<S, Basic<ResBody>> {
     /// with this method. However use of HTTPS/TLS is not enforced by this middleware.
     pub fn basic(inner: S, username: &str, value: &str) -> Self
     where
-        ResBody: Body + Default,
+        ResBody: Default,
     {
         Self::custom(inner, Basic::new(username, value))
     }
@@ -90,7 +91,7 @@ impl<ResBody> ValidateRequestHeaderLayer<Basic<ResBody>> {
     /// with this method. However use of HTTPS/TLS is not enforced by this middleware.
     pub fn basic(username: &str, password: &str) -> Self
     where
-        ResBody: Body + Default,
+        ResBody: Default,
     {
         Self::custom(Basic::new(username, password))
     }
@@ -103,10 +104,10 @@ impl<S, ResBody> ValidateRequestHeader<S, Bearer<ResBody>> {
     ///
     /// # Panics
     ///
-    /// Panics if the token is not a valid [`HeaderValue`](http::header::HeaderValue).
+    /// Panics if the token is not a valid [`HeaderValue`].
     pub fn bearer(inner: S, token: &str) -> Self
     where
-        ResBody: Body + Default,
+        ResBody: Default,
     {
         Self::custom(inner, Bearer::new(token))
     }
@@ -119,10 +120,10 @@ impl<ResBody> ValidateRequestHeaderLayer<Bearer<ResBody>> {
     ///
     /// # Panics
     ///
-    /// Panics if the token is not a valid [`HeaderValue`](http::header::HeaderValue).
+    /// Panics if the token is not a valid [`HeaderValue`].
     pub fn bearer(token: &str) -> Self
     where
-        ResBody: Body + Default,
+        ResBody: Default,
     {
         Self::custom(Bearer::new(token))
     }
@@ -139,7 +140,7 @@ pub struct Bearer<ResBody> {
 impl<ResBody> Bearer<ResBody> {
     fn new(token: &str) -> Self
     where
-        ResBody: Body + Default,
+        ResBody: Default,
     {
         Self {
             header_value: format!("Bearer {}", token)
@@ -169,7 +170,7 @@ impl<ResBody> fmt::Debug for Bearer<ResBody> {
 
 impl<B, ResBody> ValidateRequest<B> for Bearer<ResBody>
 where
-    ResBody: Body + Default,
+    ResBody: Default,
 {
     type ResponseBody = ResBody;
 
@@ -196,7 +197,7 @@ pub struct Basic<ResBody> {
 impl<ResBody> Basic<ResBody> {
     fn new(username: &str, password: &str) -> Self
     where
-        ResBody: Body + Default,
+        ResBody: Default,
     {
         let encoded = BASE64.encode(format!("{}:{}", username, password));
         let header_value = format!("Basic {}", encoded).parse().unwrap();
@@ -226,7 +227,7 @@ impl<ResBody> fmt::Debug for Basic<ResBody> {
 
 impl<B, ResBody> ValidateRequest<B> for Basic<ResBody>
 where
-    ResBody: Body + Default,
+    ResBody: Default,
 {
     type ResponseBody = ResBody;
 
@@ -250,8 +251,8 @@ mod tests {
 
     #[allow(unused_imports)]
     use super::*;
+    use crate::test_helpers::Body;
     use http::header;
-    use hyper::Body;
     use tower::{BoxError, ServiceBuilder, ServiceExt};
     use tower_service::Service;
 

@@ -4,13 +4,14 @@
 //!
 //! ```
 //! use http::{Request, Response, Method, header};
-//! use hyper::Body;
+//! use http_body_util::Full;
+//! use bytes::Bytes;
 //! use tower::{ServiceBuilder, ServiceExt, Service};
 //! use tower_http::cors::{Any, CorsLayer};
 //! use std::convert::Infallible;
 //!
-//! async fn handle(request: Request<Body>) -> Result<Response<Body>, Infallible> {
-//!     Ok(Response::new(Body::empty()))
+//! async fn handle(request: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, Infallible> {
+//!     Ok(Response::new(Full::default()))
 //! }
 //!
 //! # #[tokio::main]
@@ -27,7 +28,7 @@
 //!
 //! let request = Request::builder()
 //!     .header(header::ORIGIN, "https://example.com")
-//!     .body(Body::empty())
+//!     .body(Full::default())
 //!     .unwrap();
 //!
 //! let response = service
@@ -48,19 +49,18 @@
 
 #![allow(clippy::enum_variant_names)]
 
+use allow_origin::AllowOriginFuture;
 use bytes::{BufMut, BytesMut};
-use futures_core::ready;
 use http::{
     header::{self, HeaderName},
     HeaderMap, HeaderValue, Method, Request, Response,
 };
 use pin_project_lite::pin_project;
 use std::{
-    array,
     future::Future,
     mem,
     pin::Pin,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
 };
 use tower_layer::Layer;
 use tower_service::Service;
@@ -73,6 +73,9 @@ mod allow_private_network;
 mod expose_headers;
 mod max_age;
 mod vary;
+
+#[cfg(test)]
+mod tests;
 
 pub use self::{
     allow_credentials::AllowCredentials, allow_headers::AllowHeaders, allow_methods::AllowMethods,
@@ -323,6 +326,52 @@ impl CorsLayer {
     /// ));
     /// ```
     ///
+    /// You can also use an async closure:
+    ///
+    /// ```
+    /// # #[derive(Clone)]
+    /// # struct Client;
+    /// # fn get_api_client() -> Client {
+    /// #     Client
+    /// # }
+    /// # impl Client {
+    /// #     async fn fetch_allowed_origins(&self) -> Vec<HeaderValue> {
+    /// #         vec![HeaderValue::from_static("http://example.com")]
+    /// #     }
+    /// #     async fn fetch_allowed_origins_for_path(&self, _path: String) -> Vec<HeaderValue> {
+    /// #         vec![HeaderValue::from_static("http://example.com")]
+    /// #     }
+    /// # }
+    /// use tower_http::cors::{CorsLayer, AllowOrigin};
+    /// use http::{request::Parts as RequestParts, HeaderValue};
+    ///
+    /// let client = get_api_client();
+    ///
+    /// let layer = CorsLayer::new().allow_origin(AllowOrigin::async_predicate(
+    ///     |origin: HeaderValue, _request_parts: &RequestParts| async move {
+    ///         // fetch list of origins that are allowed
+    ///         let origins = client.fetch_allowed_origins().await;
+    ///         origins.contains(&origin)
+    ///     },
+    /// ));
+    ///
+    /// let client = get_api_client();
+    ///
+    /// // if using &RequestParts, make sure all the values are owned
+    /// // before passing into the future
+    /// let layer = CorsLayer::new().allow_origin(AllowOrigin::async_predicate(
+    ///     |origin: HeaderValue, parts: &RequestParts| {
+    ///         let path = parts.uri.path().to_owned();
+    ///
+    ///         async move {
+    ///             // fetch list of origins that are allowed for this path
+    ///             let origins = client.fetch_allowed_origins_for_path(path).await;
+    ///             origins.contains(&origin)
+    ///         }
+    ///     },
+    /// ));
+    /// ```
+    ///
     /// Note that multiple calls to this method will override any previous
     /// calls.
     ///
@@ -386,7 +435,7 @@ impl CorsLayer {
     /// In contrast to the other headers, this one has a non-empty default of
     /// [`preflight_request_headers()`].
     ///
-    /// You only need to set this is you want to remove some of these defaults,
+    /// You only need to set this if you want to remove some of these defaults,
     /// or if you use a closure for one of the other headers and want to add a
     /// vary header accordingly.
     ///
@@ -619,23 +668,11 @@ where
         // These headers are applied to both preflight and subsequent regular CORS requests:
         // https://fetch.spec.whatwg.org/#http-responses
 
-        headers.extend(self.layer.allow_origin.to_header(origin, &parts));
         headers.extend(self.layer.allow_credentials.to_header(origin, &parts));
         headers.extend(self.layer.allow_private_network.to_header(origin, &parts));
+        headers.extend(self.layer.vary.to_header());
 
-        let mut vary_headers = self.layer.vary.values();
-        if let Some(first) = vary_headers.next() {
-            let mut header = match headers.entry(header::VARY) {
-                header::Entry::Occupied(_) => {
-                    unreachable!("no vary header inserted up to this point")
-                }
-                header::Entry::Vacant(v) => v.insert_entry(first),
-            };
-
-            for val in vary_headers {
-                header.append(val);
-            }
-        }
+        let allow_origin_future = self.layer.allow_origin.to_future(origin, &parts);
 
         // Return results immediately upon preflight request
         if parts.method == Method::OPTIONS {
@@ -645,7 +682,10 @@ where
             headers.extend(self.layer.max_age.to_header(origin, &parts));
 
             ResponseFuture {
-                inner: Kind::PreflightCall { headers },
+                inner: Kind::PreflightCall {
+                    allow_origin_future,
+                    headers,
+                },
             }
         } else {
             // This header is applied only to non-preflight requests
@@ -654,6 +694,8 @@ where
             let req = Request::from_parts(parts, body);
             ResponseFuture {
                 inner: Kind::CorsCall {
+                    allow_origin_future,
+                    allow_origin_complete: false,
                     future: self.inner.call(req),
                     headers,
                 },
@@ -675,10 +717,15 @@ pin_project! {
     enum Kind<F> {
         CorsCall {
             #[pin]
+            allow_origin_future: AllowOriginFuture,
+            allow_origin_complete: bool,
+            #[pin]
             future: F,
             headers: HeaderMap,
         },
         PreflightCall {
+            #[pin]
+            allow_origin_future: AllowOriginFuture,
             headers: HeaderMap,
         },
     }
@@ -693,13 +740,37 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match self.project().inner.project() {
-            KindProj::CorsCall { future, headers } => {
+            KindProj::CorsCall {
+                allow_origin_future,
+                allow_origin_complete,
+                future,
+                headers,
+            } => {
+                if !*allow_origin_complete {
+                    headers.extend(ready!(allow_origin_future.poll(cx)));
+                    *allow_origin_complete = true;
+                }
+
                 let mut response: Response<B> = ready!(future.poll(cx))?;
-                response.headers_mut().extend(headers.drain());
+
+                let response_headers = response.headers_mut();
+
+                // vary header can have multiple values, don't overwrite
+                // previously-set value(s).
+                if let Some(vary) = headers.remove(header::VARY) {
+                    response_headers.append(header::VARY, vary);
+                }
+                // extend will overwrite previous headers of remaining names
+                response_headers.extend(headers.drain());
 
                 Poll::Ready(Ok(response))
             }
-            KindProj::PreflightCall { headers } => {
+            KindProj::PreflightCall {
+                allow_origin_future,
+                headers,
+            } => {
+                headers.extend(ready!(allow_origin_future.poll(cx)));
+
                 let mut response = Response::new(B::default());
                 mem::swap(response.headers_mut(), headers);
 
@@ -741,8 +812,7 @@ fn ensure_usable_cors_rules(layer: &CorsLayer) {
 ///
 /// This is the default set of header names returned in the `vary` header
 pub fn preflight_request_headers() -> impl Iterator<Item = HeaderName> {
-    #[allow(deprecated)] // Can be changed when MSRV >= 1.53
-    array::IntoIter::new([
+    IntoIterator::into_iter([
         header::ORIGIN,
         header::ACCESS_CONTROL_REQUEST_METHOD,
         header::ACCESS_CONTROL_REQUEST_HEADERS,

@@ -12,20 +12,23 @@ use std::{fmt, ops::RangeInclusive};
 /// ```no_run
 /// use tower_http::{trace::TraceLayer, classify::StatusInRangeAsFailures};
 /// use tower::{ServiceBuilder, Service, ServiceExt};
-/// use hyper::{Client, Body};
 /// use http::{Request, Method};
+/// use http_body_util::Full;
+/// use bytes::Bytes;
+/// use hyper_util::{rt::TokioExecutor, client::legacy::Client};
 ///
 /// # async fn foo() -> Result<(), tower::BoxError> {
 /// let classifier = StatusInRangeAsFailures::new(400..=599);
 ///
+/// let client = Client::builder(TokioExecutor::new()).build_http();
 /// let mut client = ServiceBuilder::new()
 ///     .layer(TraceLayer::new(classifier.into_make_classifier()))
-///     .service(Client::new());
+///     .service(client);
 ///
 /// let request = Request::builder()
 ///     .method(Method::GET)
 ///     .uri("https://example.com")
-///     .body(Body::empty())
+///     .body(Full::<Bytes>::default())
 ///     .unwrap();
 ///
 /// let response = client.ready().await?.call(request).await?;
@@ -109,7 +112,7 @@ pub enum StatusInRangeFailureClass {
 }
 
 impl fmt::Display for StatusInRangeFailureClass {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::StatusCode(code) => write!(f, "Status code: {}", code),
             Self::Error(error) => write!(f, "Error: {}", error),
@@ -128,23 +131,23 @@ mod tests {
         let classifier = StatusInRangeAsFailures::new(400..=599);
 
         assert!(matches!(
-            dbg!(classifier
+            classifier
                 .clone()
-                .classify_response(&response_with_status(200))),
+                .classify_response(&response_with_status(200)),
             ClassifiedResponse::Ready(Ok(())),
         ));
 
         assert!(matches!(
-            dbg!(classifier
+            classifier
                 .clone()
-                .classify_response(&response_with_status(400))),
+                .classify_response(&response_with_status(400)),
             ClassifiedResponse::Ready(Err(StatusInRangeFailureClass::StatusCode(
                 StatusCode::BAD_REQUEST
             ))),
         ));
 
         assert!(matches!(
-            dbg!(classifier.classify_response(&response_with_status(500))),
+            classifier.classify_response(&response_with_status(500)),
             ClassifiedResponse::Ready(Err(StatusInRangeFailureClass::StatusCode(
                 StatusCode::INTERNAL_SERVER_ERROR
             ))),

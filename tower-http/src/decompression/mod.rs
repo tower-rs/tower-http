@@ -3,12 +3,12 @@
 //! # Examples
 //!
 //! #### Request
+//!
 //! ```rust
-//! use bytes::BytesMut;
+//! use bytes::Bytes;
 //! use flate2::{write::GzEncoder, Compression};
 //! use http::{header, HeaderValue, Request, Response};
-//! use http_body::Body as _; // for Body::data
-//! use hyper::Body;
+//! use http_body_util::{Full, BodyExt};
 //! use std::{error::Error, io::Write};
 //! use tower::{Service, ServiceBuilder, service_fn, ServiceExt};
 //! use tower_http::{BoxError, decompression::{DecompressionBody, RequestDecompressionLayer}};
@@ -20,7 +20,7 @@
 //! encoder.write_all(b"Hello?")?;
 //! let request = Request::builder()
 //!     .header(header::CONTENT_ENCODING, "gzip")
-//!     .body(Body::from(encoder.finish()?))?;
+//!     .body(Full::from(encoder.finish()?))?;
 //!
 //! // Our HTTP server
 //! let mut server = ServiceBuilder::new()
@@ -32,33 +32,31 @@
 //! let _response = server.ready().await?.call(request).await?;
 //!
 //! // Handler receives request whose body is decoded when read
-//! async fn handler(mut req: Request<DecompressionBody<Body>>) -> Result<Response<Body>, BoxError>{
-//!     let mut data = BytesMut::new();
-//!     while let Some(chunk) = req.body_mut().data().await {
-//!         let chunk = chunk?;
-//!         data.extend_from_slice(&chunk[..]);
-//!     }
-//!     assert_eq!(data.freeze().to_vec(), b"Hello?");
-//!     Ok(Response::new(Body::from("Hello, World!")))
+//! async fn handler(
+//!     mut req: Request<DecompressionBody<Full<Bytes>>>,
+//! ) -> Result<Response<Full<Bytes>>, BoxError>{
+//!     let data = req.into_body().collect().await?.to_bytes();
+//!     assert_eq!(&data[..], b"Hello?");
+//!     Ok(Response::new(Full::from("Hello, World!")))
 //! }
 //! # Ok(())
 //! # }
 //! ```
 //!
 //! #### Response
+//!
 //! ```rust
-//! use bytes::BytesMut;
+//! use bytes::Bytes;
 //! use http::{Request, Response};
-//! use http_body::Body as _; // for Body::data
-//! use hyper::Body;
+//! use http_body_util::{Full, BodyExt};
 //! use std::convert::Infallible;
 //! use tower::{Service, ServiceExt, ServiceBuilder, service_fn};
 //! use tower_http::{compression::Compression, decompression::DecompressionLayer, BoxError};
 //! #
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), tower_http::BoxError> {
-//! # async fn handle(req: Request<Body>) -> Result<Response<Body>, Infallible> {
-//! #     let body = Body::from("Hello, World!");
+//! # async fn handle(req: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, Infallible> {
+//! #     let body = Full::from("Hello, World!");
 //! #     Ok(Response::new(body))
 //! # }
 //!
@@ -74,7 +72,7 @@
 //! // Call the service.
 //! //
 //! // `DecompressionLayer` takes care of setting `Accept-Encoding`.
-//! let request = Request::new(Body::empty());
+//! let request = Request::new(Full::<Bytes>::default());
 //!
 //! let response = client
 //!     .ready()
@@ -83,13 +81,9 @@
 //!     .await?;
 //!
 //! // Read the body
-//! let mut body = response.into_body();
-//! let mut bytes = BytesMut::new();
-//! while let Some(chunk) = body.data().await {
-//!     let chunk = chunk?;
-//!     bytes.extend_from_slice(&chunk[..]);
-//! }
-//! let body = String::from_utf8(bytes.to_vec()).map_err(Into::<BoxError>::into)?;
+//! let body = response.into_body();
+//! let bytes = body.collect().await?.to_bytes().to_vec();
+//! let body = String::from_utf8(bytes).map_err(Into::<BoxError>::into)?;
 //!
 //! assert_eq!(body, "Hello, World!");
 //! #
@@ -115,15 +109,15 @@ pub use self::request::service::RequestDecompression;
 
 #[cfg(test)]
 mod tests {
+    use std::convert::Infallible;
     use std::io::Write;
 
     use super::*;
-    use crate::compression::Compression;
-    use bytes::BytesMut;
-    use flate2::write::GzEncoder;
+    use crate::test_helpers::Body;
+    use crate::{compression::Compression, test_helpers::WithTrailers};
     use http::Response;
-    use http_body::Body as _;
-    use hyper::{Body, Client, Error, Request};
+    use http::{HeaderMap, HeaderName, Request};
+    use http_body_util::BodyExt;
     use tower::{service_fn, Service, ServiceExt};
 
     #[tokio::test]
@@ -137,20 +131,74 @@ mod tests {
         let res = client.ready().await.unwrap().call(req).await.unwrap();
 
         // read the body, it will be decompressed automatically
-        let mut body = res.into_body();
-        let mut data = BytesMut::new();
-        while let Some(chunk) = body.data().await {
-            let chunk = chunk.unwrap();
-            data.extend_from_slice(&chunk[..]);
-        }
-        let decompressed_data = String::from_utf8(data.freeze().to_vec()).unwrap();
+        let body = res.into_body();
+        let collected = body.collect().await.unwrap();
+        let trailers = collected.trailers().cloned().unwrap();
+        let decompressed_data = String::from_utf8(collected.to_bytes().to_vec()).unwrap();
+
+        assert_eq!(decompressed_data, "Hello, World!");
+
+        // maintains trailers
+        assert_eq!(trailers["foo"], "bar");
+    }
+
+    async fn handle(_req: Request<Body>) -> Result<Response<WithTrailers<Body>>, Infallible> {
+        let mut trailers = HeaderMap::new();
+        trailers.insert(HeaderName::from_static("foo"), "bar".parse().unwrap());
+        let body = Body::from("Hello, World!").with_trailers(trailers);
+        Ok(Response::builder().body(body).unwrap())
+    }
+
+    #[tokio::test]
+    async fn decompress_multi_zstd() {
+        let mut client = Decompression::new(service_fn(handle_multi_zstd));
+
+        let req = Request::builder()
+            .header("accept-encoding", "zstd")
+            .body(Body::empty())
+            .unwrap();
+        let res = client.ready().await.unwrap().call(req).await.unwrap();
+
+        // read the body, it will be decompressed automatically
+        let body = res.into_body();
+        let decompressed_data =
+            String::from_utf8(body.collect().await.unwrap().to_bytes().to_vec()).unwrap();
 
         assert_eq!(decompressed_data, "Hello, World!");
     }
 
+    async fn handle_multi_zstd(_req: Request<Body>) -> Result<Response<Body>, Infallible> {
+        let mut buf = Vec::new();
+        let mut enc1 = zstd::Encoder::new(&mut buf, Default::default()).unwrap();
+        enc1.write_all(b"Hello, ").unwrap();
+        enc1.finish().unwrap();
+
+        let mut enc2 = zstd::Encoder::new(&mut buf, Default::default()).unwrap();
+        enc2.write_all(b"World!").unwrap();
+        enc2.finish().unwrap();
+
+        let mut res = Response::new(Body::from(buf));
+        res.headers_mut()
+            .insert("content-encoding", "zstd".parse().unwrap());
+        Ok(res)
+    }
+
+    #[allow(dead_code)]
+    async fn is_compatible_with_hyper() {
+        let client =
+            hyper_util::client::legacy::Client::builder(hyper_util::rt::TokioExecutor::new())
+                .build_http();
+        let mut client = Decompression::new(client);
+
+        let req = Request::new(Body::empty());
+
+        let _: Response<DecompressionBody<_>> =
+            client.ready().await.unwrap().call(req).await.unwrap();
+    }
+
     #[tokio::test]
-    async fn decompress_multi_gz() {
-        let mut client = Decompression::new(service_fn(handle_multi_gz));
+    async fn decompress_empty() {
+        let mut client = Decompression::new(Compression::new(service_fn(handle_empty)));
 
         let req = Request::builder()
             .header("accept-encoding", "gzip")
@@ -158,45 +206,49 @@ mod tests {
             .unwrap();
         let res = client.ready().await.unwrap().call(req).await.unwrap();
 
-        // read the body, it will be decompressed automatically
-        let mut body = res.into_body();
-        let mut data = BytesMut::new();
-        while let Some(chunk) = body.data().await {
-            let chunk = chunk.unwrap();
-            data.extend_from_slice(&chunk[..]);
-        }
-        let decompressed_data = String::from_utf8(data.freeze().to_vec()).unwrap();
+        let body = res.into_body();
+        let decompressed_data =
+            String::from_utf8(body.collect().await.unwrap().to_bytes().to_vec()).unwrap();
 
-        assert_eq!(decompressed_data, "Hello, World!");
+        assert_eq!(decompressed_data, "");
     }
 
-    async fn handle(_req: Request<Body>) -> Result<Response<Body>, Error> {
-        Ok(Response::new(Body::from("Hello, World!")))
-    }
-
-    async fn handle_multi_gz(_req: Request<Body>) -> Result<Response<Body>, Error> {
-        let mut buf = Vec::new();
-        let mut enc1 = GzEncoder::new(&mut buf, Default::default());
-        enc1.write_all(b"Hello, ").unwrap();
-        enc1.finish().unwrap();
-
-        let mut enc2 = GzEncoder::new(&mut buf, Default::default());
-        enc2.write_all(b"World!").unwrap();
-        enc2.finish().unwrap();
-
-        let mut res = Response::new(Body::from(buf));
+    async fn handle_empty(_req: Request<Body>) -> Result<Response<Body>, Infallible> {
+        let mut res = Response::new(Body::empty());
         res.headers_mut()
             .insert("content-encoding", "gzip".parse().unwrap());
         Ok(res)
     }
 
-    #[allow(dead_code)]
-    async fn is_compatible_with_hyper() {
-        let mut client = Decompression::new(Client::new());
+    #[tokio::test]
+    async fn decompress_empty_with_trailers() {
+        let mut client =
+            Decompression::new(Compression::new(service_fn(handle_empty_with_trailers)));
 
-        let req = Request::new(Body::empty());
+        let req = Request::builder()
+            .header("accept-encoding", "gzip")
+            .body(Body::empty())
+            .unwrap();
+        let res = client.ready().await.unwrap().call(req).await.unwrap();
 
-        let _: Response<DecompressionBody<Body>> =
-            client.ready().await.unwrap().call(req).await.unwrap();
+        let body = res.into_body();
+        let collected = body.collect().await.unwrap();
+        let trailers = collected.trailers().cloned().unwrap();
+        let decompressed_data = String::from_utf8(collected.to_bytes().to_vec()).unwrap();
+
+        assert_eq!(decompressed_data, "");
+        assert_eq!(trailers["foo"], "bar");
+    }
+
+    async fn handle_empty_with_trailers(
+        _req: Request<Body>,
+    ) -> Result<Response<WithTrailers<Body>>, Infallible> {
+        let mut trailers = HeaderMap::new();
+        trailers.insert(HeaderName::from_static("foo"), "bar".parse().unwrap());
+        let body = Body::empty().with_trailers(trailers);
+        Ok(Response::builder()
+            .header("content-encoding", "gzip")
+            .body(body)
+            .unwrap())
     }
 }

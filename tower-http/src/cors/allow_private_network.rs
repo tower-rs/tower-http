@@ -39,6 +39,10 @@ impl AllowPrivateNetwork {
         Self(AllowPrivateNetworkInner::Predicate(Arc::new(f)))
     }
 
+    #[allow(
+        clippy::declare_interior_mutable_const,
+        clippy::borrow_interior_mutable_const
+    )]
     pub(super) fn to_header(
         &self,
         origin: Option<&HeaderValue>,
@@ -71,7 +75,7 @@ impl AllowPrivateNetwork {
             AllowPrivateNetworkInner::Predicate(c) => c(origin?, parts),
         };
 
-        allow_private_network.then(|| (ALLOW_PRIVATE_NETWORK, TRUE))
+        allow_private_network.then_some((ALLOW_PRIVATE_NETWORK, TRUE))
     }
 }
 
@@ -94,28 +98,28 @@ impl fmt::Debug for AllowPrivateNetwork {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 enum AllowPrivateNetworkInner {
     Yes,
+    #[default]
     No,
     Predicate(
         Arc<dyn for<'a> Fn(&'a HeaderValue, &'a RequestParts) -> bool + Send + Sync + 'static>,
     ),
 }
 
-impl Default for AllowPrivateNetworkInner {
-    fn default() -> Self {
-        Self::No
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::declare_interior_mutable_const,
+        clippy::borrow_interior_mutable_const
+    )]
+
     use super::AllowPrivateNetwork;
     use crate::cors::CorsLayer;
 
+    use crate::test_helpers::Body;
     use http::{header::ORIGIN, request::Parts, HeaderName, HeaderValue, Request, Response};
-    use hyper::Body;
     use tower::{BoxError, ServiceBuilder, ServiceExt};
     use tower_service::Service;
 
