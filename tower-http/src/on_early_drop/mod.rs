@@ -13,6 +13,23 @@
 //! This middleware layer leverages the `Drop` behavior to detect these situations and execute
 //! a callback, allowing services to properly handle these early terminations.
 //!
+//! # When the callback fires
+//!
+//! The callback fires exactly once, when the response future is dropped before
+//! producing [`Poll::Ready`]. This is the signal that the request never
+//! produced a response, most often because the client disconnected. If the
+//! inner service produces a response (`Ok`) or an error (`Err`), the callback
+//! does not fire: service errors are already observable through other
+//! middleware (for example [`tower_http::trace::OnFailure`]), and firing here
+//! as well would double-report the same request.
+//!
+//! This middleware does not detect client disconnects that happen after
+//! response headers have been sent but before the response body is complete.
+//! If the response body is dropped mid-stream, the callback is not invoked.
+//!
+//! [`Poll::Ready`]: std::task::Poll::Ready
+//! [`tower_http::trace::OnFailure`]: crate::trace::OnFailure
+//!
 //! # Use Cases
 //!
 //! - **Logging**: Capture information about requests that were terminated early

@@ -9,9 +9,16 @@ use std::task::{Context, Poll};
 pin_project! {
     /// Response future for [`OnEarlyDropService`].
     ///
-    /// This future wraps an inner service future and ensures that the
-    /// early drop guard is  executed whenever the future does not
-    /// complete successfully
+    /// This future wraps an inner service future. If the inner future produces
+    /// [`Poll::Ready`] (whether the result is `Ok` or `Err`), the guard is
+    /// marked completed and the callback is not invoked. If this future is
+    /// dropped while the inner future is still [`Poll::Pending`], the guard's
+    /// callback fires.
+    ///
+    /// This means the callback fires only when the response future is dropped
+    /// before producing any result. Service errors are considered observable
+    /// elsewhere (e.g. via [`tower_http::trace::OnFailure`]) and do not
+    /// trigger the callback.
     ///
     /// # Type Parameters
     ///
@@ -19,6 +26,7 @@ pin_project! {
     /// * `Callback` - The callback type, a function that will be executed if a request is dropped early
     ///
     /// [`OnEarlyDropService`]: super::service::OnEarlyDropService
+    /// [`tower_http::trace::OnFailure`]: crate::trace::OnFailure
     pub struct OnEarlyDropFuture<Future, Callback: FnOnce()> {
         #[pin]
         inner: Future,
@@ -60,12 +68,12 @@ where
             Poll::Pending => return Poll::Pending,
         };
 
-        // Mark the guard as completed since we've successfully completed the future
+        // The inner future produced a result (Ok or Err). Mark the guard as
+        // completed so the callback does not fire. Service errors are out of
+        // scope for this middleware; see the type-level doc comment.
         if let Some(guard) = this.guard.take() {
             let mut guard = guard;
             guard.completed();
-            // Guard will be dropped here, but won't execute the callback
-            // since we've marked it as completed
         }
 
         Poll::Ready(result)

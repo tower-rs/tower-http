@@ -395,4 +395,48 @@ mod tests {
             "Callback should have been called once"
         );
     }
+
+    #[tokio::test]
+    async fn test_callback_not_called_on_inner_error() {
+        // The on-early-drop callback fires only when the response future is
+        // dropped before producing a result. Service errors (`Err`) are out
+        // of scope; users who want to observe failed responses should use
+        // `trace::OnFailure` instead.
+        let callback_counter = Arc::new(Mutex::new(0));
+        let callback_counter_clone = callback_counter.clone();
+
+        // Inner service that always errors immediately.
+        let inner_service = service_fn(|_req: Request<()>| {
+            future::ready(Err::<Response<()>, std::io::Error>(std::io::Error::other(
+                "deliberate failure",
+            )))
+        });
+
+        let callback_factory = move |_req: &Request<()>| {
+            let counter = callback_counter_clone.clone();
+            move || {
+                *counter.lock().unwrap() += 1;
+            }
+        };
+
+        let service = OnEarlyDropService::<_, _, _, Request<()>, Response<()>>::new(
+            inner_service,
+            callback_factory,
+        );
+
+        let req = Request::builder()
+            .uri("http://example.com/test")
+            .body(())
+            .unwrap();
+
+        let result = service.oneshot(req).await;
+        assert!(result.is_err(), "Expected the inner service to error");
+
+        assert_eq!(
+            *callback_counter.lock().unwrap(),
+            0,
+            "Callback must not fire when the inner service returns Err; \
+             service errors are out of scope for on-early-drop."
+        );
+    }
 }
