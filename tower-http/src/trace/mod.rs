@@ -683,6 +683,40 @@ mod tests {
         assert_eq!(1, ON_FAILURE.load(Ordering::SeqCst), "failure");
     }
 
+    #[tokio::test]
+    async fn classify_eos_on_empty_stream() {
+        static ON_EOS: Lazy<AtomicU32> = Lazy::new(|| AtomicU32::new(0));
+        static ON_FAILURE: Lazy<AtomicU32> = Lazy::new(|| AtomicU32::new(0));
+
+        let trace_layer = TraceLayer::new(TestClassify::new(true))
+            .on_eos(
+                |_trailers: Option<&HeaderMap>, _latency: Duration, _span: &Span| {
+                    ON_EOS.fetch_add(1, Ordering::SeqCst);
+                },
+            )
+            .on_failure(|_class: &'static str, _latency: Duration, _span: &Span| {
+                ON_FAILURE.fetch_add(1, Ordering::SeqCst);
+            });
+
+        let mut svc = ServiceBuilder::new()
+            .layer(trace_layer)
+            .service_fn(streaming_body);
+
+        let res = svc
+            .ready()
+            .await
+            .unwrap()
+            .call(Request::new(Body::empty()))
+            .await
+            .unwrap();
+
+        crate::test_helpers::to_bytes(res.into_body())
+            .await
+            .unwrap();
+        assert_eq!(1, ON_EOS.load(Ordering::SeqCst), "eos");
+        assert_eq!(1, ON_FAILURE.load(Ordering::SeqCst), "failure");
+    }
+
     async fn echo(req: Request<Body>) -> Result<Response<Body>, BoxError> {
         Ok(Response::new(req.into_body()))
     }
