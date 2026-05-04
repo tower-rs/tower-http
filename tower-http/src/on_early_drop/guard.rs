@@ -67,7 +67,6 @@ where
     F: FnOnce(),
 {
     callback: Option<F>,
-    completed: bool,
 }
 
 impl<F> OnEarlyDropGuard<F>
@@ -80,7 +79,6 @@ where
     pub fn new(callback: F) -> Self {
         Self {
             callback: Some(callback),
-            completed: false,
         }
     }
 
@@ -88,8 +86,12 @@ where
     ///
     /// Call this method when the operation has been completed successfully and you don't want
     /// the early drop callback to be executed.
+    ///
+    /// Note that `completed` drops the callback immediately rather than waiting for the guard
+    /// itself to drop, so any resources captured by the callback closure are freed at the
+    /// `completed()` call site.
     pub fn completed(&mut self) {
-        self.completed = true;
+        self.callback = None;
     }
 }
 
@@ -98,10 +100,10 @@ where
     F: FnOnce(),
 {
     fn drop(&mut self) {
-        // Only call the callback if not marked as completed
-        if !self.completed {
-            // Take the callback to ensure it can only be called once
-            let callback = self.callback.take().expect("callback is only used on drop");
+        // Fire the callback unless `completed()` already took it. Note that
+        // we deliberately avoid panicking in Drop (e.g. via `expect`) because
+        // a panic while unwinding aborts the process.
+        if let Some(callback) = self.callback.take() {
             callback();
         }
     }
