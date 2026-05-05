@@ -1,5 +1,4 @@
 //! Middleware that detects when a response future or response body is
-//! Middleware that detects when a response future or response body is
 //! dropped before completion.
 //!
 //! HTTP services typically learn nothing when a client disconnects
@@ -31,8 +30,9 @@
 //! # }
 //! ```
 //!
-//! [`EarlyDropsAsFailures`] can also be placed in a single slot via
-//! [`OnEarlyDropLayer::builder`] to track only body or only future drops.
+//! Use [`OnEarlyDropLayer::builder`] to place [`EarlyDropsAsFailures`] in a
+//! single slot (track only body or only future drops) or to install plain
+//! closures.
 //!
 //! # Example: builder with direct callbacks
 //!
