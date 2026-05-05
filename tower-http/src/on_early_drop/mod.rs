@@ -63,6 +63,12 @@
 //! Chain just one of the two methods to hook only that event; the other
 //! slot stays no-op.
 //!
+//! # Panics in callbacks
+//!
+//! Callbacks fire from [`Drop`]. Panicking during a drop that occurs while
+//! another panic is unwinding aborts the process. Closures and custom
+//! [`OnDropCallback`] implementations must not panic.
+//!
 //! # Standalone guard
 //!
 //! [`OnEarlyDropGuard`] is usable on its own to detect early drop of

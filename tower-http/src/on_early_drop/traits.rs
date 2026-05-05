@@ -1,4 +1,5 @@
 //! Hook traits invoked when a response future or response body is dropped
+//! Hook traits invoked when a response future or response body is dropped
 //! before completion.
 
 use http::{response, Request};
@@ -6,6 +7,12 @@ use http::{response, Request};
 /// Callback fired exactly once when an early-drop event is observed.
 ///
 /// `FnOnce() + Send + 'static` closures implement this via a blanket impl.
+///
+/// # Panics
+///
+/// Implementations must not panic. Callbacks fire from [`Drop`]; panicking
+/// during a drop that occurs while another panic is unwinding aborts the
+/// process. The crate's built-in callbacks are panic-free.
 pub trait OnDropCallback: Send + 'static {
     /// Fire the callback. Consumes `self`.
     fn on_drop(self);
