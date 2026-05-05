@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
+## Changed:
+
+- The implicit `async-compression` feature is removed (BREAKING) ([#642])
+- The implicit `tokio` feature is removed (BREAKING) ([#628])
+
+## Fixed
+
+- `trace`: restore failure classification at end-of-stream ([#483])
+
+[#483]: https://github.com/tower-rs/tower-http/pull/483
+[#628]: https://github.com/tower-rs/tower-http/pull/628
+[#642]: https://github.com/tower-rs/tower-http/pull/642
+
 # 0.6.8
 
 ## Fixed
