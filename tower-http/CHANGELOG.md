@@ -5,26 +5,77 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-# Unreleased
+# 0.6.9
 
 ## Added:
 
 - `on-early-drop`: middleware that detects when a response future or response
   body is dropped before completion ([#636])
 
+  Two events get hooks: the response future being dropped before
+  the inner service produces a response, and the response body being
+  dropped before reaching end-of-stream.
+
+  Install custom callbacks with `OnEarlyDropLayer::builder()`:
+
+  ```rust
+  use http::Request;
+  use tower_http::on_early_drop::{OnBodyDropFn, OnEarlyDropLayer};
+
+  let layer = OnEarlyDropLayer::builder()
+      .on_future_drop(|req: &Request<()>| {
+          let uri = req.uri().clone();
+          move || eprintln!("future dropped for {}", uri)
+      })
+      .on_body_drop(OnBodyDropFn::new(|req: &Request<()>| {
+          let uri = req.uri().clone();
+          move |parts: &http::response::Parts| {
+              let status = parts.status;
+              move || eprintln!("body dropped for {} status {}", uri, status)
+          }
+      }));
+  ```
+
+  Or route both events through a `trace::OnFailure` hook with
+  `EarlyDropsAsFailures`. Place this layer inside a `TraceLayer` so the
+  emitted events inherit the request span:
+
+  ```rust
+  use tower::ServiceBuilder;
+  use tower_http::on_early_drop::{OnEarlyDropLayer, EarlyDropsAsFailures};
+  use tower_http::trace::{DefaultOnFailure, TraceLayer};
+
+  let stack = ServiceBuilder::new()
+      .layer(TraceLayer::new_for_http())
+      .layer(OnEarlyDropLayer::new(
+          EarlyDropsAsFailures::new(DefaultOnFailure::default()),
+      ));
+  ```
+- `fs`: make `AsyncReadBody::with_capacity` public ([#415])
+
 ## Changed:
 
-- The implicit `async-compression` feature is removed (BREAKING) ([#642])
-- The implicit `tokio` feature is removed (BREAKING) ([#628])
+- The implicit `async-compression` feature is removed ([#642])
+- The implicit `tokio` feature is removed ([#628])
+- `fs`: no longer auto-enables the `tracing` crate feature; enable `tracing`
+  explicitly to restore error logging on `ServeDir` IO failures ([#614])
 
 ## Fixed
 
 - `trace`: restore failure classification at end-of-stream ([#483])
+- `follow-redirect`: support unicode URLs (swaps `iri-string` dep for
+  `url`) ([#646])
+- `fs`: reject reserved Windows DOS device names (`CON`, `COM1`, etc.) in
+  `ServeDir` ([#663])
 
+[#415]: https://github.com/tower-rs/tower-http/pull/415
 [#483]: https://github.com/tower-rs/tower-http/pull/483
+[#614]: https://github.com/tower-rs/tower-http/pull/614
 [#628]: https://github.com/tower-rs/tower-http/pull/628
 [#636]: https://github.com/tower-rs/tower-http/pull/636
 [#642]: https://github.com/tower-rs/tower-http/pull/642
+[#646]: https://github.com/tower-rs/tower-http/pull/646
+[#663]: https://github.com/tower-rs/tower-http/pull/663
 
 # 0.6.8
 
