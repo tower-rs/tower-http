@@ -48,7 +48,7 @@ mod tests {
 
         let attempt = Attempt {
             status: Default::default(),
-            next_method: &Method::GET,
+            method: &Method::GET,
             location: &same_origin,
             previous_method: &Method::GET,
             previous: request.uri(),
@@ -62,7 +62,7 @@ mod tests {
 
         let attempt = Attempt {
             status: Default::default(),
-            next_method: &Method::GET,
+            method: &Method::GET,
             location: &cross_origin,
             previous_method: &Method::GET,
             previous: request.uri(),

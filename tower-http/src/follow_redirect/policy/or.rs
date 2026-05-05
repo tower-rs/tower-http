@@ -75,7 +75,7 @@ mod tests {
     fn redirect() {
         let attempt = Attempt {
             status: Default::default(),
-            next_method: &Method::GET,
+            method: &Method::GET,
             location: &Uri::from_static("*"),
             previous_method: &Method::GET,
             previous: &Uri::from_static("*"),

@@ -27,21 +27,21 @@ use http::{uri::Scheme, Method, Request, StatusCode, Uri};
 /// Detecting a cyclic redirection:
 ///
 /// ```
-/// use http::{Request, Uri};
+/// use http::{Method, Request, Uri};
 /// use std::collections::HashSet;
 /// use tower_http::follow_redirect::policy::{Action, Attempt, Policy};
 ///
 /// #[derive(Clone)]
 /// pub struct DetectCycle {
-///     uris: HashSet<Uri>,
+///     uris: HashSet<(Method, Uri)>,
 /// }
 ///
 /// impl<B, E> Policy<B, E> for DetectCycle {
 ///     fn redirect(&mut self, attempt: &Attempt<'_>) -> Result<Action, E> {
-///         if self.uris.contains(attempt.location()) {
+///         if self.uris.contains(&(attempt.method().clone(), attempt.location().clone())) {
 ///             Ok(Action::Stop)
 ///         } else {
-///             self.uris.insert(attempt.previous().clone());
+///             self.uris.insert((attempt.previous_method().clone(), attempt.previous().clone()));
 ///             Ok(Action::Follow)
 ///         }
 ///     }
@@ -198,7 +198,7 @@ pub type Standard = And<Limited, FilterCredentials>;
 /// A type that holds information on a redirection attempt.
 pub struct Attempt<'a> {
     pub(crate) status: StatusCode,
-    pub(crate) next_method: &'a Method,
+    pub(crate) method: &'a Method,
     pub(crate) location: &'a Uri,
     pub(crate) previous_method: &'a Method,
     pub(crate) previous: &'a Uri,
@@ -211,8 +211,8 @@ impl<'a> Attempt<'a> {
     }
 
     /// Returns the method for the next request, after applying redirection logic.
-    pub fn next_method(&self) -> &Method {
-        self.next_method
+    pub fn method(&self) -> &'a Method {
+        self.method
     }
 
     /// Returns the destination URI of the redirection.
@@ -221,7 +221,7 @@ impl<'a> Attempt<'a> {
     }
 
     /// Returns the method for the previous request, before redirection.
-    pub fn previous_method(&self) -> &Method {
+    pub fn previous_method(&self) -> &'a Method {
         self.previous_method
     }
 

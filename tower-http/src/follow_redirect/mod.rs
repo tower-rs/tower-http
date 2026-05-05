@@ -310,7 +310,7 @@ where
 
         let attempt = Attempt {
             status: res.status(),
-            next_method: &this.method,
+            method: this.method,
             location: &location,
             previous_method,
             previous: this.uri,
@@ -446,6 +446,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stops_post_redirect_get() {
+        let policy = policy::redirect_fn(|attempt| -> Result<_, Infallible> {
+            if attempt.previous_method() == Method::POST && attempt.method() == Method::GET {
+                Ok(Action::Stop)
+            } else {
+                Ok(Action::Follow)
+            }
+        });
+        let svc = ServiceBuilder::new()
+            .layer(FollowRedirectLayer::with_policy(policy))
+            .service_fn(handle);
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri("http://example.com/42")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+        assert_eq!(*res.body(), 42);
+        assert_eq!(
+            res.extensions().get::<RequestUri>().unwrap().0,
+            "http://example.com/42"
+        );
+    }
+
+    #[tokio::test]
     async fn limited() {
         let svc = ServiceBuilder::new()
             .layer(FollowRedirectLayer::with_policy(Limited::new(10)))
@@ -463,7 +488,7 @@ mod tests {
         );
     }
 
-    /// A server with an endpoint `GET /{n}` which redirects to `/{n-1}` unless `n` equals zero,
+    /// A server with an endpoint `/{n}` which redirects to `/{n-1}` unless `n` equals zero,
     /// returning `n` as the response body.
     async fn handle<B>(req: Request<B>) -> Result<Response<u64>, Infallible> {
         let n: u64 = req.uri().path()[1..].parse().unwrap();
