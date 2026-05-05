@@ -112,7 +112,6 @@ async fn set_key(Path(path): Path<String>, state: State<AppState>, value: Bytes)
 #[cfg(test)]
 mod tests {
     use axum::{body::Body, http::Request};
-    use http_body_util::BodyExt;
     use tower::ServiceExt;
 
     use super::*;
@@ -137,7 +136,7 @@ mod tests {
             .oneshot(Request::get("/foo").body(Body::empty())?)
             .await?;
         assert_eq!(response.status(), StatusCode::OK);
-        let body = response.into_body().collect().await?.to_bytes();
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await?;
         assert_eq!(body.as_ref(), b"Hello, World!");
 
         Ok(())
