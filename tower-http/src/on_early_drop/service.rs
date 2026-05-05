@@ -368,4 +368,82 @@ mod tests {
         assert_sync(&service);
         assert_clone(&service);
     }
+
+    #[tokio::test]
+    async fn body_drop_suppressed_when_is_end_stream_at_construction() {
+        let fired = Arc::new(AtomicBool::new(false));
+        let fired_clone = fired.clone();
+
+        // Body already at end-of-stream at construction (HEAD response,
+        // 204 No Content, etc).
+        let empty_service = service_fn(|_req: Request<()>| async move {
+            Ok::<_, std::convert::Infallible>(
+                Response::builder()
+                    .status(StatusCode::NO_CONTENT)
+                    .body(http_body_util::Empty::<Bytes>::new())
+                    .unwrap(),
+            )
+        });
+
+        let layer = OnEarlyDropLayer::builder().on_body_drop(OnBodyDropFn::new(
+            move |_req: &Request<()>| {
+                let fired = fired_clone.clone();
+                move |_parts: &http::response::Parts| {
+                    let fired = fired.clone();
+                    move || {
+                        fired.store(true, Ordering::Relaxed);
+                    }
+                }
+            },
+        ));
+        let service = layer.layer(empty_service);
+        let response = service.oneshot(request()).await.unwrap();
+        // Drop immediately without polling the body.
+        drop(response);
+
+        assert!(
+            !fired.load(Ordering::Relaxed),
+            "body already at end-of-stream at construction must not fire the callback",
+        );
+    }
+
+    #[tokio::test]
+    async fn body_drop_does_not_fire_on_inner_error() {
+        let fired = Arc::new(AtomicBool::new(false));
+        let fired_clone = fired.clone();
+
+        let err_service = service_fn(|_req: Request<()>| async move {
+            Err::<Response<Full<Bytes>>, _>(std::io::Error::other("boom"))
+        });
+
+        let layer = OnEarlyDropLayer::builder().on_body_drop(OnBodyDropFn::new(
+            move |_req: &Request<()>| {
+                let fired = fired_clone.clone();
+                move |_parts: &http::response::Parts| {
+                    let fired = fired.clone();
+                    move || {
+                        fired.store(true, Ordering::Relaxed);
+                    }
+                }
+            },
+        ));
+        let service = layer.layer(err_service);
+        let _ = service.oneshot(request()).await;
+
+        assert!(!fired.load(Ordering::Relaxed));
+    }
+
+    #[tokio::test]
+    async fn noop_slots_do_not_fire() {
+        // Builder with default () slots: no hook is installed. Even on a
+        // dropped pending future and a dropped incomplete body, nothing
+        // should be observable.
+        let layer = OnEarlyDropLayer::builder();
+        let service = layer.layer(ok_service());
+        let response = service.oneshot(request()).await.unwrap();
+        // Dropping without consuming the body.
+        drop(response);
+        // Nothing to assert; reaching here without panic confirms the
+        // no-op slots do not panic or invoke any user code.
+    }
 }
