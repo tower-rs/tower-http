@@ -1,114 +1,82 @@
-//! Layer for wrapping services with early drop detection capabilities.
-//!
-//! This module provides a [`tower::Layer`] implementation that adds early drop detection
-//! to HTTP services. It wraps the inner service with [`OnEarlyDropService`] which monitors
-//! request lifecycles and executes callbacks when requests are dropped before completion.
-//!
-//! # Features
-//!
-//! - Detect when clients disconnect before receiving a full response
-//! - Execute custom callback logic when early drops occur
-//! - Support for request-specific callback handlers
-//!
-//! # Example
-//!
-//! ```
-//! use tower_http::on_early_drop::layer::OnEarlyDropLayer;
-//! use tower::{ServiceBuilder, service_fn};
-//! use std::convert::Infallible;
-//! use http::{Request, Response};
-//!
-//! # #[tokio::main]
-//! # async fn main() {
-//! // Define a simple handler function
-//! async fn handle(_: Request<String>) -> Result<Response<String>, Infallible> {
-//!     Ok(Response::new(String::from("Hello, world!")))
-//! }
-//!
-//! // Create a service with the OnEarlyDropLayer
-//! let service = ServiceBuilder::new()
-//!     .layer(OnEarlyDropLayer::new(|_req: &Request<String>| {
-//!         || println!("Request was dropped early")
-//!     }))
-//!     .service_fn(handle);
-//! # }
-//! ```
+//! Tower [`Layer`] for the on-early-drop middleware.
 
 use crate::on_early_drop::service::OnEarlyDropService;
-use std::marker::PhantomData;
 use tower_layer::Layer;
-use tower_service::Service;
 
-/// A [`tower::Layer`] used to apply [`OnEarlyDropService`].
+/// [`Layer`] that applies [`OnEarlyDropService`].
 ///
-/// # Type Parameters
-///
-/// * `CallbackFactory` - The callback factory type, a function that produces callbacks from requests
-/// * `Callback` - The callback type, a function that will be executed if a request is dropped early
-/// * `Request` - The request type being processed by the service
-#[derive(Clone, Debug)]
-pub struct OnEarlyDropLayer<CallbackFactory, Callback, Request>
-where
-    Callback: FnOnce(),
-    CallbackFactory: Fn(&Request) -> Callback + Clone + Send + 'static,
-{
-    callback_factory: CallbackFactory,
-    _marker: PhantomData<(Callback, Request)>,
+/// See the [module docs](super) for details and examples.
+#[derive(Clone, Copy)]
+pub struct OnEarlyDropLayer<OFD, OBD> {
+    on_future_drop: OFD,
+    on_body_drop: OBD,
 }
 
-impl<CallbackFactory, Callback, Request> OnEarlyDropLayer<CallbackFactory, Callback, Request>
-where
-    Callback: FnOnce(),
-    CallbackFactory: Fn(&Request) -> Callback + Clone + Send + 'static,
-{
-    /// Creates a new `OnEarlyDropLayer` with the given callback factory.
-    ///
-    /// The callback factory is a function that takes a reference to the HTTP request
-    /// and returns a callback function to be executed if the request is dropped early.
-    pub fn new(callback_factory: CallbackFactory) -> Self {
-        OnEarlyDropLayer {
-            callback_factory,
-            _marker: PhantomData,
+impl<OFD, OBD> std::fmt::Debug for OnEarlyDropLayer<OFD, OBD> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OnEarlyDropLayer")
+            .field("on_future_drop", &format_args!(".."))
+            .field("on_body_drop", &format_args!(".."))
+            .finish()
+    }
+}
+
+impl OnEarlyDropLayer<(), ()> {
+    /// Start with both slots set to no-op. Chain
+    /// [`on_future_drop`](Self::on_future_drop) and
+    /// [`on_body_drop`](Self::on_body_drop) to install hooks.
+    pub fn builder() -> Self {
+        Self {
+            on_future_drop: (),
+            on_body_drop: (),
         }
     }
 }
 
-impl<S, CallbackFactory, Callback, Request, Response> Layer<S>
-    for OnEarlyDropLayer<CallbackFactory, Callback, Request>
-where
-    Callback: FnOnce(),
-    CallbackFactory: Fn(&Request) -> Callback + Clone + Send + 'static,
-    S: Service<Request, Response = Response>,
-{
-    type Service = OnEarlyDropService<CallbackFactory, Callback, S, Request, Response>;
-
-    fn layer(&self, inner: S) -> Self::Service {
-        OnEarlyDropService::new(inner, self.callback_factory.clone())
+impl<H: Clone> OnEarlyDropLayer<H, H> {
+    /// Install the same hook in both slots.
+    ///
+    /// Typical choice is
+    /// [`EarlyDropsAsFailures`](crate::on_early_drop::EarlyDropsAsFailures);
+    /// see the [module docs](super) for the example.
+    pub fn new(hook: H) -> Self {
+        Self {
+            on_future_drop: hook.clone(),
+            on_body_drop: hook,
+        }
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use futures_util::future;
-    use http::{Request, Response};
-    use tower::service_fn;
+impl<OFD, OBD> OnEarlyDropLayer<OFD, OBD> {
+    /// Replace the future-drop slot.
+    pub fn on_future_drop<T>(self, hook: T) -> OnEarlyDropLayer<T, OBD> {
+        OnEarlyDropLayer {
+            on_future_drop: hook,
+            on_body_drop: self.on_body_drop,
+        }
+    }
 
-    #[tokio::test]
-    async fn test_layer_creates_service() {
-        // Create a simple callback factory
-        let callback_factory = |_req: &Request<()>| || println!("Request was dropped early");
+    /// Replace the body-drop slot.
+    pub fn on_body_drop<T>(self, hook: T) -> OnEarlyDropLayer<OFD, T> {
+        OnEarlyDropLayer {
+            on_future_drop: self.on_future_drop,
+            on_body_drop: hook,
+        }
+    }
+}
 
-        // Create a simple service that returns 200 OK
-        let service = service_fn(|_req: Request<()>| {
-            future::ready(Ok::<_, std::io::Error>(Response::new(())))
-        });
+impl<S, OFD, OBD> Layer<S> for OnEarlyDropLayer<OFD, OBD>
+where
+    OFD: Clone,
+    OBD: Clone,
+{
+    type Service = OnEarlyDropService<S, OFD, OBD>;
 
-        // Apply the layer to the service
-        let layer = OnEarlyDropLayer::<_, _, Request<()>>::new(callback_factory);
-        let _wrapped_service = layer.layer(service);
-
-        // Successfully creating the service indicates the layer is working properly
-        assert!(true);
+    fn layer(&self, inner: S) -> Self::Service {
+        OnEarlyDropService::new(
+            inner,
+            self.on_future_drop.clone(),
+            self.on_body_drop.clone(),
+        )
     }
 }

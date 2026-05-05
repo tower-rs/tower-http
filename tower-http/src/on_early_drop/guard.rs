@@ -1,110 +1,74 @@
-//! Implementation of the OnEarlyDropGuard.
+//! Drop guard that fires a callback when dropped unless marked completed.
 
-/// A struct that executes a closure when dropped.
-///
-/// The closure will only be executed if `completed()` has not been called before dropping.
+use crate::on_early_drop::traits::OnDropCallback;
+
+/// Runs a callback on drop unless [`completed`](Self::completed) is called
+/// first.
 ///
 /// # Examples
 ///
 /// ```
-/// use tower_http::on_early_drop::guard::OnEarlyDropGuard;
-/// use std::cell::RefCell;
-/// use std::rc::Rc;
+/// use tower_http::on_early_drop::OnEarlyDropGuard;
+/// use std::sync::atomic::{AtomicUsize, Ordering};
+/// use std::sync::Arc;
 ///
-/// // Create a counter we can check if the callback was called
-/// let counter = Rc::new(RefCell::new(0));
-/// let counter_clone = counter.clone();
-///
+/// let count = Arc::new(AtomicUsize::new(0));
+/// let count_for_guard = count.clone();
 /// {
-///     // Create a value that will be consumed by the FnOnce closure
-///     let data = String::from("This string will be consumed");
-///
-///     // Create a guard with a closure that consumes `data` (FnOnce behavior)
 ///     let _guard = OnEarlyDropGuard::new(move || {
-///         // Here we're consuming `data` by printing its length - can only be done once
-///         println!("Length of consumed data: {}", data.len());
-///         // Still update the counter for test verification
-///         *counter_clone.borrow_mut() += 1;
+///         count_for_guard.fetch_add(1, Ordering::Relaxed);
 ///     });
-///     // Guard goes out of scope here and should call the callback
 /// }
-///
-/// assert_eq!(*counter.borrow(), 1);
+/// assert_eq!(count.load(Ordering::Relaxed), 1);
 /// ```
 ///
-/// When completed is called, the callback won't run:
+/// Marking the guard completed suppresses the callback:
 ///
 /// ```
-/// use tower_http::on_early_drop::guard::OnEarlyDropGuard;
-/// use std::cell::RefCell;
-/// use std::rc::Rc;
+/// use tower_http::on_early_drop::OnEarlyDropGuard;
+/// use std::sync::atomic::{AtomicUsize, Ordering};
+/// use std::sync::Arc;
 ///
-/// // Create a counter we can check if the callback was called
-/// let counter = Rc::new(RefCell::new(0));
-/// let counter_clone = counter.clone();
-///
+/// let count = Arc::new(AtomicUsize::new(0));
+/// let count_for_guard = count.clone();
 /// {
-///     // Create a value that would be consumed by the FnOnce closure
-///     let data = String::from("This string would be consumed");
-///
-///     // Create a guard that would consume `data` when dropped
 ///     let mut guard = OnEarlyDropGuard::new(move || {
-///         // This closure would consume `data` but won't be called
-///         println!("This won't be printed: {}", data);
-///         *counter_clone.borrow_mut() += 1;
+///         count_for_guard.fetch_add(1, Ordering::Relaxed);
 ///     });
-///
-///     // Mark as completed, so callback shouldn't run
 ///     guard.completed();
-///     // Guard goes out of scope here but won't execute the FnOnce closure
 /// }
-///
-/// assert_eq!(*counter.borrow(), 0);
+/// assert_eq!(count.load(Ordering::Relaxed), 0);
 /// ```
+///
+/// [`OnEarlyDropLayer`]: super::OnEarlyDropLayer
 #[derive(Debug)]
-pub struct OnEarlyDropGuard<F>
-where
-    F: FnOnce(),
-{
-    callback: Option<F>,
+pub struct OnEarlyDropGuard<Callback: OnDropCallback> {
+    callback: Option<Callback>,
 }
 
-impl<F> OnEarlyDropGuard<F>
-where
-    F: FnOnce(),
-{
-    /// Creates a new `OnEarlyDropGuard` instance with the provided callback.
-    ///
-    /// The callback will be executed when the struct is dropped, unless `completed()` has been called.
-    pub fn new(callback: F) -> Self {
+impl<Callback: OnDropCallback> OnEarlyDropGuard<Callback> {
+    /// Create a guard that will fire `callback` on drop.
+    pub fn new(callback: Callback) -> Self {
         Self {
             callback: Some(callback),
         }
     }
 
-    /// Marks the operation as completed, preventing the callback from being called when dropped.
+    /// Mark the guard completed and drop the callback without firing it.
     ///
-    /// Call this method when the operation has been completed successfully and you don't want
-    /// the early drop callback to be executed.
-    ///
-    /// Note that `completed` drops the callback immediately rather than waiting for the guard
-    /// itself to drop, so any resources captured by the callback closure are freed at the
-    /// `completed()` call site.
+    /// Any resources captured by the callback are released immediately
+    /// rather than at guard drop time.
     pub fn completed(&mut self) {
         self.callback = None;
     }
 }
 
-impl<F> Drop for OnEarlyDropGuard<F>
-where
-    F: FnOnce(),
-{
+impl<Callback: OnDropCallback> Drop for OnEarlyDropGuard<Callback> {
     fn drop(&mut self) {
-        // Fire the callback unless `completed()` already took it. Note that
-        // we deliberately avoid panicking in Drop (e.g. via `expect`) because
-        // a panic while unwinding aborts the process.
+        // Panicking in Drop aborts the process if we are already unwinding,
+        // so avoid `expect` here.
         if let Some(callback) = self.callback.take() {
-            callback();
+            callback.on_drop();
         }
     }
 }
@@ -112,43 +76,31 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::cell::RefCell;
-    use std::rc::Rc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
 
     #[test]
-    fn test_callback_called_on_drop() {
-        // Create a counter we can check if the callback was called
-        let counter = Rc::new(RefCell::new(0));
-        let counter_clone = counter.clone();
-
+    fn fires_on_drop() {
+        let fired = Arc::new(AtomicBool::new(false));
+        let fired_for_guard = fired.clone();
         {
-            // Create a guard with a closure that increments the counter
             let _guard = OnEarlyDropGuard::new(move || {
-                *counter_clone.borrow_mut() += 1;
+                fired_for_guard.store(true, Ordering::Relaxed);
             });
-            // Guard goes out of scope here and should call the callback
         }
-
-        assert_eq!(*counter.borrow(), 1);
+        assert!(fired.load(Ordering::Relaxed));
     }
 
     #[test]
-    fn test_callback_not_called_when_completed() {
-        // Create a counter we can check if the callback was called
-        let counter = Rc::new(RefCell::new(0));
-        let counter_clone = counter.clone();
-
+    fn suppresses_when_completed() {
+        let fired = Arc::new(AtomicBool::new(false));
+        let fired_for_guard = fired.clone();
         {
-            // Create a guard with a counter-incrementing closure
             let mut guard = OnEarlyDropGuard::new(move || {
-                *counter_clone.borrow_mut() += 1;
+                fired_for_guard.store(true, Ordering::Relaxed);
             });
-
-            // Mark as completed, so callback shouldn't run
             guard.completed();
-            // Guard goes out of scope here, but the callback won't be executed
         }
-
-        assert_eq!(*counter.borrow(), 0);
+        assert!(!fired.load(Ordering::Relaxed));
     }
 }

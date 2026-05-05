@@ -1,6 +1,11 @@
-//! Future implementation for the OnEarlyDrop middleware.
+//! Response future for [`OnEarlyDropService`].
+//!
+//! [`OnEarlyDropService`]: super::OnEarlyDropService
 
+use crate::on_early_drop::body::OnEarlyDropBody;
 use crate::on_early_drop::guard::OnEarlyDropGuard;
+use crate::on_early_drop::traits::{OnBodyDrop, OnDropCallback};
+use http::Response;
 use pin_project_lite::pin_project;
 use std::future::Future;
 use std::pin::Pin;
@@ -9,73 +14,88 @@ use std::task::{Context, Poll};
 pin_project! {
     /// Response future for [`OnEarlyDropService`].
     ///
-    /// This future wraps an inner service future. If the inner future produces
-    /// [`Poll::Ready`] (whether the result is `Ok` or `Err`), the guard is
-    /// marked completed and the callback is not invoked. If this future is
-    /// dropped while the inner future is still [`Poll::Pending`], the guard's
-    /// callback fires.
-    ///
-    /// This means the callback fires only when the response future is dropped
-    /// before producing any result. Service errors are considered observable
-    /// elsewhere (e.g. via [`tower_http::trace::OnFailure`]) and do not
-    /// trigger the callback.
-    ///
-    /// # Type Parameters
-    ///
-    /// * `Future` - The inner future type produced by the wrapped service
-    /// * `Callback` - The callback type, a function that will be executed if a request is dropped early
-    ///
-    /// [`OnEarlyDropService`]: super::service::OnEarlyDropService
-    /// [`tower_http::trace::OnFailure`]: crate::trace::OnFailure
-    pub struct OnEarlyDropFuture<Future, Callback: FnOnce()> {
+    /// [`OnEarlyDropService`]: super::OnEarlyDropService
+    pub struct OnEarlyDropFuture<F, OBD, ReqB, FC, BC>
+    where
+        OBD: OnBodyDrop<ReqB, Callback = BC>,
+        FC: OnDropCallback,
+        BC: OnDropCallback,
+    {
         #[pin]
-        inner: Future,
-        guard: Option<OnEarlyDropGuard<Callback>>,
+        inner: F,
+        // `Some` while the inner future is pending.
+        future_guard: Option<OnEarlyDropGuard<FC>>,
+        // `Some` between call-time and response-ready time.
+        intermediate: Option<OBD::Intermediate>,
+        // Retained for `make_at_response`.
+        on_body_drop: Option<OBD>,
+        // `fn(ReqB)` keeps Send/Sync and other auto-traits independent of ReqB.
+        _phantom: std::marker::PhantomData<fn(ReqB)>,
     }
 }
 
-impl<Future, Callback: FnOnce()> OnEarlyDropFuture<Future, Callback> {
-    /// Creates a new `OnEarlyDropFuture` with the given inner future and guard.
-    pub(crate) fn new(inner: Future, guard: OnEarlyDropGuard<Callback>) -> Self {
+impl<F, OBD, ReqB, FC, BC> OnEarlyDropFuture<F, OBD, ReqB, FC, BC>
+where
+    OBD: OnBodyDrop<ReqB, Callback = BC>,
+    FC: OnDropCallback,
+    BC: OnDropCallback,
+{
+    pub(crate) fn new(
+        inner: F,
+        future_callback: FC,
+        on_body_drop: OBD,
+        intermediate: OBD::Intermediate,
+    ) -> Self {
         Self {
             inner,
-            guard: Some(guard),
+            future_guard: Some(OnEarlyDropGuard::new(future_callback)),
+            intermediate: Some(intermediate),
+            on_body_drop: Some(on_body_drop),
+            _phantom: std::marker::PhantomData,
         }
     }
 }
 
-/// Implementation of `Future` for `OnEarlyDropFuture`.
-///
-/// # Type Parameters
-///
-/// * `InnerFuture` - The inner future type produced by the wrapped service
-/// * `Callback` - The callback type, a function that will be executed if a request is dropped early
-/// * `Error` - The error type that might be returned by the inner future
-/// * `Response` - The response type returned by the inner future
-impl<InnerFuture, Callback, Error, Response> Future for OnEarlyDropFuture<InnerFuture, Callback>
+impl<F, OBD, B, E, ReqB, FC, BC> Future for OnEarlyDropFuture<F, OBD, ReqB, FC, BC>
 where
-    InnerFuture: Future<Output = Result<Response, Error>>,
-    Callback: FnOnce(),
+    F: Future<Output = Result<Response<B>, E>>,
+    OBD: OnBodyDrop<ReqB, Callback = BC>,
+    FC: OnDropCallback,
+    BC: OnDropCallback,
+    B: http_body::Body,
 {
-    type Output = Result<Response, Error>;
+    type Output = Result<Response<OnEarlyDropBody<B, BC>>, E>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
 
-        // Poll the inner future
         let result = match this.inner.poll(cx) {
             Poll::Ready(result) => result,
             Poll::Pending => return Poll::Pending,
         };
 
-        // The inner future produced a result (Ok or Err). Mark the guard as
-        // completed so the callback does not fire. Service errors are out of
-        // scope for this middleware; see the type-level doc comment.
-        if let Some(guard) = this.guard.take() {
-            let mut guard = guard;
+        // Inner resolved: suppress the future-drop guard for both Ok and Err.
+        if let Some(guard) = this.future_guard.as_mut() {
             guard.completed();
         }
+        *this.future_guard = None;
 
-        Poll::Ready(result)
+        match result {
+            Ok(response) => {
+                let (parts, body) = response.into_parts();
+                let intermediate = this
+                    .intermediate
+                    .take()
+                    .expect("intermediate already consumed; OnEarlyDropFuture polled after Ready");
+                let mut hook = this
+                    .on_body_drop
+                    .take()
+                    .expect("on_body_drop already consumed; OnEarlyDropFuture polled after Ready");
+                let callback = hook.make_at_response(intermediate, &parts);
+                let wrapped_body = OnEarlyDropBody::new(body, callback);
+                Poll::Ready(Ok(Response::from_parts(parts, wrapped_body)))
+            }
+            Err(err) => Poll::Ready(Err(err)),
+        }
     }
 }

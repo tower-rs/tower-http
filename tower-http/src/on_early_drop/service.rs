@@ -1,442 +1,371 @@
-//! Service implementation for the OnEarlyDrop middleware.
-//!
-//! This module provides the [`OnEarlyDropService`] which wraps another service and monitors
-//! for early client disconnections during request processing.
-//!
-//! The service uses the [`OnEarlyDropGuard`]
-//! to track request lifecycle and executes a callback when a request is dropped before completion.
+//! Service implementation for the on-early-drop middleware.
 
+use crate::on_early_drop::body::OnEarlyDropBody;
 use crate::on_early_drop::future::OnEarlyDropFuture;
-use crate::on_early_drop::guard::OnEarlyDropGuard;
-use std::marker::PhantomData;
+use crate::on_early_drop::traits::{OnBodyDrop, OnFutureDrop};
+use http::{Request, Response};
 use std::task::{Context, Poll};
 use tower_service::Service;
 
-/// A middleware [`Service`] responsible for handling early drop scenarios.
+/// [`Service`] produced by [`OnEarlyDropLayer`].
 ///
-/// This service wraps an inner service and monitors requests for early client disconnections.
-/// When a client disconnects before receiving the complete response, a provided callback
-/// function will be executed, allowing for logging, metrics collection, or other cleanup tasks.
+/// See the [module docs](super) for details and examples.
 ///
-/// This service is typically applied using the [`OnEarlyDropLayer`](crate::on_early_drop::layer::OnEarlyDropLayer).
-///
-/// # Type Parameters
-///
-/// * `CallbackFactory` - The callback factory type, a function that produces callbacks from requests
-/// * `Callback` - The callback type, a function that will be executed if a request is dropped early
-/// * `S` - The inner service type being wrapped
-/// * `Request` - The request type being processed by the service
-/// * `Response` - The response type produced by the service
-#[derive(Debug)]
-pub struct OnEarlyDropService<CallbackFactory, Callback, S, Request, Response>
-where
-    Callback: FnOnce(),
-    CallbackFactory: Fn(&Request) -> Callback + Clone + Send + 'static,
-{
-    inner: S,
-    callback_factory: CallbackFactory,
-    _marker: PhantomData<(Callback, Request, Response)>,
+/// [`OnEarlyDropLayer`]: super::OnEarlyDropLayer
+pub struct OnEarlyDropService<S, OFD, OBD> {
+    pub(crate) inner: S,
+    pub(crate) on_future_drop: OFD,
+    pub(crate) on_body_drop: OBD,
 }
 
-/// Manual implementation of Clone for OnEarlyDropService.
-///
-/// This implementation avoids the additional bounds that would be automatically
-/// added by #[derive(Clone)]. The derive macro would add unnecessary `T: Clone` bounds
-/// on all generic parameters, including `Request` and `Response`, even though these
-/// types are never actually cloned in the implementation.
-///
-/// By manually implementing Clone, we only require `S` and `CallbackFactory` to be
-/// cloneable, which are the only fields we actually clone. This allows the service
-/// to be cloned even when the `Request` and `Response` types don't implement Clone.
-///
-/// See: <https://doc.rust-lang.org/std/clone/trait.Clone.html#derivable> for more details
-/// on why manual implementations are sometimes needed to avoid unnecessary bounds.
-impl<CallbackFactory, Callback, S, Request, Response> Clone
-    for OnEarlyDropService<CallbackFactory, Callback, S, Request, Response>
+impl<S, OFD, OBD> std::fmt::Debug for OnEarlyDropService<S, OFD, OBD>
 where
-    Callback: FnOnce(),
-    CallbackFactory: Fn(&Request) -> Callback + Clone + Send + 'static,
+    S: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OnEarlyDropService")
+            .field("inner", &self.inner)
+            .field("on_future_drop", &format_args!(".."))
+            .field("on_body_drop", &format_args!(".."))
+            .finish()
+    }
+}
+
+impl<S, OFD, OBD> Clone for OnEarlyDropService<S, OFD, OBD>
+where
     S: Clone,
+    OFD: Clone,
+    OBD: Clone,
 {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
-            callback_factory: self.callback_factory.clone(),
-            _marker: PhantomData,
+            on_future_drop: self.on_future_drop.clone(),
+            on_body_drop: self.on_body_drop.clone(),
         }
     }
 }
 
-impl<CallbackFactory, Callback, S, Request, Response>
-    OnEarlyDropService<CallbackFactory, Callback, S, Request, Response>
-where
-    Callback: FnOnce(),
-    CallbackFactory: Fn(&Request) -> Callback + Clone + Send + 'static,
-{
-    /// Creates a new `OnEarlyDropService` with the given inner service and callback factory.
-    ///
-    /// # Parameters
-    ///
-    /// * `inner` - The inner service to wrap
-    /// * `callback_factory` - A factory function that creates callback closures for each request
-    pub fn new(inner: S, callback_factory: CallbackFactory) -> Self {
+impl<S, OFD, OBD> OnEarlyDropService<S, OFD, OBD> {
+    /// Construct a new service directly. Most uses go through
+    /// [`OnEarlyDropLayer`](super::OnEarlyDropLayer).
+    pub fn new(inner: S, on_future_drop: OFD, on_body_drop: OBD) -> Self {
         Self {
             inner,
-            callback_factory,
-            _marker: PhantomData,
+            on_future_drop,
+            on_body_drop,
         }
     }
+
+    define_inner_service_accessors!();
 }
 
-impl<CallbackFactory, Callback, S, Request, Response> Service<Request>
-    for OnEarlyDropService<CallbackFactory, Callback, S, Request, Response>
+impl<S, OFD, OBD, ReqB, ResB> Service<Request<ReqB>> for OnEarlyDropService<S, OFD, OBD>
 where
-    S: Service<Request, Response = Response> + Clone + Send + 'static,
-    S::Future: Send + 'static,
-    Callback: FnOnce(),
-    CallbackFactory: Fn(&Request) -> Callback + Clone + Send + 'static,
+    S: Service<Request<ReqB>, Response = Response<ResB>>,
+    OFD: OnFutureDrop<ReqB>,
+    OBD: OnBodyDrop<ReqB> + Clone,
+    ResB: http_body::Body,
 {
-    type Response = Response;
+    type Response = Response<OnEarlyDropBody<ResB, OBD::Callback>>;
     type Error = S::Error;
-    type Future = OnEarlyDropFuture<S::Future, Callback>;
+    type Future = OnEarlyDropFuture<S::Future, OBD, ReqB, OFD::Callback, OBD::Callback>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx)
     }
 
-    fn call(&mut self, req: Request) -> Self::Future {
-        // Create the guard that will call the callback if dropped
-        let guard = OnEarlyDropGuard::new((self.callback_factory)(&req));
-
-        // Call the inner service
-        let future = self.inner.call(req);
-
-        // Wrap the future and guard in our OnEarlyDropFuture
-        OnEarlyDropFuture::new(future, guard)
+    fn call(&mut self, req: Request<ReqB>) -> Self::Future {
+        let future_callback = self.on_future_drop.make(&req);
+        let intermediate = self.on_body_drop.make_at_call(&req);
+        let inner = self.inner.call(req);
+        OnEarlyDropFuture::new(
+            inner,
+            future_callback,
+            self.on_body_drop.clone(),
+            intermediate,
+        )
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use futures_util::future;
+    use crate::on_early_drop::{OnBodyDropFn, OnEarlyDropLayer};
+    use bytes::Bytes;
     use http::{Request, Response, StatusCode};
-    use std::sync::{Arc, Mutex};
+    use http_body_util::{BodyExt, Full};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::Arc;
     use std::time::Duration;
     use tokio::time::{sleep, timeout};
-    use tower::{service_fn, ServiceExt};
+    use tower::{service_fn, Layer, ServiceExt};
+
+    fn ok_service() -> impl Service<
+        Request<()>,
+        Response = Response<Full<Bytes>>,
+        Error = std::convert::Infallible,
+        Future = impl std::future::Future<
+            Output = Result<Response<Full<Bytes>>, std::convert::Infallible>,
+        > + Send,
+    > + Clone {
+        service_fn(|_req: Request<()>| async move {
+            Ok::<_, std::convert::Infallible>(
+                Response::builder()
+                    .status(StatusCode::OK)
+                    .body(Full::new(Bytes::from_static(b"hello")))
+                    .unwrap(),
+            )
+        })
+    }
+
+    fn request() -> Request<()> {
+        Request::builder().uri("http://example/").body(()).unwrap()
+    }
 
     #[tokio::test]
-    async fn test_service_calls_inner_service() {
-        // Create a simple handler that returns a 200 OK
-        let inner_service = service_fn(|_req: Request<()>| {
-            future::ready(Ok::<_, std::io::Error>(
-                Response::builder().status(StatusCode::OK).body(()).unwrap(),
-            ))
-        });
-
-        // Create a simple callback factory
-        let callback_factory = |_req: &Request<()>| || {};
-
-        // Create the OnEarlyDropService
-        let service = OnEarlyDropService::<_, _, _, Request<()>, Response<()>>::new(
-            inner_service,
-            callback_factory,
-        );
-
-        // Create a test request
-        let req = Request::builder()
-            .uri("http://example.com/")
-            .body(())
-            .unwrap();
-
-        // Call the service using oneshot and get the response
-        let response = service.oneshot(req).await.unwrap();
-
-        // Verify that the inner service was called and returned the expected response
+    async fn forwards_response() {
+        let layer = OnEarlyDropLayer::builder();
+        let service = layer.layer(ok_service());
+        let response = service.oneshot(request()).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(body, "hello");
     }
 
     #[tokio::test]
-    async fn test_callback_not_called_when_completed() {
-        // Track callback invocations
-        let called = Arc::new(Mutex::new(false));
-        let called_clone = called.clone();
+    async fn future_drop_fires_callback() {
+        let fired = Arc::new(AtomicUsize::new(0));
+        let fired_clone = fired.clone();
 
-        // Create a simple handler
-        let inner_service = service_fn(|_req: Request<()>| {
-            future::ready(Ok::<_, std::io::Error>(Response::new(())))
-        });
-
-        // Create a callback factory that sets the flag when called
-        let callback_factory = move |_req: &Request<()>| {
-            let called = called_clone.clone();
-            move || {
-                let mut called = called.lock().unwrap();
-                *called = true;
-            }
-        };
-
-        // Create the OnEarlyDropService
-        let service = OnEarlyDropService::<_, _, _, Request<()>, Response<()>>::new(
-            inner_service,
-            callback_factory,
-        );
-
-        // Create a test request
-        let req = Request::builder()
-            .uri("http://example.com/")
-            .body(())
-            .unwrap();
-
-        // Call the service using oneshot and get the response
-        let _response = service.oneshot(req).await.unwrap();
-
-        // The callback should not have been called because the request completed
-        assert_eq!(*called.lock().unwrap(), false);
-    }
-
-    #[tokio::test]
-    async fn test_service_clone() {
-        // Create counters to track which service instance is called
-        let original_counter = Arc::new(Mutex::new(0));
-        let clone_counter = Arc::new(Mutex::new(0));
-
-        // Create callback counters to track which callback is executed
-        let original_callback_called = Arc::new(Mutex::new(false));
-        let clone_callback_called = Arc::new(Mutex::new(false));
-
-        // Clone the counters for use in the closures
-        let orig_counter_clone = original_counter.clone();
-        let clone_counter_clone = clone_counter.clone();
-        let orig_cb_called_clone = original_callback_called.clone();
-        // This clone is used indirectly through create_callback_factory for the cloned service
-        let _clone_cb_called_clone = clone_callback_called.clone();
-
-        // Create a parameterized service function that increments the appropriate counter
-        let create_test_service = |counter: Arc<Mutex<i32>>| {
-            service_fn(move |_req: Request<()>| {
-                let counter = counter.clone();
-                async move {
-                    // Increment the counter when the service is called
-                    let mut count = counter.lock().unwrap();
-                    *count += 1;
-
-                    Ok::<_, std::io::Error>(
-                        Response::builder().status(StatusCode::OK).body(()).unwrap(),
-                    )
-                }
-            })
-        };
-
-        // Create a callback factory that captures which instance was called
-        let create_callback_factory = |callback_flag: Arc<Mutex<bool>>| {
-            move |_req: &Request<()>| {
-                let called = callback_flag.clone();
-                move || {
-                    let mut flag = called.lock().unwrap();
-                    *flag = true;
-                }
-            }
-        };
-
-        // Create the original service with its counter
-        let original_service = create_test_service(orig_counter_clone);
-        let original_callback = create_callback_factory(orig_cb_called_clone);
-
-        // Create the OnEarlyDropService
-        let service = OnEarlyDropService::<_, _, _, Request<()>, Response<()>>::new(
-            original_service,
-            original_callback,
-        );
-
-        // Clone the service
-        let _original_cloned = service.clone(); // Keep this to test Clone trait works
-
-        // Create a new service with the clone counter to track separate metrics
-        let cloned_service = OnEarlyDropService::<_, _, _, Request<()>, Response<()>>::new(
-            create_test_service(clone_counter_clone),
-            create_callback_factory(clone_callback_called.clone()),
-        );
-
-        // Create two test requests
-        let req1 = Request::builder()
-            .uri("http://example.com/original")
-            .body(())
-            .unwrap();
-
-        let req2 = Request::builder()
-            .uri("http://example.com/clone")
-            .body(())
-            .unwrap();
-
-        // Call both services using oneshot
-        let response1 = service.oneshot(req1).await.unwrap();
-        let response2 = cloned_service.oneshot(req2).await.unwrap();
-
-        // Verify both services returned OK responses
-        assert_eq!(response1.status(), StatusCode::OK);
-        assert_eq!(response2.status(), StatusCode::OK);
-
-        // Verify each counter was incremented exactly once
-        assert_eq!(*original_counter.lock().unwrap(), 1);
-        assert_eq!(*clone_counter.lock().unwrap(), 1);
-
-        // Verify neither callback was called (since both requests completed)
-        assert_eq!(*original_callback_called.lock().unwrap(), false);
-        assert_eq!(*clone_callback_called.lock().unwrap(), false);
-    }
-
-    #[tokio::test]
-    async fn test_service_send_across_tasks() {
-        // Create a simple test service that can be sent across tasks
-        let inner_service = service_fn(move |_req: Request<()>| async move {
-            Ok::<_, std::io::Error>(Response::builder().status(StatusCode::OK).body(()).unwrap())
-        });
-
-        // Create a callback factory that just prints a message when request is dropped early
-        let callback_factory = move |req: &Request<()>| {
-            let path = req.uri().path().to_string();
-            move || {
-                println!("Request not finished: {}", path);
-            }
-        };
-
-        // Create the service
-        let service = OnEarlyDropService::<_, _, _, Request<()>, Response<()>>::new(
-            inner_service,
-            callback_factory,
-        );
-
-        // Create a test request
-        let req = Request::builder()
-            .uri("http://example.com/test")
-            .body(())
-            .unwrap();
-
-        // Create a channel to pass the response back from the task
-        let (tx, rx) = tokio::sync::oneshot::channel();
-
-        // Spawn a new task and move the service into it
-        let handle = tokio::spawn(async move {
-            // This will fail to compile if the service doesn't implement Send
-            let response = service.oneshot(req).await;
-
-            // Send the result back through the channel
-            let _ = tx.send(response);
-
-            // Task completes naturally
-        });
-
-        // Wait for the response from the spawned task
-        let response = rx
-            .await
-            .expect("Task should send a response")
-            .expect("Service call should succeed");
-
-        // Wait for the task to complete
-        handle.await.expect("Task should complete successfully");
-
-        // Verify the response is as expected
-        assert_eq!(response.status(), StatusCode::OK);
-
-        // The request should complete normally and no callback should be triggered
-        // Task completion is verified by the test framework since we await the handle
-    }
-
-    #[tokio::test]
-    async fn test_callback_called_when_dropped_early() {
-        // Create a counter to track callback invocations
-        let callback_counter = Arc::new(Mutex::new(0));
-        let callback_counter_clone = callback_counter.clone();
-
-        // Create an inner service that sleeps indefinitely, ensuring timeout
-        let inner_service = service_fn(|_req: Request<()>| async {
-            // Sleep for a very long time (simulating a hanging request)
+        let slow_service = service_fn(|_req: Request<()>| async move {
             sleep(Duration::from_secs(60)).await;
-            Ok::<_, std::io::Error>(Response::new(()))
+            Ok::<_, std::convert::Infallible>(
+                Response::builder()
+                    .status(StatusCode::OK)
+                    .body(Full::new(Bytes::new()))
+                    .unwrap(),
+            )
         });
 
-        // Create a callback factory that increments the counter when called
-        let callback_factory = move |_req: &Request<()>| {
-            let counter = callback_counter_clone.clone();
+        let layer = OnEarlyDropLayer::builder().on_future_drop(move |_req: &Request<()>| {
+            let fired = fired_clone.clone();
             move || {
-                let mut count = counter.lock().unwrap();
-                *count += 1;
-                println!("Callback executed, count now: {}", *count);
+                fired.fetch_add(1, Ordering::Relaxed);
             }
-        };
+        });
+        let service = layer.layer(slow_service);
+        let _ = timeout(Duration::from_millis(50), service.oneshot(request())).await;
 
-        // Create the OnEarlyDropService
-        let service = OnEarlyDropService::<_, _, _, Request<()>, Response<()>>::new(
-            inner_service,
-            callback_factory,
-        );
-
-        // Create a test request
-        let req = Request::builder()
-            .uri("http://example.com/test")
-            .body(())
-            .unwrap();
-
-        // Call the service with a short timeout, ensuring the future will be dropped
-        let result = timeout(Duration::from_millis(100), service.oneshot(req)).await;
-
-        // Verify that the operation timed out
-        assert!(result.is_err(), "Expected timeout error");
-
-        // Add a small delay to ensure the callback has time to execute after drop
         sleep(Duration::from_millis(10)).await;
+        assert_eq!(fired.load(Ordering::Relaxed), 1);
+    }
 
-        // Verify the callback was called exactly once
+    #[tokio::test]
+    async fn future_drop_suppressed_on_completion() {
+        let fired = Arc::new(AtomicUsize::new(0));
+        let fired_clone = fired.clone();
+
+        let layer = OnEarlyDropLayer::builder().on_future_drop(move |_req: &Request<()>| {
+            let fired = fired_clone.clone();
+            move || {
+                fired.fetch_add(1, Ordering::Relaxed);
+            }
+        });
+        let service = layer.layer(ok_service());
+        let _ = service.oneshot(request()).await.unwrap();
+
+        assert_eq!(fired.load(Ordering::Relaxed), 0);
+    }
+
+    #[tokio::test]
+    async fn body_drop_fires_callback_with_status() {
+        let observed_status = Arc::new(std::sync::Mutex::new(None));
+        let observed_clone = observed_status.clone();
+
+        // Body that never reaches end-of-stream.
+        struct PendingBody;
+        impl http_body::Body for PendingBody {
+            type Data = Bytes;
+            type Error = std::convert::Infallible;
+            fn poll_frame(
+                self: std::pin::Pin<&mut Self>,
+                _cx: &mut std::task::Context<'_>,
+            ) -> std::task::Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>>
+            {
+                std::task::Poll::Pending
+            }
+            fn is_end_stream(&self) -> bool {
+                false
+            }
+        }
+
+        let pending_service = service_fn(|_req: Request<()>| async move {
+            Ok::<_, std::convert::Infallible>(
+                Response::builder()
+                    .status(StatusCode::CREATED)
+                    .body(PendingBody)
+                    .unwrap(),
+            )
+        });
+
+        let layer = OnEarlyDropLayer::builder().on_body_drop(OnBodyDropFn::new(
+            move |_req: &Request<()>| {
+                let observed = observed_clone.clone();
+                move |parts: &http::response::Parts| {
+                    let status = parts.status;
+                    move || {
+                        *observed.lock().unwrap() = Some(status);
+                    }
+                }
+            },
+        ));
+        let service = layer.layer(pending_service);
+        let response = service.oneshot(request()).await.unwrap();
+        assert_eq!(response.status(), StatusCode::CREATED);
+        drop(response);
+
         assert_eq!(
-            *callback_counter.lock().unwrap(),
-            1,
-            "Callback should have been called once"
+            *observed_status.lock().unwrap(),
+            Some(StatusCode::CREATED),
+            "body-drop callback should observe the response status",
         );
     }
 
     #[tokio::test]
-    async fn test_callback_not_called_on_inner_error() {
-        // The on-early-drop callback fires only when the response future is
-        // dropped before producing a result. Service errors (`Err`) are out
-        // of scope; users who want to observe failed responses should use
-        // `trace::OnFailure` instead.
-        let callback_counter = Arc::new(Mutex::new(0));
-        let callback_counter_clone = callback_counter.clone();
+    async fn body_drop_suppressed_when_body_consumed() {
+        let fired = Arc::new(AtomicBool::new(false));
+        let fired_clone = fired.clone();
 
-        // Inner service that always errors immediately.
-        let inner_service = service_fn(|_req: Request<()>| {
-            future::ready(Err::<Response<()>, std::io::Error>(std::io::Error::other(
-                "deliberate failure",
-            )))
+        let layer = OnEarlyDropLayer::builder().on_body_drop(OnBodyDropFn::new(
+            move |_req: &Request<()>| {
+                let fired = fired_clone.clone();
+                move |_parts: &http::response::Parts| {
+                    let fired = fired.clone();
+                    move || {
+                        fired.store(true, Ordering::Relaxed);
+                    }
+                }
+            },
+        ));
+        let service = layer.layer(ok_service());
+        let response = service.oneshot(request()).await.unwrap();
+        let _body = response.into_body().collect().await.unwrap();
+
+        assert!(!fired.load(Ordering::Relaxed));
+    }
+
+    #[tokio::test]
+    async fn inner_error_does_not_fire() {
+        let fired = Arc::new(AtomicBool::new(false));
+        let fired_clone = fired.clone();
+
+        let err_service = service_fn(|_req: Request<()>| async move {
+            Err::<Response<Full<Bytes>>, _>(std::io::Error::other("boom"))
         });
 
-        let callback_factory = move |_req: &Request<()>| {
-            let counter = callback_counter_clone.clone();
+        let layer = OnEarlyDropLayer::builder().on_future_drop(move |_req: &Request<()>| {
+            let fired = fired_clone.clone();
             move || {
-                *counter.lock().unwrap() += 1;
+                fired.store(true, Ordering::Relaxed);
             }
-        };
+        });
+        let service = layer.layer(err_service);
+        let _ = service.oneshot(request()).await;
 
-        let service = OnEarlyDropService::<_, _, _, Request<()>, Response<()>>::new(
-            inner_service,
-            callback_factory,
+        assert!(!fired.load(Ordering::Relaxed));
+    }
+
+    #[tokio::test]
+    async fn body_error_frame_does_not_fire() {
+        let fired = Arc::new(AtomicBool::new(false));
+        let fired_clone = fired.clone();
+
+        // Body that returns Err once, then is dropped.
+        struct ErrBody {
+            yielded: bool,
+        }
+        impl http_body::Body for ErrBody {
+            type Data = Bytes;
+            type Error = std::io::Error;
+            fn poll_frame(
+                mut self: std::pin::Pin<&mut Self>,
+                _cx: &mut std::task::Context<'_>,
+            ) -> std::task::Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>>
+            {
+                if self.yielded {
+                    std::task::Poll::Ready(None)
+                } else {
+                    self.yielded = true;
+                    std::task::Poll::Ready(Some(Err(std::io::Error::other("frame err"))))
+                }
+            }
+            fn is_end_stream(&self) -> bool {
+                false
+            }
+        }
+
+        let err_body_service = service_fn(|_req: Request<()>| async move {
+            Ok::<_, std::convert::Infallible>(
+                Response::builder()
+                    .status(StatusCode::OK)
+                    .body(ErrBody { yielded: false })
+                    .unwrap(),
+            )
+        });
+
+        let layer = OnEarlyDropLayer::builder().on_body_drop(OnBodyDropFn::new(
+            move |_req: &Request<()>| {
+                let fired = fired_clone.clone();
+                move |_parts: &http::response::Parts| {
+                    let fired = fired.clone();
+                    move || {
+                        fired.store(true, Ordering::Relaxed);
+                    }
+                }
+            },
+        ));
+        let service = layer.layer(err_body_service);
+        let response = service.oneshot(request()).await.unwrap();
+        // Poll the body until it surfaces the Err frame, then drop.
+        let mut body = response.into_body();
+        use http_body::Body as _;
+        let frame = std::future::poll_fn(|cx| std::pin::Pin::new(&mut body).poll_frame(cx)).await;
+        assert!(matches!(frame, Some(Err(_))));
+        drop(body);
+
+        assert!(
+            !fired.load(Ordering::Relaxed),
+            "body-level error must not be reported as a body drop",
         );
+    }
 
-        let req = Request::builder()
-            .uri("http://example.com/test")
-            .body(())
-            .unwrap();
+    // The service's trait bounds must not require hook types to be `Debug`;
+    // non-Debug closures must produce a service that still compiles.
+    #[allow(dead_code)]
+    fn static_property_hooks_without_debug() {
+        fn hook_without_debug<F>(f: F) -> F {
+            f
+        }
+        let _layer = OnEarlyDropLayer::builder()
+            .on_future_drop(hook_without_debug(|_req: &Request<()>| || {}))
+            .on_body_drop(OnBodyDropFn::new(hook_without_debug(
+                |_req: &Request<()>| |_parts: &http::response::Parts| || {},
+            )));
+    }
 
-        let result = service.oneshot(req).await;
-        assert!(result.is_err(), "Expected the inner service to error");
+    // The service must be Send + Sync + Clone whenever the underlying
+    // hooks and inner service are.
+    #[allow(dead_code)]
+    fn static_property_service_is_send_sync() {
+        fn assert_send<T: Send>(_: &T) {}
+        fn assert_sync<T: Sync>(_: &T) {}
+        fn assert_clone<T: Clone>(_: &T) {}
 
-        assert_eq!(
-            *callback_counter.lock().unwrap(),
-            0,
-            "Callback must not fire when the inner service returns Err; \
-             service errors are out of scope for on-early-drop."
-        );
+        let layer = OnEarlyDropLayer::builder();
+        let service = layer.layer(ok_service());
+        assert_send(&service);
+        assert_sync(&service);
+        assert_clone(&service);
     }
 }
