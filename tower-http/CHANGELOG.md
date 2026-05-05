@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
+## Added:
+
+- `on-early-drop`: middleware that detects when a response future or response
+  body is dropped before completion ([#636])
+
 ## Changed:
 
 - The implicit `async-compression` feature is removed (BREAKING) ([#642])
@@ -18,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [#483]: https://github.com/tower-rs/tower-http/pull/483
 [#628]: https://github.com/tower-rs/tower-http/pull/628
+[#636]: https://github.com/tower-rs/tower-http/pull/636
 [#642]: https://github.com/tower-rs/tower-http/pull/642
 
 # 0.6.8

@@ -16,8 +16,9 @@ use std::{
 use tokio::net::TcpListener;
 use tower::ServiceBuilder;
 use tower_http::{
+    on_early_drop::{EarlyDropsAsFailures, OnEarlyDropLayer},
     timeout::TimeoutLayer,
-    trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
+    trace::{DefaultMakeSpan, DefaultOnFailure, DefaultOnResponse, TraceLayer},
     LatencyUnit, ServiceBuilderExt,
 };
 
@@ -74,6 +75,11 @@ fn app() -> Router {
                 .make_span_with(DefaultMakeSpan::new().include_headers(true))
                 .on_response(DefaultOnResponse::new().include_headers(true).latency_unit(LatencyUnit::Micros)),
         )
+        // Report clients that disconnect before the response completes.
+        // Fires inside the TraceLayer span so events carry the request context.
+        .layer(OnEarlyDropLayer::new(EarlyDropsAsFailures::new(
+            DefaultOnFailure::default(),
+        )))
         .sensitive_response_headers(sensitive_headers)
         // Set a timeout
         .layer(TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, Duration::from_secs(10)))
