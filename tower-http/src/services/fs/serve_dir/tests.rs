@@ -792,6 +792,21 @@ async fn calling_fallback_on_not_allowed() {
 }
 
 #[tokio::test]
+async fn method_not_allowed_without_fallback() {
+    let svc = ServeDir::new("..").call_fallback_on_method_not_allowed(true);
+
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri("/README.md")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+
+    assert_eq!(res.status(), StatusCode::METHOD_NOT_ALLOWED);
+    assert_eq!(res.headers()[ALLOW], "GET,HEAD");
+}
+
+#[tokio::test]
 async fn with_fallback_svc_and_not_append_index_html_on_directories() {
     async fn fallback<B>(req: Request<B>) -> Result<Response<Body>, Infallible> {
         Ok(Response::new(Body::from(format!(
