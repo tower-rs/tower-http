@@ -28,8 +28,9 @@ jobs:
   stress-test:
     name: Stress Test
     runs-on: ubuntu-latest
-    # Leave ~20 minutes of headroom for toolchain install, cache restore, and build.
-    timeout-minutes: ${{ fromJson(inputs.duration_minutes || '30') + 20 }}
+    # Accommodates the documented max duration_minutes of 50 plus toolchain install,
+    # cache restore, and build headroom.
+    timeout-minutes: 75
     env:
       RUST_BACKTRACE: 1
       DURATION_MINUTES: ${{ inputs.duration_minutes || '30' }}
