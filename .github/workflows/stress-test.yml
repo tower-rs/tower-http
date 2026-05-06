@@ -1,0 +1,54 @@
+name: Stress Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      duration_minutes:
+        description: "Stress test duration in minutes (max 50 to leave setup/teardown headroom)"
+        required: false
+        default: "30"
+        type: string
+      test_filter:
+        description: "Optional nextest filter expression, substring match on test names"
+        required: false
+        default: ""
+        type: string
+  schedule:
+    # Daily at 06:00 UTC
+    - cron: "0 6 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stress-test
+  cancel-in-progress: false
+
+jobs:
+  stress-test:
+    name: Stress Test
+    runs-on: ubuntu-latest
+    # Leave ~20 minutes of headroom for toolchain install, cache restore, and build.
+    timeout-minutes: ${{ fromJson(inputs.duration_minutes || '30') + 20 }}
+    env:
+      RUST_BACKTRACE: 1
+      DURATION_MINUTES: ${{ inputs.duration_minutes || '30' }}
+      TEST_FILTER: ${{ inputs.test_filter }}
+    steps:
+    - uses: actions/checkout@v6
+    - uses: dtolnay/rust-toolchain@stable
+    - uses: Swatinem/rust-cache@v2
+      with:
+        save-if: ${{ github.ref == 'refs/heads/main' }}
+    - uses: taiki-e/install-action@v2
+      with:
+        tool: cargo-nextest@0.9.132
+    - name: Run stress test
+      run: |
+        if [ -n "$TEST_FILTER" ]; then
+          cargo nextest run --workspace --all-features --no-fail-fast \
+            --stress-duration "${DURATION_MINUTES}m" -E "test($TEST_FILTER)"
+        else
+          cargo nextest run --workspace --all-features --no-fail-fast \
+            --stress-duration "${DURATION_MINUTES}m"
+        fi
