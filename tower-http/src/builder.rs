@@ -1,12 +1,14 @@
 use tower::ServiceBuilder;
 
-#[cfg(feature = "trace")]
-use crate::classify::{GrpcErrorsAsFailures, ServerErrorsAsFailures, SharedClassifier};
-
 #[allow(unused_imports)]
 use http::header::HeaderName;
 #[allow(unused_imports)]
 use tower_layer::Stack;
+
+mod sealed {
+    #[allow(unreachable_pub, unused)]
+    pub trait Sealed<T> {}
+}
 
 /// Extension trait that adds methods to [`tower::ServiceBuilder`] for adding middleware from
 /// tower-http.
@@ -17,13 +19,14 @@ use tower_layer::Stack;
 ///
 /// ```rust
 /// use http::{Request, Response, header::HeaderName};
-/// use hyper::Body;
+/// use bytes::Bytes;
+/// use http_body_util::Full;
 /// use std::{time::Duration, convert::Infallible};
 /// use tower::{ServiceBuilder, ServiceExt, Service};
 /// use tower_http::ServiceBuilderExt;
 ///
-/// async fn handle(request: Request<Body>) -> Result<Response<Body>, Infallible> {
-///     Ok(Response::new(Body::empty()))
+/// async fn handle(request: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, Infallible> {
+///     Ok(Response::new(Full::default()))
 /// }
 ///
 /// # #[tokio::main]
@@ -33,16 +36,15 @@ use tower_layer::Stack;
 ///     .timeout(Duration::from_secs(30))
 ///     // Methods from tower-http
 ///     .trace_for_http()
-///     .compression()
 ///     .propagate_header(HeaderName::from_static("x-request-id"))
 ///     .service_fn(handle);
 /// # let mut service = service;
-/// # service.ready().await.unwrap().call(Request::new(Body::empty())).await.unwrap();
+/// # service.ready().await.unwrap().call(Request::new(Full::default())).await.unwrap();
 /// # }
 /// ```
 #[cfg(feature = "util")]
 // ^ work around rustdoc not inferring doc(cfg)s for cfg's from surrounding scopes
-pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
+pub trait ServiceBuilderExt<L>: sealed::Sealed<L> + Sized {
     /// Propagate a header from the request to the response.
     ///
     /// See [`tower_http::propagate_header`] for more details.
@@ -126,7 +128,7 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     #[cfg(feature = "trace")]
     fn trace_for_http(
         self,
-    ) -> ServiceBuilder<Stack<crate::trace::TraceLayer<SharedClassifier<ServerErrorsAsFailures>>, L>>;
+    ) -> ServiceBuilder<Stack<crate::trace::TraceLayer<crate::trace::HttpMakeClassifier>, L>>;
 
     /// High level tracing that classifies responses using gRPC headers.
     ///
@@ -140,7 +142,7 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     #[cfg(feature = "trace")]
     fn trace_for_grpc(
         self,
-    ) -> ServiceBuilder<Stack<crate::trace::TraceLayer<SharedClassifier<GrpcErrorsAsFailures>>, L>>;
+    ) -> ServiceBuilder<Stack<crate::trace::TraceLayer<crate::trace::GrpcMakeClassifier>, L>>;
 
     /// Follow redirect resposes using the [`Standard`] policy.
     ///
@@ -172,7 +174,7 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     where
         I: IntoIterator<Item = HeaderName>;
 
-    /// Mark headers as [sensitive] on both requests.
+    /// Mark headers as [sensitive] on requests.
     ///
     /// See [`tower_http::sensitive_headers`] for more details.
     ///
@@ -184,7 +186,7 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
         headers: std::sync::Arc<[HeaderName]>,
     ) -> ServiceBuilder<Stack<crate::sensitive_headers::SetSensitiveRequestHeadersLayer, L>>;
 
-    /// Mark headers as [sensitive] on both responses.
+    /// Mark headers as [sensitive] on responses.
     ///
     /// See [`tower_http::sensitive_headers`] for more details.
     ///
@@ -305,10 +307,7 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     where
         M: crate::request_id::MakeRequestId,
     {
-        self.set_request_id(
-            HeaderName::from_static(crate::request_id::X_REQUEST_ID),
-            make_request_id,
-        )
+        self.set_request_id(crate::request_id::X_REQUEST_ID, make_request_id)
     }
 
     /// Propgate request ids from requests to responses.
@@ -331,7 +330,7 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     fn propagate_x_request_id(
         self,
     ) -> ServiceBuilder<Stack<crate::request_id::PropagateRequestIdLayer, L>> {
-        self.propagate_request_id(HeaderName::from_static(crate::request_id::X_REQUEST_ID))
+        self.propagate_request_id(crate::request_id::X_REQUEST_ID)
     }
 
     /// Catch panics and convert them into `500 Internal Server` responses.
@@ -367,9 +366,19 @@ pub trait ServiceBuilderExt<L>: crate::sealed::Sealed<L> + Sized {
     fn trim_trailing_slash(
         self,
     ) -> ServiceBuilder<Stack<crate::normalize_path::NormalizePathLayer, L>>;
+
+    /// Append trailing slash to paths.
+    ///
+    /// See [`tower_http::normalize_path`] for more details.
+    ///
+    /// [`tower_http::normalize_path`]: crate::normalize_path
+    #[cfg(feature = "normalize-path")]
+    fn append_trailing_slash(
+        self,
+    ) -> ServiceBuilder<Stack<crate::normalize_path::NormalizePathLayer, L>>;
 }
 
-impl<L> crate::sealed::Sealed<L> for ServiceBuilder<L> {}
+impl<L> sealed::Sealed<L> for ServiceBuilder<L> {}
 
 impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
     #[cfg(feature = "propagate-header")]
@@ -427,16 +436,14 @@ impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
     #[cfg(feature = "trace")]
     fn trace_for_http(
         self,
-    ) -> ServiceBuilder<Stack<crate::trace::TraceLayer<SharedClassifier<ServerErrorsAsFailures>>, L>>
-    {
+    ) -> ServiceBuilder<Stack<crate::trace::TraceLayer<crate::trace::HttpMakeClassifier>, L>> {
         self.layer(crate::trace::TraceLayer::new_for_http())
     }
 
     #[cfg(feature = "trace")]
     fn trace_for_grpc(
         self,
-    ) -> ServiceBuilder<Stack<crate::trace::TraceLayer<SharedClassifier<GrpcErrorsAsFailures>>, L>>
-    {
+    ) -> ServiceBuilder<Stack<crate::trace::TraceLayer<crate::trace::GrpcMakeClassifier>, L>> {
         self.layer(crate::trace::TraceLayer::new_for_grpc())
     }
 
@@ -598,5 +605,12 @@ impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
         self,
     ) -> ServiceBuilder<Stack<crate::normalize_path::NormalizePathLayer, L>> {
         self.layer(crate::normalize_path::NormalizePathLayer::trim_trailing_slash())
+    }
+
+    #[cfg(feature = "normalize-path")]
+    fn append_trailing_slash(
+        self,
+    ) -> ServiceBuilder<Stack<crate::normalize_path::NormalizePathLayer, L>> {
+        self.layer(crate::normalize_path::NormalizePathLayer::append_trailing_slash())
     }
 }

@@ -12,12 +12,13 @@
 //! use http::{Request, Response, header::{self, HeaderValue}};
 //! use tower::{Service, ServiceExt, ServiceBuilder};
 //! use tower_http::set_header::SetRequestHeaderLayer;
-//! use hyper::Body;
+//! use http_body_util::Full;
+//! use bytes::Bytes;
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! # let http_client = tower::service_fn(|_: Request<Body>| async move {
-//! #     Ok::<_, std::convert::Infallible>(Response::new(Body::empty()))
+//! # let http_client = tower::service_fn(|_: Request<Full<Bytes>>| async move {
+//! #     Ok::<_, std::convert::Infallible>(Response::new(Full::<Bytes>::default()))
 //! # });
 //! #
 //! let mut svc = ServiceBuilder::new()
@@ -33,7 +34,7 @@
 //!     )
 //!     .service(http_client);
 //!
-//! let request = Request::new(Body::empty());
+//! let request = Request::new(Full::default());
 //!
 //! let response = svc.ready().await?.call(request).await?;
 //! #
@@ -47,12 +48,13 @@
 //! use http::{Request, Response, header::{self, HeaderValue}};
 //! use tower::{Service, ServiceExt, ServiceBuilder};
 //! use tower_http::set_header::SetRequestHeaderLayer;
-//! use hyper::Body;
+//! use bytes::Bytes;
+//! use http_body_util::Full;
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! # let http_client = tower::service_fn(|_: Request<Body>| async move {
-//! #     Ok::<_, std::convert::Infallible>(Response::new(Body::empty()))
+//! # let http_client = tower::service_fn(|_: Request<Full<Bytes>>| async move {
+//! #     Ok::<_, std::convert::Infallible>(Response::new(Full::<Bytes>::default()))
 //! # });
 //! fn date_header_value() -> HeaderValue {
 //!     // ...
@@ -67,14 +69,14 @@
 //!         // may have.
 //!         SetRequestHeaderLayer::overriding(
 //!             header::DATE,
-//!             |request: &Request<Body>| {
+//!             |request: &Request<Full<Bytes>>| {
 //!                 Some(date_header_value())
 //!             }
 //!         )
 //!     )
 //!     .service(http_client);
 //!
-//! let request = Request::new(Body::empty());
+//! let request = Request::new(Full::default());
 //!
 //! let response = svc.ready().await?.call(request).await?;
 //! #

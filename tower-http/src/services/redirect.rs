@@ -7,18 +7,19 @@
 //!
 //! ```rust
 //! use http::{Request, Uri, StatusCode};
-//! use hyper::Body;
+//! use http_body_util::Full;
+//! use bytes::Bytes;
 //! use tower::{Service, ServiceExt};
 //! use tower_http::services::Redirect;
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let uri: Uri = "https://example.com/".parse().unwrap();
-//! let mut service: Redirect<Body> = Redirect::permanent(uri);
+//! let mut service: Redirect<Full<Bytes>> = Redirect::permanent(uri);
 //!
 //! let request = Request::builder()
 //!     .uri("http://example.com")
-//!     .body(Body::empty())
+//!     .body(Full::<Bytes>::default())
 //!     .unwrap();
 //!
 //! let response = service.oneshot(request).await?;

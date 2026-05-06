@@ -15,7 +15,6 @@ use async_compression::tokio::bufread::ZlibEncoder;
 use async_compression::tokio::bufread::ZstdEncoder;
 
 use bytes::{Buf, Bytes};
-use futures_util::ready;
 use http::HeaderMap;
 use http_body::Body;
 use pin_project_lite::pin_project;
@@ -23,7 +22,7 @@ use std::{
     io,
     marker::PhantomData,
     pin::Pin,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
 };
 use tokio_util::io::StreamReader;
 
@@ -247,23 +246,23 @@ where
     type Data = Bytes;
     type Error = BoxError;
 
-    fn poll_data(
+    fn poll_frame(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-    ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
+    ) -> Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
         match self.project().inner.project() {
             #[cfg(feature = "compression-gzip")]
-            BodyInnerProj::Gzip { inner } => inner.poll_data(cx),
+            BodyInnerProj::Gzip { inner } => inner.poll_frame(cx),
             #[cfg(feature = "compression-deflate")]
-            BodyInnerProj::Deflate { inner } => inner.poll_data(cx),
+            BodyInnerProj::Deflate { inner } => inner.poll_frame(cx),
             #[cfg(feature = "compression-br")]
-            BodyInnerProj::Brotli { inner } => inner.poll_data(cx),
+            BodyInnerProj::Brotli { inner } => inner.poll_frame(cx),
             #[cfg(feature = "compression-zstd")]
-            BodyInnerProj::Zstd { inner } => inner.poll_data(cx),
-            BodyInnerProj::Identity { inner } => match ready!(inner.poll_data(cx)) {
-                Some(Ok(mut buf)) => {
-                    let bytes = buf.copy_to_bytes(buf.remaining());
-                    Poll::Ready(Some(Ok(bytes)))
+            BodyInnerProj::Zstd { inner } => inner.poll_frame(cx),
+            BodyInnerProj::Identity { inner } => match ready!(inner.poll_frame(cx)) {
+                Some(Ok(frame)) => {
+                    let frame = frame.map_data(|mut buf| buf.copy_to_bytes(buf.remaining()));
+                    Poll::Ready(Some(Ok(frame)))
                 }
                 Some(Err(err)) => Poll::Ready(Some(Err(err.into()))),
                 None => Poll::Ready(None),
@@ -271,20 +270,19 @@ where
         }
     }
 
-    fn poll_trailers(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<Option<HeaderMap>, Self::Error>> {
-        match self.project().inner.project() {
-            #[cfg(feature = "compression-gzip")]
-            BodyInnerProj::Gzip { inner } => inner.poll_trailers(cx),
-            #[cfg(feature = "compression-deflate")]
-            BodyInnerProj::Deflate { inner } => inner.poll_trailers(cx),
-            #[cfg(feature = "compression-br")]
-            BodyInnerProj::Brotli { inner } => inner.poll_trailers(cx),
-            #[cfg(feature = "compression-zstd")]
-            BodyInnerProj::Zstd { inner } => inner.poll_trailers(cx),
-            BodyInnerProj::Identity { inner } => inner.poll_trailers(cx).map_err(Into::into),
+    fn size_hint(&self) -> http_body::SizeHint {
+        if let BodyInner::Identity { inner } = &self.inner {
+            inner.size_hint()
+        } else {
+            http_body::SizeHint::new()
+        }
+    }
+
+    fn is_end_stream(&self) -> bool {
+        if let BodyInner::Identity { inner } = &self.inner {
+            inner.is_end_stream()
+        } else {
+            false
         }
     }
 }
@@ -358,7 +356,29 @@ where
     type Output = ZstdEncoder<Self::Input>;
 
     fn apply(input: Self::Input, quality: CompressionLevel) -> Self::Output {
-        ZstdEncoder::with_quality(input, quality.into_async_compression())
+        // See https://issues.chromium.org/issues/41493659:
+        //  "For memory usage reasons, Chromium limits the window size to 8MB"
+        // See https://datatracker.ietf.org/doc/html/rfc8878#name-window-descriptor
+        //  "For improved interoperability, it's recommended for decoders to support values
+        //  of Window_Size up to 8 MB and for encoders not to generate frames requiring a
+        //  Window_Size larger than 8 MB."
+        // Level 17 in zstd (as of v1.5.6) is the first level with a window size of 8 MB (2^23):
+        // https://github.com/facebook/zstd/blob/v1.5.6/lib/compress/clevels.h#L25-L51
+        // Set the parameter for all levels >= 17. This will either have no effect (but reduce
+        // the risk of future changes in zstd) or limit the window log to 8MB.
+        let needs_window_limit = match quality {
+            CompressionLevel::Best => true, // level 20
+            CompressionLevel::Precise(level) => level >= 17,
+            _ => false,
+        };
+        // The parameter is not set for levels below 17 as it will increase the window size
+        // for those levels.
+        if needs_window_limit {
+            let params = [async_compression::zstd::CParameter::window_log(23)];
+            ZstdEncoder::with_quality_and_params(input, quality.into_async_compression(), &params)
+        } else {
+            ZstdEncoder::with_quality(input, quality.into_async_compression())
+        }
     }
 
     fn get_pin_mut(pinned: Pin<&mut Self::Output>) -> Pin<&mut Self::Input> {

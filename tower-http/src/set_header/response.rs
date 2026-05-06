@@ -12,11 +12,12 @@
 //! use http::{Request, Response, header::{self, HeaderValue}};
 //! use tower::{Service, ServiceExt, ServiceBuilder};
 //! use tower_http::set_header::SetResponseHeaderLayer;
-//! use hyper::Body;
+//! use http_body_util::Full;
+//! use bytes::Bytes;
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! # let render_html = tower::service_fn(|request: Request<Body>| async move {
+//! # let render_html = tower::service_fn(|request: Request<Full<Bytes>>| async move {
 //! #     Ok::<_, std::convert::Infallible>(Response::new(request.into_body()))
 //! # });
 //! #
@@ -33,7 +34,7 @@
 //!     )
 //!     .service(render_html);
 //!
-//! let request = Request::new(Body::empty());
+//! let request = Request::new(Full::default());
 //!
 //! let response = svc.ready().await?.call(request).await?;
 //!
@@ -49,13 +50,14 @@
 //! use http::{Request, Response, header::{self, HeaderValue}};
 //! use tower::{Service, ServiceExt, ServiceBuilder};
 //! use tower_http::set_header::SetResponseHeaderLayer;
-//! use hyper::Body;
+//! use bytes::Bytes;
+//! use http_body_util::Full;
 //! use http_body::Body as _; // for `Body::size_hint`
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! # let render_html = tower::service_fn(|request: Request<Body>| async move {
-//! #     Ok::<_, std::convert::Infallible>(Response::new(Body::from("1234567890")))
+//! # let render_html = tower::service_fn(|request: Request<Full<Bytes>>| async move {
+//! #     Ok::<_, std::convert::Infallible>(Response::new(Full::from("1234567890")))
 //! # });
 //! #
 //! let mut svc = ServiceBuilder::new()
@@ -67,7 +69,7 @@
 //!         // may have.
 //!         SetResponseHeaderLayer::overriding(
 //!             header::CONTENT_LENGTH,
-//!             |response: &Response<Body>| {
+//!             |response: &Response<Full<Bytes>>| {
 //!                 if let Some(size) = response.body().size_hint().exact() {
 //!                     // If the response body has a known size, returning `Some` will
 //!                     // set the `Content-Length` header to that value.
@@ -82,7 +84,7 @@
 //!     )
 //!     .service(render_html);
 //!
-//! let request = Request::new(Body::empty());
+//! let request = Request::new(Full::default());
 //!
 //! let response = svc.ready().await?.call(request).await?;
 //!
@@ -93,14 +95,13 @@
 //! ```
 
 use super::{InsertHeaderMode, MakeHeaderValue};
-use futures_util::ready;
 use http::{header::HeaderName, Request, Response};
 use pin_project_lite::pin_project;
 use std::{
     fmt,
     future::Future,
     pin::Pin,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
 };
 use tower_layer::Layer;
 use tower_service::Service;
@@ -301,8 +302,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_helpers::Body;
     use http::{header, HeaderValue};
-    use hyper::Body;
     use std::convert::Infallible;
     use tower::{service_fn, ServiceExt};
 

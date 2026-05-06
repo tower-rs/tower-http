@@ -8,12 +8,13 @@
 //! use tower_http::sensitive_headers::SetSensitiveHeadersLayer;
 //! use tower::{Service, ServiceExt, ServiceBuilder, service_fn};
 //! use http::{Request, Response, header::AUTHORIZATION};
-//! use hyper::Body;
+//! use http_body_util::Full;
+//! use bytes::Bytes;
 //! use std::{iter::once, convert::Infallible};
 //!
-//! async fn handle(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+//! async fn handle(req: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, Infallible> {
 //!     // ...
-//!     # Ok(Response::new(Body::empty()))
+//!     # Ok(Response::new(Full::default()))
 //! }
 //!
 //! # #[tokio::main]
@@ -33,7 +34,7 @@
 //! let response = service
 //!     .ready()
 //!     .await?
-//!     .call(Request::new(Body::empty()))
+//!     .call(Request::new(Full::default()))
 //!     .await?;
 //! # Ok(())
 //! # }
@@ -56,10 +57,11 @@
 //! use http::header;
 //! use std::sync::Arc;
 //! # use http::{Request, Response};
-//! # use hyper::Body;
+//! # use bytes::Bytes;
+//! # use http_body_util::Full;
 //! # use std::convert::Infallible;
-//! # async fn handle(req: Request<Body>) -> Result<Response<Body>, Infallible> {
-//! #     Ok(Response::new(Body::empty()))
+//! # async fn handle(req: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, Infallible> {
+//! #     Ok(Response::new(Full::default()))
 //! # }
 //!
 //! # #[tokio::main]
@@ -82,14 +84,13 @@
 //!
 //! [`TraceLayer`]: crate::trace::TraceLayer
 
-use futures_util::ready;
 use http::{header::HeaderName, Request, Response};
 use pin_project_lite::pin_project;
 use std::{
     future::Future,
     pin::Pin,
     sync::Arc,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
 };
 use tower_layer::Layer;
 use tower_service::Service;

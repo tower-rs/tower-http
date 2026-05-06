@@ -1,10 +1,8 @@
 use bytes::Bytes;
 use clap::Parser;
-use futures::StreamExt;
-use hyper::{
-    body::HttpBody,
-    header::{self, HeaderValue},
-};
+use futures_util::StreamExt;
+use http::{header, HeaderValue};
+use http_body::Body as HttpBody;
 use proto::{
     key_value_store_client::KeyValueStoreClient, key_value_store_server, GetReply, GetRequest,
     SetReply, SetRequest, SubscribeReply, SubscribeRequest,
@@ -26,7 +24,7 @@ use tokio_stream::{
     wrappers::{BroadcastStream, TcpListenerStream},
     Stream,
 };
-use tonic::{async_trait, body::BoxBody, transport::Channel, Code, Request, Response, Status};
+use tonic::{async_trait, body::Body, transport::Channel, Code, Request, Response, Status};
 use tower::{BoxError, Service, ServiceBuilder};
 use tower_http::{
     classify::{GrpcCode, GrpcErrorsAsFailures, SharedClassifier},
@@ -45,10 +43,10 @@ mod proto {
 #[derive(Debug, Parser)]
 struct Config {
     /// The port to listen on
-    #[clap(short = 'p', long, default_value = "3000")]
+    #[arg(short = 'p', long, default_value_t = 3000)]
     port: u16,
 
-    #[clap(subcommand)]
+    #[command(subcommand)]
     command: Command,
 }
 
@@ -58,14 +56,14 @@ enum Command {
     Server,
     /// Get the value at some key
     Get {
-        #[clap(short = 'k', long)]
+        #[arg(short = 'k', long)]
         key: String,
     },
     /// Set a value at some key.
     ///
     /// The value will be read from stdin.
     Set {
-        #[structopt(short = 'k', long)]
+        #[arg(short = 'k', long)]
         key: String,
     },
     /// Subscribe to a stream of inserted keys
@@ -263,15 +261,10 @@ async fn make_client(
 ) -> Result<
     KeyValueStoreClient<
         impl Service<
-                hyper::Request<BoxBody>,
-                Response = hyper::Response<
-                    impl HttpBody<Data = Bytes, Error = impl Into<BoxError>>,
-                >,
-                Error = impl Into<BoxError>,
-            > + Clone
-            + Send
-            + Sync
-            + 'static,
+            http::Request<Body>,
+            Response = http::Response<impl HttpBody<Data = Bytes, Error = impl Into<BoxError>>>,
+            Error = impl Into<BoxError>,
+        >,
     >,
     tonic::transport::Error,
 > {

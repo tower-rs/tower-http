@@ -1,10 +1,10 @@
 use crate::BoxError;
-use futures_core::{ready, Future};
 use http_body::Body;
 use pin_project_lite::pin_project;
 use std::{
+    future::Future,
     pin::Pin,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
     time::Duration,
 };
 use tokio::time::{sleep, Sleep};
@@ -12,10 +12,13 @@ use tokio::time::{sleep, Sleep};
 pin_project! {
     /// Middleware that applies a timeout to request and response bodies.
     ///
-    /// Wrapper around a [`http_body::Body`] to time out if data is not ready within the specified duration.
+    /// Wrapper around a [`Body`][`http_body::Body`] to time out if data is not ready within the specified duration.
+    /// The timeout is enforced between consecutive [`Frame`][`http_body::Frame`] polls, and it
+    /// resets after each poll.
+    /// The total time to produce a [`Body`][`http_body::Body`] could exceed the timeout duration without
+    /// timing out, as long as no single interval between polls exceeds the timeout.
     ///
-    /// Bodies must produce data at most within the specified timeout.
-    /// If the body does not produce a requested data frame within the timeout period, it will return an error.
+    /// If the [`Body`][`http_body::Body`] does not produce a requested data frame within the timeout period, it will return a [`TimeoutError`].
     ///
     /// # Differences from [`Timeout`][crate::timeout::Timeout]
     ///
@@ -23,18 +26,17 @@ pin_project! {
     /// That timeout is not reset when bytes are handled, whether the request is active or not.
     /// Bodies are handled asynchronously outside of the tower stack's future and thus needs an additional timeout.
     ///
-    /// This middleware will return a [`TimeoutError`].
-    ///
     /// # Example
     ///
     /// ```
     /// use http::{Request, Response};
-    /// use hyper::Body;
+    /// use bytes::Bytes;
+    /// use http_body_util::Full;
     /// use std::time::Duration;
     /// use tower::ServiceBuilder;
     /// use tower_http::timeout::RequestBodyTimeoutLayer;
     ///
-    /// async fn handle(_: Request<Body>) -> Result<Response<Body>, std::convert::Infallible> {
+    /// async fn handle(_: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, std::convert::Infallible> {
     ///     // ...
     ///     # todo!()
     /// }
@@ -50,13 +52,8 @@ pin_project! {
     /// ```
     pub struct TimeoutBody<B> {
         timeout: Duration,
-        // In http-body 1.0, `poll_*` will be merged into `poll_frame`.
-        // Merge the two `sleep_data` and `sleep_trailers` into one `sleep`.
-        // See: https://github.com/tower-rs/tower-http/pull/303#discussion_r1004834958
         #[pin]
-        sleep_data: Option<Sleep>,
-        #[pin]
-        sleep_trailers: Option<Sleep>,
+        sleep: Option<Sleep>,
         #[pin]
         body: B,
     }
@@ -67,8 +64,7 @@ impl<B> TimeoutBody<B> {
     pub fn new(timeout: Duration, body: B) -> Self {
         TimeoutBody {
             timeout,
-            sleep_data: None,
-            sleep_trailers: None,
+            sleep: None,
             body,
         }
     }
@@ -82,18 +78,18 @@ where
     type Data = B::Data;
     type Error = Box<dyn std::error::Error + Send + Sync>;
 
-    fn poll_data(
+    fn poll_frame(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-    ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
+    ) -> Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
         let mut this = self.project();
 
         // Start the `Sleep` if not active.
-        let sleep_pinned = if let Some(some) = this.sleep_data.as_mut().as_pin_mut() {
+        let sleep_pinned = if let Some(some) = this.sleep.as_mut().as_pin_mut() {
             some
         } else {
-            this.sleep_data.set(Some(sleep(*this.timeout)));
-            this.sleep_data.as_mut().as_pin_mut().unwrap()
+            this.sleep.set(Some(sleep(*this.timeout)));
+            this.sleep.as_mut().as_pin_mut().unwrap()
         };
 
         // Error if the timeout has expired.
@@ -102,36 +98,11 @@ where
         }
 
         // Check for body data.
-        let data = ready!(this.body.poll_data(cx));
-        // Some data is ready. Reset the `Sleep`...
-        this.sleep_data.set(None);
+        let frame = ready!(this.body.poll_frame(cx));
+        // A frame is ready. Reset the `Sleep`...
+        this.sleep.set(None);
 
-        Poll::Ready(data.transpose().map_err(Into::into).transpose())
-    }
-
-    fn poll_trailers(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<Option<http::HeaderMap>, Self::Error>> {
-        let mut this = self.project();
-
-        // In http-body 1.0, `poll_*` will be merged into `poll_frame`.
-        // Merge the two `sleep_data` and `sleep_trailers` into one `sleep`.
-        // See: https://github.com/tower-rs/tower-http/pull/303#discussion_r1004834958
-
-        let sleep_pinned = if let Some(some) = this.sleep_trailers.as_mut().as_pin_mut() {
-            some
-        } else {
-            this.sleep_trailers.set(Some(sleep(*this.timeout)));
-            this.sleep_trailers.as_mut().as_pin_mut().unwrap()
-        };
-
-        // Error if the timeout has expired.
-        if let Poll::Ready(()) = sleep_pinned.poll(cx) {
-            return Poll::Ready(Err(Box::new(TimeoutError(()))));
-        }
-
-        this.body.poll_trailers(cx).map_err(Into::into)
+        Poll::Ready(frame.transpose().map_err(Into::into).transpose())
     }
 }
 
@@ -151,6 +122,8 @@ mod tests {
     use super::*;
 
     use bytes::Bytes;
+    use http_body::Frame;
+    use http_body_util::BodyExt;
     use pin_project_lite::pin_project;
     use std::{error::Error, fmt::Display};
 
@@ -158,9 +131,10 @@ mod tests {
     struct MockError;
 
     impl Error for MockError {}
+
     impl Display for MockError {
-        fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            todo!()
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "mock error")
         }
     }
 
@@ -175,19 +149,14 @@ mod tests {
         type Data = Bytes;
         type Error = MockError;
 
-        fn poll_data(
+        fn poll_frame(
             self: Pin<&mut Self>,
             cx: &mut Context<'_>,
-        ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
+        ) -> Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
             let this = self.project();
-            this.sleep.poll(cx).map(|_| Some(Ok(vec![].into())))
-        }
-
-        fn poll_trailers(
-            self: Pin<&mut Self>,
-            _cx: &mut Context<'_>,
-        ) -> Poll<Result<Option<http::HeaderMap>, Self::Error>> {
-            todo!()
+            this.sleep
+                .poll(cx)
+                .map(|_| Some(Ok(Frame::data(vec![].into()))))
         }
     }
 
@@ -201,7 +170,12 @@ mod tests {
         };
         let timeout_body = TimeoutBody::new(timeout_sleep, mock_body);
 
-        assert!(timeout_body.boxed().data().await.unwrap().is_ok());
+        assert!(timeout_body
+            .boxed()
+            .frame()
+            .await
+            .expect("no frame")
+            .is_ok());
     }
 
     #[tokio::test]
@@ -214,6 +188,6 @@ mod tests {
         };
         let timeout_body = TimeoutBody::new(timeout_sleep, mock_body);
 
-        assert!(timeout_body.boxed().data().await.unwrap().is_err());
+        assert!(timeout_body.boxed().frame().await.unwrap().is_err());
     }
 }

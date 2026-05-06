@@ -3,48 +3,40 @@ name: CI
 on:
   push:
     branches:
-    - master
+    - main
   pull_request: {}
 
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v6
     - uses: dtolnay/rust-toolchain@stable
-    - name: Install protoc
-      uses: taiki-e/install-action@v2
+    - uses: Swatinem/rust-cache@v2
       with:
-        tool: protoc@3.20.3
+        save-if: ${{ github.ref == 'refs/heads/main' }}
     - run: cargo check --workspace --all-features --all-targets
 
   check-docs:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - uses: dtolnay/rust-toolchain@stable
-    - name: Install protoc
-      uses: taiki-e/install-action@v2
-      with:
-        tool: protoc@3.20.3
+    - uses: actions/checkout@v6
+    - uses: dtolnay/rust-toolchain@nightly
     - name: cargo doc
-      working-directory: ${{ matrix.subcrate }}
       env:
-        RUSTDOCFLAGS: "-D rustdoc::broken_intra_doc_links"
+        RUSTDOCFLAGS: "-D rustdoc::broken_intra_doc_links --cfg docsrs"
       run: cargo doc --all-features --no-deps
 
   cargo-hack:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v6
     - uses: dtolnay/rust-toolchain@stable
-    - uses: taiki-e/install-action@cargo-hack
-    - name: Install protoc
-      uses: taiki-e/install-action@v2
+    - uses: Swatinem/rust-cache@v2
       with:
-        tool: protoc@3.20.3
+        save-if: ${{ github.ref == 'refs/heads/main' }}
+    - uses: taiki-e/install-action@cargo-hack
     - name: cargo hack check
-      working-directory: ${{ matrix.subcrate }}
       env:
         RUSTFLAGS: "-D unused_imports -D dead_code -D unused_variables"
       run: cargo hack check --each-feature --no-dev-deps --workspace
@@ -57,41 +49,56 @@ jobs:
       matrix:
         rust: [stable, beta, nightly]
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v6
     - uses: dtolnay/rust-toolchain@master
       with:
         toolchain: ${{ matrix.rust }}
-    - name: Install protoc
-      uses: taiki-e/install-action@v2
+    - uses: Swatinem/rust-cache@v2
+      if: matrix.rust != 'nightly'
       with:
-        tool: protoc@3.20.3
+        save-if: ${{ github.ref == 'refs/heads/main' }}
     - run: cargo test --workspace --all-features
 
   test-msrv:
     needs: check
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - uses: dtolnay/rust-toolchain@1.60.0
-    - name: Install protoc
-      uses: taiki-e/install-action@v2
+    - uses: actions/checkout@v6
+    - name: Remove the example crates to exclude effects to dependencies from them
+      run: rm -r ./examples/* && cargo new --lib --edition 2021 examples/dummy
+    - name: Resolve MSRV aware dependencies
+      run: cargo update
+      env:
+        CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS: fallback
+    # Apparently the MSRV resolver is buggy :(
+    # Still better to maintain fewer manual version overrides though.
+    - run: cargo update -p async-compression --precise 0.4.23
+    - run: cargo update -p flate2 --precise 1.0.35
+    - uses: dtolnay/rust-toolchain@1.64
+    - uses: Swatinem/rust-cache@v2
       with:
-        tool: protoc@3.20.3
-    - run: cargo test -p tower-http --all-features
+        save-if: ${{ github.ref == 'refs/heads/main' }}
+    - run: cargo check -p tower-http --all-features
 
   style:
     needs: check
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v6
     - uses: dtolnay/rust-toolchain@stable
       with:
         components: rustfmt
-    - name: Install protoc
-      uses: taiki-e/install-action@v2
-      with:
-        tool: protoc@3.20.3
     - run: cargo fmt --all --check
+
+  clippy:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        components: clippy
+    - run: cargo clippy --workspace --all-features --lib --bins --examples -- -D warnings
 
   deny-check:
     name: cargo-deny check
@@ -103,20 +110,25 @@ jobs:
         - advisories
         - bans licenses sources
     steps:
-    - uses: actions/checkout@v3
-    - uses: EmbarkStudios/cargo-deny-action@v1
+    - uses: actions/checkout@v6
+    - uses: EmbarkStudios/cargo-deny-action@v2
       with:
+        manifest-path: tower-http/Cargo.toml
         command: check ${{ matrix.checks }}
-        arguments: --all-features --manifest-path tower-http/Cargo.toml
 
-  cargo-public-api-crates:
+  external-types:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - uses: dtolnay/rust-toolchain@nightly
+    - uses: actions/checkout@v6
+    - uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: nightly-2025-10-18
+    - name: Install cargo-check-external-types
+      uses: taiki-e/cache-cargo-install-action@v2
+      with:
+        tool: cargo-check-external-types@0.4.0
     - uses: Swatinem/rust-cache@v2
-    - name: Install cargo-public-api-crates
-      run: |
-        cargo install --git https://github.com/davidpdrsn/cargo-public-api-crates
-    - name: cargo public-api-crates check
-      run: cargo public-api-crates --manifest-path tower-http/Cargo.toml check
+      with:
+        save-if: ${{ github.ref == 'refs/heads/main' }}
+    - run: cargo check-external-types --all-features
+      working-directory: tower-http
