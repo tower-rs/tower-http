@@ -7,10 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
+# 0.6.10
+
+## Added
+
+- `follow-redirect`: expose `Attempt::method()` and `Attempt::previous_method()`
+  so redirect policies can react to method changes across redirects (e.g.
+  POST to GET on 301/303) ([#559])
+
 ## Fixed
 
 - Restore `tokio` and `async-compression` as no-op features. These will be
-  removed next breaking release
+  removed next breaking release ([#667])
+
+[#559]: https://github.com/tower-rs/tower-http/pull/559
+[#667]: https://github.com/tower-rs/tower-http/pull/667
 
 # 0.6.9
 
