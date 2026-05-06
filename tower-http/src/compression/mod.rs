@@ -390,7 +390,7 @@ mod tests {
 
     #[tokio::test]
     async fn does_compress_grpc_web() {
-        async fn handle(_req: Request<Body>) -> Result<Response<Body>, Error> {
+        async fn handle(_req: Request<Body>) -> Result<Response<Body>, Infallible> {
             let mut res = Response::new(Body::from(
                 "a".repeat((SizeAbove::DEFAULT_MIN_SIZE * 2) as usize),
             ));
