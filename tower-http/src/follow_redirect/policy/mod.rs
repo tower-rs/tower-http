@@ -210,7 +210,7 @@ impl<'a> Attempt<'a> {
         self.status
     }
 
-    /// Returns the method for the next request, after applying redirection logic.
+    /// Returns the destination method of the redirection.
     pub fn method(&self) -> &'a Method {
         self.method
     }
