@@ -163,7 +163,7 @@
     clippy::all,
     clippy::dbg_macro,
     clippy::todo,
-    clippy::empty_enum,
+    clippy::empty_enums,
     clippy::enum_glob_use,
     clippy::mem_forget,
     clippy::unused_self,
@@ -173,7 +173,6 @@
     clippy::match_wildcard_for_single_variants,
     clippy::if_let_mutex,
     clippy::await_holding_lock,
-    clippy::match_on_vec_items,
     clippy::imprecise_flops,
     clippy::suboptimal_flops,
     clippy::lossy_float_literal,
@@ -311,6 +310,9 @@ pub mod timeout;
 
 #[cfg(feature = "normalize-path")]
 pub mod normalize_path;
+
+#[cfg(feature = "on-early-drop")]
+pub mod on_early_drop;
 
 pub mod classify;
 pub mod services;

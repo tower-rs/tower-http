@@ -90,6 +90,16 @@ jobs:
         components: rustfmt
     - run: cargo fmt --all --check
 
+  clippy:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        components: clippy
+    - run: cargo clippy --workspace --all-features --lib --bins --examples -- -D warnings
+
   deny-check:
     name: cargo-deny check
     runs-on: ubuntu-latest
