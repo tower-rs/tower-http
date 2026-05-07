@@ -1,100 +1,3 @@
-//! Set a header on the response.
-//!
-//! The header value to be set may be provided as a fixed value when the
-//! middleware is constructed, or determined dynamically based on the response
-//! by a closure. See the [`MakeHeaderValue`] trait for details.
-//!
-//! # Example
-//!
-//! Setting a header from a fixed value provided when the middleware is constructed:
-//!
-//! ```
-//! use http::{Request, Response, header::{self, HeaderValue}};
-//! use tower::{Service, ServiceExt, ServiceBuilder};
-//! use tower_http::set_header::SetResponseHeaderLayer;
-//! use http_body_util::Full;
-//! use bytes::Bytes;
-//!
-//! # #[tokio::main]
-//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! # let render_html = tower::service_fn(|request: Request<Full<Bytes>>| async move {
-//! #     Ok::<_, std::convert::Infallible>(Response::new(request.into_body()))
-//! # });
-//! #
-//! let mut svc = ServiceBuilder::new()
-//!     .layer(
-//!         // Layer that sets `Content-Type: text/html` on responses.
-//!         //
-//!         // `if_not_present` will only insert the header if it does not already
-//!         // have a value.
-//!         SetResponseHeaderLayer::if_not_present(
-//!             header::CONTENT_TYPE,
-//!             HeaderValue::from_static("text/html"),
-//!         )
-//!     )
-//!     .service(render_html);
-//!
-//! let request = Request::new(Full::default());
-//!
-//! let response = svc.ready().await?.call(request).await?;
-//!
-//! assert_eq!(response.headers()["content-type"], "text/html");
-//! #
-//! # Ok(())
-//! # }
-//! ```
-//!
-//! Setting a header based on a value determined dynamically from the response:
-//!
-//! ```
-//! use http::{Request, Response, header::{self, HeaderValue}};
-//! use tower::{Service, ServiceExt, ServiceBuilder};
-//! use tower_http::set_header::SetResponseHeaderLayer;
-//! use bytes::Bytes;
-//! use http_body_util::Full;
-//! use http_body::Body as _; // for `Body::size_hint`
-//!
-//! # #[tokio::main]
-//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! # let render_html = tower::service_fn(|request: Request<Full<Bytes>>| async move {
-//! #     Ok::<_, std::convert::Infallible>(Response::new(Full::from("1234567890")))
-//! # });
-//! #
-//! let mut svc = ServiceBuilder::new()
-//!     .layer(
-//!         // Layer that sets `Content-Length` if the body has a known size.
-//!         // Bodies with streaming responses wont have a known size.
-//!         //
-//!         // `overriding` will insert the header and override any previous values it
-//!         // may have.
-//!         SetResponseHeaderLayer::overriding(
-//!             header::CONTENT_LENGTH,
-//!             |response: &Response<Full<Bytes>>| {
-//!                 if let Some(size) = response.body().size_hint().exact() {
-//!                     // If the response body has a known size, returning `Some` will
-//!                     // set the `Content-Length` header to that value.
-//!                     Some(HeaderValue::from_str(&size.to_string()).unwrap())
-//!                 } else {
-//!                     // If the response body doesn't have a known size, return `None`
-//!                     // to skip setting the header on this response.
-//!                     None
-//!                 }
-//!             }
-//!         )
-//!     )
-//!     .service(render_html);
-//!
-//! let request = Request::new(Full::default());
-//!
-//! let response = svc.ready().await?.call(request).await?;
-//!
-//! assert_eq!(response.headers()["content-length"], "10");
-//! #
-//! # Ok(())
-//! # }
-//! ```
-
-use super::{InsertHeaderMode, MakeHeaderValue};
 use http::{header::HeaderName, Request, Response};
 use pin_project_lite::pin_project;
 use std::{
@@ -105,6 +8,8 @@ use std::{
 };
 use tower_layer::Layer;
 use tower_service::Service;
+
+use crate::set_header::{InsertHeaderMode, MakeHeaderValue};
 
 /// Layer that applies [`SetResponseHeader`] which adds a response header.
 ///
