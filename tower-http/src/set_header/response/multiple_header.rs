@@ -407,7 +407,7 @@ mod tests {
         let debug_str = format!("{:?}", layer);
         assert!(debug_str.contains("SetMultipleResponseHeadersLayer"));
         let debug_rh = format!("{:?}", rh);
-        assert!(debug_rh.contains("ResponseHeader"));
+        assert!(debug_rh.contains("HeaderInsertionConfig"));
 
         let svc = SetMultipleResponseHeader::overriding(
             tower::service_fn(|_req: Request<Body>| async {

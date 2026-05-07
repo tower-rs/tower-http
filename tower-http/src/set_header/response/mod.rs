@@ -88,7 +88,7 @@
 //! ```
 //! use http::{Request, Response, header::{self, HeaderValue}};
 //! use tower::{Service, ServiceExt, ServiceBuilder};
-//! use tower_http::set_header::response::{SetMultipleResponseHeadersLayer, ResponseHeaderSetMetadata};
+//! use tower_http::set_header::response::{SetMultipleResponseHeadersLayer, HeaderMetadata};
 //! use http_body_util::Full;
 //! use bytes::Bytes;
 //!
@@ -101,11 +101,11 @@
 //! let mut svc = ServiceBuilder::new()
 //!     .layer(
 //!         SetMultipleResponseHeadersLayer::overriding(vec![
-//!             ResponseHeaderSetMetadata {
+//!             HeaderMetadata {
 //!                 header_name: header::CONTENT_TYPE,
 //!                 make: HeaderValue::from_static("text/html"),
 //!             },
-//!             ResponseHeaderSetMetadata {
+//!             HeaderMetadata {
 //!                 header_name: header::CACHE_CONTROL,
 //!                 make: HeaderValue::from_static("no-cache"),
 //!             },
@@ -128,7 +128,7 @@
 //! ```
 //! use http::{Request, Response, header::{self, HeaderValue}};
 //! use tower::{Service, ServiceExt, ServiceBuilder};
-//! use tower_http::set_header::response::{SetMultipleResponseHeadersLayer, ResponseHeaderSetMetadata};
+//! use tower_http::set_header::response::{SetMultipleResponseHeadersLayer, HeaderMetadata};
 //! use bytes::Bytes;
 //! use http_body_util::Full;
 //! use http_body::Body as _; // for `Body::size_hint`
@@ -142,7 +142,7 @@
 //! let mut svc = ServiceBuilder::new()
 //!     .layer(
 //!         SetMultipleResponseHeadersLayer::overriding(vec![
-//!             ResponseHeaderSetMetadata {
+//!             HeaderMetadata {
 //!                 header_name: header::CONTENT_LENGTH,
 //!                 make: |response: &Response<Full<Bytes>>| {
 //!                     if let Some(size) = response.body().size_hint().exact() {
