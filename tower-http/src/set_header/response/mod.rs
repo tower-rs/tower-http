@@ -4,7 +4,7 @@
 //!
 //! # Single Header
 //!
-//! Use [`SetResponseHeaderLayer`] and [`SetResponseHeader`] to set a single header. The header value can be a fixed value or computed dynamically using a closure. See the [`MakeHeaderValue`] trait for details.
+//! Use [`SetResponseHeaderLayer`] and [`SetResponseHeader`] to set a single header. The header value can be a fixed value or computed dynamically using a closure. See [`crate::set_header::MakeHeaderValue`] for details.
 //!
 //! ## Example: Fixed Value
 //!
