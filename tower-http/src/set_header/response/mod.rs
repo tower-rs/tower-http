@@ -101,14 +101,8 @@
 //! let mut svc = ServiceBuilder::new()
 //!     .layer(
 //!         SetMultipleResponseHeadersLayer::overriding(vec![
-//!             HeaderMetadata {
-//!                 header_name: header::CONTENT_TYPE,
-//!                 make: HeaderValue::from_static("text/html"),
-//!             },
-//!             HeaderMetadata {
-//!                 header_name: header::CACHE_CONTROL,
-//!                 make: HeaderValue::from_static("no-cache"),
-//!             },
+//!             (header::CONTENT_TYPE, HeaderValue::from_static("text/html")).into(),
+//!             (header::CACHE_CONTROL, HeaderValue::from_static("no-cache")).into(),
 //!         ])
 //!     )
 //!     .service(render_html);
@@ -142,16 +136,13 @@
 //! let mut svc = ServiceBuilder::new()
 //!     .layer(
 //!         SetMultipleResponseHeadersLayer::overriding(vec![
-//!             HeaderMetadata {
-//!                 header_name: header::CONTENT_LENGTH,
-//!                 make: |response: &Response<Full<Bytes>>| {
-//!                     if let Some(size) = response.body().size_hint().exact() {
-//!                         Some(HeaderValue::from_str(&size.to_string()).unwrap())
-//!                     } else {
-//!                         None
-//!                     }
-//!                 },
-//!             },
+//!             (header::CONTENT_LENGTH, |response: &Response<Full<Bytes>>| {
+//!                 if let Some(size) = response.body().size_hint().exact() {
+//!                     Some(HeaderValue::from_str(&size.to_string()).unwrap())
+//!                 } else {
+//!                     None
+//!                 }
+//!             }).into(),
 //!         ])
 //!     )
 //!     .service(render_html);

@@ -1,3 +1,7 @@
+//! Set a single header on the response.
+//!
+//! See the root [`crate::set_header::response`] module for full documentation and usage examples.
+//!
 use http::{header::HeaderName, Request, Response};
 use pin_project_lite::pin_project;
 use std::{
