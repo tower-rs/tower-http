@@ -71,7 +71,7 @@ pub struct HeaderMetadata<T> {
 
 impl<T> HeaderMetadata<T> {
     /// Create a new HeaderMetadata with the given header name and value factory.
-    fn new<M: CloneableMakeHeaderValue<T> + Clone + 'static>(
+    fn new<M: MakeHeaderValue<T> + Clone + 'static + Send + Sync>(
         header_name: HeaderName,
         make: M,
     ) -> Self {
@@ -93,7 +93,7 @@ impl<T> HeaderMetadata<T> {
 
 impl<T, M> From<(HeaderName, M)> for HeaderMetadata<T>
 where
-    M: CloneableMakeHeaderValue<T> + Clone + 'static,
+    M: MakeHeaderValue<T> + Clone + 'static + Send + Sync,
 {
     fn from((header_name, make): (HeaderName, M)) -> Self {
         HeaderMetadata::new(header_name, make)
