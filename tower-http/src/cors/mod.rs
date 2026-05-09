@@ -51,10 +51,7 @@
 
 use allow_origin::AllowOriginFuture;
 use bytes::{BufMut, BytesMut};
-use http::{
-    header::{self, HeaderName},
-    HeaderMap, HeaderValue, Method, Request, Response,
-};
+use http::{header, HeaderMap, HeaderValue, Method, Request, Response};
 use pin_project_lite::pin_project;
 use std::{
     future::Future,
@@ -432,9 +429,6 @@ impl CorsLayer {
 
     /// Set the value(s) of the [`Vary`][mdn] header.
     ///
-    /// In contrast to the other headers, this one has a non-empty default of
-    /// [`preflight_request_headers()`].
-    ///
     /// You only need to set this if you want to remove some of these defaults,
     /// or if you use a closure for one of the other headers and want to add a
     /// vary header accordingly.
@@ -806,15 +800,4 @@ fn ensure_usable_cors_rules(layer: &CorsLayer) {
              with `Access-Control-Expose-Headers: *`"
         );
     }
-}
-
-/// Returns an iterator over the three request headers that may be involved in a CORS preflight request.
-///
-/// This is the default set of header names returned in the `vary` header
-pub fn preflight_request_headers() -> impl Iterator<Item = HeaderName> {
-    IntoIterator::into_iter([
-        header::ORIGIN,
-        header::ACCESS_CONTROL_REQUEST_METHOD,
-        header::ACCESS_CONTROL_REQUEST_HEADERS,
-    ])
 }

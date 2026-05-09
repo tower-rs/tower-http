@@ -1,14 +1,12 @@
 use http::header::{self, HeaderName, HeaderValue};
 
-use super::preflight_request_headers;
-
 /// Holds configuration for how to set the [`Vary`][mdn] header.
 ///
 /// See [`CorsLayer::vary`] for more details.
 ///
 /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Vary
 /// [`CorsLayer::vary`]: super::CorsLayer::vary
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Vary(Vec<HeaderValue>);
 
 impl Vary {
@@ -35,12 +33,6 @@ impl Vary {
         let header_val = HeaderValue::from_bytes(&res)
             .expect("comma-separated list of HeaderValues is always a valid HeaderValue");
         Some((header::VARY, header_val))
-    }
-}
-
-impl Default for Vary {
-    fn default() -> Self {
-        Self::list(preflight_request_headers())
     }
 }
 
