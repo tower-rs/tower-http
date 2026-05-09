@@ -6,8 +6,8 @@ use tower::{service_fn, util::ServiceExt, Layer};
 
 use crate::cors::{AllowOrigin, CorsLayer};
 
-const DEFAULT_VARY_HEADERS: HeaderValue = HeaderValue::from_static("accept, accept-encoding");
-const CUSTOM_VARY_HEADERS: [HeaderName; 3] = [
+const INITIAL_VARY_HEADERS: HeaderValue = HeaderValue::from_static("accept, accept-encoding");
+const ADDITIONAL_VARY_HEADERS: [HeaderName; 3] = [
     header::ORIGIN,
     header::ACCESS_CONTROL_REQUEST_METHOD,
     header::ACCESS_CONTROL_REQUEST_HEADERS,
@@ -21,7 +21,7 @@ const CUSTOM_VARY_HEADERS: [HeaderName; 3] = [
 async fn vary_set_by_inner_service() {
     async fn inner_svc(_: Request<Body>) -> Result<Response<Body>, Infallible> {
         Ok(Response::builder()
-            .header(header::VARY, DEFAULT_VARY_HEADERS)
+            .header(header::VARY, INITIAL_VARY_HEADERS)
             .body(Body::empty())
             .unwrap())
     }
@@ -29,7 +29,7 @@ async fn vary_set_by_inner_service() {
     let svc = CorsLayer::permissive().layer(service_fn(inner_svc));
     let res = svc.oneshot(Request::new(Body::empty())).await.unwrap();
     let mut vary_headers = res.headers().get_all(header::VARY).into_iter();
-    assert_eq!(vary_headers.next(), Some(&DEFAULT_VARY_HEADERS));
+    assert_eq!(vary_headers.next(), Some(&INITIAL_VARY_HEADERS));
     assert_eq!(vary_headers.next(), None);
 }
 
@@ -45,18 +45,18 @@ async fn include_custom_permissive_to_vary_set_by_inner_service() {
 
     async fn inner_svc(_: Request<Body>) -> Result<Response<Body>, Infallible> {
         Ok(Response::builder()
-            .header(header::VARY, DEFAULT_VARY_HEADERS)
+            .header(header::VARY, INITIAL_VARY_HEADERS)
             .body(Body::empty())
             .unwrap())
     }
 
     let svc = CorsLayer::permissive()
-        .vary(Vary::list(CUSTOM_VARY_HEADERS))
+        .vary(Vary::list(ADDITIONAL_VARY_HEADERS))
         .layer(service_fn(inner_svc));
 
     let res = svc.oneshot(Request::new(Body::empty())).await.unwrap();
     let mut vary_headers = res.headers().get_all(header::VARY).into_iter();
-    assert_eq!(vary_headers.next(), Some(&DEFAULT_VARY_HEADERS));
+    assert_eq!(vary_headers.next(), Some(&INITIAL_VARY_HEADERS));
     assert_eq!(vary_headers.next(), Some(&PERMISSIVE_CORS_VARY_HEADERS));
     assert_eq!(vary_headers.next(), None);
 }
