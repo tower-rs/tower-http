@@ -1,90 +1,7 @@
-//! Set a header on the request.
+//! Set a single header on the request.
 //!
-//! The header value to be set may be provided as a fixed value when the
-//! middleware is constructed, or determined dynamically based on the request
-//! by a closure. See the [`MakeHeaderValue`] trait for details.
+//! See the root [`crate::set_header::request`] module for full documentation and usage examples.
 //!
-//! # Example
-//!
-//! Setting a header from a fixed value provided when the middleware is constructed:
-//!
-//! ```
-//! use http::{Request, Response, header::{self, HeaderValue}};
-//! use tower::{Service, ServiceExt, ServiceBuilder};
-//! use tower_http::set_header::SetRequestHeaderLayer;
-//! use http_body_util::Full;
-//! use bytes::Bytes;
-//!
-//! # #[tokio::main]
-//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! # let http_client = tower::service_fn(|_: Request<Full<Bytes>>| async move {
-//! #     Ok::<_, std::convert::Infallible>(Response::new(Full::<Bytes>::default()))
-//! # });
-//! #
-//! let mut svc = ServiceBuilder::new()
-//!     .layer(
-//!         // Layer that sets `User-Agent: my very cool app` on requests.
-//!         //
-//!         // `if_not_present` will only insert the header if it does not already
-//!         // have a value.
-//!         SetRequestHeaderLayer::if_not_present(
-//!             header::USER_AGENT,
-//!             HeaderValue::from_static("my very cool app"),
-//!         )
-//!     )
-//!     .service(http_client);
-//!
-//! let request = Request::new(Full::default());
-//!
-//! let response = svc.ready().await?.call(request).await?;
-//! #
-//! # Ok(())
-//! # }
-//! ```
-//!
-//! Setting a header based on a value determined dynamically from the request:
-//!
-//! ```
-//! use http::{Request, Response, header::{self, HeaderValue}};
-//! use tower::{Service, ServiceExt, ServiceBuilder};
-//! use tower_http::set_header::SetRequestHeaderLayer;
-//! use bytes::Bytes;
-//! use http_body_util::Full;
-//!
-//! # #[tokio::main]
-//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! # let http_client = tower::service_fn(|_: Request<Full<Bytes>>| async move {
-//! #     Ok::<_, std::convert::Infallible>(Response::new(Full::<Bytes>::default()))
-//! # });
-//! fn date_header_value() -> HeaderValue {
-//!     // ...
-//!     # HeaderValue::from_static("now")
-//! }
-//!
-//! let mut svc = ServiceBuilder::new()
-//!     .layer(
-//!         // Layer that sets `Date` to the current date and time.
-//!         //
-//!         // `overriding` will insert the header and override any previous values it
-//!         // may have.
-//!         SetRequestHeaderLayer::overriding(
-//!             header::DATE,
-//!             |request: &Request<Full<Bytes>>| {
-//!                 Some(date_header_value())
-//!             }
-//!         )
-//!     )
-//!     .service(http_client);
-//!
-//! let request = Request::new(Full::default());
-//!
-//! let response = svc.ready().await?.call(request).await?;
-//! #
-//! # Ok(())
-//! # }
-//! ```
-
-use super::{InsertHeaderMode, MakeHeaderValue};
 use http::{header::HeaderName, Request, Response};
 use std::{
     fmt,
@@ -92,6 +9,8 @@ use std::{
 };
 use tower_layer::Layer;
 use tower_service::Service;
+
+use crate::set_header::{InsertHeaderMode, MakeHeaderValue};
 
 /// Layer that applies [`SetRequestHeader`] which adds a request header.
 ///

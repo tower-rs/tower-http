@@ -2,7 +2,7 @@
 //!
 //! See the root [`crate::set_header::response`] module for full documentation and usage examples.
 //!
-use http::{header::HeaderName, HeaderValue, Request, Response};
+use http::{header::HeaderName, Request, Response};
 use pin_project_lite::pin_project;
 use std::{
     fmt,
@@ -13,52 +13,7 @@ use std::{
 use tower_layer::Layer;
 use tower_service::Service;
 
-use crate::set_header::{InsertHeaderMode, MakeHeaderValue};
-
-/// A trait that combines MakeHeaderValue and Clone capability for trait objects.
-trait CloneableMakeHeaderValue<T>: MakeHeaderValue<T> + Send + Sync {
-    fn clone_box(&self) -> Box<dyn CloneableMakeHeaderValue<T>>;
-}
-
-impl<T, M> CloneableMakeHeaderValue<T> for M
-where
-    M: MakeHeaderValue<T> + Clone + Send + Sync + 'static,
-{
-    fn clone_box(&self) -> Box<dyn CloneableMakeHeaderValue<T>> {
-        Box::new(self.clone())
-    }
-}
-
-/// A "Bridge" struct that allows for trait object-based header value generation.
-struct BoxedMakeHeaderValue<T>(Box<dyn CloneableMakeHeaderValue<T>>);
-
-impl<T> BoxedMakeHeaderValue<T> {
-    /// Create a new BoxedMakeHeaderValue from any maker that implements MakeHeaderValue and Clone.
-    fn new<M>(maker: M) -> Self
-    where
-        M: MakeHeaderValue<T> + Clone + Send + Sync + 'static,
-    {
-        Self(Box::new(maker))
-    }
-}
-
-impl<T> Clone for BoxedMakeHeaderValue<T> {
-    fn clone(&self) -> Self {
-        Self(self.0.clone_box())
-    }
-}
-
-impl<T> MakeHeaderValue<T> for BoxedMakeHeaderValue<T> {
-    fn make_header_value(&mut self, message: &T) -> Option<HeaderValue> {
-        self.0.make_header_value(message)
-    }
-}
-
-impl<T> fmt::Debug for BoxedMakeHeaderValue<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("BoxedMakeHeaderValue").finish()
-    }
-}
+use crate::set_header::{BoxedMakeHeaderValue, InsertHeaderMode, MakeHeaderValue};
 
 /// Metadata describing a response header to be set by [`SetMultipleResponseHeadersLayer`] or [`SetMultipleResponseHeader`].
 #[derive(Clone, Debug)]

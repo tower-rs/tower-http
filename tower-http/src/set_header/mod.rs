@@ -2,6 +2,8 @@
 //!
 //! See [request] and [response] for more details.
 
+use std::fmt;
+
 use http::{header::HeaderName, HeaderMap, HeaderValue, Request, Response};
 
 pub mod request;
@@ -106,5 +108,50 @@ impl<B> Headers for Response<B> {
 
     fn headers_mut(&mut self) -> &mut HeaderMap {
         Response::headers_mut(self)
+    }
+}
+
+/// A trait that combines MakeHeaderValue and Clone capability for trait objects.
+trait CloneableMakeHeaderValue<T>: MakeHeaderValue<T> + Send + Sync {
+    fn clone_box(&self) -> Box<dyn CloneableMakeHeaderValue<T>>;
+}
+
+impl<T, M> CloneableMakeHeaderValue<T> for M
+where
+    M: MakeHeaderValue<T> + Clone + Send + Sync + 'static,
+{
+    fn clone_box(&self) -> Box<dyn CloneableMakeHeaderValue<T>> {
+        Box::new(self.clone())
+    }
+}
+
+/// A "Bridge" struct that allows for trait object-based header value generation.
+struct BoxedMakeHeaderValue<T>(Box<dyn CloneableMakeHeaderValue<T>>);
+
+impl<T> BoxedMakeHeaderValue<T> {
+    /// Create a new BoxedMakeHeaderValue from any maker that implements MakeHeaderValue and Clone.
+    fn new<M>(maker: M) -> Self
+    where
+        M: MakeHeaderValue<T> + Clone + Send + Sync + 'static,
+    {
+        Self(Box::new(maker))
+    }
+}
+
+impl<T> Clone for BoxedMakeHeaderValue<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone_box())
+    }
+}
+
+impl<T> MakeHeaderValue<T> for BoxedMakeHeaderValue<T> {
+    fn make_header_value(&mut self, message: &T) -> Option<HeaderValue> {
+        self.0.make_header_value(message)
+    }
+}
+
+impl<T> fmt::Debug for BoxedMakeHeaderValue<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("BoxedMakeHeaderValue").finish()
     }
 }
