@@ -508,7 +508,6 @@ impl ServeVariant {
 /// iterates the characters twice. The closure must return the same iterator each time it is
 /// called.
 #[cfg(any(windows, test))]
-#[cfg(any(windows, test))]
 fn is_reserved_dos_name<F, I>(mut get_iter: F) -> bool
 where
     F: FnMut() -> I,
