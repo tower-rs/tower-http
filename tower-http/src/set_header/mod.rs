@@ -12,7 +12,7 @@ pub mod response;
 #[doc(inline)]
 pub use self::{
     request::{SetRequestHeader, SetRequestHeaderLayer},
-    response::{HeaderMetadata, SetResponseHeader, SetResponseHeaderLayer},
+    response::{SetResponseHeader, SetResponseHeaderLayer},
 };
 
 /// Trait for producing header values.
@@ -153,5 +153,75 @@ impl<T> MakeHeaderValue<T> for BoxedMakeHeaderValue<T> {
 impl<T> fmt::Debug for BoxedMakeHeaderValue<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("BoxedMakeHeaderValue").finish()
+    }
+}
+
+/// Metadata describing a response header to be set.
+#[derive(Clone, Debug)]
+pub struct HeaderMetadata<T> {
+    /// The name of the header to set.
+    header_name: HeaderName,
+    /// The value or value factory for the header.
+    make: BoxedMakeHeaderValue<T>,
+}
+
+impl<T> HeaderMetadata<T> {
+    /// Create a new HeaderMetadata with the given header name and value factory.
+    fn new<M: MakeHeaderValue<T> + Clone + 'static + Send + Sync>(
+        header_name: HeaderName,
+        make: M,
+    ) -> Self {
+        Self {
+            header_name,
+            make: BoxedMakeHeaderValue::new(make),
+        }
+    }
+
+    /// Convert this metadata into a [`HeaderInsertionConfig`] with the given insertion mode.
+    fn build_config(self, mode: InsertHeaderMode) -> HeaderInsertionConfig<T> {
+        HeaderInsertionConfig {
+            header_name: self.header_name,
+            make: self.make,
+            mode,
+        }
+    }
+}
+
+impl<T, M> From<(HeaderName, M)> for HeaderMetadata<T>
+where
+    M: MakeHeaderValue<T> + Clone + 'static + Send + Sync,
+{
+    fn from((header_name, make): (HeaderName, M)) -> Self {
+        HeaderMetadata::new(header_name, make)
+    }
+}
+
+/// Configuration for inserting a header into a response or request.
+struct HeaderInsertionConfig<T> {
+    header_name: HeaderName,
+    make: BoxedMakeHeaderValue<T>,
+    mode: InsertHeaderMode,
+}
+
+impl<T> Clone for HeaderInsertionConfig<T>
+where
+    BoxedMakeHeaderValue<T>: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            header_name: self.header_name.clone(),
+            make: self.make.clone(),
+            mode: self.mode,
+        }
+    }
+}
+
+impl<T> fmt::Debug for HeaderInsertionConfig<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("HeaderInsertionConfig")
+            .field("header_name", &self.header_name)
+            .field("mode", &self.mode)
+            .field("make", &"BoxedMakeHeaderValue")
+            .finish()
     }
 }

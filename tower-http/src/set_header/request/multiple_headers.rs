@@ -2,7 +2,7 @@
 //!
 //! See the root [`crate::set_header::request`] module for full documentation and usage examples.
 //!
-use http::{header::HeaderName, Request, Response};
+use http::{Request, Response};
 use std::{
     fmt,
     task::{Context, Poll},
@@ -10,85 +10,30 @@ use std::{
 use tower_layer::Layer;
 use tower_service::Service;
 
-use crate::set_header::{BoxedMakeHeaderValue, InsertHeaderMode, MakeHeaderValue};
-
-/// Metadata describing a request header to be set by [`SetMultipleRequestHeadersLayer`] or [`SetMultipleRequestHeader`].
-#[derive(Clone, Debug)]
-pub struct HeaderMetadata<T> {
-    /// The name of the header to set.
-    header_name: HeaderName,
-    /// The value or value factory for the header.
-    make: BoxedMakeHeaderValue<T>,
-}
-
-impl<T> HeaderMetadata<T> {
-    /// Create a new HeaderMetadata with the given header name and value factory.
-    fn new<M: MakeHeaderValue<T> + Clone + 'static + Send + Sync>(
-        header_name: HeaderName,
-        make: M,
-    ) -> Self {
-        Self {
-            header_name,
-            make: BoxedMakeHeaderValue::new(make),
-        }
-    }
-
-    /// Convert this metadata into a [`HeaderInsertionConfig`] with the given insertion mode.
-    fn build_config(self, mode: InsertHeaderMode) -> HeaderInsertionConfig<T> {
-        HeaderInsertionConfig {
-            header_name: self.header_name,
-            make: self.make,
-            mode,
-        }
-    }
-}
-
-impl<T, M> From<(HeaderName, M)> for HeaderMetadata<T>
-where
-    M: MakeHeaderValue<T> + Clone + 'static + Send + Sync,
-{
-    fn from((header_name, make): (HeaderName, M)) -> Self {
-        HeaderMetadata::new(header_name, make)
-    }
-}
-
-struct HeaderInsertionConfig<T> {
-    header_name: HeaderName,
-    make: BoxedMakeHeaderValue<T>,
-    mode: InsertHeaderMode,
-}
-
-impl<T> Clone for HeaderInsertionConfig<T>
-where
-    BoxedMakeHeaderValue<T>: Clone,
-{
-    fn clone(&self) -> Self {
-        Self {
-            header_name: self.header_name.clone(),
-            make: self.make.clone(),
-            mode: self.mode,
-        }
-    }
-}
-
-impl<T> fmt::Debug for HeaderInsertionConfig<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("HeaderInsertionConfig")
-            .field("header_name", &self.header_name)
-            .field("mode", &self.mode)
-            .field("make", &"BoxedMakeHeaderValue")
-            .finish()
-    }
-}
+use crate::set_header::{HeaderInsertionConfig, HeaderMetadata, InsertHeaderMode};
 
 /// Layer that applies [`SetMultipleRequestHeader`] which adds multiple request headers.
 ///
 /// See [`SetMultipleRequestHeader`] for more details.
-pub struct SetMultipleRequestHeadersLayer<T> {
-    headers: Vec<HeaderInsertionConfig<T>>,
+pub struct SetMultipleRequestHeadersLayer<M> {
+    headers: Vec<HeaderInsertionConfig<M>>,
 }
 
-impl<T> fmt::Debug for SetMultipleRequestHeadersLayer<T> {
+impl<M> Clone for SetMultipleRequestHeadersLayer<M>
+where
+    M: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            headers: self.headers.clone(),
+        }
+    }
+}
+
+impl<M> fmt::Debug for SetMultipleRequestHeadersLayer<M>
+where
+    M: Clone,
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SetMultipleRequestHeadersLayer")
             .field("headers", &self.headers)
@@ -96,12 +41,12 @@ impl<T> fmt::Debug for SetMultipleRequestHeadersLayer<T> {
     }
 }
 
-impl<T> SetMultipleRequestHeadersLayer<T> {
+impl<M> SetMultipleRequestHeadersLayer<M> {
     /// Create a new [`SetMultipleRequestHeadersLayer`].
     ///
     /// If any previous value exists for the same header, it is removed and replaced with the new matching header value.
-    pub fn overriding(metadata: Vec<HeaderMetadata<T>>) -> Self {
-        let headers: Vec<HeaderInsertionConfig<T>> = metadata
+    pub fn overriding(metadata: Vec<HeaderMetadata<M>>) -> Self {
+        let headers: Vec<HeaderInsertionConfig<M>> = metadata
             .into_iter()
             .map(|m| m.build_config(InsertHeaderMode::Override))
             .collect();
@@ -113,8 +58,8 @@ impl<T> SetMultipleRequestHeadersLayer<T> {
     ///
     /// The new header is always added, preserving any existing values. If previous values exist,
     /// the header will have multiple values.
-    pub fn appending(metadata: Vec<HeaderMetadata<T>>) -> Self {
-        let headers: Vec<HeaderInsertionConfig<T>> = metadata
+    pub fn appending(metadata: Vec<HeaderMetadata<M>>) -> Self {
+        let headers: Vec<HeaderInsertionConfig<M>> = metadata
             .into_iter()
             .map(|m| m.build_config(InsertHeaderMode::Append))
             .collect();
@@ -125,8 +70,8 @@ impl<T> SetMultipleRequestHeadersLayer<T> {
     /// Create a new [`SetMultipleRequestHeadersLayer`].
     ///
     /// If a previous value exists for the header, the new value is not inserted.
-    pub fn if_not_present(metadata: Vec<HeaderMetadata<T>>) -> Self {
-        let headers: Vec<HeaderInsertionConfig<T>> = metadata
+    pub fn if_not_present(metadata: Vec<HeaderMetadata<M>>) -> Self {
+        let headers: Vec<HeaderInsertionConfig<M>> = metadata
             .into_iter()
             .map(|m| m.build_config(InsertHeaderMode::IfNotPresent))
             .collect();
@@ -135,13 +80,13 @@ impl<T> SetMultipleRequestHeadersLayer<T> {
     }
 
     /// Internal constructor for a new [`SetMultipleRequestHeadersLayer`] from a list of headers.
-    fn new(headers: Vec<HeaderInsertionConfig<T>>) -> Self {
+    fn new(headers: Vec<HeaderInsertionConfig<M>>) -> Self {
         Self { headers }
     }
 }
 
-impl<S, T> Layer<S> for SetMultipleRequestHeadersLayer<T> {
-    type Service = SetMultipleRequestHeader<S, T>;
+impl<S, M> Layer<S> for SetMultipleRequestHeadersLayer<M> {
+    type Service = SetMultipleRequestHeader<S, M>;
 
     fn layer(&self, inner: S) -> Self::Service {
         SetMultipleRequestHeader {
@@ -153,18 +98,18 @@ impl<S, T> Layer<S> for SetMultipleRequestHeadersLayer<T> {
 
 /// Middleware that sets multiple headers on the request.
 #[derive(Clone)]
-pub struct SetMultipleRequestHeader<S, T> {
+pub struct SetMultipleRequestHeader<S, M> {
     inner: S,
-    headers: Vec<HeaderInsertionConfig<T>>,
+    headers: Vec<HeaderInsertionConfig<M>>,
 }
 
-impl<S, T> SetMultipleRequestHeader<S, T> {
+impl<S, M> SetMultipleRequestHeader<S, M> {
     /// Create a new [`SetMultipleRequestHeader`].
     ///
     /// If a previous value exists for the same header, it is removed and replaced with the new
     /// header value.
-    pub fn overriding(inner: S, metadata: Vec<HeaderMetadata<T>>) -> Self {
-        let headers: Vec<HeaderInsertionConfig<T>> = metadata
+    pub fn overriding(inner: S, metadata: Vec<HeaderMetadata<M>>) -> Self {
+        let headers: Vec<HeaderInsertionConfig<M>> = metadata
             .into_iter()
             .map(|m| m.build_config(InsertHeaderMode::Override))
             .collect();
@@ -176,8 +121,8 @@ impl<S, T> SetMultipleRequestHeader<S, T> {
     ///
     /// The new header is always added, preserving any existing values. If previous values exist,
     /// the header will have multiple values.
-    pub fn appending(inner: S, metadata: Vec<HeaderMetadata<T>>) -> Self {
-        let headers: Vec<HeaderInsertionConfig<T>> = metadata
+    pub fn appending(inner: S, metadata: Vec<HeaderMetadata<M>>) -> Self {
+        let headers: Vec<HeaderInsertionConfig<M>> = metadata
             .into_iter()
             .map(|m| m.build_config(InsertHeaderMode::Append))
             .collect();
@@ -188,8 +133,8 @@ impl<S, T> SetMultipleRequestHeader<S, T> {
     /// Create a new [`SetMultipleRequestHeader`].
     ///
     /// If a previous value exists for the header, the new value is not inserted.
-    pub fn if_not_present(inner: S, metadata: Vec<HeaderMetadata<T>>) -> Self {
-        let headers: Vec<HeaderInsertionConfig<T>> = metadata
+    pub fn if_not_present(inner: S, metadata: Vec<HeaderMetadata<M>>) -> Self {
+        let headers: Vec<HeaderInsertionConfig<M>> = metadata
             .into_iter()
             .map(|m| m.build_config(InsertHeaderMode::IfNotPresent))
             .collect();
@@ -198,14 +143,14 @@ impl<S, T> SetMultipleRequestHeader<S, T> {
     }
 
     /// Internal constructor for a new [`SetMultipleRequestHeader`] from an inner service and a list of headers.
-    fn new(inner: S, headers: Vec<HeaderInsertionConfig<T>>) -> Self {
+    fn new(inner: S, headers: Vec<HeaderInsertionConfig<M>>) -> Self {
         Self { inner, headers }
     }
 
     define_inner_service_accessors!();
 }
 
-impl<S, T> fmt::Debug for SetMultipleRequestHeader<S, T>
+impl<S, M> fmt::Debug for SetMultipleRequestHeader<S, M>
 where
     S: fmt::Debug,
 {
@@ -380,26 +325,33 @@ mod tests {
 
     #[tokio::test]
     async fn test_layer_with_empty_vec() {
-        let _ = tower::ServiceBuilder::new()
-            .layer(SetMultipleRequestHeadersLayer::<Response<Body>>::overriding(vec![]))
+        let header_metadatas: Vec<HeaderMetadata<Request<Body>>> = vec![];
+        let svc = tower::ServiceBuilder::new()
+            .layer(SetMultipleRequestHeadersLayer::<Request<Body>>::overriding(
+                header_metadatas,
+            ))
             .service(service_fn(|req: Request<Body>| async move {
                 assert_eq!(req.headers().len(), 0);
                 Ok::<_, Infallible>(Response::new(Body::empty()))
             }));
+
+        _ = svc.oneshot(Request::new(Body::empty())).await.unwrap();
     }
 
     #[tokio::test]
     async fn test_layer_with_static_and_closure_headers_fixed() {
         // Wrap the static value
-        let static_meta = (header::CONTENT_TYPE, HeaderValue::from_static("text/html")).into();
+        let static_meta: HeaderMetadata<Request<Body>> =
+            (header::CONTENT_TYPE, HeaderValue::from_static("text/html")).into();
 
         // Wrap the closure
-        let closure_meta = (header::X_FRAME_OPTIONS, |_res: &Response<Body>| {
-            Some(HeaderValue::from_static("DENY"))
-        })
-            .into();
+        let closure_meta: HeaderMetadata<Request<Body>> =
+            (header::X_FRAME_OPTIONS, |_req: &Request<Body>| {
+                Some(HeaderValue::from_static("DENY"))
+            })
+                .into();
 
-        let _ = tower::ServiceBuilder::new()
+        let svc = tower::ServiceBuilder::new()
             .layer(SetMultipleRequestHeadersLayer::overriding(vec![
                 static_meta,
                 closure_meta,
@@ -407,8 +359,11 @@ mod tests {
             .service(service_fn(|req: Request<Body>| async move {
                 assert_eq!(req.headers()["content-type"], "text/html");
                 assert_eq!(req.headers()["x-frame-options"], "DENY");
+
                 Ok::<_, Infallible>(Response::new(Body::empty()))
             }));
+
+        _ = svc.oneshot(Request::new(Body::empty())).await.unwrap();
     }
 
     #[test]

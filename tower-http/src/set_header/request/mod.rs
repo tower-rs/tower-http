@@ -89,7 +89,8 @@
 //! ```
 //! use http::{Request, Response, header::{self, HeaderValue}};
 //! use tower::{Service, ServiceExt, ServiceBuilder};
-//! use tower_http::set_header::request::{SetMultipleRequestHeadersLayer, HeaderMetadata};
+//! use tower_http::set_header::request::{SetMultipleRequestHeadersLayer};
+//! use tower_http::set_header::HeaderMetadata;
 //! use bytes::Bytes;
 //! use http_body_util::Full;
 //!
@@ -130,7 +131,5 @@
 mod multiple_headers;
 mod single_header;
 
-pub use multiple_headers::{
-    HeaderMetadata, SetMultipleRequestHeader, SetMultipleRequestHeadersLayer,
-};
+pub use multiple_headers::{SetMultipleRequestHeader, SetMultipleRequestHeadersLayer};
 pub use single_header::{SetRequestHeader, SetRequestHeaderLayer};
