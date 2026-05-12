@@ -893,6 +893,23 @@ async fn calls_fallback_on_null() {
     assert_eq!(res.headers()["from-fallback"], "1");
 }
 
+#[tokio::test]
+async fn not_found_when_file_requested_with_trailing_slash() {
+    let svc = ServeDir::new("../test-files");
+
+    let req = Request::builder()
+        .uri("/index.html/")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    assert!(res.headers().get(header::CONTENT_TYPE).is_none());
+
+    let body = body_into_text(res.into_body()).await;
+    assert!(body.is_empty());
+}
+
 #[cfg(windows)]
 fn verify_windows_device(name: &str, is_positive: bool) {
     use std::fs::OpenOptions;

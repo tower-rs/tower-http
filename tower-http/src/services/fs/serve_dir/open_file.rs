@@ -47,6 +47,7 @@ pub(super) async fn open_file(
     negotiated_encodings: Vec<(Encoding, QValue)>,
     range_header: Option<String>,
     buf_chunk_size: usize,
+    trailing_slash: bool,
 ) -> io::Result<OpenFileOutput> {
     let if_unmodified_since = req
         .headers()
@@ -90,6 +91,10 @@ pub(super) async fn open_file(
         let (meta, maybe_encoding) =
             file_metadata_with_fallback(path_to_file, negotiated_encodings).await?;
 
+        if trailing_slash && meta.is_file() {
+            return Ok(OpenFileOutput::FileNotFound);
+        }
+
         let last_modified = meta.modified().ok().map(LastModified::from);
         if let Some(output) = check_modified_headers(
             last_modified.as_ref(),
@@ -121,6 +126,11 @@ pub(super) async fn open_file(
             };
 
         let meta = file.metadata().await?;
+
+        if trailing_slash && meta.is_file() {
+            return Ok(OpenFileOutput::FileNotFound);
+        }
+
         let last_modified = meta.modified().ok().map(LastModified::from);
         if let Some(output) = check_modified_headers(
             last_modified.as_ref(),

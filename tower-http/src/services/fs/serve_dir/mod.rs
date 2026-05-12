@@ -349,10 +349,10 @@ impl<F> ServeDir<F> {
             (fallback, fallback_req)
         });
 
-        let path_to_file = match self
-            .variant
-            .build_and_validate_path(&self.base, req.uri().path())
-        {
+        let uri_path = req.uri().path();
+        let trailing_slash = uri_path.ends_with('/');
+
+        let path_to_file = match self.variant.build_and_validate_path(&self.base, uri_path) {
             Some(path_to_file) => path_to_file,
             None => {
                 return ResponseFuture::invalid_path(fallback_and_request);
@@ -381,6 +381,7 @@ impl<F> ServeDir<F> {
             negotiated_encodings,
             range_header,
             buf_chunk_size,
+            trailing_slash,
         ));
 
         ResponseFuture::open_file_future(open_file_future, fallback_and_request)
