@@ -18,19 +18,18 @@ const ADDITIONAL_VARY_HEADERS: [HeaderName; 3] = [
     clippy::declare_interior_mutable_const,
     clippy::borrow_interior_mutable_const
 )]
-async fn vary_set_by_inner_service() {
-    async fn inner_svc(_: Request<Body>) -> Result<Response<Body>, Infallible> {
-        Ok(Response::builder()
-            .header(header::VARY, INITIAL_VARY_HEADERS)
-            .body(Body::empty())
-            .unwrap())
-    }
+async fn permissive_vary_header_is_empty() {
+    let svc = CorsLayer::permissive().layer(service_fn(|_: Request<Body>| async {
+        Ok::<_, Infallible>(Response::new(Body::empty()))
+    }));
 
-    let svc = CorsLayer::permissive().layer(service_fn(inner_svc));
-    let res = svc.oneshot(Request::new(Body::empty())).await.unwrap();
-    let mut vary_headers = res.headers().get_all(header::VARY).into_iter();
-    assert_eq!(vary_headers.next(), Some(&INITIAL_VARY_HEADERS));
-    assert_eq!(vary_headers.next(), None);
+    let req = Request::builder().body(Body::empty()).unwrap();
+
+    let res = svc.oneshot(req).await.unwrap();
+    assert!(
+        res.headers().get(header::VARY).is_none(),
+        "Vary header should be omitted for permissive config"
+    );
 }
 
 #[tokio::test]
@@ -58,6 +57,47 @@ async fn include_custom_permissive_to_vary_set_by_inner_service() {
     let mut vary_headers = res.headers().get_all(header::VARY).into_iter();
     assert_eq!(vary_headers.next(), Some(&INITIAL_VARY_HEADERS));
     assert_eq!(vary_headers.next(), Some(&PERMISSIVE_CORS_VARY_HEADERS));
+    assert_eq!(vary_headers.next(), None);
+}
+
+#[tokio::test]
+async fn permissive_with_custom_vary_builder() {
+    let custom_vary = HeaderValue::from_static("x-foo");
+    let svc = CorsLayer::permissive()
+        .vary(Vary::list([header::HeaderName::from_static("x-foo")]))
+        .layer(service_fn(|_: Request<Body>| async {
+            Ok::<_, Infallible>(Response::new(Body::empty()))
+        }));
+
+    let req = Request::builder().body(Body::empty()).unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+    let vary = res.headers().get(header::VARY);
+    assert_eq!(vary, Some(&custom_vary));
+}
+
+#[tokio::test]
+async fn permissive_with_inner_and_builder_vary() {
+    let custom_vary = HeaderValue::from_static("x-foo");
+    let inner_vary = HeaderValue::from_static("accept-encoding");
+    let svc = CorsLayer::permissive()
+        .vary(Vary::list([header::HeaderName::from_static("x-foo")]))
+        .layer(service_fn(|_: Request<Body>| {
+            let inner_vary = inner_vary.clone();
+            async move {
+                Ok::<_, Infallible>(
+                    Response::builder()
+                        .header(header::VARY, inner_vary)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+            }
+        }));
+
+    let req = Request::builder().body(Body::empty()).unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+    let mut vary_headers = res.headers().get_all(header::VARY).iter();
+    assert_eq!(vary_headers.next(), Some(&inner_vary));
+    assert_eq!(vary_headers.next(), Some(&custom_vary));
     assert_eq!(vary_headers.next(), None);
 }
 

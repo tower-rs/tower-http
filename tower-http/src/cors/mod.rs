@@ -51,7 +51,7 @@
 
 use allow_origin::AllowOriginFuture;
 use bytes::{BufMut, BytesMut};
-use http::{header, HeaderMap, HeaderValue, Method, Request, Response};
+use http::{header, HeaderMap, HeaderName, HeaderValue, Method, Request, Response};
 use pin_project_lite::pin_project;
 use std::{
     future::Future,
@@ -129,11 +129,33 @@ impl CorsLayer {
     /// - All origins allowed.
     /// - All headers exposed.
     pub fn permissive() -> Self {
-        Self::new()
+        let mut layer = Self::new()
             .allow_headers(Any)
             .allow_methods(Any)
             .allow_origin(Any)
-            .expose_headers(Any)
+            .expose_headers(Any);
+
+        let mut vary = Vary::default();
+
+        if layer.allow_origin.is_wildcard() {
+            vary = vary.without_header(header::ORIGIN);
+        }
+
+        if layer.allow_headers.is_wildcard() {
+            vary = vary.without_header(header::ACCESS_CONTROL_REQUEST_HEADERS);
+        }
+
+        if layer.allow_methods.is_wildcard() {
+            vary = vary.without_header(header::ACCESS_CONTROL_REQUEST_METHOD);
+        }
+
+        layer.vary = if vary.is_empty() {
+            Vary::list([])
+        } else {
+            vary
+        };
+
+        layer
     }
 
     /// A very permissive configuration:
@@ -428,6 +450,9 @@ impl CorsLayer {
     }
 
     /// Set the value(s) of the [`Vary`][mdn] header.
+    ///
+    /// In contrast to the other headers, this one has a non-empty default of
+    /// [`preflight_request_headers()`].
     ///
     /// You only need to set this if you want to remove some of these defaults,
     /// or if you use a closure for one of the other headers and want to add a
@@ -800,4 +825,15 @@ fn ensure_usable_cors_rules(layer: &CorsLayer) {
              with `Access-Control-Expose-Headers: *`"
         );
     }
+}
+
+/// Returns an iterator over the three request headers that may be involved in a CORS preflight request.
+///
+/// This is the default set of header names returned in the `vary` header
+pub fn preflight_request_headers() -> impl Iterator<Item = HeaderName> {
+    IntoIterator::into_iter([
+        header::ORIGIN,
+        header::ACCESS_CONTROL_REQUEST_METHOD,
+        header::ACCESS_CONTROL_REQUEST_HEADERS,
+    ])
 }
