@@ -38,8 +38,8 @@ impl Vary {
     }
 
     pub(super) fn without_header(mut self, header: HeaderName) -> Self {
-        self.0
-            .retain(|h| h != &HeaderValue::from_str(header.as_str()).unwrap());
+        let value: HeaderValue = header.into();
+        self.0.retain(|h| h != value);
         self
     }
 
