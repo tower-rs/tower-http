@@ -83,13 +83,16 @@
 //!
 //! Use [`SetMultipleResponseHeadersLayer`] and [`SetMultipleResponseHeader`] to set multiple headers at once. Each header can have a fixed value or be computed dynamically.
 //!
+//! Note: this layer uses boxing (allocation + dynamic dispatch) to support mixed producer
+//! types in a single vec. Stacking multiple [`SetResponseHeaderLayer`] avoids this at the
+//! cost of a more complex composed service type.
+//!
 //! ## Example: Multiple Fixed Values
 //!
 //! ```
 //! use http::{Request, Response, header::{self, HeaderValue}};
 //! use tower::{Service, ServiceExt, ServiceBuilder};
-//! use tower_http::set_header::response::{SetMultipleResponseHeadersLayer};
-//! use tower_http::set_header::HeaderMetadata;
+//! use tower_http::set_header::{HeaderMetadata, response::{SetMultipleResponseHeadersLayer}};
 //! use http_body_util::Full;
 //! use bytes::Bytes;
 //!
@@ -123,8 +126,7 @@
 //! ```
 //! use http::{Request, Response, header::{self, HeaderValue}};
 //! use tower::{Service, ServiceExt, ServiceBuilder};
-//! use tower_http::set_header::response::{SetMultipleResponseHeadersLayer};
-//! use tower_http::set_header::HeaderMetadata;
+//! use tower_http::set_header::{HeaderMetadata, response::{SetMultipleResponseHeadersLayer}};
 //! use bytes::Bytes;
 //! use http_body_util::Full;
 //! use http_body::Body as _; // for `Body::size_hint`

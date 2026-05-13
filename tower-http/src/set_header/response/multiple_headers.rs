@@ -22,10 +22,7 @@ pub struct SetMultipleResponseHeadersLayer<M> {
     headers: Vec<HeaderInsertionConfig<M>>,
 }
 
-impl<M> fmt::Debug for SetMultipleResponseHeadersLayer<M>
-where
-    M: Clone,
-{
+impl<M> fmt::Debug for SetMultipleResponseHeadersLayer<M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SetMultipleResponseHeadersLayer")
             .field("headers", &self.headers)

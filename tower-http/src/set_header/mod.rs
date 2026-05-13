@@ -156,7 +156,7 @@ impl<T> fmt::Debug for BoxedMakeHeaderValue<T> {
     }
 }
 
-/// Metadata describing a response header to be set.
+/// Metadata describing a request or response header to be set.
 #[derive(Clone, Debug)]
 pub struct HeaderMetadata<T> {
     /// The name of the header to set.

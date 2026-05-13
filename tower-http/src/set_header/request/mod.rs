@@ -84,13 +84,20 @@
 //! # }
 //! ```
 //!
+//! # Multiple Headers
+//!
+//! Use [`SetMultipleRequestHeadersLayer`] and [`SetMultipleRequestHeader`] to set multiple headers at once. Each header can have a fixed value or be computed dynamically.
+//!
+//! Note: this layer uses boxing (allocation + dynamic dispatch) to support mixed producer
+//! types in a single `vec`. Stacking multiple [`SetRequestHeaderLayer`] instances avoids this at the
+//! cost of a more complex composed service type.
+//!
 //! ## Example: Multiple Dynamic Values
 //!
 //! ```
 //! use http::{Request, Response, header::{self, HeaderValue}};
 //! use tower::{Service, ServiceExt, ServiceBuilder};
-//! use tower_http::set_header::request::{SetMultipleRequestHeadersLayer};
-//! use tower_http::set_header::HeaderMetadata;
+//! use tower_http::set_header::{HeaderMetadata, request::{SetMultipleRequestHeadersLayer}};
 //! use bytes::Bytes;
 //! use http_body_util::Full;
 //!

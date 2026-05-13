@@ -30,10 +30,7 @@ where
     }
 }
 
-impl<M> fmt::Debug for SetMultipleRequestHeadersLayer<M>
-where
-    M: Clone,
-{
+impl<M> fmt::Debug for SetMultipleRequestHeadersLayer<M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SetMultipleRequestHeadersLayer")
             .field("headers", &self.headers)
