@@ -96,6 +96,7 @@ pub struct CorsLayer {
     expose_headers: ExposeHeaders,
     max_age: MaxAge,
     vary: Vary,
+    is_vary_custom: bool,
 }
 
 #[allow(clippy::declare_interior_mutable_const)]
@@ -119,6 +120,7 @@ impl CorsLayer {
             expose_headers: Default::default(),
             max_age: Default::default(),
             vary: Default::default(),
+            is_vary_custom: false,
         }
     }
 
@@ -129,33 +131,11 @@ impl CorsLayer {
     /// - All origins allowed.
     /// - All headers exposed.
     pub fn permissive() -> Self {
-        let mut layer = Self::new()
+        Self::new()
             .allow_headers(Any)
             .allow_methods(Any)
             .allow_origin(Any)
-            .expose_headers(Any);
-
-        let mut vary = Vary::default();
-
-        if layer.allow_origin.is_wildcard() {
-            vary = vary.without_header(header::ORIGIN);
-        }
-
-        if layer.allow_headers.is_wildcard() {
-            vary = vary.without_header(header::ACCESS_CONTROL_REQUEST_HEADERS);
-        }
-
-        if layer.allow_methods.is_wildcard() {
-            vary = vary.without_header(header::ACCESS_CONTROL_REQUEST_METHOD);
-        }
-
-        layer.vary = if vary.is_empty() {
-            Vary::list([])
-        } else {
-            vary
-        };
-
-        layer
+            .expose_headers(Any)
     }
 
     /// A very permissive configuration:
@@ -221,6 +201,26 @@ impl CorsLayer {
         T: Into<AllowHeaders>,
     {
         self.allow_headers = headers.into();
+        if !self.is_vary_custom {
+            if self.allow_headers.is_wildcard() {
+                self.vary = self
+                    .vary
+                    .without_header(header::ACCESS_CONTROL_REQUEST_HEADERS);
+            } else {
+                // Ensure header is present
+                let mut vary = self.vary.clone();
+                let name = header::ACCESS_CONTROL_REQUEST_HEADERS;
+                if !vary.to_header().map_or(false, |(_, v)| {
+                    v.to_str()
+                        .unwrap_or("")
+                        .split(',')
+                        .any(|s| s.trim().eq_ignore_ascii_case(name.as_str()))
+                }) {
+                    vary = Vary::list([name]);
+                }
+                self.vary = vary;
+            }
+        }
         self
     }
 
@@ -297,6 +297,25 @@ impl CorsLayer {
         T: Into<AllowMethods>,
     {
         self.allow_methods = methods.into();
+        if !self.is_vary_custom {
+            if self.allow_methods.is_wildcard() {
+                self.vary = self
+                    .vary
+                    .without_header(header::ACCESS_CONTROL_REQUEST_METHOD);
+            } else {
+                let mut vary = self.vary.clone();
+                let name = header::ACCESS_CONTROL_REQUEST_METHOD;
+                if !vary.to_header().map_or(false, |(_, v)| {
+                    v.to_str()
+                        .unwrap_or("")
+                        .split(',')
+                        .any(|s| s.trim().eq_ignore_ascii_case(name.as_str()))
+                }) {
+                    vary = Vary::list([name]);
+                }
+                self.vary = vary;
+            }
+        }
         self
     }
 
@@ -400,6 +419,23 @@ impl CorsLayer {
         T: Into<AllowOrigin>,
     {
         self.allow_origin = origin.into();
+        if !self.is_vary_custom {
+            if self.allow_origin.is_wildcard() {
+                self.vary = self.vary.without_header(header::ORIGIN);
+            } else {
+                let mut vary = self.vary.clone();
+                let name = header::ORIGIN;
+                if !vary.to_header().map_or(false, |(_, v)| {
+                    v.to_str()
+                        .unwrap_or("")
+                        .split(',')
+                        .any(|s| s.trim().eq_ignore_ascii_case(name.as_str()))
+                }) {
+                    vary = Vary::list([name]);
+                }
+                self.vary = vary;
+            }
+        }
         self
     }
 
@@ -464,6 +500,7 @@ impl CorsLayer {
         T: Into<Vary>,
     {
         self.vary = headers.into();
+        self.is_vary_custom = true;
         self
     }
 }

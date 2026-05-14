@@ -42,10 +42,6 @@ impl Vary {
         self.0.retain(|h| h != value);
         self
     }
-
-    pub(super) fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
 }
 
 impl Default for Vary {
