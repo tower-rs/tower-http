@@ -103,6 +103,12 @@ where
     }
 }
 
+impl<D, E> From<UnsyncBoxBody<D, E>> for http_body_util::combinators::UnsyncBoxBody<D, E> {
+    fn from(body: UnsyncBoxBody<D, E>) -> Self {
+        body.inner
+    }
+}
+
 impl<D, E> UnsyncBoxBody<D, E> {
     #[allow(dead_code)]
     pub(crate) fn new(inner: http_body_util::combinators::UnsyncBoxBody<D, E>) -> Self {
