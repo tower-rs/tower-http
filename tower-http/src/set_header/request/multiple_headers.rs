@@ -15,19 +15,9 @@ use crate::set_header::{HeaderInsertionConfig, HeaderMetadata, InsertHeaderMode}
 /// Layer that applies [`SetMultipleRequestHeader`] which adds multiple request headers.
 ///
 /// See [`SetMultipleRequestHeader`] for more details.
+#[derive(Clone)]
 pub struct SetMultipleRequestHeadersLayer<M> {
     headers: Vec<HeaderInsertionConfig<M>>,
-}
-
-impl<M> Clone for SetMultipleRequestHeadersLayer<M>
-where
-    M: Clone,
-{
-    fn clone(&self) -> Self {
-        Self {
-            headers: self.headers.clone(),
-        }
-    }
 }
 
 impl<M> fmt::Debug for SetMultipleRequestHeadersLayer<M> {

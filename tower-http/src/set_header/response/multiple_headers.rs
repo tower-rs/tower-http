@@ -18,6 +18,7 @@ use crate::set_header::{HeaderInsertionConfig, HeaderMetadata, InsertHeaderMode}
 /// Layer that applies [`SetMultipleResponseHeader`] which adds multiple response headers.
 ///
 /// See [`SetMultipleResponseHeader`] for more details.
+#[derive(Clone)]
 pub struct SetMultipleResponseHeadersLayer<M> {
     headers: Vec<HeaderInsertionConfig<M>>,
 }
