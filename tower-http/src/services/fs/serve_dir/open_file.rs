@@ -47,6 +47,7 @@ pub(super) async fn open_file(
     negotiated_encodings: Vec<(Encoding, QValue)>,
     range_header: Option<String>,
     buf_chunk_size: usize,
+    trailing_slash: bool,
 ) -> io::Result<OpenFileOutput> {
     let if_unmodified_since = req
         .headers()
@@ -62,9 +63,8 @@ pub(super) async fn open_file(
         ServeVariant::Directory {
             append_index_html_on_directories,
         } => {
-            // Might already at this point know a redirect or not found result should be
-            // returned which corresponds to a Some(output). Otherwise the path might be
-            // modified and proceed to the open file/metadata future.
+            let was_directory = is_dir(&path_to_file).await;
+
             if let Some(output) = maybe_redirect_or_append_path(
                 &mut path_to_file,
                 req.uri(),
@@ -73,6 +73,10 @@ pub(super) async fn open_file(
             .await
             {
                 return Ok(output);
+            }
+
+            if trailing_slash && !was_directory {
+                return Ok(OpenFileOutput::FileNotFound);
             }
 
             mime_guess::from_path(&path_to_file)
@@ -121,6 +125,7 @@ pub(super) async fn open_file(
             };
 
         let meta = file.metadata().await?;
+
         let last_modified = meta.modified().ok().map(LastModified::from);
         if let Some(output) = check_modified_headers(
             last_modified.as_ref(),
