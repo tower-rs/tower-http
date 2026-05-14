@@ -2,7 +2,7 @@
 //!
 //! See the root [`crate::set_header::response`] module for full documentation and usage examples.
 //!
-use http::{header::HeaderName, HeaderValue, Request, Response};
+use http::{Request, Response};
 use pin_project_lite::pin_project;
 use std::{
     fmt,
@@ -13,130 +13,17 @@ use std::{
 use tower_layer::Layer;
 use tower_service::Service;
 
-use crate::set_header::{InsertHeaderMode, MakeHeaderValue};
-
-/// A trait that combines MakeHeaderValue and Clone capability for trait objects.
-trait CloneableMakeHeaderValue<T>: MakeHeaderValue<T> + Send + Sync {
-    fn clone_box(&self) -> Box<dyn CloneableMakeHeaderValue<T>>;
-}
-
-impl<T, M> CloneableMakeHeaderValue<T> for M
-where
-    M: MakeHeaderValue<T> + Clone + Send + Sync + 'static,
-{
-    fn clone_box(&self) -> Box<dyn CloneableMakeHeaderValue<T>> {
-        Box::new(self.clone())
-    }
-}
-
-/// A "Bridge" struct that allows for trait object-based header value generation.
-struct BoxedMakeHeaderValue<T>(Box<dyn CloneableMakeHeaderValue<T>>);
-
-impl<T> BoxedMakeHeaderValue<T> {
-    /// Create a new BoxedMakeHeaderValue from any maker that implements MakeHeaderValue and Clone.
-    fn new<M>(maker: M) -> Self
-    where
-        M: MakeHeaderValue<T> + Clone + Send + Sync + 'static,
-    {
-        Self(Box::new(maker))
-    }
-}
-
-impl<T> Clone for BoxedMakeHeaderValue<T> {
-    fn clone(&self) -> Self {
-        Self(self.0.clone_box())
-    }
-}
-
-impl<T> MakeHeaderValue<T> for BoxedMakeHeaderValue<T> {
-    fn make_header_value(&mut self, message: &T) -> Option<HeaderValue> {
-        self.0.make_header_value(message)
-    }
-}
-
-impl<T> fmt::Debug for BoxedMakeHeaderValue<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("BoxedMakeHeaderValue").finish()
-    }
-}
-
-/// Metadata describing a response header to be set by [`SetMultipleResponseHeadersLayer`] or [`SetMultipleResponseHeader`].
-#[derive(Clone, Debug)]
-pub struct HeaderMetadata<T> {
-    /// The name of the header to set.
-    header_name: HeaderName,
-    /// The value or value factory for the header.
-    make: BoxedMakeHeaderValue<T>,
-}
-
-impl<T> HeaderMetadata<T> {
-    /// Create a new HeaderMetadata with the given header name and value factory.
-    fn new<M: MakeHeaderValue<T> + Clone + 'static + Send + Sync>(
-        header_name: HeaderName,
-        make: M,
-    ) -> Self {
-        Self {
-            header_name,
-            make: BoxedMakeHeaderValue::new(make),
-        }
-    }
-
-    /// Convert this metadata into a [`HeaderInsertionConfig`] with the given insertion mode.
-    fn build_config(self, mode: InsertHeaderMode) -> HeaderInsertionConfig<T> {
-        HeaderInsertionConfig {
-            header_name: self.header_name,
-            make: self.make,
-            mode,
-        }
-    }
-}
-
-impl<T, M> From<(HeaderName, M)> for HeaderMetadata<T>
-where
-    M: MakeHeaderValue<T> + Clone + 'static + Send + Sync,
-{
-    fn from((header_name, make): (HeaderName, M)) -> Self {
-        HeaderMetadata::new(header_name, make)
-    }
-}
-
-struct HeaderInsertionConfig<T> {
-    header_name: HeaderName,
-    make: BoxedMakeHeaderValue<T>,
-    mode: InsertHeaderMode,
-}
-
-impl<T> Clone for HeaderInsertionConfig<T>
-where
-    BoxedMakeHeaderValue<T>: Clone,
-{
-    fn clone(&self) -> Self {
-        Self {
-            header_name: self.header_name.clone(),
-            make: self.make.clone(),
-            mode: self.mode,
-        }
-    }
-}
-
-impl<T> fmt::Debug for HeaderInsertionConfig<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("HeaderInsertionConfig")
-            .field("header_name", &self.header_name)
-            .field("mode", &self.mode)
-            .field("make", &"BoxedMakeHeaderValue")
-            .finish()
-    }
-}
+use crate::set_header::{HeaderInsertionConfig, HeaderMetadata, InsertHeaderMode};
 
 /// Layer that applies [`SetMultipleResponseHeader`] which adds multiple response headers.
 ///
 /// See [`SetMultipleResponseHeader`] for more details.
-pub struct SetMultipleResponseHeadersLayer<T> {
-    headers: Vec<HeaderInsertionConfig<T>>,
+#[derive(Clone)]
+pub struct SetMultipleResponseHeadersLayer<M> {
+    headers: Vec<HeaderInsertionConfig<M>>,
 }
 
-impl<T> fmt::Debug for SetMultipleResponseHeadersLayer<T> {
+impl<M> fmt::Debug for SetMultipleResponseHeadersLayer<M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SetMultipleResponseHeadersLayer")
             .field("headers", &self.headers)
@@ -144,12 +31,12 @@ impl<T> fmt::Debug for SetMultipleResponseHeadersLayer<T> {
     }
 }
 
-impl<T> SetMultipleResponseHeadersLayer<T> {
+impl<M> SetMultipleResponseHeadersLayer<M> {
     /// Create a new [`SetMultipleResponseHeadersLayer`] that overrides any existing values for the same header.
     ///
     /// If any previous value exists for the same header, it is removed and replaced with the new matching header value.
-    pub fn overriding(metadata: Vec<HeaderMetadata<T>>) -> Self {
-        let headers: Vec<HeaderInsertionConfig<T>> = metadata
+    pub fn overriding(metadata: Vec<HeaderMetadata<M>>) -> Self {
+        let headers: Vec<HeaderInsertionConfig<M>> = metadata
             .into_iter()
             .map(|m| m.build_config(InsertHeaderMode::Override))
             .collect();
@@ -160,8 +47,8 @@ impl<T> SetMultipleResponseHeadersLayer<T> {
     /// Create a new [`SetMultipleResponseHeadersLayer`] that appends header values.
     ///
     /// The new header is always added, preserving any existing values. If previous values exist, the header will have multiple values.
-    pub fn appending(metadata: Vec<HeaderMetadata<T>>) -> Self {
-        let headers: Vec<HeaderInsertionConfig<T>> = metadata
+    pub fn appending(metadata: Vec<HeaderMetadata<M>>) -> Self {
+        let headers: Vec<HeaderInsertionConfig<M>> = metadata
             .into_iter()
             .map(|m| m.build_config(InsertHeaderMode::Append))
             .collect();
@@ -172,8 +59,8 @@ impl<T> SetMultipleResponseHeadersLayer<T> {
     /// Create a new [`SetMultipleResponseHeadersLayer`] that only inserts if the header is not already present.
     ///
     /// If a previous value exists for the header, the new value is not inserted.
-    pub fn if_not_present(metadata: Vec<HeaderMetadata<T>>) -> Self {
-        let headers: Vec<HeaderInsertionConfig<T>> = metadata
+    pub fn if_not_present(metadata: Vec<HeaderMetadata<M>>) -> Self {
+        let headers: Vec<HeaderInsertionConfig<M>> = metadata
             .into_iter()
             .map(|m| m.build_config(InsertHeaderMode::IfNotPresent))
             .collect();
@@ -182,13 +69,13 @@ impl<T> SetMultipleResponseHeadersLayer<T> {
     }
 
     /// Internal constructor for a new [`SetMultipleResponseHeadersLayer`] from a list of headers.
-    fn new(headers: Vec<HeaderInsertionConfig<T>>) -> Self {
+    fn new(headers: Vec<HeaderInsertionConfig<M>>) -> Self {
         Self { headers }
     }
 }
 
-impl<S, T> Layer<S> for SetMultipleResponseHeadersLayer<T> {
-    type Service = SetMultipleResponseHeader<S, T>;
+impl<S, M> Layer<S> for SetMultipleResponseHeadersLayer<M> {
+    type Service = SetMultipleResponseHeader<S, M>;
 
     fn layer(&self, inner: S) -> Self::Service {
         SetMultipleResponseHeader {
@@ -201,17 +88,17 @@ impl<S, T> Layer<S> for SetMultipleResponseHeadersLayer<T> {
 /// Middleware that sets multiple headers on the response.
 
 #[derive(Clone)]
-pub struct SetMultipleResponseHeader<S, T> {
+pub struct SetMultipleResponseHeader<S, M> {
     inner: S,
-    headers: Vec<HeaderInsertionConfig<T>>,
+    headers: Vec<HeaderInsertionConfig<M>>,
 }
 
-impl<S, T> SetMultipleResponseHeader<S, T> {
+impl<S, M> SetMultipleResponseHeader<S, M> {
     /// Create a new [`SetMultipleResponseHeader`] that overrides any existing values for the same header.
     ///
     /// If a previous value exists for the same header, it is removed and replaced with the new header value.
-    pub fn overriding(inner: S, metadata: Vec<HeaderMetadata<T>>) -> Self {
-        let headers: Vec<HeaderInsertionConfig<T>> = metadata
+    pub fn overriding(inner: S, metadata: Vec<HeaderMetadata<M>>) -> Self {
+        let headers: Vec<HeaderInsertionConfig<M>> = metadata
             .into_iter()
             .map(|m| m.build_config(InsertHeaderMode::Override))
             .collect();
@@ -222,8 +109,8 @@ impl<S, T> SetMultipleResponseHeader<S, T> {
     /// Create a new [`SetMultipleResponseHeader`] that appends header values.
     ///
     /// The new header is always added, preserving any existing values. If previous values exist, the header will have multiple values.
-    pub fn appending(inner: S, metadata: Vec<HeaderMetadata<T>>) -> Self {
-        let headers: Vec<HeaderInsertionConfig<T>> = metadata
+    pub fn appending(inner: S, metadata: Vec<HeaderMetadata<M>>) -> Self {
+        let headers: Vec<HeaderInsertionConfig<M>> = metadata
             .into_iter()
             .map(|m| m.build_config(InsertHeaderMode::Append))
             .collect();
@@ -234,8 +121,8 @@ impl<S, T> SetMultipleResponseHeader<S, T> {
     /// Create a new [`SetMultipleResponseHeader`] that only inserts if the header is not already present.
     ///
     /// If a previous value exists for the header, the new value is not inserted.
-    pub fn if_not_present(inner: S, metadata: Vec<HeaderMetadata<T>>) -> Self {
-        let headers: Vec<HeaderInsertionConfig<T>> = metadata
+    pub fn if_not_present(inner: S, metadata: Vec<HeaderMetadata<M>>) -> Self {
+        let headers: Vec<HeaderInsertionConfig<M>> = metadata
             .into_iter()
             .map(|m| m.build_config(InsertHeaderMode::IfNotPresent))
             .collect();
@@ -244,14 +131,14 @@ impl<S, T> SetMultipleResponseHeader<S, T> {
     }
 
     /// Internal constructor for a new [`SetMultipleResponseHeader`] from an inner service and a list of headers.
-    fn new(inner: S, headers: Vec<HeaderInsertionConfig<T>>) -> Self {
+    fn new(inner: S, headers: Vec<HeaderInsertionConfig<M>>) -> Self {
         Self { inner, headers }
     }
 
     define_inner_service_accessors!();
 }
 
-impl<S, T> fmt::Debug for SetMultipleResponseHeader<S, T>
+impl<S, M> fmt::Debug for SetMultipleResponseHeader<S, M>
 where
     S: fmt::Debug,
 {
@@ -289,10 +176,10 @@ where
 pin_project! {
     /// Response future for [`SetMultipleResponseHeader`].
     #[derive(Debug)]
-    pub struct ResponseFuture<F, T> {
+    pub struct ResponseFuture<F, M> {
         #[pin]
         future: F,
-        headers: Vec<HeaderInsertionConfig<T>>,
+        headers: Vec<HeaderInsertionConfig<M>>,
     }
 }
 
@@ -320,8 +207,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::Body;
-    use http::{header, HeaderValue};
+    use crate::{
+        set_header::{BoxedMakeHeaderValue, MakeHeaderValue as _},
+        test_helpers::Body,
+    };
+    use http::{header, HeaderName, HeaderValue};
     use std::convert::Infallible;
     use tower::{service_fn, ServiceExt};
 
