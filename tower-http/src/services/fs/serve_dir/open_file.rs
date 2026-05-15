@@ -309,8 +309,15 @@ fn try_parse_range(
     file_size: u64,
 ) -> Option<Result<Vec<RangeInclusive<u64>>, RangeUnsatisfiableError>> {
     maybe_range_ref.map(|header_value| {
-        http_range_header::parse_range_header(header_value)
-            .and_then(|first_pass| first_pass.validate(file_size))
+        let parsed = http_range_header::parse_range_header(header_value)?;
+
+        if parsed.ranges.len() > 1 {
+            // ServeDir/ServeFile do not support multipart responses, so reject
+            // multi-range requests before validate() runs overlap checks.
+            return Err(RangeUnsatisfiableError::OverlappingRanges);
+        }
+
+        parsed.validate(file_size)
     })
 }
 
