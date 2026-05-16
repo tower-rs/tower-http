@@ -36,12 +36,6 @@ impl Vary {
             .expect("comma-separated list of HeaderValues is always a valid HeaderValue");
         Some((header::VARY, header_val))
     }
-
-    pub(super) fn without_header(mut self, header: HeaderName) -> Self {
-        let value: HeaderValue = header.into();
-        self.0.retain(|h| h != value);
-        self
-    }
 }
 
 impl Default for Vary {
