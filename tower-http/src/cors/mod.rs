@@ -520,10 +520,7 @@ impl<S> Layer<S> for CorsLayer {
             }
         }
 
-        Cors {
-            inner,
-            layer,
-        }
+        Cors { inner, layer }
     }
 }
 
