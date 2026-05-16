@@ -1,6 +1,6 @@
 use http::header::{self, HeaderName, HeaderValue};
 
-use super::preflight_request_headers;
+use crate::cors::preflight_request_headers;
 
 /// Holds configuration for how to set the [`Vary`][mdn] header.
 ///

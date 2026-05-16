@@ -51,10 +51,7 @@
 
 use allow_origin::AllowOriginFuture;
 use bytes::{BufMut, BytesMut};
-use http::{
-    header::{self, HeaderName},
-    HeaderMap, HeaderValue, Method, Request, Response,
-};
+use http::{header, HeaderMap, HeaderName, HeaderValue, Method, Request, Response};
 use pin_project_lite::pin_project;
 use std::{
     future::Future,
@@ -99,6 +96,7 @@ pub struct CorsLayer {
     expose_headers: ExposeHeaders,
     max_age: MaxAge,
     vary: Vary,
+    is_vary_custom: bool,
 }
 
 #[allow(clippy::declare_interior_mutable_const)]
@@ -122,6 +120,7 @@ impl CorsLayer {
             expose_headers: Default::default(),
             max_age: Default::default(),
             vary: Default::default(),
+            is_vary_custom: false,
         }
     }
 
@@ -445,6 +444,7 @@ impl CorsLayer {
         T: Into<Vary>,
     {
         self.vary = headers.into();
+        self.is_vary_custom = true;
         self
     }
 }
@@ -493,10 +493,34 @@ impl<S> Layer<S> for CorsLayer {
     fn layer(&self, inner: S) -> Self::Service {
         ensure_usable_cors_rules(self);
 
-        Cors {
-            inner,
-            layer: self.clone(),
+        // Clone the layer to modify Vary header logic
+        let mut layer = self.clone();
+
+        // Only set Vary if not custom
+        if !layer.is_vary_custom {
+            // If all origins, methods, and headers are allowed, omit Vary
+            let all_origins = layer.allow_origin.is_wildcard();
+            let all_methods = layer.allow_methods.is_wildcard();
+            let all_headers = layer.allow_headers.is_wildcard();
+            if all_origins && all_methods && all_headers {
+                layer.vary = Vary::list([]);
+            } else {
+                // Otherwise, set Vary to the appropriate headers
+                let mut vary_headers = Vec::new();
+                if !all_origins {
+                    vary_headers.push(header::ORIGIN);
+                }
+                if !all_methods {
+                    vary_headers.push(header::ACCESS_CONTROL_REQUEST_METHOD);
+                }
+                if !all_headers {
+                    vary_headers.push(header::ACCESS_CONTROL_REQUEST_HEADERS);
+                }
+                layer.vary = Vary::list(vary_headers);
+            }
         }
+
+        Cors { inner, layer }
     }
 }
 
@@ -641,6 +665,28 @@ impl<S> Cors<S> {
         F: FnOnce(CorsLayer) -> CorsLayer,
     {
         self.layer = f(self.layer);
+
+        // Centralize Vary header logic here as well
+        if !self.layer.is_vary_custom {
+            let all_origins = self.layer.allow_origin.is_wildcard();
+            let all_methods = self.layer.allow_methods.is_wildcard();
+            let all_headers = self.layer.allow_headers.is_wildcard();
+            if all_origins && all_methods && all_headers {
+                self.layer.vary = Vary::list([]);
+            } else {
+                let mut vary_headers = Vec::new();
+                if !all_origins {
+                    vary_headers.push(header::ORIGIN);
+                }
+                if !all_methods {
+                    vary_headers.push(header::ACCESS_CONTROL_REQUEST_METHOD);
+                }
+                if !all_headers {
+                    vary_headers.push(header::ACCESS_CONTROL_REQUEST_HEADERS);
+                }
+                self.layer.vary = Vary::list(vary_headers);
+            }
+        }
         self
     }
 }
