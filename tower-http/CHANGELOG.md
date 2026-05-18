@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
+# 0.6.11
+
+## Added
+
+- `set-header`: add `SetMultipleResponseHeadersLayer` and
+  `SetMultipleResponseHeader` for setting multiple response headers at once.
+  Supports `overriding`, `appending`, and `if_not_present` modes. Header
+  values can be fixed or computed dynamically via closures ([#672])
+
+  ```rust
+  use http::{Response, header::{self, HeaderValue}};
+  use http_body::Body as _;
+  use tower_http::set_header::response::SetMultipleResponseHeadersLayer;
+
+  let layer = SetMultipleResponseHeadersLayer::overriding(vec![
+      (header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY")).into(),
+      (header::CONTENT_LENGTH, |res: &Response<MyBody>| {
+          res.body().size_hint().exact()
+              .map(|size| HeaderValue::from_str(&size.to_string()).unwrap())
+      }).into(),
+  ]);
+  ```
+- `set-header`: add `SetMultipleRequestHeadersLayer` and
+  `SetMultipleRequestHeaders` for setting multiple request headers at once,
+  mirroring the response-side API ([#677])
+- `classify`: add `From<i32>` and `From<NonZeroI32>` impls for `GrpcCode`.
+  Unrecognized status codes map to `GrpcCode::Unknown` ([#506])
+
+## Changed
+
+- `compression`: compress `application/grpc-web` responses. Previously all
+  `application/grpc*` content types were excluded from compression; now only
+  `application/grpc` (non-web) is excluded ([#408])
+
+## Fixed
+
+- `fs`: fix `ServeDir` returning 500 instead of 405 for non-GET/HEAD requests
+  when `call_fallback_on_method_not_allowed` is enabled but no fallback service
+  is configured ([#587])
+- `fs`: remove duplicate `cfg` attribute on `is_reserved_dos_name` ([#675])
+
+[#408]: https://github.com/tower-rs/tower-http/pull/408
+[#506]: https://github.com/tower-rs/tower-http/pull/506
+[#587]: https://github.com/tower-rs/tower-http/pull/587
+[#672]: https://github.com/tower-rs/tower-http/pull/672
+[#675]: https://github.com/tower-rs/tower-http/pull/675
+[#677]: https://github.com/tower-rs/tower-http/pull/677
+
 # 0.6.10
 
 ## Added
