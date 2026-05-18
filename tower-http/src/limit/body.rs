@@ -32,6 +32,17 @@ impl<B> ResponseBody<B> {
     }
 }
 
+impl<B> Default for ResponseBody<B>
+where
+    B: Default,
+{
+    fn default() -> Self {
+        Self {
+            inner: ResponseBodyInner::Body { body: B::default() },
+        }
+    }
+}
+
 pin_project! {
     #[project = BodyProj]
     enum ResponseBodyInner<B> {
