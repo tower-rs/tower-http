@@ -47,7 +47,6 @@ pub(super) async fn open_file(
     negotiated_encodings: Vec<(Encoding, QValue)>,
     range_header: Option<String>,
     buf_chunk_size: usize,
-    trailing_slash: bool,
 ) -> io::Result<OpenFileOutput> {
     let if_unmodified_since = req
         .headers()
@@ -63,8 +62,9 @@ pub(super) async fn open_file(
         ServeVariant::Directory {
             append_index_html_on_directories,
         } => {
-            let was_directory = is_dir(&path_to_file).await;
-
+            // Might already at this point know a redirect or not found result should be
+            // returned which corresponds to a Some(output). Otherwise the path might be
+            // modified and proceed to the open file/metadata future.
             if let Some(output) = maybe_redirect_or_append_path(
                 &mut path_to_file,
                 req.uri(),
@@ -75,7 +75,10 @@ pub(super) async fn open_file(
                 return Ok(output);
             }
 
-            if trailing_slash && !was_directory {
+            // At this point we know we are dealing with a file mapping.
+            // A trailing slash is only valid if it's the root path "/" fetching an index file, otherwise it's invalid.
+            let uri_path = req.uri().path();
+            if uri_path.ends_with('/') && uri_path != "/" {
                 return Ok(OpenFileOutput::FileNotFound);
             }
 
