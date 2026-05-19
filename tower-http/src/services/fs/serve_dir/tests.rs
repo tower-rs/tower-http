@@ -910,6 +910,29 @@ async fn not_found_when_file_requested_with_trailing_slash() {
     assert!(body.is_empty());
 }
 
+#[tokio::test]
+async fn file_requested_with_trailing_slash_with_fallback() {
+    async fn fallback<B>(req: Request<B>) -> Result<Response<Body>, Infallible> {
+        Ok(Response::new(Body::from(format!(
+            "from fallback {}",
+            req.uri().path()
+        ))))
+    }
+
+    let svc = ServeDir::new("../test-files").fallback(tower::service_fn(fallback));
+
+    let req = Request::builder()
+        .uri("/index.html/")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let body = body_into_text(res.into_body()).await;
+    assert_eq!(body, "from fallback /index.html/");
+}
+
 #[cfg(windows)]
 fn verify_windows_device(name: &str, is_positive: bool) {
     use std::fs::OpenOptions;
