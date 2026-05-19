@@ -1,10 +1,10 @@
 use std::convert::Infallible;
 
 use crate::{cors::Vary, test_helpers::Body};
-use http::{header, HeaderName, HeaderValue, Request, Response};
+use http::{header, HeaderName, HeaderValue, Method, Request, Response};
 use tower::{service_fn, util::ServiceExt, Layer};
 
-use crate::cors::{AllowOrigin, CorsLayer};
+use crate::cors::{AllowHeaders, AllowMethods, AllowOrigin, Any, Cors, CorsLayer};
 
 const INITIAL_VARY_HEADERS: HeaderValue = HeaderValue::from_static("accept, accept-encoding");
 const ADDITIONAL_VARY_HEADERS: [HeaderName; 3] = [
@@ -14,10 +14,6 @@ const ADDITIONAL_VARY_HEADERS: [HeaderName; 3] = [
 ];
 
 #[tokio::test]
-#[allow(
-    clippy::declare_interior_mutable_const,
-    clippy::borrow_interior_mutable_const
-)]
 async fn permissive_vary_header_is_empty() {
     let svc = CorsLayer::permissive().layer(service_fn(|_: Request<Body>| async {
         Ok::<_, Infallible>(Response::new(Body::empty()))
@@ -33,10 +29,6 @@ async fn permissive_vary_header_is_empty() {
 }
 
 #[tokio::test]
-#[allow(
-    clippy::declare_interior_mutable_const,
-    clippy::borrow_interior_mutable_const
-)]
 async fn include_custom_permissive_to_vary_set_by_inner_service() {
     const PERMISSIVE_CORS_VARY_HEADERS: HeaderValue = HeaderValue::from_static(
         "origin, access-control-request-method, access-control-request-headers",
@@ -139,4 +131,116 @@ async fn test_allow_origin_async_predicate() {
 
     let res = allow_origin.to_future(Some(&invalid_origin), &parts).await;
     assert!(res.is_none());
+}
+
+#[tokio::test]
+async fn derived_vary_header_for_mixed_wildcard_configuration() {
+    let svc = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(AllowMethods::mirror_request())
+        .allow_headers(AllowHeaders::mirror_request())
+        .layer(service_fn(|_: Request<Body>| async {
+            Ok::<_, Infallible>(Response::new(Body::empty()))
+        }));
+
+    let req = Request::builder()
+        .method(Method::OPTIONS)
+        .header(header::ORIGIN, "https://example.com")
+        .header(header::ACCESS_CONTROL_REQUEST_METHOD, "GET")
+        .header(header::ACCESS_CONTROL_REQUEST_HEADERS, "content-type")
+        .body(Body::empty())
+        .unwrap();
+
+    let res = svc.oneshot(req).await.unwrap();
+
+    assert_eq!(
+        res.headers().get(header::VARY),
+        Some(&HeaderValue::from_static(
+            "access-control-request-method, access-control-request-headers",
+        ))
+    );
+}
+
+#[tokio::test]
+async fn very_permissive_emits_vary_headers() {
+    let svc = CorsLayer::very_permissive().layer(service_fn(|_: Request<Body>| async {
+        Ok::<_, Infallible>(Response::new(Body::empty()))
+    }));
+
+    let req = Request::builder()
+        .method(Method::OPTIONS)
+        .header(header::ORIGIN, "https://example.com")
+        .header(header::ACCESS_CONTROL_REQUEST_METHOD, "GET")
+        .header(header::ACCESS_CONTROL_REQUEST_HEADERS, "content-type")
+        .body(Body::empty())
+        .unwrap();
+
+    let res = svc.oneshot(req).await.unwrap();
+
+    assert_eq!(
+        res.headers().get(header::VARY),
+        Some(&HeaderValue::from_static(
+            "origin, access-control-request-method, access-control-request-headers",
+        ))
+    );
+}
+
+#[tokio::test]
+async fn cors_map_layer_smoke_without_vary_header() {
+    let svc = Cors::new(service_fn(|_: Request<Body>| async {
+        Ok::<_, Infallible>(Response::new(Body::empty()))
+    }))
+    .allow_origin(Any)
+    .allow_methods(Any)
+    .allow_headers(Any);
+
+    let res = svc.oneshot(Request::new(Body::empty())).await.unwrap();
+
+    assert!(res.headers().get(header::VARY).is_none());
+}
+
+#[tokio::test]
+async fn cors_map_layer_smoke_with_vary_header() {
+    let svc = Cors::new(service_fn(|_: Request<Body>| async {
+        Ok::<_, Infallible>(Response::new(Body::empty()))
+    }))
+    .allow_origin(Any)
+    .allow_methods(AllowMethods::mirror_request())
+    .allow_headers(Any);
+
+    let req = Request::builder()
+        .method(Method::OPTIONS)
+        .header(header::ORIGIN, "https://example.com")
+        .header(header::ACCESS_CONTROL_REQUEST_METHOD, "GET")
+        .body(Body::empty())
+        .unwrap();
+
+    let res = svc.oneshot(req).await.unwrap();
+
+    assert_eq!(
+        res.headers().get(header::VARY),
+        Some(&HeaderValue::from_static("access-control-request-method"))
+    );
+}
+
+#[tokio::test]
+async fn exact_origin_does_not_emit_origin_vary_header() {
+    let svc = CorsLayer::new()
+        .allow_origin(AllowOrigin::exact(HeaderValue::from_static(
+            "http://example.com",
+        )))
+        .allow_methods([Method::GET])
+        .allow_headers([header::CONTENT_TYPE])
+        .layer(service_fn(|_: Request<Body>| async {
+            Ok::<_, Infallible>(Response::new(Body::empty()))
+        }));
+
+    let req = Request::builder()
+        .header(header::ORIGIN, "http://example.com")
+        .body(Body::empty())
+        .unwrap();
+
+    let res = svc.oneshot(req).await.unwrap();
+
+    assert!(res.headers().get(header::VARY).is_none());
 }

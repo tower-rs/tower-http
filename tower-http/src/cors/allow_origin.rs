@@ -111,6 +111,10 @@ impl AllowOrigin {
         matches!(&self.0, OriginInner::Const(v) if v == WILDCARD)
     }
 
+    pub(super) fn varies_with_origin(&self) -> bool {
+        !matches!(&self.0, OriginInner::Const(_))
+    }
+
     pub(super) fn to_future(
         &self,
         origin: Option<&HeaderValue>,

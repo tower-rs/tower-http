@@ -431,12 +431,20 @@ impl CorsLayer {
 
     /// Set the value(s) of the [`Vary`][mdn] header.
     ///
-    /// In contrast to the other headers, this one has a non-empty default of
-    /// [`preflight_request_headers()`].
+    /// By default, this value is derived from whether CORS response headers are
+    /// request-dependent:
     ///
-    /// You only need to set this if you want to remove some of these defaults,
-    /// or if you use a closure for one of the other headers and want to add a
-    /// vary header accordingly.
+    /// - `Origin` is included when `Access-Control-Allow-Origin` depends on the
+    ///   request's `Origin` header (for example, origin lists or predicates).
+    /// - `Access-Control-Request-Method` is included when
+    ///   `Access-Control-Allow-Methods` mirrors `Access-Control-Request-Method`.
+    /// - `Access-Control-Request-Headers` is included when
+    ///   `Access-Control-Allow-Headers` mirrors `Access-Control-Request-Headers`.
+    /// - If none of those values are request-dependent, no `Vary` header is
+    ///   added.
+    ///
+    /// Calling this method sets `Vary` explicitly and pins it to the provided
+    /// value, regardless of future changes to those other CORS settings.
     ///
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Vary
     pub fn vary<T>(mut self, headers: T) -> Self
@@ -446,6 +454,30 @@ impl CorsLayer {
         self.vary = headers.into();
         self.is_vary_custom = true;
         self
+    }
+
+    fn update_vary_header(&mut self) {
+        if !self.is_vary_custom {
+            let vary_origin = self.allow_origin.varies_with_origin();
+            let vary_method = self.allow_methods.varies_with_request_method();
+            let vary_headers = self.allow_headers.varies_with_request_headers();
+
+            if !(vary_origin || vary_method || vary_headers) {
+                self.vary = Vary::list([]);
+            } else {
+                let mut vary_header_names = Vec::new();
+                if vary_origin {
+                    vary_header_names.push(header::ORIGIN);
+                }
+                if vary_method {
+                    vary_header_names.push(header::ACCESS_CONTROL_REQUEST_METHOD);
+                }
+                if vary_headers {
+                    vary_header_names.push(header::ACCESS_CONTROL_REQUEST_HEADERS);
+                }
+                self.vary = Vary::list(vary_header_names);
+            }
+        }
     }
 }
 
@@ -497,28 +529,7 @@ impl<S> Layer<S> for CorsLayer {
         let mut layer = self.clone();
 
         // Only set Vary if not custom
-        if !layer.is_vary_custom {
-            // If all origins, methods, and headers are allowed, omit Vary
-            let all_origins = layer.allow_origin.is_wildcard();
-            let all_methods = layer.allow_methods.is_wildcard();
-            let all_headers = layer.allow_headers.is_wildcard();
-            if all_origins && all_methods && all_headers {
-                layer.vary = Vary::list([]);
-            } else {
-                // Otherwise, set Vary to the appropriate headers
-                let mut vary_headers = Vec::new();
-                if !all_origins {
-                    vary_headers.push(header::ORIGIN);
-                }
-                if !all_methods {
-                    vary_headers.push(header::ACCESS_CONTROL_REQUEST_METHOD);
-                }
-                if !all_headers {
-                    vary_headers.push(header::ACCESS_CONTROL_REQUEST_HEADERS);
-                }
-                layer.vary = Vary::list(vary_headers);
-            }
-        }
+        layer.update_vary_header();
 
         Cors { inner, layer }
     }
@@ -666,27 +677,8 @@ impl<S> Cors<S> {
     {
         self.layer = f(self.layer);
 
-        // Centralize Vary header logic here as well
-        if !self.layer.is_vary_custom {
-            let all_origins = self.layer.allow_origin.is_wildcard();
-            let all_methods = self.layer.allow_methods.is_wildcard();
-            let all_headers = self.layer.allow_headers.is_wildcard();
-            if all_origins && all_methods && all_headers {
-                self.layer.vary = Vary::list([]);
-            } else {
-                let mut vary_headers = Vec::new();
-                if !all_origins {
-                    vary_headers.push(header::ORIGIN);
-                }
-                if !all_methods {
-                    vary_headers.push(header::ACCESS_CONTROL_REQUEST_METHOD);
-                }
-                if !all_headers {
-                    vary_headers.push(header::ACCESS_CONTROL_REQUEST_HEADERS);
-                }
-                self.layer.vary = Vary::list(vary_headers);
-            }
-        }
+        // Only set Vary if not custom
+        self.layer.update_vary_header();
         self
     }
 }

@@ -58,6 +58,10 @@ impl AllowHeaders {
         matches!(&self.0, AllowHeadersInner::Const(Some(v)) if v == WILDCARD)
     }
 
+    pub(super) fn varies_with_request_headers(&self) -> bool {
+        matches!(&self.0, AllowHeadersInner::MirrorRequest)
+    }
+
     pub(super) fn to_header(&self, parts: &RequestParts) -> Option<(HeaderName, HeaderValue)> {
         let allow_headers = match &self.0 {
             AllowHeadersInner::Const(v) => v.clone()?,

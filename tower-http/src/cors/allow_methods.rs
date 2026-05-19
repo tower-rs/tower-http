@@ -72,6 +72,10 @@ impl AllowMethods {
         matches!(&self.0, AllowMethodsInner::Const(Some(v)) if v == WILDCARD)
     }
 
+    pub(super) fn varies_with_request_method(&self) -> bool {
+        matches!(&self.0, AllowMethodsInner::MirrorRequest)
+    }
+
     pub(super) fn to_header(&self, parts: &RequestParts) -> Option<(HeaderName, HeaderValue)> {
         let allow_methods = match &self.0 {
             AllowMethodsInner::Const(v) => v.clone()?,
