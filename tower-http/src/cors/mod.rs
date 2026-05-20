@@ -456,6 +456,7 @@ impl CorsLayer {
         self
     }
 
+    /// Recomputes the `Vary` header, if it hasn't been set explicitly.
     fn update_vary_header(&mut self) {
         if !self.is_vary_custom {
             let vary_origin = self.allow_origin.varies_with_origin();
@@ -528,7 +529,6 @@ impl<S> Layer<S> for CorsLayer {
         // Clone the layer to modify Vary header logic
         let mut layer = self.clone();
 
-        // Only set Vary if not custom
         layer.update_vary_header();
 
         Cors { inner, layer }
@@ -677,7 +677,6 @@ impl<S> Cors<S> {
     {
         self.layer = f(self.layer);
 
-        // Only set Vary if not custom
         self.layer.update_vary_header();
         self
     }

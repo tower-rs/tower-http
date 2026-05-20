@@ -73,7 +73,7 @@ impl AllowMethods {
     }
 
     pub(super) fn varies_with_request_method(&self) -> bool {
-        matches!(&self.0, AllowMethodsInner::MirrorRequest)
+        !matches!(&self.0, AllowMethodsInner::Const(_))
     }
 
     pub(super) fn to_header(&self, parts: &RequestParts) -> Option<(HeaderName, HeaderValue)> {

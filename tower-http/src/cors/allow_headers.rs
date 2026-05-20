@@ -59,7 +59,7 @@ impl AllowHeaders {
     }
 
     pub(super) fn varies_with_request_headers(&self) -> bool {
-        matches!(&self.0, AllowHeadersInner::MirrorRequest)
+        !matches!(&self.0, AllowHeadersInner::Const(_))
     }
 
     pub(super) fn to_header(&self, parts: &RequestParts) -> Option<(HeaderName, HeaderValue)> {
