@@ -51,10 +51,7 @@
 
 use allow_origin::AllowOriginFuture;
 use bytes::{BufMut, BytesMut};
-use http::{
-    header::{self, HeaderName},
-    HeaderMap, HeaderValue, Method, Request, Response,
-};
+use http::{header, HeaderMap, HeaderName, HeaderValue, Method, Request, Response};
 use pin_project_lite::pin_project;
 use std::{
     future::Future,
@@ -99,6 +96,7 @@ pub struct CorsLayer {
     expose_headers: ExposeHeaders,
     max_age: MaxAge,
     vary: Vary,
+    is_vary_custom: bool,
 }
 
 #[allow(clippy::declare_interior_mutable_const)]
@@ -122,6 +120,7 @@ impl CorsLayer {
             expose_headers: Default::default(),
             max_age: Default::default(),
             vary: Default::default(),
+            is_vary_custom: false,
         }
     }
 
@@ -432,12 +431,20 @@ impl CorsLayer {
 
     /// Set the value(s) of the [`Vary`][mdn] header.
     ///
-    /// In contrast to the other headers, this one has a non-empty default of
-    /// [`preflight_request_headers()`].
+    /// By default, this value is derived from whether CORS response headers are
+    /// request-dependent:
     ///
-    /// You only need to set this if you want to remove some of these defaults,
-    /// or if you use a closure for one of the other headers and want to add a
-    /// vary header accordingly.
+    /// - `Origin` is included when `Access-Control-Allow-Origin` depends on the
+    ///   request's `Origin` header (for example, origin lists or predicates).
+    /// - `Access-Control-Request-Method` is included when
+    ///   `Access-Control-Allow-Methods` mirrors `Access-Control-Request-Method`.
+    /// - `Access-Control-Request-Headers` is included when
+    ///   `Access-Control-Allow-Headers` mirrors `Access-Control-Request-Headers`.
+    /// - If none of those values are request-dependent, no `Vary` header is
+    ///   added.
+    ///
+    /// Calling this method sets `Vary` explicitly and pins it to the provided
+    /// value, regardless of future changes to those other CORS settings.
     ///
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Vary
     pub fn vary<T>(mut self, headers: T) -> Self
@@ -445,7 +452,33 @@ impl CorsLayer {
         T: Into<Vary>,
     {
         self.vary = headers.into();
+        self.is_vary_custom = true;
         self
+    }
+
+    /// Recomputes the `Vary` header, if it hasn't been set explicitly.
+    fn update_vary_header(&mut self) {
+        if !self.is_vary_custom {
+            let vary_origin = self.allow_origin.varies_with_origin();
+            let vary_method = self.allow_methods.varies_with_request_method();
+            let vary_headers = self.allow_headers.varies_with_request_headers();
+
+            if !(vary_origin || vary_method || vary_headers) {
+                self.vary = Vary::list([]);
+            } else {
+                let mut vary_header_names = Vec::new();
+                if vary_origin {
+                    vary_header_names.push(header::ORIGIN);
+                }
+                if vary_method {
+                    vary_header_names.push(header::ACCESS_CONTROL_REQUEST_METHOD);
+                }
+                if vary_headers {
+                    vary_header_names.push(header::ACCESS_CONTROL_REQUEST_HEADERS);
+                }
+                self.vary = Vary::list(vary_header_names);
+            }
+        }
     }
 }
 
@@ -493,10 +526,12 @@ impl<S> Layer<S> for CorsLayer {
     fn layer(&self, inner: S) -> Self::Service {
         ensure_usable_cors_rules(self);
 
-        Cors {
-            inner,
-            layer: self.clone(),
-        }
+        // Clone the layer to modify Vary header logic
+        let mut layer = self.clone();
+
+        layer.update_vary_header();
+
+        Cors { inner, layer }
     }
 }
 
@@ -641,6 +676,8 @@ impl<S> Cors<S> {
         F: FnOnce(CorsLayer) -> CorsLayer,
     {
         self.layer = f(self.layer);
+
+        self.layer.update_vary_header();
         self
     }
 }
