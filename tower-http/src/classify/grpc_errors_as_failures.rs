@@ -1,8 +1,9 @@
 use super::{ClassifiedResponse, ClassifyEos, ClassifyResponse, SharedClassifier};
 use bitflags::bitflags;
 use http::{HeaderMap, Response};
+#[cfg(feature = "trace")]
 use percent_encoding::percent_decode;
-use std::fmt;
+use std::{fmt, num::NonZeroI32};
 
 /// gRPC status codes.
 ///
@@ -10,6 +11,8 @@ use std::fmt;
 ///
 /// [gRPC status codes]: https://github.com/grpc/grpc/blob/master/doc/statuscodes.md#status-codes-and-their-use-in-grpc
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(i32)]
+#[non_exhaustive]
 pub enum GrpcCode {
     /// The operation completed successfully.
     Ok = 0,
@@ -70,31 +73,25 @@ impl GrpcCode {
         }
     }
 
-    fn from_bytes(bytes: &[u8]) -> Option<GrpcCode> {
-        match bytes.len() {
-            1 => match bytes[0] {
-                b'0' => Some(GrpcCode::Ok),
-                b'1' => Some(GrpcCode::Cancelled),
-                b'2' => Some(GrpcCode::Unknown),
-                b'3' => Some(GrpcCode::InvalidArgument),
-                b'4' => Some(GrpcCode::DeadlineExceeded),
-                b'5' => Some(GrpcCode::NotFound),
-                b'6' => Some(GrpcCode::AlreadyExists),
-                b'7' => Some(GrpcCode::PermissionDenied),
-                b'8' => Some(GrpcCode::ResourceExhausted),
-                b'9' => Some(GrpcCode::FailedPrecondition),
-                _ => None,
-            },
-            2 => match (bytes[0], bytes[1]) {
-                (b'1', b'0') => Some(GrpcCode::Aborted),
-                (b'1', b'1') => Some(GrpcCode::OutOfRange),
-                (b'1', b'2') => Some(GrpcCode::Unimplemented),
-                (b'1', b'3') => Some(GrpcCode::Internal),
-                (b'1', b'4') => Some(GrpcCode::Unavailable),
-                (b'1', b'5') => Some(GrpcCode::DataLoss),
-                (b'1', b'6') => Some(GrpcCode::Unauthenticated),
-                _ => None,
-            },
+    fn from_i32(code: i32) -> Option<GrpcCode> {
+        match code {
+            0 => Some(GrpcCode::Ok),
+            1 => Some(GrpcCode::Cancelled),
+            2 => Some(GrpcCode::Unknown),
+            3 => Some(GrpcCode::InvalidArgument),
+            4 => Some(GrpcCode::DeadlineExceeded),
+            5 => Some(GrpcCode::NotFound),
+            6 => Some(GrpcCode::AlreadyExists),
+            7 => Some(GrpcCode::PermissionDenied),
+            8 => Some(GrpcCode::ResourceExhausted),
+            9 => Some(GrpcCode::FailedPrecondition),
+            10 => Some(GrpcCode::Aborted),
+            11 => Some(GrpcCode::OutOfRange),
+            12 => Some(GrpcCode::Unimplemented),
+            13 => Some(GrpcCode::Internal),
+            14 => Some(GrpcCode::Unavailable),
+            15 => Some(GrpcCode::DataLoss),
+            16 => Some(GrpcCode::Unauthenticated),
             _ => None,
         }
     }
@@ -308,6 +305,7 @@ impl ClassifyEos for GrpcEosErrorsAsFailures {
 
 /// The failure class for [`GrpcErrorsAsFailures`].
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum GrpcFailureClass {
     /// A gRPC response was classified as a failure with the corresponding status.
     Status(GrpcStatus),
@@ -326,6 +324,8 @@ impl fmt::Display for GrpcFailureClass {
     }
 }
 
+impl std::error::Error for GrpcFailureClass {}
+
 pub(crate) fn classify_grpc_metadata(
     headers: &HeaderMap,
     success_codes: GrpcCodeBitmask,
@@ -340,39 +340,68 @@ pub(crate) fn classify_grpc_metadata(
         };
     }
 
-    let code = or_else!(headers.get("grpc-status"), GrpcStatusHeaderMissing);
-    let code = or_else!(GrpcCode::from_bytes(code.as_ref()), HeaderNotGrpcCode);
+    let code_header = or_else!(headers.get("grpc-status"), GrpcStatusHeaderMissing);
+    let code_value: i32 = or_else!(
+        code_header.to_str().ok().and_then(|s| s.parse().ok()),
+        HeaderNotGrpcCode
+    );
+    let grpc_code = GrpcCode::from_i32(code_value);
 
-    if success_codes.contains(GrpcCodeBitmask::from(code)) {
-        ParsedGrpcStatus::Success
-    } else {
-        ParsedGrpcStatus::NonSuccess(GrpcStatus {
-            code,
-            message: headers.get("grpc-message").and_then(|header| {
-                percent_decode(header.as_bytes())
-                    .decode_utf8()
-                    .map(|cow| cow.to_string())
-                    .ok()
-            }),
-        })
+    if let Some(code) = grpc_code {
+        if success_codes.contains(GrpcCodeBitmask::from(code)) {
+            return ParsedGrpcStatus::Success;
+        }
     }
+
+    #[cfg(feature = "trace")]
+    let message = headers.get("grpc-message").map(|header| {
+        percent_decode(header.as_bytes())
+            .decode_utf8_lossy()
+            .into_owned()
+    });
+    #[cfg(not(feature = "trace"))]
+    let message = headers
+        .get("grpc-message")
+        .and_then(|header| header.to_str().ok().map(|s| s.to_owned()));
+
+    ParsedGrpcStatus::NonSuccess(GrpcStatus {
+        code: grpc_code,
+        code_raw: code_value,
+        message,
+    })
 }
 
+/// A gRPC status extracted from response headers/trailers.
 #[derive(Debug, PartialEq, Eq)]
 pub struct GrpcStatus {
-    code: GrpcCode,
+    code: Option<GrpcCode>,
+    code_raw: i32,
     message: Option<String>,
 }
 
 impl GrpcStatus {
-    pub(crate) fn code(&self) -> GrpcCode {
+    /// Returns the status code as a [`GrpcCode`], or `None` if the code is not recognized.
+    pub fn code(&self) -> Option<GrpcCode> {
         self.code
+    }
+
+    /// Returns the raw integer status code.
+    pub fn code_raw(&self) -> i32 {
+        self.code_raw
+    }
+
+    /// Returns the percent-decoded gRPC error message, if present.
+    pub fn message(&self) -> Option<&str> {
+        self.message.as_deref()
     }
 }
 
 impl fmt::Display for GrpcStatus {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self.code)?;
+        match self.code {
+            Some(code) => write!(f, "{:?}", code)?,
+            None => write!(f, "Code({})", self.code_raw)?,
+        }
         if let Some(message) = self.message.as_ref() {
             write!(f, ": {}", message)?;
         }
@@ -440,7 +469,8 @@ mod tests {
         status: "1",
         success_flags: GrpcCodeBitmask::OK,
         expected: ParsedGrpcStatus::NonSuccess(GrpcStatus{
-            code: GrpcCode::Cancelled,
+            code: Some(GrpcCode::Cancelled),
+            code_raw: 1,
             message: None,
         }),
     }
@@ -465,9 +495,75 @@ mod tests {
         message: "mock message",
         success_flags: GrpcCodeBitmask::OK | GrpcCodeBitmask::INVALID_ARGUMENT,
         expected: ParsedGrpcStatus::NonSuccess(GrpcStatus{
-            code: GrpcCode::Unauthenticated,
+            code: Some(GrpcCode::Unauthenticated),
+            code_raw: 16,
             message: Some("mock message".to_string()),
         }),
+    }
+
+    classify_grpc_metadata_test! {
+        name: percent_encoded_message,
+        status: "2",
+        message: "hello%20world",
+        success_flags: GrpcCodeBitmask::OK,
+        expected: ParsedGrpcStatus::NonSuccess(GrpcStatus{
+            code: Some(GrpcCode::Unknown),
+            code_raw: 2,
+            message: Some("hello world".to_string()),
+        }),
+    }
+
+    classify_grpc_metadata_test! {
+        name: invalid_percent_encoding,
+        status: "13",
+        message: "bad%2Gencode",
+        success_flags: GrpcCodeBitmask::OK,
+        expected: ParsedGrpcStatus::NonSuccess(GrpcStatus{
+            code: Some(GrpcCode::Internal),
+            code_raw: 13,
+            message: Some("bad%2Gencode".to_string()),
+        }),
+    }
+
+    classify_grpc_metadata_test! {
+        name: empty_grpc_message,
+        status: "5",
+        message: "",
+        success_flags: GrpcCodeBitmask::OK,
+        expected: ParsedGrpcStatus::NonSuccess(GrpcStatus{
+            code: Some(GrpcCode::NotFound),
+            code_raw: 5,
+            message: None,
+        }),
+    }
+
+    classify_grpc_metadata_test! {
+        name: unknown_status_code_above_16,
+        status: "99",
+        message: "custom error",
+        success_flags: GrpcCodeBitmask::OK,
+        expected: ParsedGrpcStatus::NonSuccess(GrpcStatus{
+            code: None,
+            code_raw: 99,
+            message: Some("custom error".to_string()),
+        }),
+    }
+
+    #[test]
+    fn invalid_utf8_after_percent_decode() {
+        let mut headers = HeaderMap::new();
+        headers.insert("grpc-status", "2".parse().unwrap());
+        // %80 is an invalid UTF-8 start byte; lossy decode replaces it with U+FFFD
+        headers.insert("grpc-message", "bad%80byte".parse().unwrap());
+        let status = classify_grpc_metadata(&headers, GrpcCodeBitmask::OK);
+        assert_eq!(
+            status,
+            ParsedGrpcStatus::NonSuccess(GrpcStatus {
+                code: Some(GrpcCode::Unknown),
+                code_raw: 2,
+                message: Some("bad\u{FFFD}byte".to_string()),
+            })
+        );
     }
 
     #[test]

@@ -95,7 +95,7 @@ impl OnEos for DefaultOnEos {
                 crate::classify::GrpcCode::Ok.into_bitmask(),
             ) {
                 ParsedGrpcStatus::Success | ParsedGrpcStatus::HeaderNotGrpcCode => Some(0),
-                ParsedGrpcStatus::NonSuccess(status) => Some(status.code() as i32),
+                ParsedGrpcStatus::NonSuccess(status) => Some(status.code_raw()),
                 ParsedGrpcStatus::GrpcStatusHeaderMissing => None,
             }
         });
