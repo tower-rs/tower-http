@@ -492,13 +492,7 @@ impl ServeVariant {
                 }
                 Some(path_to_file)
             }
-            ServeVariant::SingleFile { mime: _ } => {
-                if requested_path.ends_with('/') && requested_path != "/" {
-                    None
-                } else {
-                    Some(base_path.to_path_buf())
-                }
-            }
+            ServeVariant::SingleFile { mime: _ } => Some(base_path.to_path_buf()),
         }
     }
 }
