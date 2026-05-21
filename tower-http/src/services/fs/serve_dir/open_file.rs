@@ -294,11 +294,13 @@ async fn maybe_redirect_or_append_path(
 ) -> PathResolution {
     let uri_path = uri.path();
 
-    if uri_path.ends_with('/') && uri_path != "/" && !is_dir(path_to_file).await {
+    let is_directory = is_dir(path_to_file).await;
+
+    if uri_path.ends_with('/') && uri_path != "/" && !is_directory {
         return PathResolution::EarlyOutput(OpenFileOutput::FileNotFound);
     }
 
-    if !is_dir(path_to_file).await {
+    if !is_directory {
         return PathResolution::NotADirectory;
     }
 
@@ -306,10 +308,11 @@ async fn maybe_redirect_or_append_path(
         return PathResolution::EarlyOutput(OpenFileOutput::FileNotFound);
     }
 
-    if uri.path().ends_with('/') {
+    if uri_path.ends_with('/') {
         path_to_file.push("index.html");
         PathResolution::AppendedIndexHtml
     } else {
+        // Redirect: add trailing slash
         let uri = match append_slash_on_path(uri.clone()) {
             Ok(uri) => uri,
             Err(err) => return PathResolution::EarlyOutput(err),
