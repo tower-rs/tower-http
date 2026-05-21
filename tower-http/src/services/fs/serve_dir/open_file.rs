@@ -121,6 +121,7 @@ pub(super) async fn open_file(
             };
 
         let meta = file.metadata().await?;
+
         let last_modified = meta.modified().ok().map(LastModified::from);
         if let Some(output) = check_modified_headers(
             last_modified.as_ref(),
@@ -283,7 +284,15 @@ async fn maybe_redirect_or_append_path(
     uri: &Uri,
     append_index_html_on_directories: bool,
 ) -> Option<OpenFileOutput> {
-    if !is_dir(path_to_file).await {
+    let uri_path = uri.path();
+
+    let is_directory = is_dir(path_to_file).await;
+
+    if uri_path.ends_with('/') && uri_path != "/" && !is_directory {
+        return Some(OpenFileOutput::FileNotFound);
+    }
+
+    if !is_directory {
         return None;
     }
 
@@ -291,7 +300,7 @@ async fn maybe_redirect_or_append_path(
         return Some(OpenFileOutput::FileNotFound);
     }
 
-    if uri.path().ends_with('/') {
+    if uri_path.ends_with('/') {
         path_to_file.push("index.html");
         None
     } else {
