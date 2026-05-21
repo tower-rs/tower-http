@@ -40,12 +40,6 @@ pub(super) enum FileRequestExtent {
     Head(Metadata),
 }
 
-pub(super) enum PathResolution {
-    EarlyOutput(OpenFileOutput), // e.g. redirect or 404
-    AppendedIndexHtml,           // we appended index.html, continue
-    NotADirectory,               // file path, do nothing
-}
-
 pub(super) async fn open_file(
     variant: ServeVariant,
     mut path_to_file: PathBuf,
@@ -71,16 +65,14 @@ pub(super) async fn open_file(
             // Might already at this point know a redirect or not found result should be
             // returned which corresponds to a Some(output). Otherwise the path might be
             // modified and proceed to the open file/metadata future.
-            match maybe_redirect_or_append_path(
+            if let Some(output) = maybe_redirect_or_append_path(
                 &mut path_to_file,
                 req.uri(),
                 append_index_html_on_directories,
             )
             .await
             {
-                PathResolution::EarlyOutput(output) => return Ok(output),
-                PathResolution::AppendedIndexHtml => { /* continue */ }
-                PathResolution::NotADirectory => { /* continue, it's a file */ }
+                return Ok(output);
             }
 
             mime_guess::from_path(&path_to_file)
@@ -291,34 +283,33 @@ async fn maybe_redirect_or_append_path(
     path_to_file: &mut PathBuf,
     uri: &Uri,
     append_index_html_on_directories: bool,
-) -> PathResolution {
+) -> Option<OpenFileOutput> {
     let uri_path = uri.path();
 
     let is_directory = is_dir(path_to_file).await;
 
     if uri_path.ends_with('/') && uri_path != "/" && !is_directory {
-        return PathResolution::EarlyOutput(OpenFileOutput::FileNotFound);
+        return Some(OpenFileOutput::FileNotFound);
     }
 
     if !is_directory {
-        return PathResolution::NotADirectory;
+        return None;
     }
 
     if !append_index_html_on_directories {
-        return PathResolution::EarlyOutput(OpenFileOutput::FileNotFound);
+        return Some(OpenFileOutput::FileNotFound);
     }
 
     if uri_path.ends_with('/') {
         path_to_file.push("index.html");
-        PathResolution::AppendedIndexHtml
+        None
     } else {
-        // Redirect: add trailing slash
         let uri = match append_slash_on_path(uri.clone()) {
             Ok(uri) => uri,
-            Err(err) => return PathResolution::EarlyOutput(err),
+            Err(err) => return Some(err),
         };
         let location = HeaderValue::from_str(&uri.to_string()).unwrap();
-        PathResolution::EarlyOutput(OpenFileOutput::Redirect { location })
+        Some(OpenFileOutput::Redirect { location })
     }
 }
 
