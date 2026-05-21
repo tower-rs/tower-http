@@ -294,10 +294,8 @@ async fn maybe_redirect_or_append_path(
 ) -> PathResolution {
     let uri_path = uri.path();
 
-    if uri_path.ends_with('/') && uri_path != "/" {
-        if !is_dir(path_to_file).await {
-            return PathResolution::EarlyOutput(OpenFileOutput::FileNotFound);
-        }
+    if uri_path.ends_with('/') && uri_path != "/" && !is_dir(path_to_file).await {
+        return PathResolution::EarlyOutput(OpenFileOutput::FileNotFound);
     }
 
     if !is_dir(path_to_file).await {
