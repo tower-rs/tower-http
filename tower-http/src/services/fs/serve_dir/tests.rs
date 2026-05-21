@@ -933,6 +933,32 @@ async fn file_requested_with_trailing_slash_with_fallback() {
     assert_eq!(body, "from fallback /index.html/");
 }
 
+#[tokio::test]
+async fn directory_with_trailing_slash_appends_index_html() {
+    let svc = ServeDir::new("../test-files").append_index_html_on_directories(true);
+    let req = Request::builder().uri("/foo/").body(Body::empty()).unwrap();
+
+    let res = svc.oneshot(req).await.unwrap();
+
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.headers()["content-type"], "text/html");
+    let body = body_into_text(res.into_body()).await;
+    assert_eq!(body, "<b>HTML!</b>\n");
+}
+
+#[tokio::test]
+async fn root_with_trailing_slash_serves_appends_index_html() {
+    let svc = ServeDir::new("../test-files").append_index_html_on_directories(true);
+    let req = Request::builder().uri("/").body(Body::empty()).unwrap();
+
+    let res = svc.oneshot(req).await.unwrap();
+
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.headers()["content-type"], "text/html");
+    let body = body_into_text(res.into_body()).await;
+    assert_eq!(body, "<b>HTML!</b>\n");
+}
+
 #[cfg(windows)]
 fn verify_windows_device(name: &str, is_positive: bool) {
     use std::fs::OpenOptions;

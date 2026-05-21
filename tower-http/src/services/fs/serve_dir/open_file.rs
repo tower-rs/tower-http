@@ -40,6 +40,12 @@ pub(super) enum FileRequestExtent {
     Head(Metadata),
 }
 
+pub(super) enum PathResolution {
+    EarlyOutput(OpenFileOutput), // e.g. redirect or 404
+    AppendedIndexHtml,           // we appended index.html, continue
+    NotADirectory,               // file path, do nothing
+}
+
 pub(super) async fn open_file(
     variant: ServeVariant,
     mut path_to_file: PathBuf,
@@ -65,21 +71,16 @@ pub(super) async fn open_file(
             // Might already at this point know a redirect or not found result should be
             // returned which corresponds to a Some(output). Otherwise the path might be
             // modified and proceed to the open file/metadata future.
-            if let Some(output) = maybe_redirect_or_append_path(
+            match maybe_redirect_or_append_path(
                 &mut path_to_file,
                 req.uri(),
                 append_index_html_on_directories,
             )
             .await
             {
-                return Ok(output);
-            }
-
-            // At this point we know we are dealing with a file mapping.
-            // A trailing slash is only valid if it's the root path "/" fetching an index file, otherwise it's invalid.
-            let uri_path = req.uri().path();
-            if uri_path.ends_with('/') && uri_path != "/" {
-                return Ok(OpenFileOutput::FileNotFound);
+                PathResolution::EarlyOutput(output) => return Ok(output),
+                PathResolution::AppendedIndexHtml => { /* continue */ }
+                PathResolution::NotADirectory => { /* continue, it's a file */ }
             }
 
             mime_guess::from_path(&path_to_file)
@@ -290,25 +291,33 @@ async fn maybe_redirect_or_append_path(
     path_to_file: &mut PathBuf,
     uri: &Uri,
     append_index_html_on_directories: bool,
-) -> Option<OpenFileOutput> {
+) -> PathResolution {
+    let uri_path = uri.path();
+
+    if uri_path.ends_with('/') && uri_path != "/" {
+        if !is_dir(path_to_file).await {
+            return PathResolution::EarlyOutput(OpenFileOutput::FileNotFound);
+        }
+    }
+
     if !is_dir(path_to_file).await {
-        return None;
+        return PathResolution::NotADirectory;
     }
 
     if !append_index_html_on_directories {
-        return Some(OpenFileOutput::FileNotFound);
+        return PathResolution::EarlyOutput(OpenFileOutput::FileNotFound);
     }
 
     if uri.path().ends_with('/') {
         path_to_file.push("index.html");
-        None
+        PathResolution::AppendedIndexHtml
     } else {
         let uri = match append_slash_on_path(uri.clone()) {
             Ok(uri) => uri,
-            Err(err) => return Some(err),
+            Err(err) => return PathResolution::EarlyOutput(err),
         };
         let location = HeaderValue::from_str(&uri.to_string()).unwrap();
-        Some(OpenFileOutput::Redirect { location })
+        PathResolution::EarlyOutput(OpenFileOutput::Redirect { location })
     }
 }
 
