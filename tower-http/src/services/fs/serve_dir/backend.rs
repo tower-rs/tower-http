@@ -29,7 +29,7 @@ pub trait Metadata: Send + 'static {
 ///
 /// Must support async reading and seeking (for HTTP range requests).
 /// In-memory backends can use [`std::io::Cursor`] to satisfy the `AsyncSeek` requirement.
-pub trait File: AsyncRead + AsyncSeek + Unpin + Send {
+pub trait File: AsyncRead + AsyncSeek + Unpin + Send + Sync {
     /// The metadata type returned by this file.
     type Metadata: Metadata;
 
@@ -65,8 +65,6 @@ pub trait Backend: Clone + Send + Sync + 'static {
     /// Retrieve metadata for the given path without opening the file.
     fn metadata(&self, path: PathBuf) -> Self::MetadataFuture;
 }
-
-// --- TokioBackend implementation ---
 
 /// Default [`Backend`] implementation using `tokio::fs`.
 #[derive(Clone, Debug, Default)]

@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   feature entries; the underlying dependencies are still pulled in transitively
   by the features that need them (e.g. `compression-gzip`, `fs`, `timeout`).
   ([#628])
+- MSRV bumped from 1.64 to 1.65.
 
 [#215]: https://github.com/tower-rs/tower-http/issues/215
 [#628]: https://github.com/tower-rs/tower-http/pull/628
@@ -40,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Added
 
 - `body`: `UnsyncBoxBody::new()` constructor and `From<ServeFileSystemResponseBody>` conversion to avoid double-boxing when combining `ServeDir` responses with other body types ([#537])
+- `fs`: Add `Backend` trait to make `ServeDir` work with non-filesystem sources. The default `TokioBackend` preserves existing behavior. Use `ServeDir::with_backend()` to plug in custom implementations.
 
 # 0.6.11
 
