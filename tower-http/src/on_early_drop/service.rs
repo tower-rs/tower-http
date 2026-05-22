@@ -370,6 +370,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn body_drop_suppressed_when_is_end_stream_after_data() {
+        // When Content-Length is exact, the consumer stops polling after
+        // receiving all data bytes. The guard must still be suppressed via
+        // is_end_stream() so the drop callback does not fire.
+        let fired = Arc::new(AtomicBool::new(false));
+        let fired_clone = fired.clone();
+
+        let layer = OnEarlyDropLayer::builder().on_body_drop(OnBodyDropFn::new(
+            move |_req: &Request<()>| {
+                let fired = fired_clone.clone();
+                move |_parts: &http::response::Parts| {
+                    let fired = fired.clone();
+                    move || {
+                        fired.store(true, Ordering::Relaxed);
+                    }
+                }
+            },
+        ));
+        let service = layer.layer(ok_service());
+        let response = service.oneshot(request()).await.unwrap();
+        let mut body = response.into_body();
+
+        // Poll only the data frame, then drop (simulating content-length consumer)
+        use http_body::Body as _;
+        let frame = std::future::poll_fn(|cx| std::pin::Pin::new(&mut body).poll_frame(cx)).await;
+        assert!(frame.unwrap().unwrap().data_ref().is_some());
+        drop(body);
+
+        assert!(
+            !fired.load(Ordering::Relaxed),
+            "body drop must not fire when is_end_stream() is true after last data frame",
+        );
+    }
+
+    #[tokio::test]
     async fn body_drop_suppressed_when_is_end_stream_at_construction() {
         let fired = Arc::new(AtomicBool::new(false));
         let fired_clone = fired.clone();
