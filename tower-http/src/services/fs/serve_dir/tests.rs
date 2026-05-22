@@ -1114,7 +1114,20 @@ async fn identity_encoding_does_not_strip_extension() {
         .unwrap();
     let res = svc.oneshot(req).await.unwrap();
 
-    // BUG: currently returns 200 by stripping .foobar and serving extensionless_precompressed
-    // After fix, this should be NOT_FOUND
-    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn identity_encoding_does_not_strip_extension_head_request() {
+    let svc = ServeDir::new("../test-files");
+
+    let req = Request::builder()
+        .uri("/extensionless_precompressed.foobar")
+        .method(Method::HEAD)
+        .header("Accept-Encoding", "identity")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
 }
