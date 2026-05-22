@@ -76,7 +76,7 @@ impl DefaultOnRequest {
 }
 
 impl<B> OnRequest<B> for DefaultOnRequest {
-    fn on_request(&mut self, _: &Request<B>, _: &Span) {
-        event_dynamic_lvl!(self.level, "started processing request");
+    fn on_request(&mut self, _: &Request<B>, span: &Span) {
+        event_dynamic_lvl!(parent: span, self.level, "started processing request");
     }
 }

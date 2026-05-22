@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
+## Changed
+
+- `trace`: `DefaultOnRequest`, `DefaultOnResponse`, `DefaultOnFailure`, and
+  `DefaultOnEos` now explicitly parent their tracing events to the request span
+  rather than relying on the ambient span context. This fixes intermittent cases
+  where events could appear without their request span attached ([#655])
+
 # 0.6.11
 
 ## Added
@@ -51,6 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#408]: https://github.com/tower-rs/tower-http/pull/408
 [#506]: https://github.com/tower-rs/tower-http/pull/506
 [#587]: https://github.com/tower-rs/tower-http/pull/587
+[#655]: https://github.com/tower-rs/tower-http/issues/655
 [#672]: https://github.com/tower-rs/tower-http/pull/672
 [#675]: https://github.com/tower-rs/tower-http/pull/675
 [#677]: https://github.com/tower-rs/tower-http/pull/677
