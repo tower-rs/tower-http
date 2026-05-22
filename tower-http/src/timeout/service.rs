@@ -307,6 +307,9 @@ where
 }
 
 /// Applies an [`AbsoluteTimeoutBody`] to the request body.
+///
+/// Unlike [`RequestBodyTimeoutLayer`], which resets on each frame, this enforces a hard
+/// deadline on the entire body transfer.
 #[derive(Clone, Debug)]
 pub struct RequestBodyAbsoluteTimeoutLayer {
     timeout: Duration,
@@ -372,6 +375,9 @@ where
 }
 
 /// Applies an [`AbsoluteTimeoutBody`] to the response body.
+///
+/// Unlike [`ResponseBodyTimeoutLayer`], which resets on each frame, this enforces a hard
+/// deadline on the entire body transfer.
 #[derive(Clone)]
 pub struct ResponseBodyAbsoluteTimeoutLayer {
     timeout: Duration,

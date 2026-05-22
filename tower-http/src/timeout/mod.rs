@@ -13,6 +13,22 @@
 //! and the specified status code. That means if your service's error type is [`Infallible`], it will
 //! still be [`Infallible`] after applying this middleware.
 //!
+//! # Body timeouts
+//!
+//! Two body timeout wrappers are available for limiting how long a request or response body
+//! transfer can take:
+//!
+//! - [`TimeoutBody`] resets its deadline each time a frame is received. Use this to detect
+//!   idle connections where no data flows for a period of time.
+//! - [`AbsoluteTimeoutBody`] starts a single timer at construction and never resets it. Use
+//!   this to cap the total wall-clock time spent transferring a body, regardless of how
+//!   frequently data arrives.
+//!
+//! Both are applied via their corresponding layer types ([`RequestBodyTimeoutLayer`] /
+//! [`RequestBodyAbsoluteTimeoutLayer`] for request bodies, [`ResponseBodyTimeoutLayer`] /
+//! [`ResponseBodyAbsoluteTimeoutLayer`] for response bodies). They can be stacked if you
+//! want both an idle timeout and an absolute deadline.
+//!
 //! # Example
 //!
 //! ```
