@@ -239,7 +239,9 @@ async fn open_file_with_fallback(
         let encoding = preferred_encoding(&mut path, &negotiated_encoding);
         match (File::open(&path).await, encoding) {
             (Ok(file), maybe_encoding) => break (file, maybe_encoding),
-            (Err(err), Some(encoding)) if err.kind() == io::ErrorKind::NotFound => {
+            (Err(err), Some(encoding))
+                if err.kind() == io::ErrorKind::NotFound && encoding != Encoding::Identity =>
+            {
                 // Remove the extension corresponding to a precompressed file (.gz, .br, .zz)
                 // to reset the path before the next iteration.
                 path.set_extension(OsStr::new(""));
@@ -265,7 +267,9 @@ async fn file_metadata_with_fallback(
         let encoding = preferred_encoding(&mut path, &negotiated_encoding);
         match (tokio::fs::metadata(&path).await, encoding) {
             (Ok(file), maybe_encoding) => break (file, maybe_encoding),
-            (Err(err), Some(encoding)) if err.kind() == io::ErrorKind::NotFound => {
+            (Err(err), Some(encoding))
+                if err.kind() == io::ErrorKind::NotFound && encoding != Encoding::Identity =>
+            {
                 // Remove the extension corresponding to a precompressed file (.gz, .br, .zz)
                 // to reset the path before the next iteration.
                 path.set_extension(OsStr::new(""));
