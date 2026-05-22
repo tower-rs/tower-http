@@ -58,13 +58,19 @@ where
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
-        let this = self.project();
-        let result = ready!(this.inner.poll_frame(cx));
+        let mut this = self.project();
+        let result = ready!(this.inner.as_mut().poll_frame(cx));
         // End-of-stream (Ready(None)) or body-level error (Ready(Some(Err)))
         // both mean the body will not yield more frames. Suppress the guard
         // in either case; service-level errors are out of scope for this
         // middleware.
         if matches!(result, None | Some(Err(_))) {
+            this.guard.completed();
+        }
+        // If the inner body signals end-of-stream after this frame, mark
+        // completed now since the consumer may not poll again (e.g. when
+        // Content-Length is exact).
+        if matches!(result, Some(Ok(_))) && this.inner.is_end_stream() {
             this.guard.completed();
         }
         Poll::Ready(result)
