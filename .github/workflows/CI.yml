@@ -125,6 +125,7 @@ jobs:
       run: |
         cargo hack --remove-dev-deps
         cargo update -Z minimal-versions
+        cargo update -p crc32fast --precise 1.2.0
         cargo check -p tower-http --all-features
 
   semver-checks:
