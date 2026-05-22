@@ -717,6 +717,109 @@ mod tests {
         assert_eq!(1, ON_FAILURE.load(Ordering::SeqCst), "failure");
     }
 
+    #[tokio::test]
+    async fn on_eos_fires_for_content_length_body() {
+        // Simulates the scenario where a consumer stops polling after receiving
+        // all bytes (as hyper does when Content-Length is exact). We poll only
+        // the data frame and never poll to None.
+        use http_body_util::BodyExt;
+
+        static ON_BODY_CHUNK_COUNT: Lazy<AtomicU32> = Lazy::new(|| AtomicU32::new(0));
+        static ON_EOS: Lazy<AtomicU32> = Lazy::new(|| AtomicU32::new(0));
+
+        let trace_layer = TraceLayer::new_for_http()
+            .on_body_chunk(|_chunk: &Bytes, _latency: Duration, _span: &Span| {
+                ON_BODY_CHUNK_COUNT.fetch_add(1, Ordering::SeqCst);
+            })
+            .on_eos(
+                |_trailers: Option<&HeaderMap>, _latency: Duration, _span: &Span| {
+                    ON_EOS.fetch_add(1, Ordering::SeqCst);
+                },
+            );
+
+        let mut svc = ServiceBuilder::new().layer(trace_layer).service_fn(echo);
+
+        let res = svc
+            .ready()
+            .await
+            .unwrap()
+            .call(Request::new(Body::from("hello")))
+            .await
+            .unwrap();
+
+        let mut body = res.into_body();
+
+        // Poll only the data frame (simulating a content-length aware consumer)
+        let frame = body.frame().await.unwrap().unwrap();
+        assert!(frame.data_ref().is_some());
+
+        // BUG: on_eos should fire here but doesn't because the consumer
+        // stopped polling after content-length was satisfied.
+        assert_eq!(1, ON_BODY_CHUNK_COUNT.load(Ordering::SeqCst), "body chunk");
+        assert_eq!(0, ON_EOS.load(Ordering::SeqCst), "eos (bug: should be 1)");
+    }
+
+    #[tokio::test]
+    async fn on_eos_fires_for_streaming_body_on_none() {
+        // Streaming bodies (no content-length) don't report is_end_stream()
+        // until polled to None. Verify on_eos still fires via the None path.
+        static ON_EOS: Lazy<AtomicU32> = Lazy::new(|| AtomicU32::new(0));
+
+        let trace_layer = TraceLayer::new_for_http().on_eos(
+            |_trailers: Option<&HeaderMap>, _latency: Duration, _span: &Span| {
+                ON_EOS.fetch_add(1, Ordering::SeqCst);
+            },
+        );
+
+        let mut svc = ServiceBuilder::new()
+            .layer(trace_layer)
+            .service_fn(streaming_body);
+
+        let res = svc
+            .ready()
+            .await
+            .unwrap()
+            .call(Request::new(Body::empty()))
+            .await
+            .unwrap();
+
+        crate::test_helpers::to_bytes(res.into_body())
+            .await
+            .unwrap();
+        assert_eq!(1, ON_EOS.load(Ordering::SeqCst), "eos");
+    }
+
+    #[tokio::test]
+    async fn on_eos_not_called_twice() {
+        // When is_end_stream() fires on_eos after a data frame, a subsequent
+        // poll returning None must not fire on_eos again.
+        static ON_EOS: Lazy<AtomicU32> = Lazy::new(|| AtomicU32::new(0));
+
+        let trace_layer = TraceLayer::new_for_http().on_eos(
+            |_trailers: Option<&HeaderMap>, _latency: Duration, _span: &Span| {
+                ON_EOS.fetch_add(1, Ordering::SeqCst);
+            },
+        );
+
+        let mut svc = ServiceBuilder::new().layer(trace_layer).service_fn(echo);
+
+        let res = svc
+            .ready()
+            .await
+            .unwrap()
+            .call(Request::new(Body::from("hello")))
+            .await
+            .unwrap();
+
+        // Consume the body fully (polls data frame then None)
+        crate::test_helpers::to_bytes(res.into_body())
+            .await
+            .unwrap();
+
+        // on_eos should fire exactly once, not twice
+        assert_eq!(1, ON_EOS.load(Ordering::SeqCst), "eos");
+    }
+
     async fn echo(req: Request<Body>) -> Result<Response<Body>, BoxError> {
         Ok(Response::new(req.into_body()))
     }
