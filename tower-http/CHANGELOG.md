@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
+## Changed
+
+- The implicit `tokio` and `async-compression` features are removed (BREAKING).
+  These were kept as no-op features in 0.6.x for backwards compatibility after
+  the switch to `dep:` syntax in [#642]. Downstream crates that activate
+  `tower-http/tokio` or `tower-http/async-compression` should remove those
+  feature entries; the underlying dependencies are still pulled in transitively
+  by the features that need them (e.g. `compression-gzip`, `fs`, `timeout`).
+  ([#628])
+
+[#628]: https://github.com/tower-rs/tower-http/pull/628
+[#642]: https://github.com/tower-rs/tower-http/pull/642
+
 # 0.6.11
 
 ## Added

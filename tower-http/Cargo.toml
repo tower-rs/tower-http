@@ -120,11 +120,6 @@ decompression-full = ["decompression-br", "decompression-deflate", "decompressio
 decompression-gzip = ["dep:async-compression", "async-compression?/gzip", "futures-core", "dep:http-body", "dep:http-body-util", "tokio-util", "dep:tokio"]
 decompression-zstd = ["dep:async-compression", "async-compression?/zstd", "futures-core", "dep:http-body", "dep:http-body-util", "tokio-util", "dep:tokio"]
 
-# FIXME: rip this out come 0.7.0.
-# ref: https://github.com/tower-rs/tower-http/pull/666#issuecomment-4382555061
-tokio = []
-async-compression = []
-
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
