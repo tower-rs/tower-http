@@ -18,10 +18,15 @@ mod serve_file;
 pub use self::{
     serve_dir::{
         future::ResponseFuture as ServeFileSystemResponseFuture,
+        Backend,
         DefaultServeDirFallback,
+        File,
+        Metadata,
         // The response body and future are used for both ServeDir and ServeFile
         ResponseBody as ServeFileSystemResponseBody,
         ServeDir,
+        TokioBackend,
+        TokioFile,
     },
     serve_file::ServeFile,
 };

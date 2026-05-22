@@ -17,12 +17,15 @@ use std::{
 };
 use tower_service::Service;
 
+mod backend;
 pub(crate) mod future;
 mod headers;
 mod open_file;
 
 #[cfg(test)]
 mod tests;
+
+pub use self::backend::{Backend, File, Metadata, TokioBackend, TokioFile};
 
 // default capacity 64KiB
 const DEFAULT_CAPACITY: usize = 65536;
@@ -50,7 +53,7 @@ const DEFAULT_CAPACITY: usize = 65536;
 /// let service = ServeDir::new("assets");
 /// ```
 #[derive(Clone, Debug)]
-pub struct ServeDir<F = DefaultServeDirFallback> {
+pub struct ServeDir<F = DefaultServeDirFallback, B = TokioBackend> {
     base: PathBuf,
     redirect_path_prefix: String,
     buf_chunk_size: usize,
@@ -60,6 +63,7 @@ pub struct ServeDir<F = DefaultServeDirFallback> {
     variant: ServeVariant,
     fallback: Option<F>,
     call_fallback_on_method_not_allowed: bool,
+    backend: B,
 }
 
 impl ServeDir<DefaultServeDirFallback> {
@@ -82,6 +86,7 @@ impl ServeDir<DefaultServeDirFallback> {
             },
             fallback: None,
             call_fallback_on_method_not_allowed: false,
+            backend: TokioBackend,
         }
     }
 
@@ -97,11 +102,39 @@ impl ServeDir<DefaultServeDirFallback> {
             variant: ServeVariant::SingleFile { mime },
             fallback: None,
             call_fallback_on_method_not_allowed: false,
+            backend: TokioBackend,
         }
     }
 }
 
-impl<F> ServeDir<F> {
+impl<B: Backend> ServeDir<DefaultServeDirFallback, B> {
+    /// Create a new [`ServeDir`] with a custom [`Backend`].
+    ///
+    /// This allows serving files from sources other than the local filesystem.
+    pub fn with_backend<P>(path: P, backend: B) -> Self
+    where
+        P: AsRef<Path>,
+    {
+        let mut base = PathBuf::from(".");
+        base.push(path.as_ref());
+
+        ServeDir {
+            base,
+            buf_chunk_size: DEFAULT_CAPACITY,
+            precompressed_variants: None,
+            variant: ServeVariant::Directory {
+                append_index_html_on_directories: true,
+                html_as_default_extension: false,
+            },
+            fallback: None,
+            call_fallback_on_method_not_allowed: false,
+            redirect_path_prefix: String::new(),
+            backend,
+        }
+    }
+}
+
+impl<F, B: Backend> ServeDir<F, B> {
     /// If the requested path is a directory append `index.html`.
     ///
     /// This is useful for static sites.
@@ -243,7 +276,7 @@ impl<F> ServeDir<F> {
     ///     // respond with `not_found.html` for missing files
     ///     .fallback(ServeFile::new("assets/not_found.html"));
     /// ```
-    pub fn fallback<F2>(self, new_fallback: F2) -> ServeDir<F2> {
+    pub fn fallback<F2>(self, new_fallback: F2) -> ServeDir<F2, B> {
         ServeDir {
             redirect_path_prefix: self.redirect_path_prefix,
             base: self.base,
@@ -252,6 +285,7 @@ impl<F> ServeDir<F> {
             variant: self.variant,
             fallback: Some(new_fallback),
             call_fallback_on_method_not_allowed: self.call_fallback_on_method_not_allowed,
+            backend: self.backend,
         }
     }
 
@@ -272,7 +306,7 @@ impl<F> ServeDir<F> {
     /// ```
     ///
     /// Setups like this are often found in single page applications.
-    pub fn not_found_service<F2>(self, new_fallback: F2) -> ServeDir<SetStatus<F2>> {
+    pub fn not_found_service<F2>(self, new_fallback: F2) -> ServeDir<SetStatus<F2>, B> {
         self.fallback(SetStatus::new(new_fallback, StatusCode::NOT_FOUND))
     }
 
@@ -415,6 +449,7 @@ impl<F> ServeDir<F> {
             redirect_path_prefix,
             buf_chunk_size,
             precompression_configured,
+            backend: self.backend.clone(),
         };
 
         let open_file_future = Box::pin(open_file::open_file(
@@ -429,12 +464,13 @@ impl<F> ServeDir<F> {
     }
 }
 
-impl<ReqBody, F, FResBody> Service<Request<ReqBody>> for ServeDir<F>
+impl<ReqBody, F, FResBody, B> Service<Request<ReqBody>> for ServeDir<F, B>
 where
     F: Service<Request<ReqBody>, Response = Response<FResBody>, Error = Infallible> + Clone,
     F::Future: Send + 'static,
     FResBody: http_body::Body<Data = Bytes> + Send + 'static,
     FResBody::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+    B: Backend,
 {
     type Response = Response<ResponseBody>;
     type Error = Infallible;

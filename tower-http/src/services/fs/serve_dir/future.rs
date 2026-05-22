@@ -239,8 +239,8 @@ where
 
 fn build_response(output: FileOpened) -> Response<ResponseBody> {
     let (maybe_file, size) = match output.extent {
-        FileRequestExtent::Full(file, meta) => (Some(file), meta.len()),
-        FileRequestExtent::Head(meta) => (None, meta.len()),
+        FileRequestExtent::Full(file, size) => (Some(file), size),
+        FileRequestExtent::Head(size) => (None, size),
     };
 
     let mut builder = Response::builder()
