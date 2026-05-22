@@ -36,12 +36,12 @@ jobs:
       DURATION_MINUTES: ${{ inputs.duration_minutes || '30' }}
       TEST_FILTER: ${{ inputs.test_filter }}
     steps:
-    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+    - uses: actions/checkout@v6
     - uses: dtolnay/rust-toolchain@stable
-    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+    - uses: Swatinem/rust-cache@v2
       with:
         save-if: ${{ github.ref == 'refs/heads/main' }}
-    - uses: taiki-e/install-action@e0eafa9a0d485c37f97c0f7beb930a58a2facbac # v2.79.4
+    - uses: taiki-e/install-action@v2
       with:
         tool: cargo-nextest@0.9.132
     - name: Run stress test
