@@ -1,7 +1,6 @@
 use super::{ClassifiedResponse, ClassifyEos, ClassifyResponse, SharedClassifier};
 use bitflags::bitflags;
 use http::{HeaderMap, Response};
-#[cfg(feature = "trace")]
 use percent_encoding::percent_decode;
 use std::{fmt, num::NonZeroI32};
 
@@ -353,16 +352,11 @@ pub(crate) fn classify_grpc_metadata(
         }
     }
 
-    #[cfg(feature = "trace")]
     let message = headers.get("grpc-message").map(|header| {
         percent_decode(header.as_bytes())
             .decode_utf8_lossy()
             .into_owned()
     });
-    #[cfg(not(feature = "trace"))]
-    let message = headers
-        .get("grpc-message")
-        .and_then(|header| header.to_str().ok().map(|s| s.to_owned()));
 
     ParsedGrpcStatus::NonSuccess(GrpcStatus {
         code: grpc_code,
@@ -564,6 +558,37 @@ mod tests {
                 message: Some("bad\u{FFFD}byte".to_string()),
             })
         );
+    }
+
+    #[test]
+    fn valid_utf8_percent_encoded() {
+        let mut headers = HeaderMap::new();
+        headers.insert("grpc-status", "3".parse().unwrap());
+        // %C3%A9 is the percent-encoded form of 'é' (U+00E9) in UTF-8
+        headers.insert("grpc-message", "caf%C3%A9".parse().unwrap());
+        let status = classify_grpc_metadata(&headers, GrpcCodeBitmask::OK);
+        assert_eq!(
+            status,
+            ParsedGrpcStatus::NonSuccess(GrpcStatus {
+                code: Some(GrpcCode::InvalidArgument),
+                code_raw: 3,
+                message: Some("café".to_string()),
+            })
+        );
+    }
+
+    #[test]
+    fn grpc_ok_classified_as_success() {
+        use http::Response;
+
+        let res = Response::builder()
+            .header("grpc-status", "0")
+            .body(())
+            .unwrap();
+
+        let classifier = GrpcErrorsAsFailures::new();
+        let result = classifier.classify_response(&res);
+        assert!(matches!(result, ClassifiedResponse::Ready(Ok(()))));
     }
 
     #[test]
