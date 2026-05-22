@@ -1100,3 +1100,21 @@ fn test_build_and_validate_path_reserved_dos_names() {
         }
     }
 }
+
+// Regression test for https://github.com/tower-rs/tower-http/issues/664
+// Accept-Encoding: identity should not cause extension stripping
+#[tokio::test]
+async fn identity_encoding_does_not_strip_extension() {
+    let svc = ServeDir::new("../test-files");
+
+    let req = Request::builder()
+        .uri("/extensionless_precompressed.foobar")
+        .header("Accept-Encoding", "identity")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+
+    // BUG: currently returns 200 by stripping .foobar and serving extensionless_precompressed
+    // After fix, this should be NOT_FOUND
+    assert_eq!(res.status(), StatusCode::OK);
+}
