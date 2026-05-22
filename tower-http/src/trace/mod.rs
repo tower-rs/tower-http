@@ -753,10 +753,10 @@ mod tests {
         let frame = body.frame().await.unwrap().unwrap();
         assert!(frame.data_ref().is_some());
 
-        // BUG: on_eos should fire here but doesn't because the consumer
-        // stopped polling after content-length was satisfied.
+        // on_eos should have fired immediately after the data frame since
+        // is_end_stream() is true for Full bodies after yielding their data.
         assert_eq!(1, ON_BODY_CHUNK_COUNT.load(Ordering::SeqCst), "body chunk");
-        assert_eq!(0, ON_EOS.load(Ordering::SeqCst), "eos (bug: should be 1)");
+        assert_eq!(1, ON_EOS.load(Ordering::SeqCst), "eos");
     }
 
     #[tokio::test]
