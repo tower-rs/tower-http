@@ -76,7 +76,7 @@ where
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match self.project().kind.project() {
             StateProj::Inner { fut } => fut.poll(cx).map_ok(|res| {
-                res.map(|body| UnsyncBoxBody::new(body.map_err(Into::into).boxed_unsync()))
+                res.map(|body| UnsyncBoxBody::from_inner(body.map_err(Into::into).boxed_unsync()))
             }),
             StateProj::Unsupported { accept } => {
                 let res = Response::builder()
@@ -87,7 +87,7 @@ where
                             .unwrap_or(HeaderValue::from_static("identity")),
                     )
                     .status(StatusCode::UNSUPPORTED_MEDIA_TYPE)
-                    .body(UnsyncBoxBody::new(
+                    .body(UnsyncBoxBody::from_inner(
                         Empty::new().map_err(Into::into).boxed_unsync(),
                     ))
                     .unwrap();
