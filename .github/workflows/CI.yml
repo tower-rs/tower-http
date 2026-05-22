@@ -6,13 +6,20 @@ on:
     - main
   pull_request: {}
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
     - uses: dtolnay/rust-toolchain@stable
-    - uses: Swatinem/rust-cache@v2
+    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       with:
         save-if: ${{ github.ref == 'refs/heads/main' }}
     - run: cargo check --workspace --all-features --all-targets
@@ -20,8 +27,11 @@ jobs:
   check-docs:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
     - uses: dtolnay/rust-toolchain@nightly
+    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      with:
+        save-if: ${{ github.ref == 'refs/heads/main' }}
     - name: cargo doc
       env:
         RUSTDOCFLAGS: "-D rustdoc::broken_intra_doc_links --cfg docsrs"
@@ -30,12 +40,14 @@ jobs:
   cargo-hack:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
     - uses: dtolnay/rust-toolchain@stable
-    - uses: Swatinem/rust-cache@v2
+    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       with:
         save-if: ${{ github.ref == 'refs/heads/main' }}
-    - uses: taiki-e/install-action@cargo-hack
+    - uses: taiki-e/install-action@e0eafa9a0d485c37f97c0f7beb930a58a2facbac # v2.79.4
+      with:
+        tool: cargo-hack
     - name: cargo hack check
       env:
         RUSTFLAGS: "-D unused_imports -D dead_code -D unused_variables"
@@ -49,12 +61,28 @@ jobs:
       matrix:
         rust: [stable, beta, nightly]
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
     - uses: dtolnay/rust-toolchain@master
       with:
         toolchain: ${{ matrix.rust }}
-    - uses: Swatinem/rust-cache@v2
+    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       if: matrix.rust != 'nightly'
+      with:
+        save-if: ${{ github.ref == 'refs/heads/main' }}
+    - run: cargo test --workspace --all-features
+
+  test-os:
+    # Test on macOS and Windows to catch platform-specific issues.
+    needs: check
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+    - uses: dtolnay/rust-toolchain@stable
+    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       with:
         save-if: ${{ github.ref == 'refs/heads/main' }}
     - run: cargo test --workspace --all-features
@@ -63,7 +91,7 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
     - name: Remove the example crates to exclude effects to dependencies from them
       run: rm -r ./examples/* && cargo new --lib --edition 2021 examples/dummy
     - name: Resolve MSRV aware dependencies
@@ -75,16 +103,50 @@ jobs:
     - run: cargo update -p async-compression --precise 0.4.23
     - run: cargo update -p flate2 --precise 1.0.35
     - uses: dtolnay/rust-toolchain@1.64
-    - uses: Swatinem/rust-cache@v2
+    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       with:
         save-if: ${{ github.ref == 'refs/heads/main' }}
     - run: cargo check -p tower-http --all-features
+
+  minimal-versions:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+    - uses: dtolnay/rust-toolchain@nightly
+    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      with:
+        save-if: ${{ github.ref == 'refs/heads/main' }}
+    - name: Install cargo-hack
+      uses: taiki-e/install-action@e0eafa9a0d485c37f97c0f7beb930a58a2facbac # v2.79.4
+      with:
+        tool: cargo-hack
+    - name: Check with minimal versions
+      run: |
+        cargo hack --remove-dev-deps
+        cargo update -Z minimal-versions
+        cargo check -p tower-http --all-features
+
+  semver-checks:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+    - uses: dtolnay/rust-toolchain@stable
+    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      with:
+        save-if: ${{ github.ref == 'refs/heads/main' }}
+    - name: Install cargo-semver-checks
+      uses: taiki-e/install-action@e0eafa9a0d485c37f97c0f7beb930a58a2facbac # v2.79.4
+      with:
+        tool: cargo-semver-checks
+    - name: Check semver compatibility
+      run: cargo semver-checks check-release -p tower-http --all-features
 
   style:
     needs: check
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
     - uses: dtolnay/rust-toolchain@stable
       with:
         components: rustfmt
@@ -94,7 +156,7 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
     - uses: dtolnay/rust-toolchain@stable
       with:
         components: clippy
@@ -110,8 +172,8 @@ jobs:
         - advisories
         - bans licenses sources
     steps:
-    - uses: actions/checkout@v6
-    - uses: EmbarkStudios/cargo-deny-action@v2
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+    - uses: EmbarkStudios/cargo-deny-action@6c8f9facfa5047ec02d8485b6bf52b587b7777d1 # v2.0.18
       with:
         manifest-path: tower-http/Cargo.toml
         command: check ${{ matrix.checks }}
@@ -119,15 +181,15 @@ jobs:
   external-types:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
     - uses: dtolnay/rust-toolchain@master
       with:
         toolchain: nightly-2025-10-18
     - name: Install cargo-check-external-types
-      uses: taiki-e/cache-cargo-install-action@v2
+      uses: taiki-e/cache-cargo-install-action@7447f04c51f2ba27ca35e7f1e28fab848c5b3ba7 # v2.3.1
       with:
         tool: cargo-check-external-types@0.4.0
-    - uses: Swatinem/rust-cache@v2
+    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       with:
         save-if: ${{ github.ref == 'refs/heads/main' }}
     - run: cargo check-external-types --all-features
