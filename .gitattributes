@@ -1,0 +1,2 @@
+# Preserve LF line endings in test fixtures so tests pass on Windows.
+test-files/** eol=lf
