@@ -13,6 +13,9 @@ use std::fs;
 use std::io::Read;
 use tower::{service_fn, ServiceExt};
 
+/// Expected prefix of the decompressed content in precompressed test files.
+const EXPECTED_CONTENT_PREFIX: &str = "Test file";
+
 #[tokio::test]
 async fn basic() {
     let svc = ServeDir::new("..");
@@ -59,7 +62,7 @@ async fn head_request() {
     let res = svc.oneshot(req).await.unwrap();
 
     assert_eq!(res.headers()["content-type"], "text/plain");
-    assert_eq!(res.headers()["content-length"], "23");
+    assert_eq!(res.headers()["content-length"], "10");
 
     assert!(res.into_body().frame().await.is_none());
 }
@@ -78,7 +81,7 @@ async fn precompresed_head_request() {
 
     assert_eq!(res.headers()["content-type"], "text/plain");
     assert_eq!(res.headers()["content-encoding"], "gzip");
-    assert_eq!(res.headers()["content-length"], "59");
+    assert_eq!(res.headers()["content-length"], "30");
 
     assert!(res.into_body().frame().await.is_none());
 }
@@ -120,7 +123,7 @@ async fn precompressed_gzip() {
     let mut decoder = GzDecoder::new(&body[..]);
     let mut decompressed = String::new();
     decoder.read_to_string(&mut decompressed).unwrap();
-    assert!(decompressed.starts_with("\"This is a test file!\""));
+    assert!(decompressed.starts_with(EXPECTED_CONTENT_PREFIX));
 }
 
 #[tokio::test]
@@ -141,7 +144,7 @@ async fn precompressed_br() {
     let mut decompressed = Vec::new();
     BrotliDecompress(&mut &body[..], &mut decompressed).unwrap();
     let decompressed = String::from_utf8(decompressed.to_vec()).unwrap();
-    assert!(decompressed.starts_with("\"This is a test file!\""));
+    assert!(decompressed.starts_with(EXPECTED_CONTENT_PREFIX));
 }
 
 #[tokio::test]
@@ -161,7 +164,7 @@ async fn precompressed_deflate() {
     let mut decoder = DeflateDecoder::new(&body[..]);
     let mut decompressed = String::new();
     decoder.read_to_string(&mut decompressed).unwrap();
-    assert!(decompressed.starts_with("\"This is a test file!\""));
+    assert!(decompressed.starts_with(EXPECTED_CONTENT_PREFIX));
 }
 
 #[tokio::test]
@@ -180,7 +183,7 @@ async fn unsupported_precompression_alogrithm_fallbacks_to_uncompressed() {
 
     let body = res.into_body().collect().await.unwrap().to_bytes();
     let body = String::from_utf8(body.to_vec()).unwrap();
-    assert!(body.starts_with("\"This is a test file!\""));
+    assert!(body.starts_with(EXPECTED_CONTENT_PREFIX));
 }
 
 #[tokio::test]
@@ -210,7 +213,7 @@ async fn only_precompressed_variant_existing() {
     let mut decoder = GzDecoder::new(&body[..]);
     let mut decompressed = String::new();
     decoder.read_to_string(&mut decompressed).unwrap();
-    assert!(decompressed.starts_with("\"This is a test file\""));
+    assert!(decompressed.starts_with(EXPECTED_CONTENT_PREFIX));
 }
 
 #[tokio::test]
@@ -230,7 +233,7 @@ async fn missing_precompressed_variant_fallbacks_to_uncompressed() {
 
     let body = res.into_body().collect().await.unwrap().to_bytes();
     let body = String::from_utf8(body.to_vec()).unwrap();
-    assert!(body.starts_with("Test file!"));
+    assert!(body.starts_with(EXPECTED_CONTENT_PREFIX));
 }
 
 #[tokio::test]
@@ -246,7 +249,7 @@ async fn missing_precompressed_variant_fallbacks_to_uncompressed_for_head_reques
     let res = svc.oneshot(request).await.unwrap();
 
     assert_eq!(res.headers()["content-type"], "text/plain");
-    assert_eq!(res.headers()["content-length"], "11");
+    assert_eq!(res.headers()["content-length"], "10");
     // Uncompressed file is served because compressed version is missing
     assert!(res.headers().get("content-encoding").is_none());
 
@@ -417,7 +420,7 @@ async fn fallbacks_to_different_precompressed_variant_if_not_found() {
     let mut decompressed = Vec::new();
     BrotliDecompress(&mut &body[..], &mut decompressed).unwrap();
     let decompressed = String::from_utf8(decompressed.to_vec()).unwrap();
-    assert!(decompressed.starts_with("Test file"));
+    assert!(decompressed.starts_with(EXPECTED_CONTENT_PREFIX));
 }
 
 #[tokio::test]
