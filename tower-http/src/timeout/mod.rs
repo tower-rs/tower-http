@@ -40,11 +40,14 @@
 //!
 //! [`Infallible`]: std::convert::Infallible
 
+mod absolute_body;
 mod body;
 mod service;
 
+pub use absolute_body::AbsoluteTimeoutBody;
 pub use body::{TimeoutBody, TimeoutError};
 pub use service::{
-    RequestBodyTimeout, RequestBodyTimeoutLayer, ResponseBodyTimeout, ResponseBodyTimeoutLayer,
-    Timeout, TimeoutLayer,
+    RequestBodyAbsoluteTimeout, RequestBodyAbsoluteTimeoutLayer, RequestBodyTimeout,
+    RequestBodyTimeoutLayer, ResponseBodyAbsoluteTimeout, ResponseBodyAbsoluteTimeoutLayer,
+    ResponseBodyTimeout, ResponseBodyTimeoutLayer, Timeout, TimeoutLayer,
 };

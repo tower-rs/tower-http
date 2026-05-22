@@ -1,3 +1,4 @@
+use crate::timeout::absolute_body::AbsoluteTimeoutBody;
 use crate::timeout::body::TimeoutBody;
 use http::{Request, Response, StatusCode};
 use pin_project_lite::pin_project;
@@ -302,6 +303,161 @@ where
         let this = self.project();
         let res = ready!(this.inner.poll(cx))?;
         Poll::Ready(Ok(res.map(|body| TimeoutBody::new(timeout, body))))
+    }
+}
+
+/// Applies an [`AbsoluteTimeoutBody`] to the request body.
+#[derive(Clone, Debug)]
+pub struct RequestBodyAbsoluteTimeoutLayer {
+    timeout: Duration,
+}
+
+impl RequestBodyAbsoluteTimeoutLayer {
+    /// Creates a new [`RequestBodyAbsoluteTimeoutLayer`].
+    pub fn new(timeout: Duration) -> Self {
+        Self { timeout }
+    }
+}
+
+impl<S> Layer<S> for RequestBodyAbsoluteTimeoutLayer {
+    type Service = RequestBodyAbsoluteTimeout<S>;
+
+    fn layer(&self, inner: S) -> Self::Service {
+        RequestBodyAbsoluteTimeout::new(inner, self.timeout)
+    }
+}
+
+/// Applies an [`AbsoluteTimeoutBody`] to the request body.
+#[derive(Clone, Debug)]
+pub struct RequestBodyAbsoluteTimeout<S> {
+    inner: S,
+    timeout: Duration,
+}
+
+impl<S> RequestBodyAbsoluteTimeout<S> {
+    /// Creates a new [`RequestBodyAbsoluteTimeout`].
+    pub fn new(service: S, timeout: Duration) -> Self {
+        Self {
+            inner: service,
+            timeout,
+        }
+    }
+
+    /// Returns a new [`Layer`] that wraps services with a [`RequestBodyAbsoluteTimeoutLayer`] middleware.
+    ///
+    /// [`Layer`]: tower_layer::Layer
+    pub fn layer(timeout: Duration) -> RequestBodyAbsoluteTimeoutLayer {
+        RequestBodyAbsoluteTimeoutLayer::new(timeout)
+    }
+
+    define_inner_service_accessors!();
+}
+
+impl<S, ReqBody> Service<Request<ReqBody>> for RequestBodyAbsoluteTimeout<S>
+where
+    S: Service<Request<AbsoluteTimeoutBody<ReqBody>>>,
+{
+    type Response = S::Response;
+    type Error = S::Error;
+    type Future = S::Future;
+
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx)
+    }
+
+    fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
+        let req = req.map(|body| AbsoluteTimeoutBody::new(self.timeout, body));
+        self.inner.call(req)
+    }
+}
+
+/// Applies an [`AbsoluteTimeoutBody`] to the response body.
+#[derive(Clone)]
+pub struct ResponseBodyAbsoluteTimeoutLayer {
+    timeout: Duration,
+}
+
+impl ResponseBodyAbsoluteTimeoutLayer {
+    /// Creates a new [`ResponseBodyAbsoluteTimeoutLayer`].
+    pub fn new(timeout: Duration) -> Self {
+        Self { timeout }
+    }
+}
+
+impl<S> Layer<S> for ResponseBodyAbsoluteTimeoutLayer {
+    type Service = ResponseBodyAbsoluteTimeout<S>;
+
+    fn layer(&self, inner: S) -> Self::Service {
+        ResponseBodyAbsoluteTimeout::new(inner, self.timeout)
+    }
+}
+
+/// Applies an [`AbsoluteTimeoutBody`] to the response body.
+#[derive(Clone)]
+pub struct ResponseBodyAbsoluteTimeout<S> {
+    inner: S,
+    timeout: Duration,
+}
+
+impl<S> ResponseBodyAbsoluteTimeout<S> {
+    /// Creates a new [`ResponseBodyAbsoluteTimeout`].
+    pub fn new(service: S, timeout: Duration) -> Self {
+        Self {
+            inner: service,
+            timeout,
+        }
+    }
+
+    /// Returns a new [`Layer`] that wraps services with a [`ResponseBodyAbsoluteTimeoutLayer`] middleware.
+    ///
+    /// [`Layer`]: tower_layer::Layer
+    pub fn layer(timeout: Duration) -> ResponseBodyAbsoluteTimeoutLayer {
+        ResponseBodyAbsoluteTimeoutLayer::new(timeout)
+    }
+
+    define_inner_service_accessors!();
+}
+
+impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for ResponseBodyAbsoluteTimeout<S>
+where
+    S: Service<Request<ReqBody>, Response = Response<ResBody>>,
+{
+    type Response = Response<AbsoluteTimeoutBody<ResBody>>;
+    type Error = S::Error;
+    type Future = ResponseBodyAbsoluteTimeoutFuture<S::Future>;
+
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx)
+    }
+
+    fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
+        ResponseBodyAbsoluteTimeoutFuture {
+            inner: self.inner.call(req),
+            timeout: self.timeout,
+        }
+    }
+}
+
+pin_project! {
+    /// Response future for [`ResponseBodyAbsoluteTimeout`].
+    pub struct ResponseBodyAbsoluteTimeoutFuture<Fut> {
+        #[pin]
+        inner: Fut,
+        timeout: Duration,
+    }
+}
+
+impl<Fut, ResBody, E> Future for ResponseBodyAbsoluteTimeoutFuture<Fut>
+where
+    Fut: Future<Output = Result<Response<ResBody>, E>>,
+{
+    type Output = Result<Response<AbsoluteTimeoutBody<ResBody>>, E>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let timeout = self.timeout;
+        let this = self.project();
+        let res = ready!(this.inner.poll(cx))?;
+        Poll::Ready(Ok(res.map(|body| AbsoluteTimeoutBody::new(timeout, body))))
     }
 }
 
