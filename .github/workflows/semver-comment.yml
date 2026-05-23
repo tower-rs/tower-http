@@ -43,7 +43,7 @@ jobs:
 
       - name: Post comment
         if: steps.build.outputs.comment
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           number: ${{ github.event.workflow_run.pull_requests[0].number }}
           header: semver-checks
@@ -51,7 +51,7 @@ jobs:
 
       - name: Hide comment
         if: steps.download.outcome == 'failure'
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           number: ${{ github.event.workflow_run.pull_requests[0].number }}
           header: semver-checks
