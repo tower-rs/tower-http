@@ -974,6 +974,7 @@ async fn root_with_trailing_slash_serves_appends_index_html() {
 }
 
 #[cfg(windows)]
+#[allow(unsafe_code)]
 fn verify_windows_device(name: &str, is_positive: bool) {
     use std::fs::OpenOptions;
     use std::os::windows::io::AsRawHandle;

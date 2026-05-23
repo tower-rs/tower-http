@@ -1,0 +1,58 @@
+name: Semver Checks Comment
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+
+permissions:
+  actions: read
+  pull-requests: write
+
+jobs:
+  comment:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.event == 'pull_request'
+    steps:
+      - name: Download results
+        id: download
+        uses: actions/download-artifact@v4
+        with:
+          name: semver-checks-output
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+        continue-on-error: true
+
+      - name: Build comment
+        id: build
+        if: steps.download.outcome == 'success'
+        run: |
+          echo "comment<<EOF" >> "$GITHUB_OUTPUT"
+          echo "### ⚠️ Breaking API changes detected" >> "$GITHUB_OUTPUT"
+          echo "" >> "$GITHUB_OUTPUT"
+          echo "Please make sure these are intentional and noted in the changelog." >> "$GITHUB_OUTPUT"
+          echo "" >> "$GITHUB_OUTPUT"
+          echo "<details><summary>cargo semver-checks output</summary>" >> "$GITHUB_OUTPUT"
+          echo "" >> "$GITHUB_OUTPUT"
+          echo '```' >> "$GITHUB_OUTPUT"
+          cat semver-output.txt >> "$GITHUB_OUTPUT"
+          echo '```' >> "$GITHUB_OUTPUT"
+          echo "</details>" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Post comment
+        if: steps.build.outputs.comment
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          number: ${{ github.event.workflow_run.pull_requests[0].number }}
+          header: semver-checks
+          message: ${{ steps.build.outputs.comment }}
+
+      - name: Hide comment
+        if: steps.download.outcome == 'failure'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          number: ${{ github.event.workflow_run.pull_requests[0].number }}
+          header: semver-checks
+          hide: true
