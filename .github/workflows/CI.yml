@@ -129,10 +129,12 @@ jobs:
         cargo check -p tower-http --all-features
 
   semver-checks:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
     - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
     - uses: dtolnay/rust-toolchain@stable
     - uses: Swatinem/rust-cache@v2
       with:
@@ -142,7 +144,22 @@ jobs:
       with:
         tool: cargo-semver-checks
     - name: Check semver compatibility
-      run: cargo semver-checks check-release -p tower-http --all-features
+      id: checks
+      run: |
+        set +e
+        OUTPUT=$(cargo semver-checks check-release -p tower-http --all-features \
+          --baseline-rev origin/${{ github.base_ref }} --color never 2>&1)
+        STATUS=$?
+        echo "$OUTPUT"
+        if [ $STATUS -ne 0 ]; then
+          echo "$OUTPUT" > semver-output.txt
+        fi
+    - name: Upload results
+      if: always() && hashFiles('semver-output.txt') != ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: semver-checks-output
+        path: semver-output.txt
 
   style:
     needs: check
