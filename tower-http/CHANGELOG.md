@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Changed
 
+- `trace`: `DefaultOnRequest`, `DefaultOnResponse`, `DefaultOnFailure`, and
+  `DefaultOnEos` now explicitly parent their tracing events to the request span
+  rather than relying on the ambient span context. This fixes intermittent cases
+  where events could appear without their request span attached ([#655])
 - The implicit `tokio` and `async-compression` features are removed (BREAKING).
   These were kept as no-op features in 0.6.x for backwards compatibility after
   the switch to `dep:` syntax in [#642]. Downstream crates that activate
@@ -64,6 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#408]: https://github.com/tower-rs/tower-http/pull/408
 [#506]: https://github.com/tower-rs/tower-http/pull/506
 [#587]: https://github.com/tower-rs/tower-http/pull/587
+[#655]: https://github.com/tower-rs/tower-http/issues/655
 [#672]: https://github.com/tower-rs/tower-http/pull/672
 [#675]: https://github.com/tower-rs/tower-http/pull/675
 [#677]: https://github.com/tower-rs/tower-http/pull/677
