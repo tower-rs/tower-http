@@ -102,7 +102,7 @@ jobs:
     # Still better to maintain fewer manual version overrides though.
     - run: cargo update -p async-compression --precise 0.4.23
     - run: cargo update -p flate2 --precise 1.0.35
-    - uses: dtolnay/rust-toolchain@1.64
+    - uses: dtolnay/rust-toolchain@1.100
     - uses: Swatinem/rust-cache@v2
       with:
         save-if: ${{ github.ref == 'refs/heads/main' }}
