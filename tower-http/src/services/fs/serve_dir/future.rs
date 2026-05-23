@@ -119,8 +119,22 @@ where
                         )));
                     }
 
-                    Ok(OpenFileOutput::NotModified) => {
-                        break Poll::Ready(Ok(response_with_status(StatusCode::NOT_MODIFIED)));
+                    Ok(OpenFileOutput::NotModified {
+                        etag,
+                        last_modified,
+                    }) => {
+                        let mut res = response_with_status(StatusCode::NOT_MODIFIED);
+                        if let Some(etag) = etag {
+                            res.headers_mut()
+                                .insert(header::ETAG, etag.into_header_value());
+                        }
+                        if let Some(last_modified) = last_modified {
+                            res.headers_mut().insert(
+                                header::LAST_MODIFIED,
+                                HeaderValue::from_str(&last_modified.0.to_string()).unwrap(),
+                            );
+                        }
+                        break Poll::Ready(Ok(res));
                     }
 
                     Ok(OpenFileOutput::InvalidRedirectUri) => {
@@ -248,6 +262,10 @@ fn build_response(output: FileOpened) -> Response<ResponseBody> {
 
     if let Some(last_modified) = output.last_modified {
         builder = builder.header(header::LAST_MODIFIED, last_modified.0.to_string());
+    }
+
+    if let Some(etag) = output.etag {
+        builder = builder.header(header::ETAG, etag.into_header_value());
     }
 
     match output.maybe_range {
