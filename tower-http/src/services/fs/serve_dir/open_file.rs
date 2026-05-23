@@ -33,6 +33,7 @@ pub(super) struct FileOpened {
     pub(super) maybe_encoding: Option<Encoding>,
     pub(super) maybe_range: Option<Result<Vec<RangeInclusive<u64>>, RangeUnsatisfiableError>>,
     pub(super) last_modified: Option<LastModified>,
+    pub(super) precompression_configured: bool,
 }
 
 pub(super) enum FileRequestExtent {
@@ -47,6 +48,7 @@ pub(super) async fn open_file(
     negotiated_encodings: Vec<(Encoding, QValue)>,
     range_header: Option<String>,
     buf_chunk_size: usize,
+    precompression_configured: bool,
 ) -> io::Result<OpenFileOutput> {
     let if_unmodified_since = req
         .headers()
@@ -108,6 +110,7 @@ pub(super) async fn open_file(
             maybe_encoding,
             maybe_range,
             last_modified,
+            precompression_configured,
         })))
     } else {
         let (mut file, maybe_encoding) =
@@ -147,6 +150,7 @@ pub(super) async fn open_file(
             maybe_encoding,
             maybe_range,
             last_modified,
+            precompression_configured,
         })))
     }
 }

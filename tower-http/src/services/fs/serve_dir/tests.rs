@@ -1158,9 +1158,7 @@ async fn precompressed_response_includes_vary_header() {
     let res = svc.oneshot(req).await.unwrap();
 
     assert_eq!(res.headers()["content-encoding"], "gzip");
-    // BUG: Vary header should be present but is missing.
-    // This assertion is inverted to demonstrate the bug; the next commit fixes it.
-    assert!(res.headers().get("vary").is_none());
+    assert_eq!(res.headers()["vary"], "accept-encoding");
 }
 
 #[tokio::test]
@@ -1190,7 +1188,35 @@ async fn vary_header_present_when_precompressed_configured_but_fallback_to_uncom
     let res = svc.oneshot(req).await.unwrap();
 
     assert!(res.headers().get("content-encoding").is_none());
-    // BUG: Vary header should be present but is missing.
-    // This assertion is inverted to demonstrate the bug; the next commit fixes it.
-    assert!(res.headers().get("vary").is_none());
+    assert_eq!(res.headers()["vary"], "accept-encoding");
+}
+
+#[tokio::test]
+async fn vary_header_present_when_precompressed_configured_but_no_accept_encoding() {
+    let svc = ServeDir::new(TEST_FILES_DIR).precompressed_gzip();
+
+    let req = Request::builder()
+        .uri("/precompressed.txt")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+
+    assert!(res.headers().get("content-encoding").is_none());
+    assert_eq!(res.headers()["vary"], "accept-encoding");
+}
+
+#[tokio::test]
+async fn precompressed_head_request_includes_vary_header() {
+    let svc = ServeDir::new(TEST_FILES_DIR).precompressed_gzip();
+
+    let req = Request::builder()
+        .uri("/precompressed.txt")
+        .method(Method::HEAD)
+        .header("Accept-Encoding", "gzip")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+
+    assert_eq!(res.headers()["content-encoding"], "gzip");
+    assert_eq!(res.headers()["vary"], "accept-encoding");
 }
