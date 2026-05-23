@@ -6,6 +6,13 @@ on:
     - main
   pull_request: {}
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -22,6 +29,9 @@ jobs:
     steps:
     - uses: actions/checkout@v6
     - uses: dtolnay/rust-toolchain@nightly
+    - uses: Swatinem/rust-cache@v2
+      with:
+        save-if: ${{ github.ref == 'refs/heads/main' }}
     - name: cargo doc
       env:
         RUSTDOCFLAGS: "-D rustdoc::broken_intra_doc_links --cfg docsrs"
@@ -35,7 +45,9 @@ jobs:
     - uses: Swatinem/rust-cache@v2
       with:
         save-if: ${{ github.ref == 'refs/heads/main' }}
-    - uses: taiki-e/install-action@cargo-hack
+    - uses: taiki-e/install-action@v2
+      with:
+        tool: cargo-hack
     - name: cargo hack check
       env:
         RUSTFLAGS: "-D unused_imports -D dead_code -D unused_variables"
@@ -55,6 +67,22 @@ jobs:
         toolchain: ${{ matrix.rust }}
     - uses: Swatinem/rust-cache@v2
       if: matrix.rust != 'nightly'
+      with:
+        save-if: ${{ github.ref == 'refs/heads/main' }}
+    - run: cargo test --workspace --all-features
+
+  test-os:
+    # Test on macOS and Windows to catch platform-specific issues.
+    needs: check
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+    - uses: actions/checkout@v6
+    - uses: dtolnay/rust-toolchain@stable
+    - uses: Swatinem/rust-cache@v2
       with:
         save-if: ${{ github.ref == 'refs/heads/main' }}
     - run: cargo test --workspace --all-features
@@ -79,6 +107,59 @@ jobs:
       with:
         save-if: ${{ github.ref == 'refs/heads/main' }}
     - run: cargo check -p tower-http --all-features
+
+  minimal-versions:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+    - uses: dtolnay/rust-toolchain@nightly
+    - uses: Swatinem/rust-cache@v2
+      with:
+        save-if: ${{ github.ref == 'refs/heads/main' }}
+    - name: Install cargo-hack
+      uses: taiki-e/install-action@v2
+      with:
+        tool: cargo-hack
+    - name: Check with minimal versions
+      run: |
+        cargo hack --remove-dev-deps
+        cargo update -Z minimal-versions
+        cargo update -p crc32fast --precise 1.2.0
+        cargo check -p tower-http --all-features
+
+  semver-checks:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+    - uses: dtolnay/rust-toolchain@stable
+    - uses: Swatinem/rust-cache@v2
+      with:
+        save-if: ${{ github.ref == 'refs/heads/main' }}
+    - name: Install cargo-semver-checks
+      uses: taiki-e/install-action@v2
+      with:
+        tool: cargo-semver-checks
+    - name: Check semver compatibility
+      id: checks
+      run: |
+        set +e
+        OUTPUT=$(cargo semver-checks check-release -p tower-http --all-features \
+          --baseline-rev origin/${{ github.base_ref }} --color never 2>&1)
+        STATUS=$?
+        echo "$OUTPUT"
+        if [ $STATUS -ne 0 ]; then
+          echo "$OUTPUT" > semver-output.txt
+        fi
+    - name: Upload results
+      if: always() && hashFiles('semver-output.txt') != ''
+      uses: actions/upload-artifact@v7
+      with:
+        name: semver-checks-output
+        path: semver-output.txt
 
   style:
     needs: check
@@ -124,7 +205,7 @@ jobs:
       with:
         toolchain: nightly-2025-10-18
     - name: Install cargo-check-external-types
-      uses: taiki-e/cache-cargo-install-action@v2
+      uses: taiki-e/cache-cargo-install-action@v3
       with:
         tool: cargo-check-external-types@0.4.0
     - uses: Swatinem/rust-cache@v2
