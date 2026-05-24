@@ -296,6 +296,9 @@ pub mod metrics;
 #[cfg(feature = "cors")]
 pub mod cors;
 
+#[cfg(feature = "csrf")]
+pub mod csrf;
+
 #[cfg(feature = "request-id")]
 pub mod request_id;
 
