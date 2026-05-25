@@ -2,9 +2,19 @@ use http::Uri;
 
 use super::ConfigError;
 
+/// A validated, canonicalized trusted-origin string.
+///
+/// Wraps the output of [`UriExt::parse_origin`] + [`UriExt::canonical`] so the
+/// canonical string can be carried around the type system without re-validation.
+/// Construct via [`TrustedOrigin::parse`]; unwrap the inner string with
+/// [`TrustedOrigin::into_canonical`].
 pub(crate) struct TrustedOrigin(String);
 
 impl TrustedOrigin {
+    /// Parses and canonicalizes `input` as a trusted origin.
+    ///
+    /// Forwards validation to [`UriExt::parse_origin`] (see that method for the
+    /// rejected forms) and then runs [`UriExt::canonical`] on the result.
     pub(crate) fn parse(input: &str) -> Result<Self, ConfigError> {
         let uri = Uri::parse_origin(input)?;
 
@@ -14,18 +24,53 @@ impl TrustedOrigin {
         ))
     }
 
+    /// Consumes the wrapper and returns the canonical `scheme://host[:port]`
+    /// string.
     pub(crate) fn into_canonical(self) -> String {
         self.0
     }
 }
 
+/// Internal extension methods on [`http::Uri`] used by the CSRF middleware to
+/// normalize and compare browser-supplied `Origin` values.
 pub(crate) trait UriExt: Sized {
+    /// Returns the canonical `scheme://host[:port]` representation, or `None`
+    /// for URIs that can't appear in a browser `Origin` header.
+    ///
+    /// Normalization:
+    ///
+    /// - scheme is `http` or `https` (otherwise `None`);
+    /// - host is non-empty and ASCII-lowercased;
+    /// - default ports (`80` for `http`, `443` for `https`) are stripped;
+    /// - non-default ports are preserved verbatim.
+    ///
+    /// Used on both sides of the trusted-origin and `Origin`/`Host`
+    /// comparisons so that incidental form differences (case, explicit default
+    /// ports) don't cause a legitimate request to be rejected.
     fn canonical(&self) -> Option<String>;
 
+    /// Returns the URI's explicit port if present, otherwise the IANA default
+    /// for its scheme. Returns `None` for schemes without a known default.
     fn effective_port(&self) -> Option<u16>;
 
+    /// Returns the IANA default port for the URI's scheme (`80` for `http`,
+    /// `443` for `https`), or `None` for any other scheme.
     fn scheme_default_port(&self) -> Option<u16>;
 
+    /// Parses a trusted-origin string of the form `scheme://host[:port]`.
+    ///
+    /// Rejects inputs that can't represent a browser `Origin`:
+    ///
+    /// - unparseable URIs ([`ConfigError::InvalidOriginUrl`]);
+    /// - non-`http`/`https` schemes or missing host ([`ConfigError::OpaqueOrigin`]);
+    /// - any path, query, or fragment component
+    ///   ([`ConfigError::InvalidOriginUrlComponents`] — including fragments
+    ///   that `http::Uri` would otherwise silently strip);
+    /// - non-ASCII hostnames ([`ConfigError::NonAsciiHostname`] — IDN hosts
+    ///   must be supplied in punycode, since that's what browsers send).
+    ///
+    /// The returned [`Uri`] is parsed but not canonicalized; callers should
+    /// run [`UriExt::canonical`] before storing or comparing it.
     fn parse_origin(input: &str) -> Result<Self, ConfigError>;
 }
 
@@ -35,8 +80,10 @@ impl UriExt for Uri {
             s @ ("http" | "https") => s,
             _ => return None,
         };
+
         let host = self.host().filter(|h| !h.is_empty())?.to_ascii_lowercase();
         let default: u16 = if scheme == "https" { 443 } else { 80 };
+
         Some(match self.port_u16() {
             Some(p) if p != default => format!("{scheme}://{host}:{p}"),
             _ => format!("{scheme}://{host}"),

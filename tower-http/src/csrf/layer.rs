@@ -88,7 +88,7 @@ impl<T> CsrfLayer<T> {
 
     /// Replaces the response builder used when a request is rejected.
     ///
-    /// Accepts any type that implements [`ResponseForProtectionError`],
+    /// Accepts any type that implements [`ResponseForProtectionError`](super::ResponseForProtectionError),
     /// including a `FnMut(ProtectionError) -> Response<B> + Clone` closure.
     /// The default builder returns a `403 Forbidden` with an empty body and
     /// the [`ProtectionError`](super::ProtectionError) attached to the
