@@ -14,6 +14,7 @@ use super::{BypassFn, DebugFn, Origins, ProtectionError};
 ///
 /// See the [module docs](crate::csrf) for an example.
 #[derive(Clone)]
+#[must_use]
 pub struct Csrf<S> {
     inner: S,
     insecure_bypass: Option<Arc<BypassFn>>,
