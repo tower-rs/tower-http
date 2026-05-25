@@ -208,7 +208,7 @@ where
         .map_ok(|response| {
             response
                 .map(|body| {
-                    UnsyncBoxBody::new(
+                    UnsyncBoxBody::from_inner(
                         body.map_err(|err| match err.into().downcast::<io::Error>() {
                             Ok(err) => *err,
                             Err(err) => io::Error::new(io::ErrorKind::Other, err),
@@ -264,7 +264,7 @@ fn build_response(output: FileOpened) -> Response<ResponseBody> {
                 } else {
                     let body = if let Some(file) = maybe_file {
                         let range_size = range.end() - range.start() + 1;
-                        ResponseBody::new(UnsyncBoxBody::new(
+                        ResponseBody::new(UnsyncBoxBody::from_inner(
                             AsyncReadBody::with_capacity_limited(
                                 file,
                                 output.chunk_size,
@@ -312,7 +312,7 @@ fn build_response(output: FileOpened) -> Response<ResponseBody> {
         // Not a range request
         None => {
             let body = if let Some(file) = maybe_file {
-                ResponseBody::new(UnsyncBoxBody::new(
+                ResponseBody::new(UnsyncBoxBody::from_inner(
                     AsyncReadBody::with_capacity(file, output.chunk_size).boxed_unsync(),
                 ))
             } else {
@@ -329,10 +329,10 @@ fn build_response(output: FileOpened) -> Response<ResponseBody> {
 
 fn body_from_bytes(bytes: Bytes) -> ResponseBody {
     let body = Full::from(bytes).map_err(|err| match err {}).boxed_unsync();
-    ResponseBody::new(UnsyncBoxBody::new(body))
+    ResponseBody::new(UnsyncBoxBody::from_inner(body))
 }
 
 fn empty_body() -> ResponseBody {
     let body = Empty::new().map_err(|err| match err {}).boxed_unsync();
-    ResponseBody::new(UnsyncBoxBody::new(body))
+    ResponseBody::new(UnsyncBoxBody::from_inner(body))
 }

@@ -974,6 +974,7 @@ async fn root_with_trailing_slash_serves_appends_index_html() {
 }
 
 #[cfg(windows)]
+#[allow(unsafe_code)]
 fn verify_windows_device(name: &str, is_positive: bool) {
     use std::fs::OpenOptions;
     use std::os::windows::io::AsRawHandle;
@@ -1219,4 +1220,34 @@ async fn precompressed_head_request_includes_vary_header() {
 
     assert_eq!(res.headers()["content-encoding"], "gzip");
     assert_eq!(res.headers()["vary"], "accept-encoding");
+}
+
+#[tokio::test]
+async fn unsync_box_body_new() {
+    use crate::body::UnsyncBoxBody;
+    use http_body_util::Full;
+
+    let body: UnsyncBoxBody<Bytes, Infallible> =
+        UnsyncBoxBody::new(Full::new(Bytes::from("hello")));
+    let collected = body.collect().await.unwrap().to_bytes();
+    assert_eq!(collected, "hello");
+}
+
+#[tokio::test]
+async fn response_body_into_unsync_box_body() {
+    use crate::body::UnsyncBoxBody;
+
+    let svc = ServeDir::new("..");
+    let req = Request::builder()
+        .uri("/README.md")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+
+    // Convert the ServeDir response body into UnsyncBoxBody without double-boxing
+    let boxed: UnsyncBoxBody<Bytes, std::io::Error> = res.into_body().into();
+    let collected = boxed.collect().await.unwrap().to_bytes();
+
+    let expected = std::fs::read_to_string("../README.md").unwrap();
+    assert_eq!(collected, expected);
 }

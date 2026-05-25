@@ -85,12 +85,13 @@ impl<FailureClass> OnFailure<FailureClass> for DefaultOnFailure
 where
     FailureClass: fmt::Display,
 {
-    fn on_failure(&mut self, failure_classification: FailureClass, latency: Duration, _: &Span) {
+    fn on_failure(&mut self, failure_classification: FailureClass, latency: Duration, span: &Span) {
         let latency = Latency {
             unit: self.latency_unit,
             duration: latency,
         };
         event_dynamic_lvl!(
+            parent: span,
             self.level,
             classification = %failure_classification,
             %latency,

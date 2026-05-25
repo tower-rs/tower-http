@@ -417,7 +417,7 @@ where
                     #[cfg(feature = "tracing")]
                     tracing::error!(error = %_err, "Failed to read file");
 
-                    let body = ResponseBody::new(UnsyncBoxBody::new(
+                    let body = ResponseBody::new(UnsyncBoxBody::from_inner(
                         Empty::new().map_err(|err| match err {}).boxed_unsync(),
                     ));
                     Response::builder()
@@ -613,6 +613,12 @@ opaque_body! {
     /// Response body for [`ServeDir`] and [`ServeFile`][super::ServeFile].
     #[derive(Default)]
     pub type ResponseBody = UnsyncBoxBody<Bytes, io::Error>;
+}
+
+impl From<ResponseBody> for UnsyncBoxBody<Bytes, io::Error> {
+    fn from(body: ResponseBody) -> Self {
+        body.inner
+    }
 }
 
 /// The default fallback service used with [`ServeDir`].

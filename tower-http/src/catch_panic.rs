@@ -267,11 +267,9 @@ where
                 future,
                 panic_handler,
             } => match ready!(future.poll(cx)) {
-                Ok(Ok(res)) => {
-                    Poll::Ready(Ok(res.map(|body| {
-                        UnsyncBoxBody::new(body.map_err(Into::into).boxed_unsync())
-                    })))
-                }
+                Ok(Ok(res)) => Poll::Ready(Ok(res.map(|body| {
+                    UnsyncBoxBody::from_inner(body.map_err(Into::into).boxed_unsync())
+                }))),
                 Ok(Err(svc_err)) => Poll::Ready(Err(svc_err)),
                 Err(panic_err) => Poll::Ready(Ok(response_for_panic(
                     panic_handler
@@ -295,7 +293,7 @@ where
 {
     panic_handler
         .response_for_panic(err)
-        .map(|body| UnsyncBoxBody::new(body.map_err(Into::into).boxed_unsync()))
+        .map(|body| UnsyncBoxBody::from_inner(body.map_err(Into::into).boxed_unsync()))
 }
 
 /// Trait for creating responses from panics.
