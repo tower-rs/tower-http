@@ -105,8 +105,29 @@ where
 
 impl<D, E> UnsyncBoxBody<D, E> {
     #[allow(dead_code)]
-    pub(crate) fn new(inner: http_body_util::combinators::UnsyncBoxBody<D, E>) -> Self {
+    pub(crate) fn from_inner(inner: http_body_util::combinators::UnsyncBoxBody<D, E>) -> Self {
         Self { inner }
+    }
+}
+
+impl<D, E> UnsyncBoxBody<D, E>
+where
+    D: Buf + 'static,
+{
+    /// Create a new `UnsyncBoxBody` by erasing the type of the given body.
+    ///
+    /// This is useful when you need a common body type across different response branches
+    /// without double-boxing bodies that are already boxed (like [`ServeDir`]'s response body,
+    /// which has a [`From`] impl for zero-cost conversion).
+    ///
+    /// [`ServeDir`]: crate::services::ServeDir
+    pub fn new<B>(body: B) -> Self
+    where
+        B: Body<Data = D, Error = E> + Send + 'static,
+    {
+        Self {
+            inner: http_body_util::combinators::UnsyncBoxBody::new(body),
+        }
     }
 }
 

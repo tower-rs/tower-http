@@ -1146,3 +1146,33 @@ async fn identity_encoding_does_not_strip_extension_head_request() {
 
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn unsync_box_body_new() {
+    use crate::body::UnsyncBoxBody;
+    use http_body_util::Full;
+
+    let body: UnsyncBoxBody<Bytes, Infallible> =
+        UnsyncBoxBody::new(Full::new(Bytes::from("hello")));
+    let collected = body.collect().await.unwrap().to_bytes();
+    assert_eq!(collected, "hello");
+}
+
+#[tokio::test]
+async fn response_body_into_unsync_box_body() {
+    use crate::body::UnsyncBoxBody;
+
+    let svc = ServeDir::new("..");
+    let req = Request::builder()
+        .uri("/README.md")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+
+    // Convert the ServeDir response body into UnsyncBoxBody without double-boxing
+    let boxed: UnsyncBoxBody<Bytes, std::io::Error> = res.into_body().into();
+    let collected = boxed.collect().await.unwrap().to_bytes();
+
+    let expected = std::fs::read_to_string("../README.md").unwrap();
+    assert_eq!(collected, expected);
+}
