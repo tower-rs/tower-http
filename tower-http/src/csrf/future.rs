@@ -56,7 +56,7 @@ where
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match self.project().kind.project() {
             KindProj::Future { future } => future.poll(cx),
-            KindProj::Rejected { error, _body } => {
+            KindProj::Rejected { error, .. } => {
                 let error = error
                     .take()
                     .expect("ResponseFuture polled after completion");
