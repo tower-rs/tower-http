@@ -17,7 +17,9 @@
 //! [`ProtectionError`] is attached to the response's extensions so handlers can
 //! distinguish between explicit cross-origin rejections and conservative
 //! fallback rejections (e.g. requests from old browsers without
-//! `Sec-Fetch-Site`).
+//! `Sec-Fetch-Site`). Use
+//! [`CsrfLayer::with_rejection_response`](CsrfLayer::with_rejection_response)
+//! to replace the rejection response with a custom builder.
 //!
 //! # Deployment caveat
 //!
@@ -92,11 +94,13 @@ use http::{Method, Uri};
 
 mod future;
 mod layer;
+mod response;
 mod service;
 mod url;
 
 pub use self::future::ResponseFuture;
 pub use self::layer::CsrfLayer;
+pub use self::response::{DefaultResponseForProtectionError, ResponseForProtectionError};
 pub use self::service::Csrf;
 
 /// Errors that can occur while configuring [`CsrfLayer`].
@@ -306,6 +310,32 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn test_service_uses_custom_rejection_response() {
+        let svc = CsrfLayer::new()
+            .with_rejection_response(|_err: ProtectionError| {
+                let mut res = Response::new(Body::from("denied"));
+                *res.status_mut() = StatusCode::IM_A_TEAPOT;
+                res
+            })
+            .layer(echo_service());
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/bar")
+            .header("origin", "https://malicious.example")
+            .body(Body::empty())
+            .unwrap();
+
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::IM_A_TEAPOT);
+        assert!(res.extensions().get::<ProtectionError>().is_none());
+
+        let body = to_bytes(res.into_body()).await.unwrap();
+        assert_eq!(&body[..], b"denied");
+    }
+
     #[test]
     fn test_layer_add_trusted_origin() {
         // Smoke check that the layer threads parse_origin's Ok and Err
@@ -408,14 +438,14 @@ mod tests {
 
         assert_eq!(
             format!("{:?}", middleware),
-            "Csrf { inner: (), insecure_bypass: Some(<fn>), trusted_origins: Origins({}) }"
+            "Csrf { inner: (), insecure_bypass: Some(<fn>), trusted_origins: Origins({}), rejection_response: <fn> }"
         );
 
         let middleware = layer.layer(());
 
         assert_eq!(
             format!("{:?}", middleware),
-            "Csrf { inner: (), insecure_bypass: None, trusted_origins: Origins({}) }"
+            "Csrf { inner: (), insecure_bypass: None, trusted_origins: Origins({}), rejection_response: <fn> }"
         );
     }
 

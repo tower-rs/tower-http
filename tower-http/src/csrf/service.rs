@@ -8,28 +8,34 @@ use tower_service::Service;
 
 use super::future::ResponseFuture;
 use super::url::UriExt;
-use super::{BypassFn, DebugFn, Origins, ProtectionError};
+use super::{
+    BypassFn, DebugFn, DefaultResponseForProtectionError, Origins, ProtectionError,
+    ResponseForProtectionError,
+};
 
 /// Middleware that enforces cross-origin request forgery (CSRF) protection.
 ///
 /// See the [module docs](crate::csrf) for an example.
 #[derive(Clone)]
 #[must_use]
-pub struct Csrf<S> {
+pub struct Csrf<S, T = DefaultResponseForProtectionError> {
     inner: S,
     insecure_bypass: Option<Arc<BypassFn>>,
+    rejection_response: T,
     trusted_origins: Origins,
 }
 
-impl<S> Csrf<S> {
+impl<S, T> Csrf<S, T> {
     pub(super) fn new(
         inner: S,
         insecure_bypass: Option<Arc<BypassFn>>,
+        rejection_response: T,
         trusted_origins: Origins,
     ) -> Self {
         Self {
             inner,
             insecure_bypass,
+            rejection_response,
             trusted_origins,
         }
     }
@@ -135,17 +141,22 @@ impl<S> Csrf<S> {
     }
 }
 
-impl<S: Default> Default for Csrf<S> {
+impl<S, T> Default for Csrf<S, T>
+where
+    S: Default,
+    T: Default,
+{
     fn default() -> Self {
         Self {
             inner: S::default(),
             insecure_bypass: None,
+            rejection_response: T::default(),
             trusted_origins: Origins::default(),
         }
     }
 }
 
-impl<S: Debug> Debug for Csrf<S> {
+impl<S: Debug, T> Debug for Csrf<S, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("Csrf")
             .field("inner", &self.inner)
@@ -154,23 +165,31 @@ impl<S: Debug> Debug for Csrf<S> {
                 &self.insecure_bypass.as_ref().map(|_| DebugFn),
             )
             .field("trusted_origins", &self.trusted_origins)
+            .field("rejection_response", &DebugFn)
             .finish()
     }
 }
 
-impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for Csrf<S>
+impl<S, T, ReqBody, ResBody> Service<Request<ReqBody>> for Csrf<S, T>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
-    ResBody: Default,
+    T: ResponseForProtectionError<ResBody>,
 {
     type Error = S::Error;
-    type Future = ResponseFuture<S::Future, ResBody>;
+    type Future = ResponseFuture<S::Future>;
     type Response = Response<ResBody>;
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
         match self.verify(&req) {
             Ok(_) => ResponseFuture::future(self.inner.call(req)),
-            Err(err) => ResponseFuture::rejected(err),
+            Err(err) => {
+                #[cfg(feature = "tracing")]
+                tracing::trace!(uri = %req.uri().path(), error = %err, "request rejected");
+
+                let response = self.rejection_response.response_for_protection_error(err);
+
+                ResponseFuture::rejected(Ok(response))
+            }
         }
     }
 

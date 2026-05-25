@@ -1,72 +1,71 @@
 use std::future::Future;
-use std::marker::PhantomData;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use http::{Response, StatusCode};
 use pin_project_lite::pin_project;
-
-use super::ProtectionError;
 
 pin_project! {
     /// Response future for [`Csrf`].
     ///
     /// [`Csrf`]: super::Csrf
-    pub struct ResponseFuture<F, ResBody> {
+    pub struct ResponseFuture<F>
+    where
+        F: Future,
+    {
         #[pin]
-        kind: Kind<F, ResBody>,
+        kind: Kind<F>,
     }
 }
 
 pin_project! {
     #[project = KindProj]
-    enum Kind<F, ResBody> {
-        Future { #[pin] future: F },
+    enum Kind<F>
+    where
+        F: Future,
+    {
+        Future {
+            #[pin]
+            future: F,
+        },
         Rejected {
-            error: Option<ProtectionError>,
-            _body: PhantomData<ResBody>,
+            response: Option<F::Output>,
         },
     }
 }
 
-impl<F, ResBody> ResponseFuture<F, ResBody> {
+impl<F> ResponseFuture<F>
+where
+    F: Future,
+{
     pub(super) fn future(future: F) -> Self {
         Self {
             kind: Kind::Future { future },
         }
     }
 
-    pub(super) fn rejected(error: ProtectionError) -> Self {
+    pub(super) fn rejected(response: F::Output) -> Self {
         Self {
             kind: Kind::Rejected {
-                error: Some(error),
-                _body: PhantomData,
+                response: Some(response),
             },
         }
     }
 }
 
-impl<F, E, ResBody> Future for ResponseFuture<F, ResBody>
+impl<F> Future for ResponseFuture<F>
 where
-    F: Future<Output = Result<Response<ResBody>, E>>,
-    ResBody: Default,
+    F: Future,
 {
-    type Output = Result<Response<ResBody>, E>;
+    type Output = F::Output;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match self.project().kind.project() {
             KindProj::Future { future } => future.poll(cx),
-            KindProj::Rejected { error, .. } => {
-                let error = error
+            KindProj::Rejected { response } => Poll::Ready(
+                response
                     .take()
-                    .expect("ResponseFuture polled after completion");
-                let mut response = Response::new(ResBody::default());
-
-                *response.status_mut() = StatusCode::FORBIDDEN;
-                response.extensions_mut().insert(error);
-
-                Poll::Ready(Ok(response))
-            }
+                    .expect("ResponseFuture polled after completion"),
+            ),
         }
     }
 }
