@@ -34,30 +34,6 @@ impl<S> Csrf<S> {
         }
     }
 
-    fn is_exempt(&self, method: &Method, uri: &Uri, origin: Option<&Uri>) -> bool {
-        if self
-            .insecure_bypass
-            .as_ref()
-            .map_or(false, |p| p(method, uri))
-        {
-            #[cfg(feature = "tracing")]
-            tracing::trace!(uri = %uri.path(), "request passed: bypassed");
-            return true;
-        }
-
-        let trusted = origin
-            .and_then(|u| u.canonical())
-            .map_or(false, |s| self.trusted_origins.contains(&s));
-
-        if trusted {
-            #[cfg(feature = "tracing")]
-            tracing::trace!(uri = %uri.path(), "request passed: trusted origin");
-            return true;
-        }
-
-        false
-    }
-
     pub(super) fn verify<Body>(&self, req: &Request<Body>) -> Result<(), ProtectionError> {
         if matches!(
             req.method(),
@@ -78,6 +54,32 @@ impl<S> Csrf<S> {
 
         let sec_fetch_site = req.headers().get("sec-fetch-site").map(|h| h.as_bytes());
 
+        let is_exempt = || -> bool {
+            let bypass = self
+                .insecure_bypass
+                .as_ref()
+                .map_or(false, |bypass| bypass(req.method(), req.uri()));
+
+            if bypass {
+                #[cfg(feature = "tracing")]
+                tracing::trace!(uri = %req.uri().path(), "request passed: bypassed");
+                return true;
+            }
+
+            let trusted = origin_uri
+                .as_ref()
+                .and_then(|u| u.canonical())
+                .map_or(false, |s| self.trusted_origins.contains(&s));
+
+            if trusted {
+                #[cfg(feature = "tracing")]
+                tracing::trace!(uri = %req.uri().path(), "request passed: trusted origin");
+                return true;
+            }
+
+            false
+        };
+
         // Fetch spec mandates lowercase here; exact byte match is intentional.
         match sec_fetch_site {
             Some(b"same-origin" | b"none") => {
@@ -86,9 +88,7 @@ impl<S> Csrf<S> {
                 return Ok(());
             }
             None | Some(b"") => {} // fall through to Origin check
-            Some(_) if self.is_exempt(req.method(), req.uri(), origin_uri.as_ref()) => {
-                return Ok(())
-            }
+            Some(_) if is_exempt() => return Ok(()),
             Some(_) => return Err(ProtectionError::CrossOriginRequest),
         }
 
@@ -127,7 +127,7 @@ impl<S> Csrf<S> {
             }
         }
 
-        if self.is_exempt(req.method(), req.uri(), origin_uri.as_ref()) {
+        if is_exempt() {
             return Ok(());
         }
 
