@@ -40,7 +40,7 @@ impl<S> Csrf<S> {
             .map_or(false, |p| p(method, uri))
         {
             #[cfg(feature = "tracing")]
-            tracing::trace!(uri = %uri, "request passed: bypassed");
+            tracing::trace!(uri = %uri.path(), "request passed: bypassed");
             return true;
         }
 
@@ -50,7 +50,7 @@ impl<S> Csrf<S> {
 
         if trusted {
             #[cfg(feature = "tracing")]
-            tracing::trace!(uri = %uri, "request passed: trusted origin");
+            tracing::trace!(uri = %uri.path(), "request passed: trusted origin");
             return true;
         }
 
@@ -63,7 +63,7 @@ impl<S> Csrf<S> {
             &Method::GET | &Method::HEAD | &Method::OPTIONS
         ) {
             #[cfg(feature = "tracing")]
-            tracing::trace!(uri = %req.uri(), "request passed: safe method");
+            tracing::trace!(uri = %req.uri().path(), "request passed: safe method");
             return Ok(());
         }
 
@@ -81,7 +81,7 @@ impl<S> Csrf<S> {
         match sec_fetch_site {
             Some(b"same-origin" | b"none") => {
                 #[cfg(feature = "tracing")]
-                tracing::trace!(uri = %req.uri(), "request passed: sec-fetch-site is same-origin or none");
+                tracing::trace!(uri = %req.uri().path(), "request passed: sec-fetch-site is same-origin or none");
                 return Ok(());
             }
             None | Some(b"") => {} // fall through to Origin check
@@ -93,7 +93,7 @@ impl<S> Csrf<S> {
 
         if matches!(origin, None | Some(b"")) {
             #[cfg(feature = "tracing")]
-            tracing::trace!(uri = %req.uri(), "request passed: neither sec-fetch-site nor origin header (same-origin or not a browser request)");
+            tracing::trace!(uri = %req.uri().path(), "request passed: neither sec-fetch-site nor origin header (same-origin or not a browser request)");
             return Ok(());
         }
 
@@ -120,7 +120,7 @@ impl<S> Csrf<S> {
 
                 if origin_host.eq_ignore_ascii_case(host_name) && port_origin == port_host {
                     #[cfg(feature = "tracing")]
-                    tracing::trace!(uri = %req.uri(), "request passed: origin is same as host");
+                    tracing::trace!(uri = %req.uri().path(), "request passed: origin is same as host");
                     return Ok(());
                 }
             }
