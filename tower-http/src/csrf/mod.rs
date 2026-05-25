@@ -31,11 +31,11 @@
 //! # Example
 //!
 //! ```
-//! use tower_http::csrf::CsrfLayer;
+//! use bytes::Bytes;
 //! use http::{Request, Response, StatusCode};
 //! use http_body_util::Full;
-//! use bytes::Bytes;
 //! use tower::{Service, ServiceExt, ServiceBuilder, service_fn, BoxError};
+//! use tower_http::csrf::CsrfLayer;
 //!
 //! async fn handle(_: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, BoxError> {
 //!     Ok(Response::new(Full::default()))
@@ -56,7 +56,9 @@
 //!     .uri("/")
 //!     .body(Full::default())
 //!     .unwrap();
+//!
 //! let response = service.ready().await?.call(request).await?;
+//!
 //! assert_eq!(response.status(), StatusCode::OK);
 //!
 //! // Cross-site POSTs are blocked.
@@ -67,8 +69,11 @@
 //!     .header("sec-fetch-site", "cross-site")
 //!     .body(Full::default())
 //!     .unwrap();
+//!
 //! let response = service.ready().await?.call(request).await?;
+//!
 //! assert_eq!(response.status(), StatusCode::FORBIDDEN);
+//!
 //! # Ok(())
 //! # }
 //! ```
