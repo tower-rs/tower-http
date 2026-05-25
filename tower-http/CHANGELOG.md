@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
+## Fixed
+
+- `fs`: `ServeDir` and `ServeFile` now emit a `Vary: Accept-Encoding` response
+  header when precompressed serving is configured, ensuring caches correctly
+  distinguish between compressed and uncompressed variants.
+
 ## Changed
 
 - `trace`: `DefaultOnRequest`, `DefaultOnResponse`, `DefaultOnFailure`, and

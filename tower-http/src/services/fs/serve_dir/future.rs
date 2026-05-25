@@ -240,6 +240,12 @@ fn build_response(output: FileOpened) -> Response<ResponseBody> {
         builder = builder.header(header::CONTENT_ENCODING, encoding.into_header_value());
     }
 
+    // Per RFC 9110 §12.5.3, Vary must be sent when the response could differ
+    // based on Accept-Encoding, even if this particular response is uncompressed.
+    if output.precompression_configured {
+        builder = builder.header(header::VARY, "accept-encoding");
+    }
+
     if let Some(last_modified) = output.last_modified {
         builder = builder.header(header::LAST_MODIFIED, last_modified.0.to_string());
     }

@@ -1148,6 +1148,81 @@ async fn identity_encoding_does_not_strip_extension_head_request() {
 }
 
 #[tokio::test]
+async fn precompressed_response_includes_vary_header() {
+    let svc = ServeDir::new(TEST_FILES_DIR).precompressed_gzip();
+
+    let req = Request::builder()
+        .uri("/precompressed.txt")
+        .header("Accept-Encoding", "gzip")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+
+    assert_eq!(res.headers()["content-encoding"], "gzip");
+    assert_eq!(res.headers()["vary"], "accept-encoding");
+}
+
+#[tokio::test]
+async fn no_vary_header_without_precompressed_serving() {
+    let svc = ServeDir::new(REPO_ROOT);
+
+    let req = Request::builder()
+        .uri("/README.md")
+        .header("Accept-Encoding", "gzip")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+
+    assert_eq!(res.status(), StatusCode::OK);
+    assert!(res.headers().get("vary").is_none());
+}
+
+#[tokio::test]
+async fn vary_header_present_when_precompressed_configured_but_fallback_to_uncompressed() {
+    let svc = ServeDir::new(TEST_FILES_DIR).precompressed_gzip();
+
+    let req = Request::builder()
+        .uri("/precompressed.txt")
+        .header("Accept-Encoding", "br")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+
+    assert!(res.headers().get("content-encoding").is_none());
+    assert_eq!(res.headers()["vary"], "accept-encoding");
+}
+
+#[tokio::test]
+async fn vary_header_present_when_precompressed_configured_but_no_accept_encoding() {
+    let svc = ServeDir::new(TEST_FILES_DIR).precompressed_gzip();
+
+    let req = Request::builder()
+        .uri("/precompressed.txt")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+
+    assert!(res.headers().get("content-encoding").is_none());
+    assert_eq!(res.headers()["vary"], "accept-encoding");
+}
+
+#[tokio::test]
+async fn precompressed_head_request_includes_vary_header() {
+    let svc = ServeDir::new(TEST_FILES_DIR).precompressed_gzip();
+
+    let req = Request::builder()
+        .uri("/precompressed.txt")
+        .method(Method::HEAD)
+        .header("Accept-Encoding", "gzip")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+
+    assert_eq!(res.headers()["content-encoding"], "gzip");
+    assert_eq!(res.headers()["vary"], "accept-encoding");
+}
+
+#[tokio::test]
 async fn unsync_box_body_new() {
     use crate::body::UnsyncBoxBody;
     use http_body_util::Full;

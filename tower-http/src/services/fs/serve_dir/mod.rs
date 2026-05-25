@@ -366,6 +366,7 @@ impl<F> ServeDir<F> {
             .and_then(|value| value.to_str().ok())
             .map(|s| s.to_owned());
 
+        let precompression_configured = self.precompressed_variants.is_some();
         let negotiated_encodings: Vec<_> = encodings(
             req.headers(),
             self.precompressed_variants.unwrap_or_default(),
@@ -381,6 +382,7 @@ impl<F> ServeDir<F> {
             negotiated_encodings,
             range_header,
             buf_chunk_size,
+            precompression_configured,
         ));
 
         ResponseFuture::open_file_future(open_file_future, fallback_and_request)
