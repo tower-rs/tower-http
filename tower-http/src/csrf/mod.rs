@@ -215,10 +215,96 @@ impl Origins {
 
 #[cfg(test)]
 mod tests {
-    use http::Request;
+    use std::convert::Infallible;
+
+    use http::{Request, Response, StatusCode};
+    use tower::{service_fn, ServiceExt};
     use tower_layer::Layer;
 
     use super::*;
+    use crate::test_helpers::{to_bytes, Body};
+
+    fn echo_service() -> impl tower::Service<
+        Request<Body>,
+        Response = Response<Body>,
+        Error = Infallible,
+        Future = impl std::future::Future<Output = Result<Response<Body>, Infallible>>,
+    > + Clone {
+        service_fn(|req: Request<Body>| async move {
+            let body: Body = match req.uri().path() {
+                "/foo" => "foo".into(),
+                "/bar" => "bar".into(),
+                _ => Body::empty(),
+            };
+            Ok::<_, Infallible>(Response::new(body))
+        })
+    }
+
+    #[tokio::test]
+    async fn test_service_allows_safe_method() {
+        let svc = CsrfLayer::new()
+            .add_trusted_origin("https://example.com")
+            .unwrap()
+            .layer(echo_service());
+
+        let req = Request::builder()
+            .method("GET")
+            .uri("/foo")
+            .body(Body::empty())
+            .unwrap();
+
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::OK);
+
+        let body = to_bytes(res.into_body()).await.unwrap();
+        assert_eq!(&body[..], b"foo");
+    }
+
+    #[tokio::test]
+    async fn test_service_allows_post_from_trusted_origin() {
+        let svc = CsrfLayer::new()
+            .add_trusted_origin("https://example.com")
+            .unwrap()
+            .layer(echo_service());
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/bar")
+            .header("origin", "https://example.com")
+            .body(Body::empty())
+            .unwrap();
+
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::OK);
+
+        let body = to_bytes(res.into_body()).await.unwrap();
+        assert_eq!(&body[..], b"bar");
+    }
+
+    #[tokio::test]
+    async fn test_service_rejects_post_from_untrusted_origin() {
+        let svc = CsrfLayer::new()
+            .add_trusted_origin("https://example.com")
+            .unwrap()
+            .layer(echo_service());
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/bar")
+            .header("origin", "https://malicious.example")
+            .body(Body::empty())
+            .unwrap();
+
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
+        assert_eq!(
+            res.extensions().get::<ProtectionError>(),
+            Some(&ProtectionError::CrossOriginRequestFromOldBrowser),
+        );
+    }
 
     #[test]
     fn test_layer_add_trusted_origin() {
