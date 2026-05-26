@@ -63,6 +63,7 @@ pub(super) async fn open_file(
     let mime = match variant {
         ServeVariant::Directory {
             append_index_html_on_directories,
+            html_as_default_extension,
         } => {
             // Might already at this point know a redirect or not found result should be
             // returned which corresponds to a Some(output). Otherwise the path might be
@@ -71,6 +72,7 @@ pub(super) async fn open_file(
                 &mut path_to_file,
                 req.uri(),
                 append_index_html_on_directories,
+                html_as_default_extension,
             )
             .await
             {
@@ -291,10 +293,11 @@ async fn maybe_redirect_or_append_path(
     path_to_file: &mut PathBuf,
     uri: &Uri,
     append_index_html_on_directories: bool,
+    html_as_default_extension: bool,
 ) -> Option<OpenFileOutput> {
     let uri_path = uri.path();
 
-    let is_directory = is_dir(path_to_file).await;
+    let is_directory = is_dir(path_to_file).await == Some(true);
 
     if uri_path.ends_with('/') && uri_path != "/" && !is_directory {
         return Some(OpenFileOutput::FileNotFound);
@@ -304,12 +307,15 @@ async fn maybe_redirect_or_append_path(
         return None;
     }
 
-    if !append_index_html_on_directories {
+    if !append_index_html_on_directories && !html_as_default_extension {
         return Some(OpenFileOutput::FileNotFound);
     }
 
-    if uri_path.ends_with('/') {
+    if append_index_html_on_directories && uri_path.ends_with('/') {
         path_to_file.push("index.html");
+        None
+    } else if html_as_default_extension && path_to_file.extension().is_none() {
+        path_to_file.set_extension("html");
         None
     } else {
         let uri = match append_slash_on_path(uri.clone()) {
@@ -331,10 +337,11 @@ fn try_parse_range(
     })
 }
 
-async fn is_dir(path_to_file: &Path) -> bool {
+async fn is_dir(path_to_file: &Path) -> Option<bool> {
     tokio::fs::metadata(path_to_file)
         .await
-        .map_or(false, |meta_data| meta_data.is_dir())
+        .ok()
+        .map(|meta_data| meta_data.is_dir())
 }
 
 fn append_slash_on_path(uri: Uri) -> Result<Uri, OpenFileOutput> {
