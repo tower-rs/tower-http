@@ -444,21 +444,17 @@ impl<F, B: Backend> ServeDir<F, B> {
         )
         .collect();
 
-        let open_file_config = open_file::OpenFileConfig {
+        let open_file_future = Box::pin(open_file::open_file(open_file::OpenFileRequest {
             variant: self.variant.clone(),
             redirect_path_prefix,
-            buf_chunk_size,
-            precompression_configured,
-            backend: self.backend.clone(),
-        };
-
-        let open_file_future = Box::pin(open_file::open_file(
-            open_file_config,
             path_to_file,
             req,
             negotiated_encodings,
             range_header,
-        ));
+            buf_chunk_size,
+            precompression_configured,
+            backend: self.backend.clone(),
+        }));
 
         ResponseFuture::open_file_future(open_file_future, fallback_and_request)
     }

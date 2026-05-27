@@ -47,29 +47,32 @@ pub(super) enum FileRequestExtent {
     Head(u64),
 }
 
-pub(super) struct OpenFileConfig<B: Backend> {
+pub(super) struct OpenFileRequest<B> {
     pub(super) variant: ServeVariant,
     pub(super) redirect_path_prefix: String,
+    pub(super) path_to_file: PathBuf,
+    pub(super) req: Request<Empty<Bytes>>,
+    pub(super) negotiated_encodings: Vec<(Encoding, QValue)>,
+    pub(super) range_header: Option<String>,
     pub(super) buf_chunk_size: usize,
     pub(super) precompression_configured: bool,
     pub(super) backend: B,
 }
 
 pub(super) async fn open_file<B: Backend>(
-    config: OpenFileConfig<B>,
-    mut path_to_file: PathBuf,
-    req: Request<Empty<Bytes>>,
-    negotiated_encodings: Vec<(Encoding, QValue)>,
-    range_header: Option<String>,
+    request: OpenFileRequest<B>,
 ) -> io::Result<OpenFileOutput> {
-    let OpenFileConfig {
+    let OpenFileRequest {
         variant,
         redirect_path_prefix,
+        mut path_to_file,
+        req,
+        negotiated_encodings,
+        range_header,
         buf_chunk_size,
         precompression_configured,
         backend,
-    } = config;
-
+    } = request;
     let preconditions = Preconditions {
         if_match: req
             .headers()
