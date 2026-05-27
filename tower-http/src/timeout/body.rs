@@ -106,7 +106,7 @@ where
     }
 }
 
-/// Error for [`TimeoutBody`] and [`AbsoluteTimeoutBody`][super::AbsoluteTimeoutBody].
+/// Error for [`TimeoutBody`] and [`DeadlineBody`][super::DeadlineBody].
 #[derive(Debug)]
 pub struct TimeoutError(pub(super) ());
 

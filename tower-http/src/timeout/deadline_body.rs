@@ -10,10 +10,10 @@ use std::{
 use tokio::time::{sleep, Sleep};
 
 pin_project! {
-    /// Wrapper around a [`Body`] that enforces an absolute timeout on the entire body transfer.
+    /// Wrapper around a [`Body`] that enforces a hard deadline on the entire body transfer.
     ///
     /// Unlike [`TimeoutBody`][super::TimeoutBody], which resets its deadline each time a frame is
-    /// received, `AbsoluteTimeoutBody` starts a single timer at construction and returns a
+    /// received, `DeadlineBody` starts a single timer at construction and returns a
     /// [`TimeoutError`][super::TimeoutError] if the body is not fully consumed before the deadline.
     ///
     /// This is useful for public endpoints where you want to cap the total time spent on a
@@ -27,7 +27,7 @@ pin_project! {
     /// use http_body_util::Full;
     /// use std::time::Duration;
     /// use tower::ServiceBuilder;
-    /// use tower_http::timeout::RequestBodyAbsoluteTimeoutLayer;
+    /// use tower_http::timeout::RequestBodyDeadlineLayer;
     ///
     /// async fn handle(_: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, std::convert::Infallible> {
     ///     // ...
@@ -38,12 +38,12 @@ pin_project! {
     /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let svc = ServiceBuilder::new()
     ///     // Timeout bodies after 30 seconds total
-    ///     .layer(RequestBodyAbsoluteTimeoutLayer::new(Duration::from_secs(30)))
+    ///     .layer(RequestBodyDeadlineLayer::new(Duration::from_secs(30)))
     ///     .service_fn(handle);
     /// # Ok(())
     /// # }
     /// ```
-    pub struct AbsoluteTimeoutBody<B> {
+    pub struct DeadlineBody<B> {
         #[pin]
         sleep: Sleep,
         #[pin]
@@ -51,20 +51,20 @@ pin_project! {
     }
 }
 
-impl<B> AbsoluteTimeoutBody<B> {
-    /// Creates a new [`AbsoluteTimeoutBody`].
+impl<B> DeadlineBody<B> {
+    /// Creates a new [`DeadlineBody`].
     ///
     /// The timeout starts immediately. If the body is not fully consumed within `timeout`,
     /// subsequent `poll_frame` calls will return a [`TimeoutError`][super::TimeoutError].
     pub fn new(timeout: Duration, body: B) -> Self {
-        AbsoluteTimeoutBody {
+        DeadlineBody {
             sleep: sleep(timeout),
             body,
         }
     }
 }
 
-impl<B> Body for AbsoluteTimeoutBody<B>
+impl<B> Body for DeadlineBody<B>
 where
     B: Body,
     B::Error: Into<BoxError>,
@@ -188,7 +188,7 @@ mod tests {
         let mock_body = MockBody {
             sleep: sleep(Duration::from_millis(50)),
         };
-        let timeout_body = AbsoluteTimeoutBody::new(Duration::from_millis(200), mock_body);
+        let timeout_body = DeadlineBody::new(Duration::from_millis(200), mock_body);
 
         assert!(timeout_body
             .boxed()
@@ -203,7 +203,7 @@ mod tests {
         let mock_body = MockBody {
             sleep: sleep(Duration::from_millis(200)),
         };
-        let timeout_body = AbsoluteTimeoutBody::new(Duration::from_millis(50), mock_body);
+        let timeout_body = DeadlineBody::new(Duration::from_millis(50), mock_body);
 
         let result = timeout_body.boxed().frame().await.unwrap();
         assert!(result.is_err());
@@ -214,15 +214,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn absolute_timeout_fires_despite_steady_frames() {
+    async fn deadline_fires_despite_steady_frames() {
         // Each frame arrives every 30ms (well within an idle timeout of 100ms),
-        // but total transfer takes 5 * 30ms = 150ms, exceeding the 100ms absolute timeout.
+        // but total transfer takes 5 * 30ms = 150ms, exceeding the 100ms deadline.
         let body = MultiFrameBody {
             frames_remaining: 5,
             frame_interval: Duration::from_millis(30),
             sleep: None,
         };
-        let timeout_body = AbsoluteTimeoutBody::new(Duration::from_millis(100), body);
+        let timeout_body = DeadlineBody::new(Duration::from_millis(100), body);
 
         let mut boxed = timeout_body.boxed();
         let mut got_error = false;
@@ -245,14 +245,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn all_frames_arrive_within_absolute_timeout() {
-        // Each frame arrives every 20ms, total = 3 * 20ms = 60ms, within 200ms timeout.
+    async fn all_frames_arrive_within_deadline() {
+        // Each frame arrives every 20ms, total = 3 * 20ms = 60ms, within 200ms deadline.
         let body = MultiFrameBody {
             frames_remaining: 3,
             frame_interval: Duration::from_millis(20),
             sleep: None,
         };
-        let timeout_body = AbsoluteTimeoutBody::new(Duration::from_millis(200), body);
+        let timeout_body = DeadlineBody::new(Duration::from_millis(200), body);
 
         let mut boxed = timeout_body.boxed();
         let mut frame_count = 0;
