@@ -16,8 +16,22 @@ pin_project! {
     /// received, `DeadlineBody` starts a single timer at construction and returns a
     /// [`TimeoutError`][super::TimeoutError] if the body is not fully consumed before the deadline.
     ///
-    /// This is useful for public endpoints where you want to cap the total time spent on a
-    /// request, regardless of how frequently data arrives.
+    /// The deadline is **wall-clock time from construction**, not cumulative poll time. The
+    /// timer continues to count even if the consumer is not actively polling the body. If you
+    /// poll some frames, pause to do other work, and then resume, the elapsed pause time counts
+    /// toward the deadline.
+    ///
+    /// # When to use this
+    ///
+    /// This is primarily useful as middleware on public-facing endpoints where you want to bound
+    /// the total wall-clock time a single request can hold resources (task slots, memory for
+    /// buffering, etc.), regardless of how frequently data trickles in. A slow client sending
+    /// one byte per second will never trip [`TimeoutBody`][super::TimeoutBody]'s idle timeout,
+    /// but will correctly trip `DeadlineBody`.
+    ///
+    /// If you only need to detect stalled connections where no data flows for a period, use
+    /// [`TimeoutBody`][super::TimeoutBody] instead. The two can be stacked if you want both
+    /// an idle timeout and a hard deadline.
     ///
     /// # Example
     ///
