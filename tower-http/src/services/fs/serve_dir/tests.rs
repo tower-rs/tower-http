@@ -1101,6 +1101,7 @@ fn test_build_and_validate_path_reserved_dos_names() {
 
     let variant = ServeVariant::Directory {
         append_index_html_on_directories: true,
+        html_as_default_extension: false,
     };
     let base = Path::new("/base");
 
@@ -1250,4 +1251,46 @@ async fn response_body_into_unsync_box_body() {
 
     let expected = std::fs::read_to_string("../README.md").unwrap();
     assert_eq!(collected, expected);
+}
+
+#[tokio::test]
+async fn html_as_default_extension() {
+    let svc = ServeDir::new(TEST_FILES_DIR).html_as_default_extension(true);
+
+    let req = Request::builder().uri("/page").body(Body::empty()).unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.headers()["content-type"], "text/html");
+
+    let body = body_into_text(res.into_body()).await;
+    assert_eq!(body, "<b>page</b>\n");
+}
+
+#[tokio::test]
+async fn html_as_default_extension_not_found() {
+    let svc = ServeDir::new(TEST_FILES_DIR).html_as_default_extension(true);
+
+    let req = Request::builder()
+        .uri("/nonexistent")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn html_as_default_extension_does_not_apply_when_extension_present() {
+    let svc = ServeDir::new(TEST_FILES_DIR).html_as_default_extension(true);
+
+    // Request a file that exists with its extension; should serve normally
+    let req = Request::builder()
+        .uri("/precompressed.txt")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.headers()["content-type"], "text/plain");
 }
