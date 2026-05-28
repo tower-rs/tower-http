@@ -297,25 +297,28 @@ async fn maybe_redirect_or_append_path(
 ) -> Option<OpenFileOutput> {
     let uri_path = uri.path();
 
-    let is_directory = is_dir(path_to_file).await == Some(true);
+    let is_directory = is_dir(path_to_file).await;
 
-    if uri_path.ends_with('/') && uri_path != "/" && !is_directory {
+    if uri_path.ends_with('/') && uri_path != "/" && is_directory != Some(true) {
         return Some(OpenFileOutput::FileNotFound);
     }
 
-    if !is_directory {
+    // If the path has no extension and doesn't exist as a file, try appending .html
+    if html_as_default_extension && is_directory.is_none() && path_to_file.extension().is_none() {
+        path_to_file.set_extension("html");
         return None;
     }
 
-    if !append_index_html_on_directories && !html_as_default_extension {
+    if is_directory != Some(true) {
+        return None;
+    }
+
+    if !append_index_html_on_directories {
         return Some(OpenFileOutput::FileNotFound);
     }
 
-    if append_index_html_on_directories && uri_path.ends_with('/') {
+    if uri_path.ends_with('/') {
         path_to_file.push("index.html");
-        None
-    } else if html_as_default_extension && path_to_file.extension().is_none() {
-        path_to_file.set_extension("html");
         None
     } else {
         let uri = match append_slash_on_path(uri.clone()) {

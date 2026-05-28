@@ -106,7 +106,10 @@ impl<F> ServeDir<F> {
     /// Defaults to `true`.
     pub fn append_index_html_on_directories(mut self, append: bool) -> Self {
         match &mut self.variant {
-            ServeVariant::Directory { append_index_html_on_directories, .. } => {
+            ServeVariant::Directory {
+                append_index_html_on_directories,
+                ..
+            } => {
                 *append_index_html_on_directories = append;
                 self
             }
@@ -119,7 +122,10 @@ impl<F> ServeDir<F> {
     /// Defaults to `false`.
     pub fn html_as_default_extension(mut self, append: bool) -> Self {
         match &mut self.variant {
-            ServeVariant::Directory { html_as_default_extension, .. } => {
+            ServeVariant::Directory {
+                html_as_default_extension,
+                ..
+            } => {
                 *html_as_default_extension = append;
                 self
             }
