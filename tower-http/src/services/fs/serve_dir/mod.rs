@@ -54,7 +54,7 @@ pub struct ServeDir<F = DefaultServeDirFallback> {
     base: PathBuf,
     buf_chunk_size: usize,
     precompressed_variants: Option<PrecompressedVariants>,
-    // This is used to specialise implementation for
+    // This is used to specialize implementation for
     // single files
     variant: ServeVariant,
     fallback: Option<F>,
@@ -296,7 +296,7 @@ impl<F> ServeDir<F> {
     ///     let mut service = ServeDir::new("assets");
     ///
     ///     // You only need to worry about backpressure, and thus call `ServiceExt::ready`, if
-    ///     // your adding a fallback to `ServeDir` that cares about backpressure.
+    ///     // you are adding a fallback to `ServeDir` that cares about backpressure.
     ///     //
     ///     // Its shown here for demonstration but you can do `service.try_call(request)`
     ///     // otherwise
