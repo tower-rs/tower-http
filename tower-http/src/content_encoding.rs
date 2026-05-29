@@ -291,20 +291,23 @@ fn preferred_encoding_with_wildcard(
     // If there is no wildcard, use only the explicitly listed encodings.
     // Per RFC 9110 §12.5.3, if identity is excluded (q=0) and no other encoding is
     // acceptable, the server SHOULD respond with 406.
-    let Some(wildcard_q) = wildcard_q else {
-        let identity_rejected = explicit
-            .iter()
-            .any(|(enc, q)| *enc == Encoding::Identity && q.0 == 0);
-        return match Encoding::preferred_encoding(explicit.into_iter()) {
-            Some(enc) => Some(enc),
-            None => {
-                if identity_rejected {
-                    None
-                } else {
-                    Some(Encoding::Identity)
+    let wildcard_q = match wildcard_q {
+        Some(q) => q,
+        None => {
+            let identity_rejected = explicit
+                .iter()
+                .any(|(enc, q)| *enc == Encoding::Identity && q.0 == 0);
+            return match Encoding::preferred_encoding(explicit.into_iter()) {
+                Some(enc) => Some(enc),
+                None => {
+                    if identity_rejected {
+                        None
+                    } else {
+                        Some(Encoding::Identity)
+                    }
                 }
-            }
-        };
+            };
+        }
     };
 
     // Build the effective set of (encoding, qvalue) for all supported encodings.
