@@ -18,7 +18,7 @@ impl IfModifiedSince {
         self.0 < last_modified.0
     }
 
-    /// convert a header value into a IfModifiedSince, invalid values are silentely ignored
+    /// Convert a header value into a IfModifiedSince. Invalid values are silently ignored
     pub(super) fn from_header_value(value: &HeaderValue) -> Option<IfModifiedSince> {
         std::str::from_utf8(value.as_bytes())
             .ok()
@@ -35,7 +35,7 @@ impl IfUnmodifiedSince {
         self.0 >= last_modified.0
     }
 
-    /// Convert a header value into a IfModifiedSince, invalid values are silentely ignored
+    /// Convert a header value into a IfUnmodifiedSince. Invalid values are silently ignored
     pub(super) fn from_header_value(value: &HeaderValue) -> Option<IfUnmodifiedSince> {
         std::str::from_utf8(value.as_bytes())
             .ok()

@@ -208,7 +208,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn precompresed_head_request() {
+    async fn precompressed_head_request() {
         let svc =
             ServeFile::new(format!("{TEST_FILES_DIR}/precompressed.txt")).precompressed_gzip();
 

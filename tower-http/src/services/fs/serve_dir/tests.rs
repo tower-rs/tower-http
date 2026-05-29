@@ -75,7 +75,7 @@ async fn head_request() {
 }
 
 #[tokio::test]
-async fn precompresed_head_request() {
+async fn precompressed_head_request() {
     let svc = ServeDir::new(TEST_FILES_DIR).precompressed_gzip();
 
     let req = Request::builder()
