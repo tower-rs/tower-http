@@ -616,4 +616,93 @@ mod tests {
         let body = res.into_body();
         assert_eq!(body.size_hint().exact().unwrap(), msg.len() as u64);
     }
+
+    #[tokio::test]
+    async fn wildcard_q_zero_returns_406() {
+        let svc = service_fn(handle);
+        let mut svc = Compression::new(svc).compress_when(Always);
+
+        let req = Request::builder()
+            .header("accept-encoding", "*;q=0")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.ready().await.unwrap().call(req).await.unwrap();
+
+        assert_eq!(res.status(), http::StatusCode::NOT_ACCEPTABLE);
+        assert!(res
+            .headers()
+            .get_all(http::header::VARY)
+            .iter()
+            .any(|v| v.to_str().unwrap().contains("accept-encoding")));
+    }
+
+    #[tokio::test]
+    async fn wildcard_q_zero_with_gzip_picks_gzip() {
+        let svc = service_fn(handle);
+        let mut svc = Compression::new(svc).compress_when(Always);
+
+        let req = Request::builder()
+            .header("accept-encoding", "*;q=0,gzip")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.ready().await.unwrap().call(req).await.unwrap();
+
+        assert_eq!(res.status(), http::StatusCode::OK);
+        assert_eq!(
+            res.headers()
+                .get("content-encoding")
+                .and_then(|v| v.to_str().ok()),
+            Some("gzip")
+        );
+    }
+
+    #[tokio::test]
+    async fn wildcard_alone_compresses() {
+        let svc = service_fn(handle);
+        let mut svc = Compression::new(svc).compress_when(Always);
+
+        let req = Request::builder()
+            .header("accept-encoding", "*")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.ready().await.unwrap().call(req).await.unwrap();
+
+        assert_eq!(res.status(), http::StatusCode::OK);
+        // Should pick the best supported encoding (not identity)
+        assert!(res.headers().contains_key(CONTENT_ENCODING));
+    }
+
+    #[tokio::test]
+    async fn identity_q_zero_alone_returns_406() {
+        let svc = service_fn(handle);
+        let mut svc = Compression::new(svc).compress_when(Always);
+
+        let req = Request::builder()
+            .header("accept-encoding", "identity;q=0")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.ready().await.unwrap().call(req).await.unwrap();
+
+        assert_eq!(res.status(), http::StatusCode::NOT_ACCEPTABLE);
+    }
+
+    #[tokio::test]
+    async fn identity_q_zero_with_gzip_picks_gzip() {
+        let svc = service_fn(handle);
+        let mut svc = Compression::new(svc).compress_when(Always);
+
+        let req = Request::builder()
+            .header("accept-encoding", "identity;q=0,gzip")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.ready().await.unwrap().call(req).await.unwrap();
+
+        assert_eq!(res.status(), http::StatusCode::OK);
+        assert_eq!(
+            res.headers()
+                .get("content-encoding")
+                .and_then(|v| v.to_str().ok()),
+            Some("gzip")
+        );
+    }
 }

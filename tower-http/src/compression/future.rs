@@ -22,7 +22,7 @@ pin_project! {
     pub struct ResponseFuture<F, P> {
         #[pin]
         pub(crate) inner: F,
-        pub(crate) encoding: Encoding,
+        pub(crate) encoding: Option<Encoding>,
         pub(crate) predicate: P,
         pub(crate) quality: CompressionLevel,
     }
@@ -38,6 +38,33 @@ where
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let res = ready!(self.as_mut().project().inner.poll(cx)?);
+
+        let encoding = match self.encoding {
+            Some(enc) => enc,
+            None => {
+                // RFC 9110 §12.5.3: the server SHOULD respond with 406 Not Acceptable
+                // when no encoding is satisfiable. This middleware chooses to enforce it.
+                //
+                // Note: the inner service has already been called, so its response body and
+                // headers are passed through. Only the status code is overwritten.
+                let mut res = res;
+                *res.status_mut() = http::StatusCode::NOT_ACCEPTABLE;
+                if !res.headers().get_all(header::VARY).iter().any(|value| {
+                    contains_ignore_ascii_case(
+                        value.as_bytes(),
+                        header::ACCEPT_ENCODING.as_str().as_bytes(),
+                    )
+                }) {
+                    res.headers_mut()
+                        .append(header::VARY, header::ACCEPT_ENCODING.into());
+                }
+                let (parts, body) = res.into_parts();
+                return Poll::Ready(Ok(Response::from_parts(
+                    parts,
+                    CompressionBody::new(BodyInner::identity(body)),
+                )));
+            }
+        };
 
         // never recompress responses that are already compressed
         let should_compress = !res.headers().contains_key(header::CONTENT_ENCODING)
@@ -60,7 +87,7 @@ where
                 .append(header::VARY, header::ACCEPT_ENCODING.into());
         }
 
-        let body = match (should_compress, self.encoding) {
+        let body = match (should_compress, encoding) {
             // if compression is _not_ supported or the client doesn't accept it
             (false, _) | (_, Encoding::Identity) => {
                 return Poll::Ready(Ok(Response::from_parts(
@@ -114,7 +141,7 @@ where
 
         parts
             .headers
-            .insert(header::CONTENT_ENCODING, self.encoding.into_header_value());
+            .insert(header::CONTENT_ENCODING, encoding.into_header_value());
 
         let res = Response::from_parts(parts, body);
         Poll::Ready(Ok(res))

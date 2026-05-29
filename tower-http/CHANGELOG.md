@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `DefaultOnEos` now explicitly parent their tracing events to the request span
   rather than relying on the ambient span context. This fixes intermittent cases
   where events could appear without their request span attached ([#655])
+- **breaking:** `compression`: the middleware now handles the `*` wildcard and
+  `identity;q=0` in Accept-Encoding per RFC 9110 §12.5.3. Requests that
+  previously fell back to identity (e.g. `*;q=0` or `identity;q=0` with no
+  other acceptable encoding) now receive a 406 Not Acceptable response. Clients
+  that explicitly reject all encodings without listing an alternative will see
+  different behavior. ([#215])
 - The implicit `tokio` and `async-compression` features are removed (BREAKING).
   These were kept as no-op features in 0.6.x for backwards compatibility after
   the switch to `dep:` syntax in [#642]. Downstream crates that activate
@@ -27,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   by the features that need them (e.g. `compression-gzip`, `fs`, `timeout`).
   ([#628])
 
+[#215]: https://github.com/tower-rs/tower-http/issues/215
 [#628]: https://github.com/tower-rs/tower-http/pull/628
 [#642]: https://github.com/tower-rs/tower-http/pull/642
 
