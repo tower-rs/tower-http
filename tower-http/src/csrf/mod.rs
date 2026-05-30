@@ -11,8 +11,8 @@
 //! 2. The `Origin` header byte-for-byte matches an allow-listed trusted origin.
 //! 3. `Sec-Fetch-Site` is `same-origin` or `none`.
 //! 4. Neither `Sec-Fetch-Site` nor `Origin` is present.
-//! 5. The `Origin`'s authority (host and any port) matches the `Host` header
-//!    byte-for-byte.
+//! 5. The `Origin`'s authority (host and any port) matches the request's effective
+//!    host byte-for-byte (the request-target authority if present, else `Host`).
 //!
 //! Rejected requests receive a `403 Forbidden` response. The originating
 //! [`ProtectionError`] is attached to the response's extensions — on every
@@ -615,13 +615,32 @@ mod tests {
                 )),
             },
             Test {
-                // The Host header is compared verbatim when present (no fallback
-                // to the URI authority, no validation), so a malformed Host can
-                // never match a well-formed Origin authority.
+                // No request-target authority, so the Host header is the effective
+                // host, compared verbatim — a malformed Host never matches an Origin.
                 name: "malformed host header compared verbatim",
-                uri: "https://example.com/path",
+                uri: "/path",
                 host: Some("not a valid authority"),
                 origin: "https://example.com",
+                result: Err(ProtectionError::new(
+                    ProtectionErrorKind::CrossOriginRequestFromOldBrowser,
+                )),
+            },
+            Test {
+                // RFC 7230 §5.3 / Go parity: the request-target authority is the
+                // effective host (Host header ignored); here it matches Origin.
+                name: "request-target authority wins over host header (match)",
+                uri: "https://example.com/path",
+                host: Some("other.example"),
+                origin: "https://example.com",
+                result: Ok(()),
+            },
+            Test {
+                // Security-relevant: Origin matches the Host header but not the
+                // winning request-target authority, so it stays cross-origin.
+                name: "origin matching host header but not authority is rejected",
+                uri: "https://example.com/path",
+                host: Some("other.example"),
+                origin: "https://other.example",
                 result: Err(ProtectionError::new(
                     ProtectionErrorKind::CrossOriginRequestFromOldBrowser,
                 )),

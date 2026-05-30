@@ -105,12 +105,15 @@ impl<S, T> Csrf<S, T> {
 
         let host = req.headers().get("host").map(|h| h.as_bytes());
 
-        // The reference compares `url.Parse(origin).Host == req.Host`: the Origin's
-        // authority (scheme stripped) against req.Host, which is the Host header or
-        // the URI authority (HTTP/2 `:authority`) when the header is absent. The
-        // comparison is byte-exact. The Host carries no scheme, so an http→https
-        // mismatch can't be detected here; we fail open, mitigable with HSTS.
-        let effective_host = host.or_else(|| req.uri().authority().map(|a| a.as_str().as_bytes()));
+        // Mirrors the reference's `url.Parse(origin).Host == req.Host`. Per RFC 7230
+        // §5.3, req.Host is the request-target authority (absolute-form URI / HTTP/2
+        // `:authority`) if present, else the Host header. Byte-exact and scheme-blind,
+        // so an http→https mismatch can't be caught here — we fail open (HSTS helps).
+        let effective_host = req
+            .uri()
+            .authority()
+            .map(|a| a.as_str().as_bytes())
+            .or(host);
 
         if let (Some(uri), Some(effective_host)) = (&origin_uri, effective_host) {
             if uri.authority().map(|a| a.as_str().as_bytes()) == Some(effective_host) {
