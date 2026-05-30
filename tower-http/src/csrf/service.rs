@@ -94,7 +94,11 @@ impl<S, T> Csrf<S, T> {
             }
             None | Some(b"") => {} // fall through to Origin check
             Some(_) if is_exempt() => return Ok(()),
-            Some(_) => return Err(ProtectionError::new(ProtectionErrorKind::CrossOriginRequest)),
+            Some(_) => {
+                return Err(ProtectionError::new(
+                    ProtectionErrorKind::CrossOriginRequest,
+                ))
+            }
         }
 
         if matches!(origin, None | Some(b"")) {
