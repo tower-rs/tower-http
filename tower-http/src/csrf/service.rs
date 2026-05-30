@@ -41,6 +41,8 @@ impl<S, T> Csrf<S, T> {
     }
 
     pub(super) fn verify<Body>(&self, req: &Request<Body>) -> Result<(), ProtectionError> {
+        // Deliberately not Method::is_safe: it also treats TRACE as safe, but the
+        // reference implementation only exempts GET/HEAD/OPTIONS, so we match it here.
         if matches!(
             req.method(),
             &Method::GET | &Method::HEAD | &Method::OPTIONS
@@ -195,5 +197,22 @@ where
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Guards the comment in `verify`: `Method::is_safe` exempts more than the
+    // GET/HEAD/OPTIONS set the reference implementation uses, so we can't rely on it.
+    #[test]
+    fn method_is_safe_covers_more_than_get_head_options() {
+        for method in [&Method::GET, &Method::HEAD, &Method::OPTIONS] {
+            assert!(method.is_safe());
+        }
+
+        // TRACE is "safe" per RFC 7231 but is not in the reference implementation's set.
+        assert!(Method::TRACE.is_safe());
     }
 }
