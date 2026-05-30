@@ -117,7 +117,10 @@ impl<T> CsrfLayer<T> {
     /// The default builder returns a `403 Forbidden` with an empty body and
     /// the [`ProtectionError`](super::ProtectionError) attached to the
     /// response's extensions.
-    pub fn with_rejection_response<R>(self, rejection_response: R) -> CsrfLayer<R> {
+    pub fn with_rejection_response<R>(self, rejection_response: R) -> CsrfLayer<R>
+    where
+        R: Clone,
+    {
         CsrfLayer {
             insecure_bypass: self.insecure_bypass,
             trusted_origins: self.trusted_origins,
