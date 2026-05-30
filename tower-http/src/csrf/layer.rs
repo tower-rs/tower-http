@@ -5,7 +5,7 @@ use http::{Method, Uri};
 use tower_layer::Layer;
 
 use super::service::Csrf;
-use super::url::TrustedOrigin;
+use super::url::UriExt;
 use super::{BypassFn, ConfigError, DebugFn, DefaultResponseForProtectionError, Origins};
 
 /// Layer that applies the [`Csrf`] middleware.
@@ -51,19 +51,43 @@ impl CsrfLayer {
 }
 
 impl<T> CsrfLayer<T> {
-    /// Adds a trusted origin that allows all requests with an `Origin` header
-    /// exactly matching the given value.
+    /// Adds a trusted origin that allows all requests whose `Origin` header
+    /// matches the given value.
     ///
-    /// Origin values are of the form `scheme://host[:port]`. Default ports
-    /// (`80` for `http`, `443` for `https`) and casing are normalized; paths,
-    /// queries, and fragments are rejected.
+    /// The value is matched **byte-for-byte** against the request's `Origin`
+    /// header — there is no normalization (this mirrors the Go reference). It
+    /// must therefore be written exactly as a browser sends it:
+    ///
+    /// - form `scheme://host[:port]`, where `scheme` is `http` or `https`;
+    /// - the host lowercased (browsers lowercase it; IDN hosts must be given in
+    ///   punycode, e.g. `xn--exmple-cua.com`);
+    /// - **default ports omitted** — browsers drop `:80`/`:443`, so an explicit
+    ///   default port (e.g. `https://example.com:443`) will never match;
+    /// - **no trailing slash**, path, query, or fragment.
+    ///
+    /// Inputs that can't represent a browser `Origin` are rejected with a
+    /// [`ConfigError`]; inputs that parse but aren't in the canonical browser
+    /// form above are accepted but will silently never match.
+    ///
+    /// ```
+    /// # use tower_http::csrf::CsrfLayer;
+    /// // Matches `Origin: https://example.com`:
+    /// let layer = CsrfLayer::new().add_trusted_origin("https://example.com")?;
+    ///
+    /// // Accepted, but never matches a browser Origin (explicit default port):
+    /// let layer = CsrfLayer::new().add_trusted_origin("https://example.com:443")?;
+    /// # Ok::<_, tower_http::csrf::ConfigError>(())
+    /// ```
     pub fn add_trusted_origin<S: AsRef<str>>(mut self, origin: S) -> Result<Self, ConfigError> {
-        let normalized = TrustedOrigin::parse(origin.as_ref())?.into_canonical();
+        let origin = origin.as_ref();
+
+        // validate the form; the origin is stored and matched verbatim.
+        Uri::parse_origin(origin)?;
 
         #[cfg(feature = "tracing")]
-        tracing::debug!(origin = %normalized, "added trusted origin");
+        tracing::debug!(origin = %origin, "added trusted origin");
 
-        self.trusted_origins.insert(normalized);
+        self.trusted_origins.insert(origin.to_owned());
 
         Ok(self)
     }

@@ -1,5 +1,5 @@
+use std::convert::TryFrom;
 use std::fmt::{self, Debug, Formatter};
-use std::str;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
@@ -7,7 +7,6 @@ use http::{Method, Request, Response, Uri};
 use tower_service::Service;
 
 use super::future::ResponseFuture;
-use super::url::UriExt;
 use super::{
     BypassFn, DebugFn, DefaultResponseForProtectionError, Origins, ProtectionError,
     ResponseForProtectionError,
@@ -56,8 +55,7 @@ impl<S, T> Csrf<S, T> {
 
         let origin_uri = origin
             .filter(|b| !b.is_empty())
-            .and_then(|b| str::from_utf8(b).ok())
-            .and_then(|s| s.parse::<Uri>().ok())
+            .and_then(|b| Uri::try_from(b).ok())
             .filter(|u| matches!(u.scheme_str(), Some("http" | "https")));
 
         let sec_fetch_site = req.headers().get("sec-fetch-site").map(|h| h.as_bytes());
@@ -74,10 +72,9 @@ impl<S, T> Csrf<S, T> {
                 return true;
             }
 
-            let trusted = origin_uri
-                .as_ref()
-                .and_then(|u| u.canonical())
-                .map_or(false, |s| self.trusted_origins.contains(&s));
+            // Strict byte match of the raw Origin header against the registered
+            // set, mirroring the Go reference's `trustedOrigins[Origin]`.
+            let trusted = origin.map_or(false, |b| self.trusted_origins.contains(b));
 
             if trusted {
                 #[cfg(feature = "tracing")]
@@ -108,30 +105,18 @@ impl<S, T> Csrf<S, T> {
 
         let host = req.headers().get("host").map(|h| h.as_bytes());
 
-        if let Some(uri) = &origin_uri {
-            // compare effective ports (scheme default when implicit). Host has no scheme, so http→https can't be detected here; fail open per HSTS.
-            let authority = host
-                .and_then(|b| str::from_utf8(b).ok())
-                .and_then(|s| s.parse::<http::uri::Authority>().ok());
+        // The reference compares `url.Parse(origin).Host == req.Host`: the Origin's
+        // authority (scheme stripped) against req.Host, which is the Host header or
+        // the URI authority (HTTP/2 `:authority`) when the header is absent. The
+        // comparison is byte-exact. The Host carries no scheme, so an http→https
+        // mismatch can't be detected here; we fail open, mitigable with HSTS.
+        let effective_host = host.or_else(|| req.uri().authority().map(|a| a.as_str().as_bytes()));
 
-            // fall back to the request URI when the Host header is missing or unparseable
-            let (host_name, port_host) = match authority.as_ref() {
-                Some(a) => (Some(a.host()), a.port_u16()),
-                None => (req.uri().host(), req.uri().port_u16()),
-            };
-
-            if let (Some(origin_host), Some(host_name)) = (uri.host(), host_name) {
-                let port_origin = uri.effective_port();
-                // Host carries no scheme of its own; assume Origin's scheme so an implicit
-                // Host port resolves to Origin's scheme default (443/80) rather than
-                // silently inheriting Origin's explicit port.
-                let port_host = port_host.or_else(|| uri.scheme_default_port());
-
-                if origin_host.eq_ignore_ascii_case(host_name) && port_origin == port_host {
-                    #[cfg(feature = "tracing")]
-                    tracing::trace!(uri = %req.uri().path(), "request passed: origin is same as host");
-                    return Ok(());
-                }
+        if let (Some(uri), Some(effective_host)) = (&origin_uri, effective_host) {
+            if uri.authority().map(|a| a.as_str().as_bytes()) == Some(effective_host) {
+                #[cfg(feature = "tracing")]
+                tracing::trace!(uri = %req.uri().path(), "request passed: origin is same as host");
+                return Ok(());
             }
         }
 

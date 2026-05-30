@@ -8,10 +8,11 @@
 //! Requests are allowed if any of the following hold:
 //!
 //! 1. The method is `GET`, `HEAD`, or `OPTIONS`.
-//! 2. The `Origin` header matches an allow-listed trusted origin.
+//! 2. The `Origin` header byte-for-byte matches an allow-listed trusted origin.
 //! 3. `Sec-Fetch-Site` is `same-origin` or `none`.
 //! 4. Neither `Sec-Fetch-Site` nor `Origin` is present.
-//! 5. The `Origin` host (with effective port) matches the `Host` header.
+//! 5. The `Origin`'s authority (host and any port) matches the `Host` header
+//!    byte-for-byte.
 //!
 //! Rejected requests receive a `403 Forbidden` response. The originating
 //! [`ProtectionError`] is attached to the response's extensions so handlers can
@@ -204,16 +205,27 @@ impl Debug for DebugFn {
     }
 }
 
-#[derive(Clone, Debug, Default)]
-struct Origins(Arc<HashSet<String>>);
+#[derive(Clone, Default)]
+struct Origins(Arc<HashSet<Vec<u8>>>);
 
 impl Origins {
-    fn contains(&self, origin: &str) -> bool {
+    fn contains(&self, origin: &[u8]) -> bool {
         self.0.contains(origin)
     }
 
-    fn insert(&mut self, origin: impl Into<String>) {
+    fn insert(&mut self, origin: impl Into<Vec<u8>>) {
         Arc::make_mut(&mut self.0).insert(origin.into());
+    }
+}
+
+impl Debug for Origins {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        // render trusted origins as utf-h strings
+        write!(f, "Origins(")?;
+        f.debug_set()
+            .entries(self.0.iter().map(|o| String::from_utf8_lossy(o)))
+            .finish()?;
+        write!(f, ")")
     }
 }
 
@@ -521,18 +533,20 @@ mod tests {
                 result: Err(ProtectionError::CrossOriginRequestFromOldBrowser),
             },
             Test {
+                // Strict byte match: an explicit default port does not equal an
+                // implicit one (the reference does not normalize ports).
                 name: "origin has explicit default, host implicit",
                 uri: "/",
                 host: Some("example.com"),
                 origin: "https://example.com:443",
-                result: Ok(()),
+                result: Err(ProtectionError::CrossOriginRequestFromOldBrowser),
             },
             Test {
                 name: "host has explicit default, origin implicit",
                 uri: "/",
                 host: Some("example.com:443"),
                 origin: "https://example.com",
-                result: Ok(()),
+                result: Err(ProtectionError::CrossOriginRequestFromOldBrowser),
             },
             Test {
                 name: "host implicit, origin explicit non-default",
@@ -549,11 +563,14 @@ mod tests {
                 result: Err(ProtectionError::CrossOriginRequestFromOldBrowser),
             },
             Test {
-                name: "unparseable host falls back to uri authority",
+                // The Host header is compared verbatim when present (no fallback
+                // to the URI authority, no validation), so a malformed Host can
+                // never match a well-formed Origin authority.
+                name: "malformed host header compared verbatim",
                 uri: "https://example.com/path",
                 host: Some("not a valid authority"),
                 origin: "https://example.com",
-                result: Ok(()),
+                result: Err(ProtectionError::CrossOriginRequestFromOldBrowser),
             },
             Test {
                 name: "missing host, uri carries authority (match)",
@@ -822,41 +839,47 @@ mod tests {
     }
 
     #[test]
-    fn test_middleware_trusted_origin_normalization() {
-        // Each row inserts a non-canonical form of the trusted origin and
-        // sends a request bearing the canonical browser-style Origin header;
-        // the test fails if canonicalization is dropped on either side.
+    fn test_middleware_trusted_origin_strict_byte_match() {
+        // Trusted origins are matched byte-for-byte against the request's Origin
+        // header (no canonicalization), mirroring the Go reference. Only an exact
+        // match is trusted; case- and port-form variants are not.
         struct Test {
             name: &'static str,
             trusted: &'static str,
             origin: &'static str,
+            result: Result<(), ProtectionError>,
         }
 
         let tests = [
             Test {
-                name: "scheme and host case folded",
-                trusted: "HTTPS://Example.COM",
+                name: "exact match trusted",
+                trusted: "https://example.com",
                 origin: "https://example.com",
+                result: Ok(()),
             },
             Test {
-                name: "trailing slash stripped",
-                trusted: "https://example.com/",
-                origin: "https://example.com",
-            },
-            Test {
-                name: "default https port stripped",
-                trusted: "https://example.com:443",
-                origin: "https://example.com",
-            },
-            Test {
-                name: "default http port stripped",
-                trusted: "http://example.com:80",
-                origin: "http://example.com",
-            },
-            Test {
-                name: "non-default port preserved",
+                name: "exact match with non-default port",
                 trusted: "https://example.com:8443",
                 origin: "https://example.com:8443",
+                result: Ok(()),
+            },
+            Test {
+                name: "host case mismatch not trusted",
+                trusted: "https://Example.COM",
+                origin: "https://example.com",
+                result: Err(ProtectionError::CrossOriginRequest),
+            },
+            Test {
+                name: "explicit default port not trusted against bare origin",
+                trusted: "https://example.com:443",
+                origin: "https://example.com",
+                result: Err(ProtectionError::CrossOriginRequest),
+            },
+            Test {
+                name: "bare trusted not matched by explicit-default-port origin",
+                trusted: "https://example.com",
+                origin: "https://example.com:443",
+                result: Err(ProtectionError::CrossOriginRequest),
             },
         ];
 
@@ -874,7 +897,7 @@ mod tests {
                 .body(())
                 .unwrap();
 
-            assert_eq!(middleware.verify(&req), Ok(()), "{}", test.name);
+            assert_eq!(middleware.verify(&req), test.result, "{}", test.name);
         }
     }
 }

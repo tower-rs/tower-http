@@ -2,61 +2,9 @@ use http::Uri;
 
 use super::ConfigError;
 
-/// A validated, canonicalized trusted-origin string.
-///
-/// Wraps the output of [`UriExt::parse_origin`] + [`UriExt::canonical`] so the
-/// canonical string can be carried around the type system without re-validation.
-/// Construct via [`TrustedOrigin::parse`]; unwrap the inner string with
-/// [`TrustedOrigin::into_canonical`].
-pub(crate) struct TrustedOrigin(String);
-
-impl TrustedOrigin {
-    /// Parses and canonicalizes `input` as a trusted origin.
-    ///
-    /// Forwards validation to [`UriExt::parse_origin`] (see that method for the
-    /// rejected forms) and then runs [`UriExt::canonical`] on the result.
-    pub(crate) fn parse(input: &str) -> Result<Self, ConfigError> {
-        let uri = Uri::parse_origin(input)?;
-
-        Ok(Self(
-            uri.canonical()
-                .expect("parse_origin validates scheme and host"),
-        ))
-    }
-
-    /// Consumes the wrapper and returns the canonical `scheme://host[:port]`
-    /// string.
-    pub(crate) fn into_canonical(self) -> String {
-        self.0
-    }
-}
-
 /// Internal extension methods on [`http::Uri`] used by the CSRF middleware to
-/// normalize and compare browser-supplied `Origin` values.
+/// validate trusted-origin strings.
 pub(crate) trait UriExt: Sized {
-    /// Returns the canonical `scheme://host[:port]` representation, or `None`
-    /// for URIs that can't appear in a browser `Origin` header.
-    ///
-    /// Normalization:
-    ///
-    /// - scheme is `http` or `https` (otherwise `None`);
-    /// - host is non-empty and ASCII-lowercased;
-    /// - default ports (`80` for `http`, `443` for `https`) are stripped;
-    /// - non-default ports are preserved verbatim.
-    ///
-    /// Used on both sides of the trusted-origin and `Origin`/`Host`
-    /// comparisons so that incidental form differences (case, explicit default
-    /// ports) don't cause a legitimate request to be rejected.
-    fn canonical(&self) -> Option<String>;
-
-    /// Returns the URI's explicit port if present, otherwise the IANA default
-    /// for its scheme. Returns `None` for schemes without a known default.
-    fn effective_port(&self) -> Option<u16>;
-
-    /// Returns the IANA default port for the URI's scheme (`80` for `http`,
-    /// `443` for `https`), or `None` for any other scheme.
-    fn scheme_default_port(&self) -> Option<u16>;
-
     /// Parses a trusted-origin string of the form `scheme://host[:port]`.
     ///
     /// Rejects inputs that can't represent a browser `Origin`:
@@ -64,44 +12,17 @@ pub(crate) trait UriExt: Sized {
     /// - unparseable URIs ([`ConfigError::InvalidOriginUrl`]);
     /// - non-`http`/`https` schemes or missing host ([`ConfigError::OpaqueOrigin`]);
     /// - any path, query, or fragment component
-    ///   ([`ConfigError::InvalidOriginUrlComponents`] — including fragments
-    ///   that `http::Uri` would otherwise silently strip);
+    ///   ([`ConfigError::InvalidOriginUrlComponents`] — including a bare trailing
+    ///   `/` and fragments that `http::Uri` would otherwise silently strip);
     /// - non-ASCII hostnames ([`ConfigError::NonAsciiHostname`] — IDN hosts
     ///   must be supplied in punycode, since that's what browsers send).
     ///
-    /// The returned [`Uri`] is parsed but not canonicalized; callers should
-    /// run [`UriExt::canonical`] before storing or comparing it.
+    /// The returned [`Uri`] is parsed but not normalized; the origin is matched
+    /// against the request's `Origin` header byte-for-byte.
     fn parse_origin(input: &str) -> Result<Self, ConfigError>;
 }
 
 impl UriExt for Uri {
-    fn canonical(&self) -> Option<String> {
-        let scheme = match self.scheme_str()? {
-            s @ ("http" | "https") => s,
-            _ => return None,
-        };
-
-        let host = self.host().filter(|h| !h.is_empty())?.to_ascii_lowercase();
-        let default: u16 = if scheme == "https" { 443 } else { 80 };
-
-        Some(match self.port_u16() {
-            Some(p) if p != default => format!("{scheme}://{host}:{p}"),
-            _ => format!("{scheme}://{host}"),
-        })
-    }
-
-    fn effective_port(&self) -> Option<u16> {
-        self.port_u16().or_else(|| self.scheme_default_port())
-    }
-
-    fn scheme_default_port(&self) -> Option<u16> {
-        match self.scheme_str() {
-            Some("https") => Some(443),
-            Some("http") => Some(80),
-            _ => None,
-        }
-    }
-
     fn parse_origin(input: &str) -> Result<Self, ConfigError> {
         if input.contains('#') {
             return Err(ConfigError::InvalidOriginUrlComponents {
@@ -132,9 +53,13 @@ impl UriExt for Uri {
             });
         }
 
-        let path = uri.path();
+        // Reject any path/query (fragments are rejected above). `http::Uri`
+        // reports `path()` as "/" for both `scheme://host` and `scheme://host/`,
+        // so detect a path from the raw input (everything after "://") to reach
+        // parity with Go, which rejects a non-empty path — including a bare "/".
+        let after_scheme = input.split_once("://").map_or("", |(_, rest)| rest);
 
-        if (path != "/" && !path.is_empty()) || uri.query().is_some() {
+        if after_scheme.contains('/') || uri.query().is_some() {
             return Err(ConfigError::InvalidOriginUrlComponents {
                 origin: input.to_owned(),
             });
@@ -148,99 +73,6 @@ impl UriExt for Uri {
 mod tests {
     use super::*;
 
-    fn uri(s: &str) -> Uri {
-        s.parse()
-            .unwrap_or_else(|e| panic!("{:?} failed to parse: {}", s, e))
-    }
-
-    #[test]
-    fn test_canonical() {
-        struct Test {
-            input: &'static str,
-            expected: Option<&'static str>,
-        }
-
-        let tests = [
-            Test {
-                input: "https://example.com",
-                expected: Some("https://example.com"),
-            },
-            Test {
-                input: "http://example.com",
-                expected: Some("http://example.com"),
-            },
-            Test {
-                input: "HTTPS://Example.COM",
-                expected: Some("https://example.com"),
-            },
-            Test {
-                input: "https://example.com:443",
-                expected: Some("https://example.com"),
-            },
-            Test {
-                input: "http://example.com:80",
-                expected: Some("http://example.com"),
-            },
-            Test {
-                input: "https://example.com:8443",
-                expected: Some("https://example.com:8443"),
-            },
-            Test {
-                input: "ftp://example.com",
-                expected: None,
-            },
-        ];
-
-        for test in tests {
-            assert_eq!(
-                uri(test.input).canonical().as_deref(),
-                test.expected,
-                "{}",
-                test.input
-            );
-        }
-    }
-
-    #[test]
-    fn test_effective_port() {
-        struct Test {
-            input: &'static str,
-            expected: Option<u16>,
-        }
-
-        let tests = [
-            Test {
-                input: "https://example.com",
-                expected: Some(443),
-            },
-            Test {
-                input: "http://example.com",
-                expected: Some(80),
-            },
-            Test {
-                input: "https://example.com:443",
-                expected: Some(443),
-            },
-            Test {
-                input: "https://example.com:8443",
-                expected: Some(8443),
-            },
-            Test {
-                input: "ftp://example.com",
-                expected: None,
-            },
-        ];
-
-        for test in tests {
-            assert_eq!(
-                uri(test.input).effective_port(),
-                test.expected,
-                "{}",
-                test.input
-            );
-        }
-    }
-
     #[test]
     fn test_parse_origin_accepts() {
         for input in [
@@ -248,7 +80,6 @@ mod tests {
             "http://example.com",
             "https://example.com:8443",
             "HTTPS://Example.COM",
-            "https://example.com/",
         ] {
             assert!(
                 Uri::parse_origin(input).is_ok(),
@@ -288,7 +119,11 @@ mod tests {
             ("javascript:alert(1)", |e| {
                 matches!(e, ConfigError::OpaqueOrigin { .. })
             }),
-            // Path/query/fragment not allowed on a trusted origin.
+            // Path/query/fragment not allowed on a trusted origin. A bare
+            // trailing slash is a (non-empty) path too — rejected, matching Go.
+            ("https://example.com/", |e| {
+                matches!(e, ConfigError::InvalidOriginUrlComponents { .. })
+            }),
             ("https://example.com/path", |e| {
                 matches!(e, ConfigError::InvalidOriginUrlComponents { .. })
             }),
