@@ -330,10 +330,40 @@ mod tests {
         let res = svc.oneshot(req).await.unwrap();
 
         assert_eq!(res.status(), StatusCode::IM_A_TEAPOT);
+        assert_ne!(res.status(), StatusCode::OK);
         assert!(res.extensions().get::<ProtectionError>().is_none());
 
         let body = to_bytes(res.into_body()).await.unwrap();
         assert_eq!(&body[..], b"denied");
+    }
+
+    #[tokio::test]
+    async fn test_service_custom_rejection_response_not_invoked_when_allowed() {
+        let svc = CsrfLayer::new()
+            .add_trusted_origin("https://example.com")
+            .unwrap()
+            .with_rejection_response(|_err: ProtectionError| {
+                let mut res = Response::new(Body::from("denied"));
+                *res.status_mut() = StatusCode::IM_A_TEAPOT;
+                res
+            })
+            .layer(echo_service());
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/bar")
+            .header("origin", "https://example.com")
+            .body(Body::empty())
+            .unwrap();
+
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_ne!(res.status(), StatusCode::IM_A_TEAPOT);
+        assert!(res.extensions().get::<ProtectionError>().is_none());
+
+        let body = to_bytes(res.into_body()).await.unwrap();
+        assert_eq!(&body[..], b"bar");
     }
 
     #[test]
