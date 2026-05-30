@@ -9,7 +9,7 @@ use tower_service::Service;
 use super::future::ResponseFuture;
 use super::{
     BypassFn, DebugFn, DefaultResponseForProtectionError, Origins, ProtectionError,
-    ResponseForProtectionError,
+    ProtectionErrorKind, ResponseForProtectionError,
 };
 
 /// Middleware that enforces cross-origin request forgery (CSRF) protection.
@@ -94,7 +94,7 @@ impl<S, T> Csrf<S, T> {
             }
             None | Some(b"") => {} // fall through to Origin check
             Some(_) if is_exempt() => return Ok(()),
-            Some(_) => return Err(ProtectionError::CrossOriginRequest),
+            Some(_) => return Err(ProtectionError::new(ProtectionErrorKind::CrossOriginRequest)),
         }
 
         if matches!(origin, None | Some(b"")) {
@@ -124,7 +124,9 @@ impl<S, T> Csrf<S, T> {
             return Ok(());
         }
 
-        Err(ProtectionError::CrossOriginRequestFromOldBrowser)
+        Err(ProtectionError::new(
+            ProtectionErrorKind::CrossOriginRequestFromOldBrowser,
+        ))
     }
 }
 

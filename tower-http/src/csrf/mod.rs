@@ -167,12 +167,47 @@ impl std::error::Error for ConfigError {}
 
 /// Reason a request was rejected by [`Csrf`].
 ///
-/// Attached to the `403 Forbidden` response's extensions so handlers can
-/// distinguish between explicit cross-origin rejections and conservative
-/// fallback rejections.
-#[derive(Clone, Debug, PartialEq)]
+/// Retrieve the category with [`ProtectionError::kind`]. Attached to the
+/// `403 Forbidden` response's extensions so handlers can distinguish explicit
+/// cross-origin rejections from conservative fallback rejections.
+///
+/// This is an opaque struct rather than an enum so future variants can carry
+/// additional context without a breaking change; match on [`kind`] instead.
+///
+/// [`kind`]: ProtectionError::kind
+#[derive(Clone, Debug)]
+pub struct ProtectionError {
+    kind: ProtectionErrorKind,
+}
+
+impl ProtectionError {
+    pub(crate) fn new(kind: ProtectionErrorKind) -> Self {
+        Self { kind }
+    }
+
+    /// The category of rejection.
+    pub fn kind(&self) -> ProtectionErrorKind {
+        self.kind
+    }
+}
+
+impl fmt::Display for ProtectionError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self.kind {
+            ProtectionErrorKind::CrossOriginRequest => f.write_str("Cross-Origin request detected"),
+            ProtectionErrorKind::CrossOriginRequestFromOldBrowser => {
+                f.write_str("Cross-Origin request from old browser detected")
+            }
+        }
+    }
+}
+
+impl std::error::Error for ProtectionError {}
+
+/// The category of a [`ProtectionError`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum ProtectionError {
+pub enum ProtectionErrorKind {
     /// A cross-origin request was detected via `Sec-Fetch-Site`.
     CrossOriginRequest,
 
@@ -181,19 +216,6 @@ pub enum ProtectionError {
     /// means the request came from an old browser or non-browser client.
     CrossOriginRequestFromOldBrowser,
 }
-
-impl fmt::Display for ProtectionError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            ProtectionError::CrossOriginRequest => f.write_str("Cross-Origin request detected"),
-            ProtectionError::CrossOriginRequestFromOldBrowser => {
-                f.write_str("Cross-Origin request from old browser detected")
-            }
-        }
-    }
-}
-
-impl std::error::Error for ProtectionError {}
 
 type BypassFn = dyn Fn(&Method, &Uri) -> bool + Send + Sync + 'static;
 
@@ -239,6 +261,12 @@ mod tests {
 
     use super::*;
     use crate::test_helpers::{to_bytes, Body};
+
+    impl PartialEq for super::ProtectionError {
+        fn eq(&self, other: &Self) -> bool {
+            self.kind == other.kind
+        }
+    }
 
     fn echo_service() -> impl tower::Service<
         Request<Body>,
@@ -318,7 +346,9 @@ mod tests {
         assert_eq!(res.status(), StatusCode::FORBIDDEN);
         assert_eq!(
             res.extensions().get::<ProtectionError>(),
-            Some(&ProtectionError::CrossOriginRequestFromOldBrowser),
+            Some(&ProtectionError::new(
+                ProtectionErrorKind::CrossOriginRequestFromOldBrowser
+            )),
         );
     }
 
@@ -422,13 +452,17 @@ mod tests {
                 name: "non-bypass path without sec-fetch-site",
                 path: "/api",
                 sec_fetch_site: None,
-                result: Err(ProtectionError::CrossOriginRequestFromOldBrowser),
+                result: Err(ProtectionError::new(
+                    ProtectionErrorKind::CrossOriginRequestFromOldBrowser,
+                )),
             },
             Test {
                 name: "non-bypass path with cross-site",
                 path: "/api",
                 sec_fetch_site: Some("cross-site"),
-                result: Err(ProtectionError::CrossOriginRequest),
+                result: Err(ProtectionError::new(
+                    ProtectionErrorKind::CrossOriginRequest,
+                )),
             },
         ];
 
@@ -530,7 +564,9 @@ mod tests {
                 uri: "/",
                 host: Some("example.com:8443"),
                 origin: "https://example.com:8444",
-                result: Err(ProtectionError::CrossOriginRequestFromOldBrowser),
+                result: Err(ProtectionError::new(
+                    ProtectionErrorKind::CrossOriginRequestFromOldBrowser,
+                )),
             },
             Test {
                 // Strict byte match: an explicit default port does not equal an
@@ -539,28 +575,36 @@ mod tests {
                 uri: "/",
                 host: Some("example.com"),
                 origin: "https://example.com:443",
-                result: Err(ProtectionError::CrossOriginRequestFromOldBrowser),
+                result: Err(ProtectionError::new(
+                    ProtectionErrorKind::CrossOriginRequestFromOldBrowser,
+                )),
             },
             Test {
                 name: "host has explicit default, origin implicit",
                 uri: "/",
                 host: Some("example.com:443"),
                 origin: "https://example.com",
-                result: Err(ProtectionError::CrossOriginRequestFromOldBrowser),
+                result: Err(ProtectionError::new(
+                    ProtectionErrorKind::CrossOriginRequestFromOldBrowser,
+                )),
             },
             Test {
                 name: "host implicit, origin explicit non-default",
                 uri: "/",
                 host: Some("example.com"),
                 origin: "https://example.com:8443",
-                result: Err(ProtectionError::CrossOriginRequestFromOldBrowser),
+                result: Err(ProtectionError::new(
+                    ProtectionErrorKind::CrossOriginRequestFromOldBrowser,
+                )),
             },
             Test {
                 name: "missing host, uri authority implicit, origin explicit non-default",
                 uri: "https://example.com/path",
                 host: None,
                 origin: "https://example.com:8443",
-                result: Err(ProtectionError::CrossOriginRequestFromOldBrowser),
+                result: Err(ProtectionError::new(
+                    ProtectionErrorKind::CrossOriginRequestFromOldBrowser,
+                )),
             },
             Test {
                 // The Host header is compared verbatim when present (no fallback
@@ -570,7 +614,9 @@ mod tests {
                 uri: "https://example.com/path",
                 host: Some("not a valid authority"),
                 origin: "https://example.com",
-                result: Err(ProtectionError::CrossOriginRequestFromOldBrowser),
+                result: Err(ProtectionError::new(
+                    ProtectionErrorKind::CrossOriginRequestFromOldBrowser,
+                )),
             },
             Test {
                 name: "missing host, uri carries authority (match)",
@@ -584,28 +630,36 @@ mod tests {
                 uri: "https://other.example/path",
                 host: None,
                 origin: "https://example.com",
-                result: Err(ProtectionError::CrossOriginRequestFromOldBrowser),
+                result: Err(ProtectionError::new(
+                    ProtectionErrorKind::CrossOriginRequestFromOldBrowser,
+                )),
             },
             Test {
                 name: "missing host and no uri authority",
                 uri: "/path",
                 host: None,
                 origin: "https://example.com",
-                result: Err(ProtectionError::CrossOriginRequestFromOldBrowser),
+                result: Err(ProtectionError::new(
+                    ProtectionErrorKind::CrossOriginRequestFromOldBrowser,
+                )),
             },
             Test {
                 name: "scheme-less origin does not match host even if bytes agree",
                 uri: "/",
                 host: Some("example.com:8443"),
                 origin: "example.com:8443",
-                result: Err(ProtectionError::CrossOriginRequestFromOldBrowser),
+                result: Err(ProtectionError::new(
+                    ProtectionErrorKind::CrossOriginRequestFromOldBrowser,
+                )),
             },
             Test {
                 name: "non-http origin scheme does not enter host fallback",
                 uri: "/",
                 host: Some("example.com:8443"),
                 origin: "ftp://example.com:8443",
-                result: Err(ProtectionError::CrossOriginRequestFromOldBrowser),
+                result: Err(ProtectionError::new(
+                    ProtectionErrorKind::CrossOriginRequestFromOldBrowser,
+                )),
             },
         ];
 
@@ -663,14 +717,18 @@ mod tests {
                 method: Method::POST,
                 sec_fetch_site: Some(b"cross-site"),
                 origin: None,
-                result: Err(ProtectionError::CrossOriginRequest),
+                result: Err(ProtectionError::new(
+                    ProtectionErrorKind::CrossOriginRequest,
+                )),
             },
             Test {
                 name: "same-site blocked",
                 method: Method::POST,
                 sec_fetch_site: Some(b"same-site"),
                 origin: None,
-                result: Err(ProtectionError::CrossOriginRequest),
+                result: Err(ProtectionError::new(
+                    ProtectionErrorKind::CrossOriginRequest,
+                )),
             },
             Test {
                 name: "no header with no origin",
@@ -691,14 +749,18 @@ mod tests {
                 method: Method::POST,
                 sec_fetch_site: None,
                 origin: Some(b"https://attacker.example"),
-                result: Err(ProtectionError::CrossOriginRequestFromOldBrowser),
+                result: Err(ProtectionError::new(
+                    ProtectionErrorKind::CrossOriginRequestFromOldBrowser,
+                )),
             },
             Test {
                 name: "no header with null origin",
                 method: Method::POST,
                 sec_fetch_site: None,
                 origin: Some(b"null"),
-                result: Err(ProtectionError::CrossOriginRequestFromOldBrowser),
+                result: Err(ProtectionError::new(
+                    ProtectionErrorKind::CrossOriginRequestFromOldBrowser,
+                )),
             },
             Test {
                 name: "GET allowed",
@@ -726,21 +788,27 @@ mod tests {
                 method: Method::PUT,
                 sec_fetch_site: Some(b"cross-site"),
                 origin: None,
-                result: Err(ProtectionError::CrossOriginRequest),
+                result: Err(ProtectionError::new(
+                    ProtectionErrorKind::CrossOriginRequest,
+                )),
             },
             Test {
                 name: "non-decodable origin without sec-fetch-site rejected",
                 method: Method::POST,
                 sec_fetch_site: None,
                 origin: Some(NON_DECODABLE),
-                result: Err(ProtectionError::CrossOriginRequestFromOldBrowser),
+                result: Err(ProtectionError::new(
+                    ProtectionErrorKind::CrossOriginRequestFromOldBrowser,
+                )),
             },
             Test {
                 name: "non-decodable sec-fetch-site without origin rejected",
                 method: Method::POST,
                 sec_fetch_site: Some(NON_DECODABLE),
                 origin: None,
-                result: Err(ProtectionError::CrossOriginRequest),
+                result: Err(ProtectionError::new(
+                    ProtectionErrorKind::CrossOriginRequest,
+                )),
             },
             Test {
                 name: "empty sec-fetch-site without origin allowed",
@@ -809,13 +877,17 @@ mod tests {
                 name: "untrusted origin without sec-fetch-site",
                 origin: Some("https://attacker.example"),
                 sec_fetch_site: None,
-                result: Err(ProtectionError::CrossOriginRequestFromOldBrowser),
+                result: Err(ProtectionError::new(
+                    ProtectionErrorKind::CrossOriginRequestFromOldBrowser,
+                )),
             },
             Test {
                 name: "untrusted origin with cross-site",
                 origin: Some("https://attacker.example"),
                 sec_fetch_site: Some("cross-site"),
-                result: Err(ProtectionError::CrossOriginRequest),
+                result: Err(ProtectionError::new(
+                    ProtectionErrorKind::CrossOriginRequest,
+                )),
             },
         ];
 
@@ -867,19 +939,25 @@ mod tests {
                 name: "host case mismatch not trusted",
                 trusted: "https://Example.COM",
                 origin: "https://example.com",
-                result: Err(ProtectionError::CrossOriginRequest),
+                result: Err(ProtectionError::new(
+                    ProtectionErrorKind::CrossOriginRequest,
+                )),
             },
             Test {
                 name: "explicit default port not trusted against bare origin",
                 trusted: "https://example.com:443",
                 origin: "https://example.com",
-                result: Err(ProtectionError::CrossOriginRequest),
+                result: Err(ProtectionError::new(
+                    ProtectionErrorKind::CrossOriginRequest,
+                )),
             },
             Test {
                 name: "bare trusted not matched by explicit-default-port origin",
                 trusted: "https://example.com",
                 origin: "https://example.com:443",
-                result: Err(ProtectionError::CrossOriginRequest),
+                result: Err(ProtectionError::new(
+                    ProtectionErrorKind::CrossOriginRequest,
+                )),
             },
         ];
 
