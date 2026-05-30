@@ -175,7 +175,11 @@ where
                 #[cfg(feature = "tracing")]
                 tracing::trace!(uri = %req.uri().path(), error = %err, "request rejected");
 
-                let response = self.rejection_response.response_for_protection_error(err);
+                let mut response = self
+                    .rejection_response
+                    .response_for_protection_error(err.clone());
+
+                response.extensions_mut().insert(err);
 
                 ResponseFuture::rejected(Ok(response))
             }

@@ -15,10 +15,10 @@
 //!    byte-for-byte.
 //!
 //! Rejected requests receive a `403 Forbidden` response. The originating
-//! [`ProtectionError`] is attached to the response's extensions so handlers can
-//! distinguish between explicit cross-origin rejections and conservative
-//! fallback rejections (e.g. requests from old browsers without
-//! `Sec-Fetch-Site`). Use
+//! [`ProtectionError`] is attached to the response's extensions — on every
+//! rejection, including those from a custom builder — so surrounding layers can
+//! distinguish explicit cross-origin rejections from conservative fallback
+//! rejections (e.g. requests from old browsers without `Sec-Fetch-Site`). Use
 //! [`CsrfLayer::with_rejection_response`](CsrfLayer::with_rejection_response)
 //! to replace the rejection response with a custom builder.
 //!
@@ -167,9 +167,10 @@ impl std::error::Error for ConfigError {}
 
 /// Reason a request was rejected by [`Csrf`].
 ///
-/// Retrieve the category with [`ProtectionError::kind`]. Attached to the
-/// `403 Forbidden` response's extensions so handlers can distinguish explicit
-/// cross-origin rejections from conservative fallback rejections.
+/// Retrieve the category with [`ProtectionError::kind`]. [`Csrf`] attaches it to
+/// every `403 Forbidden` rejection response's extensions so surrounding layers
+/// can distinguish explicit cross-origin rejections from conservative fallback
+/// rejections.
 ///
 /// This is an opaque struct rather than an enum so future variants can carry
 /// additional context without a breaking change; match on [`kind`] instead.
@@ -373,7 +374,14 @@ mod tests {
 
         assert_eq!(res.status(), StatusCode::IM_A_TEAPOT);
         assert_ne!(res.status(), StatusCode::OK);
-        assert!(res.extensions().get::<ProtectionError>().is_none());
+        // The middleware attaches the error even though a custom builder
+        // produced the response.
+        assert_eq!(
+            res.extensions().get::<ProtectionError>(),
+            Some(&ProtectionError::new(
+                ProtectionErrorKind::CrossOriginRequestFromOldBrowser
+            )),
+        );
 
         let body = to_bytes(res.into_body()).await.unwrap();
         assert_eq!(&body[..], b"denied");

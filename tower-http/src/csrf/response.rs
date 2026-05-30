@@ -26,18 +26,19 @@ where
 /// Default [`ResponseForProtectionError`] used by
 /// [`CsrfLayer::new`](super::CsrfLayer::new).
 ///
-/// Produces a `403 Forbidden` response with an empty body and the originating
-/// [`ProtectionError`] attached to the response's extensions.
+/// Produces a `403 Forbidden` response with an empty body. The originating
+/// [`ProtectionError`] is attached to the response's extensions by [`Csrf`]
+/// itself, so it is present regardless of which builder produced the response.
+///
+/// [`Csrf`]: super::Csrf
 #[derive(Clone, Copy, Debug, Default)]
 #[non_exhaustive]
 pub struct DefaultResponseForProtectionError;
 
 impl<B: Default> ResponseForProtectionError<B> for DefaultResponseForProtectionError {
-    fn response_for_protection_error(&mut self, error: ProtectionError) -> Response<B> {
+    fn response_for_protection_error(&mut self, _error: ProtectionError) -> Response<B> {
         let mut response = Response::new(B::default());
         *response.status_mut() = StatusCode::FORBIDDEN;
-
-        response.extensions_mut().insert(error);
 
         response
     }

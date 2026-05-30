@@ -114,9 +114,10 @@ impl<T> CsrfLayer<T> {
     ///
     /// Accepts any type that implements [`ResponseForProtectionError`](super::ResponseForProtectionError),
     /// including a `FnMut(ProtectionError) -> Response<B> + Clone` closure.
-    /// The default builder returns a `403 Forbidden` with an empty body and
-    /// the [`ProtectionError`](super::ProtectionError) attached to the
-    /// response's extensions.
+    /// The default builder returns a `403 Forbidden` with an empty body.
+    /// Regardless of the builder, [`Csrf`](super::Csrf) attaches the
+    /// [`ProtectionError`](super::ProtectionError) to the response's extensions,
+    /// so a custom builder need not re-attach it.
     pub fn with_rejection_response<R>(self, rejection_response: R) -> CsrfLayer<R>
     where
         R: Clone,
