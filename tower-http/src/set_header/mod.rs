@@ -157,12 +157,21 @@ impl<T> fmt::Debug for BoxedMakeHeaderValue<T> {
 }
 
 /// Metadata describing a request or response header to be set.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct HeaderMetadata<T> {
     /// The name of the header to set.
     header_name: HeaderName,
     /// The value or value factory for the header.
     make: BoxedMakeHeaderValue<T>,
+}
+
+impl<T> Clone for HeaderMetadata<T> {
+    fn clone(&self) -> Self {
+        Self {
+            header_name: self.header_name.clone(),
+            make: self.make.clone(),
+        }
+    }
 }
 
 impl<T> HeaderMetadata<T> {
