@@ -15,9 +15,16 @@ use crate::set_header::{HeaderInsertionConfig, HeaderMetadata, InsertHeaderMode}
 /// Layer that applies [`SetMultipleRequestHeader`] which adds multiple request headers.
 ///
 /// See [`SetMultipleRequestHeader`] for more details.
-#[derive(Clone)]
 pub struct SetMultipleRequestHeadersLayer<M> {
     headers: Vec<HeaderInsertionConfig<M>>,
+}
+
+impl<M> Clone for SetMultipleRequestHeadersLayer<M> {
+    fn clone(&self) -> Self {
+        Self {
+            headers: self.headers.clone(),
+        }
+    }
 }
 
 impl<M> fmt::Debug for SetMultipleRequestHeadersLayer<M> {
@@ -84,10 +91,21 @@ impl<S, M> Layer<S> for SetMultipleRequestHeadersLayer<M> {
 }
 
 /// Middleware that sets multiple headers on the request.
-#[derive(Clone)]
 pub struct SetMultipleRequestHeader<S, M> {
     inner: S,
     headers: Vec<HeaderInsertionConfig<M>>,
+}
+
+impl<S, M> Clone for SetMultipleRequestHeader<S, M>
+where
+    S: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            headers: self.headers.clone(),
+        }
+    }
 }
 
 impl<S, M> SetMultipleRequestHeader<S, M> {
@@ -360,5 +378,19 @@ mod tests {
         let layer = SetMultipleRequestHeadersLayer::overriding(vec![meta]);
         let debug_str = format!("{:?}", layer);
         assert!(debug_str.contains("SetMultipleRequestHeadersLayer"));
+    }
+
+    #[test]
+    fn test_service_clone() {
+        struct NonCloneBody;
+        let svc = tower::ServiceBuilder::new()
+            .layer(SetMultipleRequestHeadersLayer::<Request<NonCloneBody>>::overriding(vec![]))
+            .check_clone()
+            .service(service_fn(|_: Request<NonCloneBody>| async move {
+                Ok::<_, Infallible>(Response::new(NonCloneBody))
+            }));
+
+        fn check_service_and_clone<T: Service<Request<NonCloneBody>> + Clone>(_: T) {}
+        check_service_and_clone(svc);
     }
 }
