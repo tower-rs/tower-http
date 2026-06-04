@@ -53,29 +53,34 @@
 //! # }
 //! ```
 //!
-//! Validation of a custom header can be made by using [`ValidateRequestHeaderLayer::assert()`]:
+//! Validation of a custom header can be made by using [`ValidateRequestHeaderLayer::has_header()`]:
 //!
 //! ```
 //! use tower_http::validate_request::ValidateRequestHeaderLayer;
-//! use hyper::{Request, Response, Body, Error};
-//! use http::StatusCode;
-//! use tower::{Service, ServiceExt, ServiceBuilder, service_fn};
+//! use http::{Request, Response, StatusCode};
+//! use http_body_util::Full;
+//! use bytes::Bytes;
+//! use tower::{Service, ServiceExt, ServiceBuilder, service_fn, BoxError};
 //!
-//! async fn handle(request: Request<Body>) -> Result<Response<Body>, Error> {
-//!     Ok(Response::new(Body::empty()))
+//! async fn handle(request: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, BoxError> {
+//!     Ok(Response::new(Full::default()))
 //! }
 //!
 //! # #[tokio::main]
-//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn main() -> Result<(), BoxError> {
 //! let mut service = ServiceBuilder::new()
 //!     // Require a `X-Custom-Header` header to have the value `random-value-1234567890` or reject with a `403 Forbidden` response
-//!     .layer(ValidateRequestHeaderLayer::assert("x-custom-header", "random-value-1234567890", StatusCode::FORBIDDEN))
+//!     .layer(
+//!         ValidateRequestHeaderLayer::has_header("x-custom-header")
+//!             .with_value("random-value-1234567890")
+//!             .with_status_code(StatusCode::FORBIDDEN),
+//!     )
 //!     .service_fn(handle);
 //!
 //! // Requests with the correct value are allowed through
 //! let request = Request::builder()
 //!     .header("x-custom-header", "random-value-1234567890")
-//!     .body(Body::empty())
+//!     .body(Full::default())
 //!     .unwrap();
 //!
 //! let response = service
@@ -89,7 +94,7 @@
 //! // Requests with an invalid value get a `403 Forbidden` response
 //! let request = Request::builder()
 //!     .header("x-custom-header", "wrong-value")
-//!     .body(Body::empty())
+//!     .body(Full::default())
 //!     .unwrap();
 //!
 //! let response = service
@@ -102,7 +107,7 @@
 //! #
 //! # // Requests without the expected header also get a `403 Forbidden` response
 //! # let request = Request::builder()
-//! #    .body(Body::empty())
+//! #    .body(Full::default())
 //! #    .unwrap();
 //! #
 //! # let response = service
@@ -236,29 +241,67 @@ impl<ResBody> ValidateRequestHeaderLayer<AcceptHeader<ResBody>> {
     }
 }
 
-impl<ResBody> ValidateRequestHeaderLayer<AssertHeaderOrReject<ResBody>> {
+impl ValidateRequestHeaderLayer<AssertHeaderOrReject<()>> {
     /// Validate requests have a required header with a specific value.
     ///
     /// # Example
     ///
     /// ```
     /// use http::StatusCode;
-    /// use hyper::Body;
-    /// use tower_http::validate_request::{AssertHeaderOrReject, ValidateRequestHeaderLayer};
+    /// use http_body_util::Full;
+    /// use bytes::Bytes;
+    /// use tower_http::validate_request::ValidateRequestHeaderLayer;
     ///
-    /// let layer = ValidateRequestHeaderLayer::<AssertHeaderOrReject<Body>>::assert("x-custom-header", "random-value-1234567890", StatusCode::FORBIDDEN);
+    /// let _layer = ValidateRequestHeaderLayer::has_header("x-custom-header")
+    ///     .with_value("random-value-1234567890")
+    ///     .with_status_code::<Full<Bytes>>(StatusCode::FORBIDDEN);
     /// ```
-    pub fn assert(
-        expected_header_name: &str,
-        expected_header_value: &str,
+    pub fn has_header(expected_header_name: &str) -> HasHeaderBuilder {
+        HasHeaderBuilder::new(expected_header_name)
+    }
+}
+
+/// Builder for [`ValidateRequestHeaderLayer::has_header`].
+#[derive(Debug, Clone)]
+pub struct HasHeaderBuilder {
+    expected_header_name: String,
+}
+
+/// Builder returned by [`HasHeaderBuilder::with_value`].
+#[derive(Debug, Clone)]
+pub struct HasHeaderWithValueBuilder {
+    expected_header_name: String,
+    expected_header_value: String,
+}
+
+impl HasHeaderBuilder {
+    fn new(expected_header_name: &str) -> Self {
+        Self {
+            expected_header_name: expected_header_name.to_string(),
+        }
+    }
+
+    /// Require the header to have this value.
+    pub fn with_value(self, expected_header_value: &str) -> HasHeaderWithValueBuilder {
+        HasHeaderWithValueBuilder {
+            expected_header_name: self.expected_header_name,
+            expected_header_value: expected_header_value.to_string(),
+        }
+    }
+}
+
+impl HasHeaderWithValueBuilder {
+    /// Set the response status code when validation fails.
+    pub fn with_status_code<ResBody>(
+        self,
         response_status_code: StatusCode,
-    ) -> Self
+    ) -> ValidateRequestHeaderLayer<AssertHeaderOrReject<ResBody>>
     where
-        ResBody: Body + Default,
+        ResBody: Default,
     {
-        Self::custom(AssertHeaderOrReject::new(
-            expected_header_name,
-            expected_header_value,
+        ValidateRequestHeaderLayer::custom(AssertHeaderOrReject::new(
+            &self.expected_header_name,
+            &self.expected_header_value,
             response_status_code,
         ))
     }
@@ -523,7 +566,7 @@ impl<ResBody> AssertHeaderOrReject<ResBody> {
         response_status_code: StatusCode,
     ) -> Self
     where
-        ResBody: Body + Default,
+        ResBody: Default,
     {
         Self {
             expected_header_name: expected_header_name.to_string(),
@@ -539,7 +582,7 @@ impl<ResBody> Clone for AssertHeaderOrReject<ResBody> {
         Self {
             expected_header_name: self.expected_header_name.clone(),
             expected_header_value: self.expected_header_value.clone(),
-            response_status_code: self.response_status_code.clone(),
+            response_status_code: self.response_status_code,
             _ty: PhantomData,
         }
     }
@@ -557,7 +600,7 @@ impl<ResBody> fmt::Debug for AssertHeaderOrReject<ResBody> {
 
 impl<B, ResBody> ValidateRequest<B> for AssertHeaderOrReject<ResBody>
 where
-    ResBody: Body + Default,
+    ResBody: Default,
 {
     type ResponseBody = ResBody;
 
@@ -745,6 +788,63 @@ mod tests {
         let res = service.ready().await.unwrap().call(request).await.unwrap();
 
         assert_eq!(res.status(), StatusCode::NOT_ACCEPTABLE);
+    }
+
+    #[tokio::test]
+    async fn valid_custom_header() {
+        let mut service = ServiceBuilder::new()
+            .layer(
+                ValidateRequestHeaderLayer::has_header("x-custom-header")
+                    .with_value("random-value-1234567890")
+                    .with_status_code(StatusCode::FORBIDDEN),
+            )
+            .service_fn(echo);
+
+        let request = Request::get("/")
+            .header("x-custom-header", "random-value-1234567890")
+            .body(Body::empty())
+            .unwrap();
+
+        let res = service.ready().await.unwrap().call(request).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn invalid_custom_header() {
+        let mut service = ServiceBuilder::new()
+            .layer(
+                ValidateRequestHeaderLayer::has_header("x-custom-header")
+                    .with_value("random-value-1234567890")
+                    .with_status_code(StatusCode::FORBIDDEN),
+            )
+            .service_fn(echo);
+
+        let request = Request::get("/")
+            .header("x-custom-header", "wrong-value")
+            .body(Body::empty())
+            .unwrap();
+
+        let res = service.ready().await.unwrap().call(request).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn missing_custom_header() {
+        let mut service = ServiceBuilder::new()
+            .layer(
+                ValidateRequestHeaderLayer::has_header("x-custom-header")
+                    .with_value("random-value-1234567890")
+                    .with_status_code(StatusCode::FORBIDDEN),
+            )
+            .service_fn(echo);
+
+        let request = Request::get("/").body(Body::empty()).unwrap();
+
+        let res = service.ready().await.unwrap().call(request).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
     }
 
     async fn echo(req: Request<Body>) -> Result<Response<Body>, BoxError> {
