@@ -1,4 +1,5 @@
 use crate::timeout::body::TimeoutBody;
+use crate::timeout::deadline_body::DeadlineBody;
 use http::{Request, Response, StatusCode};
 use pin_project_lite::pin_project;
 use std::{
@@ -302,6 +303,167 @@ where
         let this = self.project();
         let res = ready!(this.inner.poll(cx))?;
         Poll::Ready(Ok(res.map(|body| TimeoutBody::new(timeout, body))))
+    }
+}
+
+/// Applies a [`DeadlineBody`] to the request body.
+///
+/// Unlike [`RequestBodyTimeoutLayer`], which resets on each frame, this enforces a hard
+/// deadline on the entire body transfer.
+#[derive(Clone, Debug)]
+pub struct RequestBodyDeadlineLayer {
+    timeout: Duration,
+}
+
+impl RequestBodyDeadlineLayer {
+    /// Creates a new [`RequestBodyDeadlineLayer`].
+    pub fn new(timeout: Duration) -> Self {
+        Self { timeout }
+    }
+}
+
+impl<S> Layer<S> for RequestBodyDeadlineLayer {
+    type Service = RequestBodyDeadline<S>;
+
+    fn layer(&self, inner: S) -> Self::Service {
+        RequestBodyDeadline::new(inner, self.timeout)
+    }
+}
+
+/// Applies a [`DeadlineBody`] to the request body.
+#[derive(Clone, Debug)]
+pub struct RequestBodyDeadline<S> {
+    inner: S,
+    timeout: Duration,
+}
+
+impl<S> RequestBodyDeadline<S> {
+    /// Creates a new [`RequestBodyDeadline`].
+    pub fn new(service: S, timeout: Duration) -> Self {
+        Self {
+            inner: service,
+            timeout,
+        }
+    }
+
+    /// Returns a new [`Layer`] that wraps services with a [`RequestBodyDeadlineLayer`] middleware.
+    ///
+    /// [`Layer`]: tower_layer::Layer
+    pub fn layer(timeout: Duration) -> RequestBodyDeadlineLayer {
+        RequestBodyDeadlineLayer::new(timeout)
+    }
+
+    define_inner_service_accessors!();
+}
+
+impl<S, ReqBody> Service<Request<ReqBody>> for RequestBodyDeadline<S>
+where
+    S: Service<Request<DeadlineBody<ReqBody>>>,
+{
+    type Response = S::Response;
+    type Error = S::Error;
+    type Future = S::Future;
+
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx)
+    }
+
+    fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
+        let req = req.map(|body| DeadlineBody::new(self.timeout, body));
+        self.inner.call(req)
+    }
+}
+
+/// Applies a [`DeadlineBody`] to the response body.
+///
+/// Unlike [`ResponseBodyTimeoutLayer`], which resets on each frame, this enforces a hard
+/// deadline on the entire body transfer.
+#[derive(Clone)]
+pub struct ResponseBodyDeadlineLayer {
+    timeout: Duration,
+}
+
+impl ResponseBodyDeadlineLayer {
+    /// Creates a new [`ResponseBodyDeadlineLayer`].
+    pub fn new(timeout: Duration) -> Self {
+        Self { timeout }
+    }
+}
+
+impl<S> Layer<S> for ResponseBodyDeadlineLayer {
+    type Service = ResponseBodyDeadline<S>;
+
+    fn layer(&self, inner: S) -> Self::Service {
+        ResponseBodyDeadline::new(inner, self.timeout)
+    }
+}
+
+/// Applies a [`DeadlineBody`] to the response body.
+#[derive(Clone)]
+pub struct ResponseBodyDeadline<S> {
+    inner: S,
+    timeout: Duration,
+}
+
+impl<S> ResponseBodyDeadline<S> {
+    /// Creates a new [`ResponseBodyDeadline`].
+    pub fn new(service: S, timeout: Duration) -> Self {
+        Self {
+            inner: service,
+            timeout,
+        }
+    }
+
+    /// Returns a new [`Layer`] that wraps services with a [`ResponseBodyDeadlineLayer`] middleware.
+    ///
+    /// [`Layer`]: tower_layer::Layer
+    pub fn layer(timeout: Duration) -> ResponseBodyDeadlineLayer {
+        ResponseBodyDeadlineLayer::new(timeout)
+    }
+
+    define_inner_service_accessors!();
+}
+
+impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for ResponseBodyDeadline<S>
+where
+    S: Service<Request<ReqBody>, Response = Response<ResBody>>,
+{
+    type Response = Response<DeadlineBody<ResBody>>;
+    type Error = S::Error;
+    type Future = ResponseBodyDeadlineFuture<S::Future>;
+
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx)
+    }
+
+    fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
+        ResponseBodyDeadlineFuture {
+            inner: self.inner.call(req),
+            timeout: self.timeout,
+        }
+    }
+}
+
+pin_project! {
+    /// Response future for [`ResponseBodyDeadline`].
+    pub struct ResponseBodyDeadlineFuture<Fut> {
+        #[pin]
+        inner: Fut,
+        timeout: Duration,
+    }
+}
+
+impl<Fut, ResBody, E> Future for ResponseBodyDeadlineFuture<Fut>
+where
+    Fut: Future<Output = Result<Response<ResBody>, E>>,
+{
+    type Output = Result<Response<DeadlineBody<ResBody>>, E>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let timeout = self.timeout;
+        let this = self.project();
+        let res = ready!(this.inner.poll(cx))?;
+        Poll::Ready(Ok(res.map(|body| DeadlineBody::new(timeout, body))))
     }
 }
 
