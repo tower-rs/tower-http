@@ -146,17 +146,17 @@ impl Predicate for DefaultPredicate {
 
 /// [`Predicate`] that will only allow compression of responses above a certain size.
 #[derive(Clone, Copy, Debug)]
-pub struct SizeAbove(u16);
+pub struct SizeAbove(u64);
 
 impl SizeAbove {
-    pub(crate) const DEFAULT_MIN_SIZE: u16 = 32;
+    pub(crate) const DEFAULT_MIN_SIZE: u64 = 32;
 
     /// Create a new `SizeAbove` predicate that will only compress responses larger than
     /// `min_size_bytes`.
     ///
     /// The response will be compressed if the exact size cannot be determined through either the
     /// `content-length` header or [`Body::size_hint`].
-    pub const fn new(min_size_bytes: u16) -> Self {
+    pub const fn new(min_size_bytes: u64) -> Self {
         Self(min_size_bytes)
     }
 }
@@ -181,7 +181,7 @@ impl Predicate for SizeAbove {
         });
 
         match content_size {
-            Some(size) => size >= (self.0 as u64),
+            Some(size) => size >= self.0,
             _ => true,
         }
     }
