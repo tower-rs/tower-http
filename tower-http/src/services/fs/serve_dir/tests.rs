@@ -1117,6 +1117,33 @@ fn test_build_and_validate_path_reserved_dos_names() {
     }
 }
 
+#[test]
+fn test_build_and_validate_path_windows_drive_prefixes() {
+    use super::ServeVariant;
+    use std::path::Path;
+
+    let variant = ServeVariant::Directory {
+        append_index_html_on_directories: true,
+        html_as_default_extension: false,
+    };
+    let base = Path::new("/base");
+
+    let paths = [
+        "/anypath/c:/windows/win.ini",
+        "/anypath/C:/windows/win.ini",
+        "/anypath/d:/windows/web/screen/img101.png",
+    ];
+
+    for path in paths {
+        let result = variant.build_and_validate_path(base, path);
+        if cfg!(windows) {
+            assert!(result.is_none(), "Expected None for path: {}", path);
+        } else {
+            assert!(result.is_some(), "Expected Some for path: {}", path);
+        }
+    }
+}
+
 // Regression test for https://github.com/tower-rs/tower-http/issues/664
 // Accept-Encoding: identity should not cause extension stripping
 #[tokio::test]
