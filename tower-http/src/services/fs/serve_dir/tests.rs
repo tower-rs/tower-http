@@ -451,7 +451,7 @@ async fn redirect_to_trailing_slash_on_dir() {
 async fn redirect_to_trailing_slash_with_redirect_path_prefix() {
     let cases = [
         ("/foo", "/src", "/foo/src/"),
-        ("/foo/", "/src", "/foo/src/"),
+        ("/foo/", "/src", "/foo//src/"),
         ("", "/src", "/src/"),
         ("/foo", "/src?key=value", "/foo/src/?key=value"),
         ("/foo", "/s%72c", "/foo/s%72c/"),

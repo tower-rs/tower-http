@@ -144,12 +144,8 @@ impl<F> ServeDir<F> {
     /// redirect to `/<path>/` but instead to `/static/<path>/`
     ///
     /// The default is the empty string.
-    ///
-    /// A trailing slash is removed from the prefix.
     pub fn redirect_path_prefix(mut self, prefix: impl Into<String>) -> Self {
-        let mut prefix = prefix.into();
-        prefix = prefix.trim_end_matches('/').to_owned();
-        self.redirect_path_prefix = prefix;
+        self.redirect_path_prefix = prefix.into();
         self
     }
 
