@@ -1117,6 +1117,44 @@ fn test_build_and_validate_path_reserved_dos_names() {
     }
 }
 
+// Regression test for the Windows directory-traversal fix in #204 (tracked by #251):
+// a drive-letter prefix such as `C:` must not be served as an absolute path.
+#[tokio::test]
+async fn reject_windows_drive_prefixed_path() {
+    let svc = ServeDir::new(TEST_FILES_DIR);
+
+    let req = Request::builder()
+        .uri("/C:/windows/win.ini")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+
+    assert_eq!(
+        res.status(),
+        StatusCode::NOT_FOUND,
+        "drive-prefixed path should be rejected, not served"
+    );
+}
+
+// As above, but with the `:` percent-encoded (`%3A`) to confirm the drive prefix
+// is still rejected *after* URL decoding.
+#[tokio::test]
+async fn reject_percent_encoded_windows_drive_prefixed_path() {
+    let svc = ServeDir::new(TEST_FILES_DIR);
+
+    let req = Request::builder()
+        .uri("/anypath/c%3A/windows/win.ini")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+
+    assert_eq!(
+        res.status(),
+        StatusCode::NOT_FOUND,
+        "percent-encoded drive prefix should be rejected after decoding"
+    );
+}
+
 // Regression test for https://github.com/tower-rs/tower-http/issues/664
 // Accept-Encoding: identity should not cause extension stripping
 #[tokio::test]
