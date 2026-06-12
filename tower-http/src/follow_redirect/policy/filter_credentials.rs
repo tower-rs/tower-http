@@ -11,6 +11,9 @@ use http::{
 /// arbitrary user types, there is no built-in blocklist of sensitive extensions to mirror the
 /// header blocklist. Instead, blocked redirections drop *all* extensions by default, and callers
 /// opt specific types back in with [`allow_extension`][Self::allow_extension].
+///
+/// Filtering is cumulative: a header or extension removed on a blocked redirection is not
+/// reintroduced on later redirections, including same-origin ones.
 #[derive(Clone, Debug)]
 pub struct FilterCredentials {
     block_cross_origin: bool,

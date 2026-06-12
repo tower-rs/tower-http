@@ -39,6 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Opt out with `FollowRedirectLayer::preserve_extensions(false)`; keep specific
   types with `FilterCredentials::allow_extension::<T>()` or all of them with
   `keep_all_extensions()`. ([#581])
+- **breaking:** `follow-redirect`: header and extension filtering is now
+  cumulative. A value a policy drops on one hop is no longer replayed on later
+  hops, so `FilterCredentials` no longer re-sends `Cookie`/`Authorization` to a
+  same-origin target reached after a cross-origin hop. Custom `Policy::on_request`
+  impls now see the previous hop's filtered request, not the original. ([#581])
 
 [#215]: https://github.com/tower-rs/tower-http/issues/215
 [#360]: https://github.com/tower-rs/tower-http/pull/360

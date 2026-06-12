@@ -10,10 +10,12 @@
 //! requests by default; the configured [`policy`] decides whether they survive a given redirection
 //! via [`Policy::on_request`] (the [`Standard`] policy drops credential headers and all extensions
 //! on cross-origin redirections), and [`FollowRedirectLayer::preserve_extensions`] can disable
-//! extension forwarding entirely. The request body cannot always be cloned. When the original
-//! body is known to be empty by [`Body::size_hint`], the middleware uses `Default` implementation
-//! of the body type to create a new request body. If you know that the body can be cloned in some
-//! way, you can tell the middleware to clone it by configuring a [`policy`].
+//! extension forwarding entirely. Filtering is cumulative: a header or extension dropped on one
+//! hop is not replayed on later hops, so it cannot reappear after a cross-origin redirection. The
+//! request body cannot always be cloned. When the original body is known to be empty by
+//! [`Body::size_hint`], the middleware uses `Default` implementation of the body type to create a
+//! new request body. If you know that the body can be cloned in some way, you can tell the
+//! middleware to clone it by configuring a [`policy`].
 //!
 //! # Examples
 //!
@@ -380,6 +382,10 @@ where
                 *req.headers_mut() = this.headers.clone();
                 *req.extensions_mut() = this.extensions.clone();
                 this.policy.on_request(&mut req);
+                // Carry the filtered headers and extensions forward so anything dropped on this
+                // hop stays dropped on the next one (e.g. credentials after a cross-origin hop).
+                *this.headers = req.headers().clone();
+                *this.extensions = req.extensions().clone();
                 this.future
                     .set(Either::Right(Oneshot::new(this.service.clone(), req)));
 
@@ -593,6 +599,30 @@ mod tests {
         assert_eq!(res.extensions().get::<Allowed>(), Some(&Allowed(9)));
     }
 
+    #[tokio::test]
+    async fn headers_and_extensions_do_not_resurrect_after_cross_origin() {
+        let svc = ServiceBuilder::new()
+            .layer(FollowRedirectLayer::new())
+            .buffer(1)
+            .service_fn(resurrection_chain);
+        let mut req = Request::builder()
+            .uri("http://a.example.com/")
+            .header(http::header::COOKIE, "secret")
+            .body(Body::empty())
+            .unwrap();
+        req.extensions_mut().insert(Marker(7));
+        let res = svc.oneshot(req).await.unwrap();
+        // The chain is a.example.com -> b.example.com/second (cross-origin, both dropped) ->
+        // b.example.com/final (same-origin). Neither the cookie nor the extension may reappear on
+        // the final, same-origin request just because the original snapshot is replayed.
+        assert_eq!(
+            res.extensions().get::<RequestUri>().unwrap().0,
+            "http://b.example.com/final"
+        );
+        assert!(res.extensions().get::<Marker>().is_none());
+        assert!(!res.headers().contains_key("x-saw-cookie"));
+    }
+
     /// Redirects `a.example.com` to `b.example.com` once, then echoes the final request's
     /// extensions back on the response.
     async fn cross_origin<B>(req: Request<B>) -> Result<Response<u64>, Infallible> {
@@ -606,6 +636,35 @@ mod tests {
             *extensions = req.extensions().clone();
         }
         Ok::<_, Infallible>(res.body(0).unwrap())
+    }
+
+    /// A three-hop chain: `a.example.com` redirects cross-origin to `b.example.com/second`, which
+    /// redirects same-origin to `b.example.com/final`. Each response echoes the request's
+    /// extensions and flags (via the `x-saw-cookie` response header) whether the request still
+    /// carried a `Cookie`, so a test can detect credentials or extensions reappearing after the
+    /// cross-origin hop.
+    async fn resurrection_chain<B>(req: Request<B>) -> Result<Response<u64>, Infallible> {
+        let location = match (req.uri().host(), req.uri().path()) {
+            (Some("a.example.com"), _) => Some("http://b.example.com/second"),
+            (Some("b.example.com"), "/second") => Some("http://b.example.com/final"),
+            _ => None,
+        };
+        let saw_cookie = req.headers().contains_key(http::header::COOKIE);
+        let mut builder = Response::builder();
+        if let Some(location) = location {
+            builder = builder
+                .status(StatusCode::TEMPORARY_REDIRECT)
+                .header(LOCATION, location);
+        }
+        if let Some(extensions) = builder.extensions_mut() {
+            *extensions = req.extensions().clone();
+        }
+        let mut res = builder.body(0).unwrap();
+        if saw_cookie {
+            res.headers_mut()
+                .insert("x-saw-cookie", HeaderValue::from_static("yes"));
+        }
+        Ok::<_, Infallible>(res)
     }
 
     /// A server with an endpoint `/{n}` which redirects to `/{n-1}` unless `n` equals zero,
