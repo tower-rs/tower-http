@@ -32,15 +32,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   feature entries; the underlying dependencies are still pulled in transitively
   by the features that need them (e.g. `compression-gzip`, `fs`, `timeout`).
   ([#628])
-- **validate-request:** Add `ValidateRequestHeaderLayer::has_header_value()` to reject requests when a header does not have an expected value ([#360])
-
 
 [#215]: https://github.com/tower-rs/tower-http/issues/215
+[#360]: https://github.com/tower-rs/tower-http/pull/360
 [#628]: https://github.com/tower-rs/tower-http/pull/628
 [#642]: https://github.com/tower-rs/tower-http/pull/642
 
 ## Added
 
+- **validate-request:** Add `ValidateRequestHeaderLayer::has_header_value()` to reject requests when a header does not have an expected value ([#360])
 - `body`: `UnsyncBoxBody::new()` constructor and `From<ServeFileSystemResponseBody>` conversion to avoid double-boxing when combining `ServeDir` responses with other body types ([#537])
 
 # 0.6.11
@@ -404,7 +404,6 @@ http-range-header to `0.4`
 [#335]: https://github.com/tower-rs/tower-http/pull/335
 [#336]: https://github.com/tower-rs/tower-http/pull/336
 [#354]: https://github.com/tower-rs/tower-http/pull/354
-[#360]: https://github.com/tower-rs/tower-http/pull/360
 
 # 0.4.0 (February 24, 2023)
 
