@@ -35,11 +35,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MSRV bumped from 1.64 to 1.65.
 
 [#215]: https://github.com/tower-rs/tower-http/issues/215
+[#360]: https://github.com/tower-rs/tower-http/pull/360
 [#628]: https://github.com/tower-rs/tower-http/pull/628
 [#642]: https://github.com/tower-rs/tower-http/pull/642
 
 ## Added
 
+- **validate-request:** Add `ValidateRequestHeaderLayer::has_header_value()` to reject requests when a header does not have an expected value ([#360])
 - `body`: `UnsyncBoxBody::new()` constructor and `From<ServeFileSystemResponseBody>` conversion to avoid double-boxing when combining `ServeDir` responses with other body types ([#537])
 - `fs`: Add `Backend` trait to make `ServeDir` work with non-filesystem sources. The default `TokioBackend` preserves existing behavior. Use `ServeDir::with_backend()` to plug in custom implementations.
 

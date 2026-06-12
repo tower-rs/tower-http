@@ -2,6 +2,8 @@
 //!
 //! # Example
 //!
+//! Validation of the `Accept` header can be made by using [`ValidateRequestHeaderLayer::accept()`]:
+//!
 //! ```
 //! use tower_http::validate_request::ValidateRequestHeaderLayer;
 //! use http::{Request, Response, StatusCode, header::ACCEPT};
@@ -51,6 +53,116 @@
 //! # }
 //! ```
 //!
+//! Validation of a custom header can be made by using [`ValidateRequestHeaderLayer::has_header_value()`]:
+//!
+//! ```
+//! use tower_http::validate_request::ValidateRequestHeaderLayer;
+//! use http::{Request, Response, StatusCode};
+//! use http_body_util::Full;
+//! use bytes::Bytes;
+//! use tower::{Service, ServiceExt, ServiceBuilder, service_fn, BoxError};
+//!
+//! async fn handle(request: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, BoxError> {
+//!     Ok(Response::new(Full::default()))
+//! }
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), BoxError> {
+//! let mut service = ServiceBuilder::new()
+//!     // Require a `X-Custom-Header` header to have the value `random-value-1234567890` or reject with a `403 Forbidden` response
+//!     .layer(ValidateRequestHeaderLayer::has_header_value(
+//!         "x-custom-header",
+//!         "random-value-1234567890",
+//!     ).expect("invalid validate header"))
+//!     .service_fn(handle);
+//!
+//! // Requests with the correct value are allowed through
+//! let request = Request::builder()
+//!     .header("x-custom-header", "random-value-1234567890")
+//!     .body(Full::default())
+//!     .unwrap();
+//!
+//! let response = service
+//!     .ready()
+//!     .await?
+//!     .call(request)
+//!     .await?;
+//!
+//! assert_eq!(StatusCode::OK, response.status());
+//!
+//! // Requests with an invalid value get a `403 Forbidden` response
+//! let request = Request::builder()
+//!     .header("x-custom-header", "wrong-value")
+//!     .body(Full::default())
+//!     .unwrap();
+//!
+//! let response = service
+//!     .ready()
+//!     .await?
+//!     .call(request)
+//!     .await?;
+//!
+//! assert_eq!(StatusCode::FORBIDDEN, response.status());
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! To require only that a header is present, use [`ValidateRequestHeaderLayer::custom()`]:
+//!
+//! ```
+//! use tower_http::validate_request::ValidateRequestHeaderLayer;
+//! use http::{Request, Response, StatusCode};
+//! use http_body_util::Full;
+//! use bytes::Bytes;
+//! use tower::{ServiceBuilder, service_fn, BoxError};
+//!
+//! async fn handle(request: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, BoxError> {
+//!     Ok(Response::new(Full::default()))
+//! }
+//!
+//! # fn main() {
+//! let service = ServiceBuilder::new()
+//!     .layer(ValidateRequestHeaderLayer::custom(|req: &mut Request<Full<Bytes>>| {
+//!         if req.headers().contains_key("x-custom-header") {
+//!             Ok(())
+//!         } else {
+//!             let mut res = Response::new(Full::<Bytes>::default());
+//!             *res.status_mut() = StatusCode::FORBIDDEN;
+//!             Err(res)
+//!         }
+//!     }))
+//!     .service_fn(handle);
+//! # }
+//! ```
+//!
+//! To serve a custom response when validation fails, also use [`ValidateRequestHeaderLayer::custom()`]:
+//!
+//! ```
+//! use tower_http::validate_request::ValidateRequestHeaderLayer;
+//! use http::{Request, Response, StatusCode};
+//! use http_body_util::Full;
+//! use bytes::Bytes;
+//! use tower::{ServiceBuilder, service_fn, BoxError};
+//!
+//! async fn handle(request: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, BoxError> {
+//!     Ok(Response::new(Full::default()))
+//! }
+//!
+//! # fn main() {
+//! let service = ServiceBuilder::new()
+//!     .layer(ValidateRequestHeaderLayer::custom(|req: &mut Request<Full<Bytes>>| {
+//!         match req.headers().get("x-custom-header").map(|v| v.as_bytes()) {
+//!             Some(b"random-value-1234567890") => Ok(()),
+//!             _ => Err(Response::builder()
+//!                 .status(StatusCode::FORBIDDEN)
+//!                 .body(Full::<Bytes>::default())
+//!                 .unwrap()),
+//!         }
+//!     }))
+//!     .service_fn(handle);
+//! # }
+//! ```
+//!
 //! Custom validation can be made by implementing [`ValidateRequest`]:
 //!
 //! ```
@@ -90,33 +202,10 @@
 //! # }
 //! ```
 //!
-//! Or using a closure:
-//!
-//! ```
-//! use tower_http::validate_request::{ValidateRequestHeaderLayer, ValidateRequest};
-//! use http::{Request, Response, StatusCode, header::ACCEPT};
-//! use bytes::Bytes;
-//! use http_body_util::Full;
-//! use tower::{Service, ServiceExt, ServiceBuilder, service_fn, BoxError};
-//!
-//! async fn handle(request: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, BoxError> {
-//!     # todo!();
-//!     // ...
-//! }
-//!
-//! # #[tokio::main]
-//! # async fn main() -> Result<(), BoxError> {
-//! let service = ServiceBuilder::new()
-//!     .layer(ValidateRequestHeaderLayer::custom(|request: &mut Request<Full<Bytes>>| {
-//!         // Validate the request
-//!         # Ok::<_, Response<Full<Bytes>>>(())
-//!     }))
-//!     .service_fn(handle);
-//! # Ok(())
-//! # }
-//! ```
+//! [`Accept`]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept
 
-use http::{header, Request, Response, StatusCode};
+use http::header::InvalidHeaderName;
+use http::{header, header::HeaderName, Request, Response, StatusCode};
 use mime::{Mime, MimeIter};
 use pin_project_lite::pin_project;
 use std::{
@@ -165,6 +254,65 @@ impl<ResBody> ValidateRequestHeaderLayer<AcceptHeader<ResBody>> {
         ResBody: Default,
     {
         Self::custom(AcceptHeader::new(value))
+    }
+}
+
+impl<ResBody> ValidateRequestHeaderLayer<RequiredHeaderValue<ResBody>> {
+    /// Validate requests have a required header with a specific value.
+    ///
+    /// Rejects with `403 Forbidden` if the header is missing or does not have the expected value.
+    /// Header values that are not valid UTF-8 are treated as non-matching.
+    ///
+    /// If the request contains multiple values for the header, only the first occurrence is
+    /// checked.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `expected_header_name` is not a valid HTTP header name per RFC 7230
+    /// (non-empty, at most 32,768 bytes, containing only valid token characters).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use http::{Request, Response, StatusCode};
+    /// use http_body_util::Full;
+    /// use bytes::Bytes;
+    /// use tower::{Service, ServiceBuilder, ServiceExt, service_fn};
+    /// use tower_http::validate_request::ValidateRequestHeaderLayer;
+    ///
+    /// async fn handle(request: Request<Full<Bytes>>) -> Result<Response<Full<Bytes>>, std::convert::Infallible> {
+    ///     Ok(Response::new(request.into_body()))
+    /// }
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() {
+    /// let mut service = ServiceBuilder::new()
+    ///     .layer(ValidateRequestHeaderLayer::has_header_value(
+    ///         "x-custom-header",
+    ///         "random-value-1234567890",
+    ///     ).expect("invalid validate header"))
+    ///     .service_fn(handle);
+    ///
+    /// let request = Request::builder()
+    ///     .header("x-custom-header", "random-value-1234567890")
+    ///     .body(Full::default())
+    ///     .unwrap();
+    ///
+    /// let response = service.ready().await.unwrap().call(request).await.unwrap();
+    /// assert_eq!(response.status(), StatusCode::OK);
+    /// # }
+    /// ```
+    pub fn has_header_value(
+        expected_header_name: &str,
+        expected_header_value: &str,
+    ) -> Result<Self, InvalidHeaderName>
+    where
+        ResBody: Default,
+    {
+        Ok(Self::custom(RequiredHeaderValue::new(
+            expected_header_name.parse::<HeaderName>()?,
+            expected_header_value,
+        )))
     }
 }
 
@@ -411,6 +559,67 @@ where
     }
 }
 
+/// Type that rejects requests if a header is not present or does not have an expected value.
+pub struct RequiredHeaderValue<ResBody> {
+    expected_header_name: HeaderName,
+    expected_header_value: Arc<str>,
+    _ty: PhantomData<fn() -> ResBody>,
+}
+
+impl<ResBody> RequiredHeaderValue<ResBody> {
+    fn new(expected_header_name: HeaderName, expected_header_value: &str) -> Self
+    where
+        ResBody: Default,
+    {
+        Self {
+            expected_header_name,
+            expected_header_value: expected_header_value.into(),
+            _ty: PhantomData,
+        }
+    }
+}
+
+impl<ResBody> Clone for RequiredHeaderValue<ResBody> {
+    fn clone(&self) -> Self {
+        Self {
+            expected_header_name: self.expected_header_name.clone(),
+            expected_header_value: self.expected_header_value.clone(),
+            _ty: PhantomData,
+        }
+    }
+}
+
+impl<ResBody> fmt::Debug for RequiredHeaderValue<ResBody> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RequiredHeaderValue")
+            .field("expected_header_name", &self.expected_header_name)
+            .field("expected_header_value", &self.expected_header_value)
+            .finish()
+    }
+}
+
+impl<B, ResBody> ValidateRequest<B> for RequiredHeaderValue<ResBody>
+where
+    ResBody: Default,
+{
+    type ResponseBody = ResBody;
+
+    fn validate(&mut self, req: &mut Request<B>) -> Result<(), Response<Self::ResponseBody>> {
+        let request_header_value = req
+            .headers()
+            .get(&self.expected_header_name)
+            .and_then(|v| v.to_str().ok());
+
+        if request_header_value != Some(&*self.expected_header_value) {
+            let mut res = Response::new(ResBody::default());
+            *res.status_mut() = StatusCode::FORBIDDEN;
+            return Err(res);
+        }
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[allow(unused_imports)]
@@ -579,6 +788,162 @@ mod tests {
         let res = service.ready().await.unwrap().call(request).await.unwrap();
 
         assert_eq!(res.status(), StatusCode::NOT_ACCEPTABLE);
+    }
+
+    #[tokio::test]
+    async fn valid_custom_header() {
+        let mut service = ServiceBuilder::new()
+            .layer(
+                ValidateRequestHeaderLayer::has_header_value(
+                    "x-custom-header",
+                    "random-value-1234567890",
+                )
+                .expect("invalid validate header"),
+            )
+            .service_fn(echo);
+
+        let request = Request::get("/")
+            .header("x-custom-header", "random-value-1234567890")
+            .body(Body::empty())
+            .unwrap();
+
+        let res = service.ready().await.unwrap().call(request).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn invalid_custom_header() {
+        let mut service = ServiceBuilder::new()
+            .layer(
+                ValidateRequestHeaderLayer::has_header_value(
+                    "x-custom-header",
+                    "random-value-1234567890",
+                )
+                .expect("invalid validate header"),
+            )
+            .service_fn(echo);
+
+        let request = Request::get("/")
+            .header("x-custom-header", "wrong-value")
+            .body(Body::empty())
+            .unwrap();
+
+        let res = service.ready().await.unwrap().call(request).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn missing_custom_header() {
+        let mut service = ServiceBuilder::new()
+            .layer(
+                ValidateRequestHeaderLayer::has_header_value(
+                    "x-custom-header",
+                    "random-value-1234567890",
+                )
+                .expect("invalid validate header"),
+            )
+            .service_fn(echo);
+
+        let request = Request::get("/").body(Body::empty()).unwrap();
+
+        let res = service.ready().await.unwrap().call(request).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn custom_header_multiple_values_uses_first() {
+        let mut service = ServiceBuilder::new()
+            .layer(
+                ValidateRequestHeaderLayer::has_header_value("x-custom-header", "correct-value")
+                    .expect("invalid validate header"),
+            )
+            .service_fn(echo);
+
+        // First value matches: should pass
+        let request = Request::get("/")
+            .header("x-custom-header", "correct-value")
+            .header("x-custom-header", "other-value")
+            .body(Body::empty())
+            .unwrap();
+
+        let res = service.ready().await.unwrap().call(request).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+
+        // First value does not match: should reject even if second matches
+        let request = Request::get("/")
+            .header("x-custom-header", "wrong-value")
+            .header("x-custom-header", "correct-value")
+            .body(Body::empty())
+            .unwrap();
+
+        let res = service.ready().await.unwrap().call(request).await.unwrap();
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn invalid_header_name_returns_error() {
+        let result = ValidateRequestHeaderLayer::<RequiredHeaderValue<Body>>::has_header_value(
+            "invalid header name with spaces",
+            "value",
+        );
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn custom_header_non_utf8_value_rejects() {
+        let mut service = ServiceBuilder::new()
+            .layer(
+                ValidateRequestHeaderLayer::has_header_value("x-custom-header", "expected-value")
+                    .expect("invalid validate header"),
+            )
+            .service_fn(echo);
+
+        let request = Request::get("/")
+            .header("x-custom-header", b"\xff\xfe".as_slice())
+            .body(Body::empty())
+            .unwrap();
+
+        let res = service.ready().await.unwrap().call(request).await.unwrap();
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn custom_header_name_is_case_insensitive() {
+        let mut service = ServiceBuilder::new()
+            .layer(
+                ValidateRequestHeaderLayer::has_header_value("x-custom-header", "my-value")
+                    .expect("invalid validate header"),
+            )
+            .service_fn(echo);
+
+        let request = Request::get("/")
+            .header("X-Custom-Header", "my-value")
+            .body(Body::empty())
+            .unwrap();
+
+        let res = service.ready().await.unwrap().call(request).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn custom_header_value_is_case_sensitive() {
+        let mut service = ServiceBuilder::new()
+            .layer(
+                ValidateRequestHeaderLayer::has_header_value("x-custom-header", "My-Value")
+                    .expect("invalid validate header"),
+            )
+            .service_fn(echo);
+
+        let request = Request::get("/")
+            .header("x-custom-header", "my-value")
+            .body(Body::empty())
+            .unwrap();
+
+        let res = service.ready().await.unwrap().call(request).await.unwrap();
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
     }
 
     async fn echo(req: Request<Body>) -> Result<Response<Body>, BoxError> {
