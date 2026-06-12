@@ -6,11 +6,14 @@
 //! redirections.
 //!
 //! The middleware tries to clone the original [`Request`] when making a redirected request.
-//! However, since [`Extensions`][http::Extensions] are `!Clone`, any extensions set by outer
-//! middleware will be discarded. Also, the request body cannot always be cloned. When the
-//! original body is known to be empty by [`Body::size_hint`], the middleware uses `Default`
-//! implementation of the body type to create a new request body. If you know that the body can be
-//! cloned in some way, you can tell the middleware to clone it by configuring a [`policy`].
+//! Request headers and [`Extensions`] set by outer middleware are carried over to redirected
+//! requests by default; the configured [`policy`] decides whether they survive a given redirection
+//! via [`Policy::on_request`] (the [`Standard`] policy drops credential headers and all extensions
+//! on cross-origin redirections), and [`FollowRedirectLayer::preserve_extensions`] can disable
+//! extension forwarding entirely. The request body cannot always be cloned. When the original
+//! body is known to be empty by [`Body::size_hint`], the middleware uses `Default` implementation
+//! of the body type to create a new request body. If you know that the body can be cloned in some
+//! way, you can tell the middleware to clone it by configuring a [`policy`].
 //!
 //! # Examples
 //!
@@ -98,8 +101,8 @@ use self::policy::{Action, Attempt, Policy, Standard};
 use futures_util::future::Either;
 use http::{
     header::CONTENT_ENCODING, header::CONTENT_LENGTH, header::CONTENT_TYPE, header::LOCATION,
-    header::TRANSFER_ENCODING, HeaderMap, HeaderValue, Method, Request, Response, StatusCode, Uri,
-    Version,
+    header::TRANSFER_ENCODING, Extensions, HeaderMap, HeaderValue, Method, Request, Response,
+    StatusCode, Uri, Version,
 };
 use http_body::Body;
 use pin_project_lite::pin_project;
@@ -119,9 +122,10 @@ use url::Url;
 /// [`Layer`] for retrying requests with a [`Service`] to follow redirection responses.
 ///
 /// See the [module docs](self) for more details.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 pub struct FollowRedirectLayer<P = Standard> {
     policy: P,
+    preserve_extensions: bool,
 }
 
 impl FollowRedirectLayer {
@@ -134,7 +138,31 @@ impl FollowRedirectLayer {
 impl<P> FollowRedirectLayer<P> {
     /// Create a new [`FollowRedirectLayer`] with the given redirection [`Policy`].
     pub fn with_policy(policy: P) -> Self {
-        FollowRedirectLayer { policy }
+        FollowRedirectLayer {
+            policy,
+            preserve_extensions: true,
+        }
+    }
+
+    /// Configure whether request [`Extensions`] are carried over to redirected
+    /// requests.
+    ///
+    /// Defaults to `true`. Set this to `false` to drop all extensions on every redirected request,
+    /// restoring the behavior from before extensions were cloneable.
+    ///
+    /// Even when extensions are preserved, the [`Policy`] still gets to filter them in
+    /// [`Policy::on_request`]. The [`Standard`] policy drops extensions on cross-origin
+    /// redirections by default; see [`FilterCredentials`][policy::FilterCredentials] to customize
+    /// that.
+    pub fn preserve_extensions(mut self, preserve: bool) -> Self {
+        self.preserve_extensions = preserve;
+        self
+    }
+}
+
+impl<P: Default> Default for FollowRedirectLayer<P> {
+    fn default() -> Self {
+        FollowRedirectLayer::with_policy(P::default())
     }
 }
 
@@ -147,6 +175,7 @@ where
 
     fn layer(&self, inner: S) -> Self::Service {
         FollowRedirect::with_policy(inner, self.policy.clone())
+            .preserve_extensions(self.preserve_extensions)
     }
 }
 
@@ -157,6 +186,7 @@ where
 pub struct FollowRedirect<S, P = Standard> {
     inner: S,
     policy: P,
+    preserve_extensions: bool,
 }
 
 impl<S> FollowRedirect<S> {
@@ -179,7 +209,11 @@ where
 {
     /// Create a new [`FollowRedirect`] with the given redirection [`Policy`].
     pub fn with_policy(inner: S, policy: P) -> Self {
-        FollowRedirect { inner, policy }
+        FollowRedirect {
+            inner,
+            policy,
+            preserve_extensions: true,
+        }
     }
 
     /// Returns a new [`Layer`] that wraps services with a `FollowRedirect` middleware
@@ -191,6 +225,17 @@ where
     }
 
     define_inner_service_accessors!();
+}
+
+impl<S, P> FollowRedirect<S, P> {
+    /// Configure whether request [`Extensions`] are carried over to redirected
+    /// requests.
+    ///
+    /// See [`FollowRedirectLayer::preserve_extensions`] for details.
+    pub fn preserve_extensions(mut self, preserve: bool) -> Self {
+        self.preserve_extensions = preserve;
+        self
+    }
 }
 
 impl<ReqBody, ResBody, S, P> Service<Request<ReqBody>> for FollowRedirect<S, P>
@@ -214,11 +259,18 @@ where
         let mut body = BodyRepr::None;
         body.try_clone_from(req.body(), &policy);
         policy.on_request(&mut req);
+        // Snapshot the extensions to replay on redirected requests (empty when not preserving).
+        let extensions = if self.preserve_extensions {
+            req.extensions().clone()
+        } else {
+            Extensions::new()
+        };
         ResponseFuture {
             method: req.method().clone(),
             uri: req.uri().clone(),
             version: req.version(),
             headers: req.headers().clone(),
+            extensions,
             body,
             future: Either::Left(service.call(req)),
             service,
@@ -242,6 +294,7 @@ pin_project! {
         uri: Uri,
         version: Version,
         headers: HeaderMap<HeaderValue>,
+        extensions: Extensions,
         body: BodyRepr<B>,
     }
 }
@@ -325,6 +378,7 @@ where
                 *req.method_mut() = this.method.clone();
                 *req.version_mut() = *this.version;
                 *req.headers_mut() = this.headers.clone();
+                *req.extensions_mut() = this.extensions.clone();
                 this.policy.on_request(&mut req);
                 this.future
                     .set(Either::Right(Oneshot::new(this.service.clone(), req)));
@@ -337,7 +391,7 @@ where
     }
 }
 
-/// Response [`Extensions`][http::Extensions] value that represents the effective request URI of
+/// Response [`Extensions`] value that represents the effective request URI of
 /// a response returned by a [`FollowRedirect`] middleware.
 ///
 /// The value differs from the original request's effective URI if the middleware has followed
@@ -463,8 +517,100 @@ mod tests {
         );
     }
 
+    #[derive(Clone, Debug, PartialEq)]
+    struct Marker(u32);
+
+    #[tokio::test]
+    async fn preserves_extensions() {
+        let svc = ServiceBuilder::new()
+            .layer(FollowRedirectLayer::new())
+            .buffer(1)
+            .service_fn(handle);
+        let mut req = Request::builder()
+            .uri("http://example.com/42")
+            .body(Body::empty())
+            .unwrap();
+        req.extensions_mut().insert(Marker(7));
+        let res = svc.oneshot(req).await.unwrap();
+        // The same-origin redirect chain should carry the extension through to the final request.
+        assert_eq!(res.extensions().get::<Marker>(), Some(&Marker(7)));
+    }
+
+    #[tokio::test]
+    async fn preserve_extensions_opt_out() {
+        let svc = ServiceBuilder::new()
+            .layer(FollowRedirectLayer::new().preserve_extensions(false))
+            .buffer(1)
+            .service_fn(handle);
+        let mut req = Request::builder()
+            .uri("http://example.com/42")
+            .body(Body::empty())
+            .unwrap();
+        req.extensions_mut().insert(Marker(7));
+        let res = svc.oneshot(req).await.unwrap();
+        assert!(res.extensions().get::<Marker>().is_none());
+    }
+
+    #[tokio::test]
+    async fn drops_extensions_cross_origin() {
+        let svc = ServiceBuilder::new()
+            .layer(FollowRedirectLayer::new())
+            .buffer(1)
+            .service_fn(cross_origin);
+        let mut req = Request::builder()
+            .uri("http://a.example.com/")
+            .body(Body::empty())
+            .unwrap();
+        req.extensions_mut().insert(Marker(7));
+        let res = svc.oneshot(req).await.unwrap();
+        // The Standard policy treats the cross-origin hop as blocked and drops the extension.
+        assert!(res.extensions().get::<Marker>().is_none());
+        assert_eq!(
+            res.extensions().get::<RequestUri>().unwrap().0,
+            "http://b.example.com/"
+        );
+    }
+
+    #[tokio::test]
+    async fn allowlisted_extension_survives_cross_origin() {
+        #[derive(Clone, Debug, PartialEq)]
+        struct Allowed(u32);
+
+        let svc = ServiceBuilder::new()
+            .layer(FollowRedirectLayer::with_policy(
+                FilterCredentials::new().allow_extension::<Allowed>(),
+            ))
+            .buffer(1)
+            .service_fn(cross_origin);
+        let mut req = Request::builder()
+            .uri("http://a.example.com/")
+            .body(Body::empty())
+            .unwrap();
+        req.extensions_mut().insert(Marker(7));
+        req.extensions_mut().insert(Allowed(9));
+        let res = svc.oneshot(req).await.unwrap();
+        assert!(res.extensions().get::<Marker>().is_none());
+        assert_eq!(res.extensions().get::<Allowed>(), Some(&Allowed(9)));
+    }
+
+    /// Redirects `a.example.com` to `b.example.com` once, then echoes the final request's
+    /// extensions back on the response.
+    async fn cross_origin<B>(req: Request<B>) -> Result<Response<u64>, Infallible> {
+        let mut res = Response::builder();
+        if req.uri().host() == Some("a.example.com") {
+            res = res
+                .status(StatusCode::MOVED_PERMANENTLY)
+                .header(LOCATION, "http://b.example.com/");
+        }
+        if let Some(extensions) = res.extensions_mut() {
+            *extensions = req.extensions().clone();
+        }
+        Ok::<_, Infallible>(res.body(0).unwrap())
+    }
+
     /// A server with an endpoint `/{n}` which redirects to `/{n-1}` unless `n` equals zero,
-    /// returning `n` as the response body.
+    /// returning `n` as the response body. The request's extensions are echoed back on the
+    /// response so tests can observe which extensions reached the final request.
     async fn handle<B>(req: Request<B>) -> Result<Response<u64>, Infallible> {
         let n: u64 = req.uri().path()[1..].parse().unwrap();
         let mut res = Response::builder();
@@ -472,6 +618,9 @@ mod tests {
             res = res
                 .status(StatusCode::MOVED_PERMANENTLY)
                 .header(LOCATION, format!("/{}", n - 1));
+        }
+        if let Some(extensions) = res.extensions_mut() {
+            *extensions = req.extensions().clone();
         }
         Ok::<_, Infallible>(res.body(n).unwrap())
     }

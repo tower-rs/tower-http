@@ -33,9 +33,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   by the features that need them (e.g. `compression-gzip`, `fs`, `timeout`).
   ([#628])
 - MSRV bumped from 1.64 to 1.65.
+- **breaking:** `follow-redirect`: `FollowRedirect` now forwards request
+  `Extensions` to redirected requests instead of dropping them. The `Standard`
+  policy drops extensions on cross-origin redirections (same-origin keeps them).
+  Opt out with `FollowRedirectLayer::preserve_extensions(false)`; keep specific
+  types with `FilterCredentials::allow_extension::<T>()` or all of them with
+  `keep_all_extensions()`. ([#581])
 
 [#215]: https://github.com/tower-rs/tower-http/issues/215
 [#360]: https://github.com/tower-rs/tower-http/pull/360
+[#581]: https://github.com/tower-rs/tower-http/pull/581
 [#628]: https://github.com/tower-rs/tower-http/pull/628
 [#642]: https://github.com/tower-rs/tower-http/pull/642
 
