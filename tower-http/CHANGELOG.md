@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # 0.7.0
 
+[Changes since 0.6.11](https://github.com/tower-rs/tower-http/compare/tower-http-0.6.11...tower-http-0.7.0)
+
 ## Added
 
 - `csrf`: add cross-origin protection middleware ([#699])
