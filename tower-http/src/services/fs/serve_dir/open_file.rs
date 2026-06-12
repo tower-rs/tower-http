@@ -1,4 +1,5 @@
 use super::{
+    backend::{Backend, File as _, Metadata as _},
     headers::{ETag, IfMatch, IfModifiedSince, IfNoneMatch, IfUnmodifiedSince, LastModified},
     ServeVariant,
 };
@@ -9,12 +10,11 @@ use http_body_util::Empty;
 use http_range_header::RangeUnsatisfiableError;
 use std::{
     ffi::OsStr,
-    fs::Metadata,
     io::{self, ErrorKind, SeekFrom},
     ops::RangeInclusive,
     path::{Path, PathBuf},
 };
-use tokio::{fs::File, io::AsyncSeekExt};
+use tokio::io::AsyncSeekExt;
 
 pub(super) enum OpenFileOutput {
     FileOpened(Box<FileOpened>),
@@ -43,31 +43,36 @@ pub(super) struct FileOpened {
 }
 
 pub(super) enum FileRequestExtent {
-    Full(File, Metadata),
-    Head(Metadata),
+    Full(Box<dyn tokio::io::AsyncRead + Unpin + Send>, u64),
+    Head(u64),
 }
 
-pub(super) struct OpenFileConfig {
+pub(super) struct OpenFileRequest<B> {
     pub(super) variant: ServeVariant,
     pub(super) redirect_path_prefix: String,
+    pub(super) path_to_file: PathBuf,
+    pub(super) req: Request<Empty<Bytes>>,
+    pub(super) negotiated_encodings: Vec<(Encoding, QValue)>,
+    pub(super) range_header: Option<String>,
     pub(super) buf_chunk_size: usize,
     pub(super) precompression_configured: bool,
+    pub(super) backend: B,
 }
 
-pub(super) async fn open_file(
-    config: OpenFileConfig,
-    mut path_to_file: PathBuf,
-    req: Request<Empty<Bytes>>,
-    negotiated_encodings: Vec<(Encoding, QValue)>,
-    range_header: Option<String>,
+pub(super) async fn open_file<B: Backend>(
+    request: OpenFileRequest<B>,
 ) -> io::Result<OpenFileOutput> {
-    let OpenFileConfig {
+    let OpenFileRequest {
         variant,
         redirect_path_prefix,
+        mut path_to_file,
+        req,
+        negotiated_encodings,
+        range_header,
         buf_chunk_size,
         precompression_configured,
-    } = config;
-
+        backend,
+    } = request;
     let preconditions = Preconditions {
         if_match: req
             .headers()
@@ -101,6 +106,7 @@ pub(super) async fn open_file(
                 req.uri(),
                 append_index_html_on_directories,
                 html_as_default_extension,
+                &backend,
             )
             .await
             {
@@ -122,7 +128,7 @@ pub(super) async fn open_file(
         #[cfg(feature = "tracing")]
         let _path_str = path_to_file.display().to_string();
         let (meta, maybe_encoding) =
-            file_metadata_with_fallback(path_to_file, negotiated_encodings).await?;
+            file_metadata_with_fallback(&backend, path_to_file, negotiated_encodings).await?;
 
         let last_modified = meta.modified().ok().map(LastModified::from);
         let etag = meta
@@ -145,7 +151,7 @@ pub(super) async fn open_file(
         let maybe_range = try_parse_range(range_header.as_deref(), meta.len());
 
         Ok(OpenFileOutput::FileOpened(Box::new(FileOpened {
-            extent: FileRequestExtent::Head(meta),
+            extent: FileRequestExtent::Head(meta.len()),
             chunk_size: buf_chunk_size,
             mime_header_value: mime,
             maybe_encoding,
@@ -158,7 +164,7 @@ pub(super) async fn open_file(
         #[cfg(feature = "tracing")]
         let _path_str = path_to_file.display().to_string();
         let (mut file, maybe_encoding) =
-            match open_file_with_fallback(path_to_file, negotiated_encodings).await {
+            match open_file_with_fallback(&backend, path_to_file, negotiated_encodings).await {
                 Ok(result) => result,
 
                 Err(err) if is_invalid_filename_error(&err) => {
@@ -187,7 +193,8 @@ pub(super) async fn open_file(
             return Ok(output);
         }
 
-        let maybe_range = try_parse_range(range_header.as_deref(), meta.len());
+        let size = meta.len();
+        let maybe_range = try_parse_range(range_header.as_deref(), size);
         if let Some(Ok(ranges)) = maybe_range.as_ref() {
             // if there is any other amount of ranges than 1 we'll return an
             // unsatisfiable later as there isn't yet support for multipart ranges
@@ -197,7 +204,7 @@ pub(super) async fn open_file(
         }
 
         Ok(OpenFileOutput::FileOpened(Box::new(FileOpened {
-            extent: FileRequestExtent::Full(file, meta),
+            extent: FileRequestExtent::Full(Box::new(file), size),
             chunk_size: buf_chunk_size,
             mime_header_value: mime,
             maybe_encoding,
@@ -336,14 +343,15 @@ fn preferred_encoding(
 // Attempts to open the file with any of the possible negotiated_encodings in the
 // preferred order. If none of the negotiated_encodings have a corresponding precompressed
 // file the uncompressed file is used as a fallback.
-async fn open_file_with_fallback(
+async fn open_file_with_fallback<B: Backend>(
+    backend: &B,
     mut path: PathBuf,
     mut negotiated_encoding: Vec<(Encoding, QValue)>,
-) -> io::Result<(File, Option<Encoding>)> {
+) -> io::Result<(B::File, Option<Encoding>)> {
     let (file, encoding) = loop {
         // Get the preferred encoding among the negotiated ones.
         let encoding = preferred_encoding(&mut path, &negotiated_encoding);
-        match (File::open(&path).await, encoding) {
+        match (backend.open(path.clone()).await, encoding) {
             (Ok(file), maybe_encoding) => break (file, maybe_encoding),
             (Err(err), Some(encoding))
                 if err.kind() == io::ErrorKind::NotFound && encoding != Encoding::Identity =>
@@ -364,15 +372,16 @@ async fn open_file_with_fallback(
 // Attempts to get the file metadata with any of the possible negotiated_encodings in the
 // preferred order. If none of the negotiated_encodings have a corresponding precompressed
 // file the uncompressed file is used as a fallback.
-async fn file_metadata_with_fallback(
+async fn file_metadata_with_fallback<B: Backend>(
+    backend: &B,
     mut path: PathBuf,
     mut negotiated_encoding: Vec<(Encoding, QValue)>,
-) -> io::Result<(Metadata, Option<Encoding>)> {
-    let (file, encoding) = loop {
+) -> io::Result<(B::Metadata, Option<Encoding>)> {
+    let (meta, encoding) = loop {
         // Get the preferred encoding among the negotiated ones.
         let encoding = preferred_encoding(&mut path, &negotiated_encoding);
-        match (tokio::fs::metadata(&path).await, encoding) {
-            (Ok(file), maybe_encoding) => break (file, maybe_encoding),
+        match (backend.metadata(path.clone()).await, encoding) {
+            (Ok(meta), maybe_encoding) => break (meta, maybe_encoding),
             (Err(err), Some(encoding))
                 if err.kind() == io::ErrorKind::NotFound && encoding != Encoding::Identity =>
             {
@@ -386,19 +395,20 @@ async fn file_metadata_with_fallback(
             (Err(err), _) => return Err(err),
         }
     };
-    Ok((file, encoding))
+    Ok((meta, encoding))
 }
 
-async fn maybe_redirect_or_append_path(
+async fn maybe_redirect_or_append_path<B: Backend>(
     redirect_path_prefix: &str,
     path_to_file: &mut PathBuf,
     uri: &Uri,
     append_index_html_on_directories: bool,
     html_as_default_extension: bool,
+    backend: &B,
 ) -> Option<OpenFileOutput> {
     let uri_path = uri.path();
 
-    let is_directory = is_dir(path_to_file).await;
+    let is_directory = is_dir(path_to_file, backend).await;
 
     if uri_path.ends_with('/') && uri_path != "/" && is_directory != Some(true) {
         return Some(OpenFileOutput::FileNotFound);
@@ -441,8 +451,9 @@ fn try_parse_range(
     })
 }
 
-async fn is_dir(path_to_file: &Path) -> Option<bool> {
-    tokio::fs::metadata(path_to_file)
+async fn is_dir<B: Backend>(path_to_file: &Path, backend: &B) -> Option<bool> {
+    backend
+        .metadata(path_to_file.to_owned())
         .await
         .ok()
         .map(|meta_data| meta_data.is_dir())

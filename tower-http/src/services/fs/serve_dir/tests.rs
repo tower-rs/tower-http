@@ -1684,3 +1684,254 @@ async fn if_modified_since_304_includes_etag() {
         &last_modified
     );
 }
+
+mod memory_backend {
+    use super::*;
+    use crate::services::fs::serve_dir::backend::{Backend, File, Metadata};
+    use std::{
+        collections::HashMap, future::Future, io, path::PathBuf, pin::Pin, sync::Arc,
+        time::SystemTime,
+    };
+    use tokio::io::{AsyncRead, AsyncSeek};
+
+    /// In-memory file metadata.
+    #[derive(Clone)]
+    struct MemMetadata {
+        is_dir: bool,
+        len: u64,
+        modified: SystemTime,
+    }
+
+    impl Metadata for MemMetadata {
+        fn is_dir(&self) -> bool {
+            self.is_dir
+        }
+
+        fn modified(&self) -> io::Result<SystemTime> {
+            Ok(self.modified)
+        }
+
+        fn len(&self) -> u64 {
+            self.len
+        }
+    }
+
+    /// In-memory file backed by a Cursor.
+    struct MemFile {
+        cursor: std::io::Cursor<Vec<u8>>,
+        meta: MemMetadata,
+    }
+
+    impl AsyncRead for MemFile {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+            buf: &mut tokio::io::ReadBuf<'_>,
+        ) -> std::task::Poll<io::Result<()>> {
+            Pin::new(&mut self.cursor).poll_read(cx, buf)
+        }
+    }
+
+    impl AsyncSeek for MemFile {
+        fn start_seek(mut self: Pin<&mut Self>, position: io::SeekFrom) -> io::Result<()> {
+            Pin::new(&mut self.cursor).start_seek(position)
+        }
+
+        fn poll_complete(
+            mut self: Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<io::Result<u64>> {
+            Pin::new(&mut self.cursor).poll_complete(cx)
+        }
+    }
+
+    impl File for MemFile {
+        type Metadata = MemMetadata;
+        type MetadataFuture<'a> = std::future::Ready<io::Result<MemMetadata>>;
+
+        fn metadata(&self) -> Self::MetadataFuture<'_> {
+            std::future::ready(Ok(self.meta.clone()))
+        }
+    }
+
+    /// In-memory backend storing files in a HashMap.
+    #[derive(Clone)]
+    struct MemBackend {
+        files: Arc<HashMap<PathBuf, Vec<u8>>>,
+        dirs: Arc<Vec<PathBuf>>,
+    }
+
+    impl MemBackend {
+        fn new() -> Self {
+            Self {
+                files: Arc::new(HashMap::new()),
+                dirs: Arc::new(Vec::new()),
+            }
+        }
+
+        fn with_file(mut self, path: impl Into<PathBuf>, content: impl Into<Vec<u8>>) -> Self {
+            Arc::get_mut(&mut self.files)
+                .unwrap()
+                .insert(path.into(), content.into());
+            self
+        }
+
+        fn with_dir(mut self, path: impl Into<PathBuf>) -> Self {
+            Arc::get_mut(&mut self.dirs).unwrap().push(path.into());
+            self
+        }
+    }
+
+    impl Backend for MemBackend {
+        type File = MemFile;
+        type Metadata = MemMetadata;
+        type OpenFuture = Pin<Box<dyn Future<Output = io::Result<MemFile>> + Send>>;
+        type MetadataFuture = Pin<Box<dyn Future<Output = io::Result<MemMetadata>> + Send>>;
+
+        fn open(&self, path: PathBuf) -> Self::OpenFuture {
+            let files = self.files.clone();
+            Box::pin(async move {
+                match files.get(&path) {
+                    Some(data) => Ok(MemFile {
+                        meta: MemMetadata {
+                            is_dir: false,
+                            len: data.len() as u64,
+                            modified: SystemTime::UNIX_EPOCH,
+                        },
+                        cursor: std::io::Cursor::new(data.clone()),
+                    }),
+                    None => Err(io::Error::new(io::ErrorKind::NotFound, "not found")),
+                }
+            })
+        }
+
+        fn metadata(&self, path: PathBuf) -> Self::MetadataFuture {
+            let files = self.files.clone();
+            let dirs = self.dirs.clone();
+            Box::pin(async move {
+                if dirs.contains(&path) {
+                    return Ok(MemMetadata {
+                        is_dir: true,
+                        len: 0,
+                        modified: SystemTime::UNIX_EPOCH,
+                    });
+                }
+                match files.get(&path) {
+                    Some(data) => Ok(MemMetadata {
+                        is_dir: false,
+                        len: data.len() as u64,
+                        modified: SystemTime::UNIX_EPOCH,
+                    }),
+                    None => Err(io::Error::new(io::ErrorKind::NotFound, "not found")),
+                }
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn serve_file_from_memory() {
+        let backend = MemBackend::new().with_file("./assets/hello.txt", "Hello, world!");
+
+        let svc = ServeDir::with_backend("assets", backend);
+
+        let req = Request::builder()
+            .uri("/hello.txt")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(res.headers()["content-type"], "text/plain");
+
+        let body = body_into_text(res.into_body()).await;
+        assert_eq!(body, "Hello, world!");
+    }
+
+    #[tokio::test]
+    async fn not_found_from_memory() {
+        let backend = MemBackend::new();
+
+        let svc = ServeDir::with_backend("assets", backend);
+
+        let req = Request::builder()
+            .uri("/missing.txt")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn head_request_from_memory() {
+        let backend = MemBackend::new().with_file("./assets/hello.txt", "Hello, world!");
+
+        let svc = ServeDir::with_backend("assets", backend);
+
+        let req = Request::builder()
+            .method(Method::HEAD)
+            .uri("/hello.txt")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(res.headers()["content-length"], "13");
+
+        // HEAD should have empty body
+        let body = body_into_text(res.into_body()).await;
+        assert!(body.is_empty());
+    }
+
+    #[tokio::test]
+    async fn range_request_from_memory() {
+        let backend = MemBackend::new().with_file("./assets/hello.txt", "Hello, world!");
+
+        let svc = ServeDir::with_backend("assets", backend);
+
+        let req = Request::builder()
+            .uri("/hello.txt")
+            .header("range", "bytes=0-4")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(res.headers()["content-range"], "bytes 0-4/13");
+
+        let body = body_into_text(res.into_body()).await;
+        assert_eq!(body, "Hello");
+    }
+
+    #[tokio::test]
+    async fn directory_redirect_from_memory() {
+        let backend = MemBackend::new()
+            .with_dir("./assets/sub")
+            .with_file("./assets/sub/index.html", "<h1>Index</h1>");
+
+        let svc = ServeDir::with_backend("assets", backend);
+
+        // Request without trailing slash should redirect
+        let req = Request::builder().uri("/sub").body(Body::empty()).unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::TEMPORARY_REDIRECT);
+        assert_eq!(res.headers()["location"], "/sub/");
+    }
+
+    #[tokio::test]
+    async fn directory_serves_index_html_from_memory() {
+        let backend = MemBackend::new()
+            .with_dir("./assets/sub")
+            .with_file("./assets/sub/index.html", "<h1>Index</h1>");
+
+        let svc = ServeDir::with_backend("assets", backend);
+
+        let req = Request::builder().uri("/sub/").body(Body::empty()).unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = body_into_text(res.into_body()).await;
+        assert_eq!(body, "<h1>Index</h1>");
+    }
+}
