@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Added
 
-- `csrf`: add cross-origin protection middleware ([#699])
+- `csrf`: add cross-site request forgery (CSRF) protection middleware, porting the cross-origin protection scheme introduced in Go 1.25 ([#699])
 
   ```rust
   use tower::ServiceBuilder;
