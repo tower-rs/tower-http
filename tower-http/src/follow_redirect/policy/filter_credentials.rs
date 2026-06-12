@@ -14,7 +14,7 @@ use http::{
 ///
 /// Filtering is cumulative: a header or extension removed on a blocked redirection is not
 /// reintroduced on later redirections, including same-origin ones.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct FilterCredentials {
     block_cross_origin: bool,
     block_any: bool,
@@ -23,6 +23,23 @@ pub struct FilterCredentials {
     remove_all_extensions: bool,
     extension_allowlist: Vec<fn(&mut Extensions, &mut Extensions)>,
     blocked: bool,
+}
+
+// `Debug` is implemented by hand rather than derived: deriving it would require `Debug` for the
+// higher-ranked `fn` pointers in `extension_allowlist`, which does not hold on older compilers
+// (and would only print opaque addresses anyway). The allowlist is summarized by its length.
+impl std::fmt::Debug for FilterCredentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FilterCredentials")
+            .field("block_cross_origin", &self.block_cross_origin)
+            .field("block_any", &self.block_any)
+            .field("remove_blocklisted", &self.remove_blocklisted)
+            .field("remove_all", &self.remove_all)
+            .field("remove_all_extensions", &self.remove_all_extensions)
+            .field("allowed_extensions", &self.extension_allowlist.len())
+            .field("blocked", &self.blocked)
+            .finish()
+    }
 }
 
 const BLOCKLIST: &[HeaderName] = &[
