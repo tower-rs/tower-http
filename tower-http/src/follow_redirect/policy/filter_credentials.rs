@@ -6,14 +6,11 @@ use http::{
 
 /// A redirection [`Policy`] that removes credentials from requests in redirections.
 ///
-/// In addition to request headers, this policy also filters request
-/// [`Extensions`] in "blocked" redirections. Because extensions are keyed by
-/// arbitrary user types, there is no built-in blocklist of sensitive extensions to mirror the
-/// header blocklist. Instead, blocked redirections drop *all* extensions by default, and callers
-/// opt specific types back in with [`allow_extension`][Self::allow_extension].
+/// Besides headers, it filters request [`Extensions`] on "blocked" redirections. Extensions are
+/// keyed by arbitrary types with no blocklist to mirror the header one, so blocked redirections
+/// drop *all* extensions by default; re-admit types with [`allow_extension`][Self::allow_extension].
 ///
-/// Filtering is cumulative: a header or extension removed on a blocked redirection is not
-/// reintroduced on later redirections, including same-origin ones.
+/// Filtering is cumulative: a value removed on one hop is not reintroduced on later hops.
 #[derive(Clone)]
 pub struct FilterCredentials {
     block_cross_origin: bool,
@@ -105,31 +102,26 @@ impl FilterCredentials {
         self.remove_blocklisted(false)
     }
 
-    /// Configure `self` to remove all request extensions in "blocked" redirections, except for
-    /// types added to the allowlist with [`allow_extension`][Self::allow_extension].
+    /// Remove all non-allowlisted extensions on "blocked" redirections. This is the default.
     ///
-    /// This is the default. Because the library cannot know which extension types carry sensitive
-    /// data, blocked redirections (cross-origin by default) drop every extension unless it has
-    /// been explicitly allowed.
+    /// Re-admit specific types with [`allow_extension`][Self::allow_extension].
     pub fn remove_all_extensions(mut self) -> Self {
         self.remove_all_extensions = true;
         self
     }
 
-    /// Configure `self` to keep all request extensions in "blocked" redirections.
+    /// Keep all request extensions on "blocked" redirections.
     ///
-    /// This forwards every extension across the redirection boundary, including cross-origin ones.
-    /// Only use this when the extensions are known not to carry sensitive, origin-scoped data.
+    /// Forwards every extension, including cross-origin. Use only when no extension carries
+    /// sensitive, origin-scoped data.
     pub fn keep_all_extensions(mut self) -> Self {
         self.remove_all_extensions = false;
         self
     }
 
-    /// Add the extension type `T` to the allowlist, keeping it in "blocked" redirections even when
-    /// other extensions are removed.
+    /// Keep extension type `T` on "blocked" redirections even when other extensions are removed.
     ///
-    /// This has no effect if extension removal has been disabled with
-    /// [`keep_all_extensions`][Self::keep_all_extensions].
+    /// No effect under [`keep_all_extensions`][Self::keep_all_extensions].
     pub fn allow_extension<T>(mut self) -> Self
     where
         T: Clone + Send + Sync + 'static,

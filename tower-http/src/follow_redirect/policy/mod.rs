@@ -60,9 +60,8 @@ pub trait Policy<B, E> {
     /// This can for example be used to remove sensitive headers from the request
     /// or prepare the request in other ways.
     ///
-    /// On a redirected request the headers and [`Extensions`][http::Extensions] are replayed from
-    /// the previous hop before this runs, and whatever this method leaves on the request becomes
-    /// the baseline for the next hop: a value removed here stays removed for the rest of the chain.
+    /// On a redirected request, whatever this method leaves on the request becomes the baseline for
+    /// the next hop, so a value removed here stays removed for the rest of the chain.
     ///
     /// The default implementation does nothing.
     fn on_request(&mut self, _request: &mut Request<B>) {}

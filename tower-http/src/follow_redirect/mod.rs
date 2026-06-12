@@ -6,16 +6,16 @@
 //! redirections.
 //!
 //! The middleware tries to clone the original [`Request`] when making a redirected request.
-//! Request headers and [`Extensions`] set by outer middleware are carried over to redirected
-//! requests by default; the configured [`policy`] decides whether they survive a given redirection
-//! via [`Policy::on_request`] (the [`Standard`] policy drops credential headers and all extensions
-//! on cross-origin redirections), and [`FollowRedirectLayer::preserve_extensions`] can disable
-//! extension forwarding entirely. Filtering is cumulative: a header or extension dropped on one
-//! hop is not replayed on later hops, so it cannot reappear after a cross-origin redirection. The
-//! request body cannot always be cloned. When the original body is known to be empty by
-//! [`Body::size_hint`], the middleware uses `Default` implementation of the body type to create a
-//! new request body. If you know that the body can be cloned in some way, you can tell the
-//! middleware to clone it by configuring a [`policy`].
+//! Request headers and [`Extensions`] are carried over to redirected requests; the [`policy`]
+//! decides which survive each hop (the [`Standard`] policy drops credential headers and all
+//! extensions cross-origin), and filtering is cumulative, so a dropped value never reappears later
+//! in the chain. Extension forwarding can be disabled with
+//! [`FollowRedirectLayer::preserve_extensions`].
+//!
+//! The request body cannot always be cloned. When the original body is known to be empty by
+//! [`Body::size_hint`], the middleware uses the `Default` implementation of the body type. If the
+//! body can be cloned in some way, you can tell the middleware to clone it by configuring a
+//! [`policy`].
 //!
 //! # Examples
 //!
@@ -146,16 +146,11 @@ impl<P> FollowRedirectLayer<P> {
         }
     }
 
-    /// Configure whether request [`Extensions`] are carried over to redirected
-    /// requests.
+    /// Whether request [`Extensions`] are carried over to redirected requests. Defaults to `true`.
     ///
-    /// Defaults to `true`. Set this to `false` to drop all extensions on every redirected request,
-    /// restoring the behavior from before extensions were cloneable.
-    ///
-    /// Even when extensions are preserved, the [`Policy`] still gets to filter them in
-    /// [`Policy::on_request`]. The [`Standard`] policy drops extensions on cross-origin
-    /// redirections by default; see [`FilterCredentials`][policy::FilterCredentials] to customize
-    /// that.
+    /// Setting this to `false` drops all extensions on redirected requests. When preserved, the
+    /// [`policy`] still filters them via [`Policy::on_request`]; the [`Standard`] policy drops
+    /// extensions cross-origin (see [`FilterCredentials`][policy::FilterCredentials]).
     pub fn preserve_extensions(mut self, preserve: bool) -> Self {
         self.preserve_extensions = preserve;
         self
@@ -230,10 +225,9 @@ where
 }
 
 impl<S, P> FollowRedirect<S, P> {
-    /// Configure whether request [`Extensions`] are carried over to redirected
-    /// requests.
+    /// Whether request [`Extensions`] are carried over to redirected requests. Defaults to `true`.
     ///
-    /// See [`FollowRedirectLayer::preserve_extensions`] for details.
+    /// See [`FollowRedirectLayer::preserve_extensions`].
     pub fn preserve_extensions(mut self, preserve: bool) -> Self {
         self.preserve_extensions = preserve;
         self
