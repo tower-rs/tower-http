@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ```
 - `timeout`: add `DeadlineBody` for non-resetting body timeouts, applied via the new `RequestBodyDeadlineLayer` and `ResponseBodyDeadlineLayer` ([#688])
 
-  Unlike `TimeoutBody`, which resets its deadline on every frame, `DeadlineBody` caps the total wall-clock time of a body transfer. A slow client trickling one byte at a time never trips an idle timeout but will trip a deadline.
+  Unlike `TimeoutBody`, which resets its deadline on every frame, `DeadlineBody` caps the total time of a body transfer. A slow client trickling one byte at a time never trips an idle timeout but will trip a deadline.
 
   ```rust
   use std::time::Duration;
