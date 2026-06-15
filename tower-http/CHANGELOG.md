@@ -5,57 +5,134 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-# Unreleased
+# 0.7.0
 
-## Fixed
+[Changes since 0.6.11](https://github.com/tower-rs/tower-http/compare/tower-http-0.6.11...tower-http-0.7.0)
 
-- `fs`: `ServeDir` and `ServeFile` now emit a `Vary: Accept-Encoding` response
-  header when precompressed serving is configured, ensuring caches correctly
-  distinguish between compressed and uncompressed variants.
+## Added
+
+- `csrf`: add cross-site request forgery (CSRF) protection middleware, porting the cross-origin protection scheme introduced in Go 1.25 ([#699])
+
+  ```rust
+  use tower::ServiceBuilder;
+  use tower_http::csrf::CsrfLayer;
+
+  // Rejects cross-origin state-changing requests using `Sec-Fetch-Site`,
+  // an `Origin` allow-list, and an `Origin`/`Host` fallback. No per-request
+  // token state required.
+  let layer = CsrfLayer::new().add_trusted_origin("https://example.com")?;
+
+  let service = ServiceBuilder::new().layer(layer).service_fn(handler);
+  ```
+- `timeout`: add `DeadlineBody` for non-resetting body timeouts, applied via the new `RequestBodyDeadlineLayer` and `ResponseBodyDeadlineLayer` ([#688])
+
+  Unlike `TimeoutBody`, which resets its deadline on every frame, `DeadlineBody` caps the total time of a body transfer. A slow client trickling one byte at a time never trips an idle timeout but will trip a deadline.
+
+  ```rust
+  use std::time::Duration;
+  use tower::ServiceBuilder;
+  use tower_http::timeout::RequestBodyDeadlineLayer;
+
+  // Abort the request body transfer after 30s total, regardless of how
+  // frequently data arrives.
+  let service = ServiceBuilder::new()
+      .layer(RequestBodyDeadlineLayer::new(Duration::from_secs(30)))
+      .service_fn(handler);
+  ```
+- `fs`: add strong `ETag` support to `ServeDir`, including `If-Match` and `If-None-Match` precondition handling per RFC 9110. `304 Not Modified` responses now carry the `ETag` and `Last-Modified` validators ([#691])
+- `fs`: add a `Backend` trait to make `ServeDir` work with non-filesystem sources (e.g. embedded assets or object storage). The default `TokioBackend` preserves existing behavior. Use `ServeDir::with_backend()` to plug in custom implementations ([#684])
+
+  ```rust
+  use tower_http::services::fs::ServeDir;
+
+  // `MyBackend` implements `tower_http::services::fs::Backend`.
+  // The default `ServeDir::new()` continues to use `TokioBackend` (local FS).
+  let service = ServeDir::with_backend("assets", MyBackend::new());
+  ```
+- `fs`: add `html_as_default_extension` option to `ServeDir`, appending `.html` when the request path has no extension ([#519])
+- `fs`: add `redirect_path_prefix` option to `ServeDir`, prepending a prefix on trailing-slash redirects so the service can be mounted under a sub-path ([#486])
+- `validate-request`: add `ValidateRequestHeaderLayer::has_header_value()` to reject requests when a header does not have an expected value ([#360])
+- `body`: `UnsyncBoxBody::new()` constructor and `From<ServeFileSystemResponseBody>` conversion to avoid double-boxing when combining `ServeDir` responses with other body types ([#537])
+- `limit`: implement `Default` for `limit::ResponseBody` when the wrapped body also implements `Default` ([#679])
 
 ## Changed
 
-- `trace`: `DefaultOnRequest`, `DefaultOnResponse`, `DefaultOnFailure`, and
-  `DefaultOnEos` now explicitly parent their tracing events to the request span
-  rather than relying on the ambient span context. This fixes intermittent cases
-  where events could appear without their request span attached ([#655])
 - **breaking:** `compression`: the middleware now handles the `*` wildcard and
   `identity;q=0` in Accept-Encoding per RFC 9110 §12.5.3. Requests that
   previously fell back to identity (e.g. `*;q=0` or `identity;q=0` with no
   other acceptable encoding) now receive a 406 Not Acceptable response. Clients
   that explicitly reject all encodings without listing an alternative will see
-  different behavior. ([#215])
-- The implicit `tokio` and `async-compression` features are removed (BREAKING).
+  different behavior. ([#693])
+- **breaking:** `compression`: upgrade the `SizeAbove` predicate threshold from `u16` to `u64`, allowing minimum sizes above 64 KiB ([#704])
+- **breaking:** remove the implicit no-op `tokio` and `async-compression` features.
   These were kept as no-op features in 0.6.x for backwards compatibility after
   the switch to `dep:` syntax in [#642]. Downstream crates that activate
   `tower-http/tokio` or `tower-http/async-compression` should remove those
   feature entries; the underlying dependencies are still pulled in transitively
   by the features that need them (e.g. `compression-gzip`, `fs`, `timeout`).
   ([#628])
-- MSRV bumped from 1.64 to 1.65.
+- **breaking:** `trace`/`classify`: include the gRPC error message in tracing output. `GrpcCode` and `GrpcFailureClass` are now `#[non_exhaustive]`, and `GrpcStatus` is exported from the `classify` module ([#422])
 - **breaking:** `follow-redirect`: `FollowRedirect` now forwards request
   `Extensions` to redirected requests instead of dropping them. The `Standard`
   policy drops extensions on cross-origin redirections (same-origin keeps them).
   Opt out with `FollowRedirectLayer::preserve_extensions(false)`; keep specific
   types with `FilterCredentials::allow_extension::<T>()` or all of them with
-  `keep_all_extensions()`. ([#581])
+  `keep_all_extensions()`. ([#706])
+
+  ```rust
+  use tower_http::follow_redirect::FollowRedirectLayer;
+
+  // 0.7.0 forwards request `Extensions` across redirects by default.
+  // Restore the previous behavior (drop all extensions) with:
+  let layer = FollowRedirectLayer::new().preserve_extensions(false);
+  ```
 - **breaking:** `follow-redirect`: header and extension filtering is now
   cumulative. A value a policy drops on one hop is no longer replayed on later
   hops, so `FilterCredentials` no longer re-sends `Cookie`/`Authorization` to a
   same-origin target reached after a cross-origin hop. Custom `Policy::on_request`
-  impls now see the previous hop's filtered request, not the original. ([#581])
+  impls now see the previous hop's filtered request, not the original. ([#706])
+- `trace`: `DefaultOnRequest`, `DefaultOnResponse`, `DefaultOnFailure`, and
+  `DefaultOnEos` now explicitly parent their tracing events to the request span
+  rather than relying on the ambient span context. This fixes intermittent cases
+  where events could appear without their request span attached ([#690])
+- `cors`: relax the `Vary` header defaults ([#674])
+- MSRV bumped from 1.64 to 1.65 ([#684])
 
-[#215]: https://github.com/tower-rs/tower-http/issues/215
+## Fixed
+
+- `fs`: `ServeDir` and `ServeFile` now emit a `Vary: Accept-Encoding` response
+  header when precompressed serving is configured, ensuring caches correctly
+  distinguish between compressed and uncompressed variants ([#692])
+- **breaking:** `services`: reject a trailing slash for file paths. File requests with a trailing slash now return `404 Not Found` instead of serving the file ([#678])
+- `fs`: fix `ServeDir` stripping the file extension when serving with identity encoding ([#686])
+- `compression`: forward trailers from the inner body after compression finishes, fixing dropped gRPC status trailers ([#685])
+- `trace`: fire `on_eos` when the inner body reports `is_end_stream` with a precise content-length ([#687])
+- `on-early-drop`: suppress the early-drop guard when `is_end_stream` is reported after a data frame ([#687])
+- `set-header`: make `SetMultipleRequestHeaders` and `SetMultipleResponseHeaders` `Clone` for non-`Clone` HTTP bodies ([#703])
+
 [#360]: https://github.com/tower-rs/tower-http/pull/360
-[#581]: https://github.com/tower-rs/tower-http/pull/581
+[#422]: https://github.com/tower-rs/tower-http/pull/422
+[#486]: https://github.com/tower-rs/tower-http/pull/486
+[#519]: https://github.com/tower-rs/tower-http/pull/519
+[#537]: https://github.com/tower-rs/tower-http/pull/537
 [#628]: https://github.com/tower-rs/tower-http/pull/628
 [#642]: https://github.com/tower-rs/tower-http/pull/642
-
-## Added
-
-- **validate-request:** Add `ValidateRequestHeaderLayer::has_header_value()` to reject requests when a header does not have an expected value ([#360])
-- `body`: `UnsyncBoxBody::new()` constructor and `From<ServeFileSystemResponseBody>` conversion to avoid double-boxing when combining `ServeDir` responses with other body types ([#537])
-- `fs`: Add `Backend` trait to make `ServeDir` work with non-filesystem sources. The default `TokioBackend` preserves existing behavior. Use `ServeDir::with_backend()` to plug in custom implementations.
+[#674]: https://github.com/tower-rs/tower-http/pull/674
+[#678]: https://github.com/tower-rs/tower-http/pull/678
+[#679]: https://github.com/tower-rs/tower-http/pull/679
+[#684]: https://github.com/tower-rs/tower-http/pull/684
+[#685]: https://github.com/tower-rs/tower-http/pull/685
+[#686]: https://github.com/tower-rs/tower-http/pull/686
+[#687]: https://github.com/tower-rs/tower-http/pull/687
+[#688]: https://github.com/tower-rs/tower-http/pull/688
+[#690]: https://github.com/tower-rs/tower-http/pull/690
+[#691]: https://github.com/tower-rs/tower-http/pull/691
+[#692]: https://github.com/tower-rs/tower-http/pull/692
+[#693]: https://github.com/tower-rs/tower-http/pull/693
+[#699]: https://github.com/tower-rs/tower-http/pull/699
+[#703]: https://github.com/tower-rs/tower-http/pull/703
+[#704]: https://github.com/tower-rs/tower-http/pull/704
+[#706]: https://github.com/tower-rs/tower-http/pull/706
 
 # 0.6.11
 
@@ -101,7 +178,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#408]: https://github.com/tower-rs/tower-http/pull/408
 [#506]: https://github.com/tower-rs/tower-http/pull/506
 [#587]: https://github.com/tower-rs/tower-http/pull/587
-[#655]: https://github.com/tower-rs/tower-http/issues/655
 [#672]: https://github.com/tower-rs/tower-http/pull/672
 [#675]: https://github.com/tower-rs/tower-http/pull/675
 [#677]: https://github.com/tower-rs/tower-http/pull/677
