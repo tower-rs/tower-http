@@ -8,8 +8,10 @@ use std::{
 };
 use tower::{Service, ServiceBuilder, ServiceExt};
 
-type BoxBody = http_body_util::Full<Bytes>;
-type ResponseBody<B> = Either<B, BoxBody>;
+// We use `Either` here because this middleware might return a completely different
+// body type (our error message) than the inner service returns. Both paths must
+// resolve to a single concrete response type.
+type ResponseBody<B> = Either<B, Full<Bytes>>;
 
 #[derive(Clone)]
 pub struct RequireHeader<S> {
@@ -27,6 +29,9 @@ where
 {
     type Response = Response<ResponseBody<ResBody>>;
     type Error = S::Error;
+    // We have to Box the Future dynamically here. Because we have two totally
+    // different return paths (the immediate error vs. waiting on the inner service)
+    // and Rust needs them to resolve to a single concrete type.
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -34,10 +39,12 @@ where
     }
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
+        // If they don't have the header, bounce the request immediately
         if !req.headers().contains_key(self.header_name) {
             let body = Full::from("Missing required header");
             let res = Response::builder()
                 .status(StatusCode::BAD_REQUEST)
+                // Either::Right explicitly tags our middleware-generated error body
                 .body(Either::Right(body))
                 .unwrap();
 
@@ -47,6 +54,7 @@ where
         let mut inner = self.inner.clone();
         Box::pin(async move {
             let res = inner.call(req).await?;
+            // Either::Left maps the inner service's successful body into our unified type
             Ok(res.map(Either::Left))
         })
     }
