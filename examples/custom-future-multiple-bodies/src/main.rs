@@ -9,9 +9,9 @@ use std::{
 };
 use tower::Service;
 
+use http_body_util::BodyExt;
 use std::error::Error;
 use tower::ServiceBuilder;
-use http_body_util::BodyExt;
 use tower::ServiceExt;
 
 // think of Either as an enum that implements Body if both arms implement Body
@@ -120,5 +120,3 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     Ok(())
 }
-
-
