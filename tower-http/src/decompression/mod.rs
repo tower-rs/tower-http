@@ -111,10 +111,13 @@ pub use self::request::service::RequestDecompression;
 mod tests {
     use std::convert::Infallible;
     use std::io::Write;
+    use std::time::Duration;
 
     use super::*;
     use crate::test_helpers::Body;
     use crate::{compression::Compression, test_helpers::WithTrailers};
+    use bytes::Bytes;
+    use futures_util::StreamExt;
     use http::Response;
     use http::{HeaderMap, HeaderName, Request};
     use http_body_util::BodyExt;
@@ -250,5 +253,52 @@ mod tests {
             .header("content-encoding", "gzip")
             .body(body)
             .unwrap())
+    }
+
+    #[cfg(feature = "decompression-br")]
+    #[tokio::test]
+    async fn brotli_rejects_extra_data_without_waiting_for_end_of_body() {
+        let mut compressed = Vec::new();
+        {
+            let mut encoder = brotli::CompressorWriter::new(&mut compressed, 4096, 5, 20);
+            encoder.write_all(b"Hello, World!").unwrap();
+        }
+
+        let svc = service_fn(move |_req: Request<Body>| {
+            let compressed = compressed.clone();
+            async move {
+                let stream = futures_util::stream::iter([
+                    Ok::<_, Infallible>(Bytes::from(compressed)),
+                    Ok(Bytes::from_static(b"extra")),
+                ])
+                .chain(futures_util::stream::pending());
+
+                Ok::<_, Infallible>(
+                    Response::builder()
+                        .header("content-encoding", "br")
+                        .body(Body::from_stream(stream))
+                        .unwrap(),
+                )
+            }
+        });
+        let mut client = Decompression::new(svc);
+
+        let res = client
+            .ready()
+            .await
+            .unwrap()
+            .call(Request::new(Body::empty()))
+            .await
+            .unwrap();
+
+        let result = tokio::time::timeout(Duration::from_secs(1), res.into_body().collect())
+            .await
+            .expect("extra data should produce an error without waiting for the body to end");
+        let error = result.unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            "there are extra bytes after body has been decompressed"
+        );
     }
 }
