@@ -1,5 +1,5 @@
 use super::{
-    open_file::{FileOpened, FileRequestExtent, OpenFileOutput},
+    open_file::{FileOpened, FileRequestExtent, OpenFileOutput, RangeError},
     DefaultServeDirFallback, ResponseBody,
 };
 use crate::{
@@ -13,7 +13,6 @@ use http::{
     HeaderValue, Request, Response, StatusCode,
 };
 use http_body_util::{BodyExt, Empty, Full};
-use http_range_header::RangeUnsatisfiableError;
 use pin_project_lite::pin_project;
 use std::{
     convert::Infallible,
@@ -322,7 +321,7 @@ fn build_response(output: FileOpened) -> Response<ResponseBody> {
             }
         }
 
-        Some(Err(RangeUnsatisfiableError::OverlappingRanges)) => builder
+        Some(Err(RangeError::MultipleRangesNotSupported)) => builder
             .header(header::CONTENT_RANGE, format!("bytes */{}", size))
             .status(StatusCode::RANGE_NOT_SATISFIABLE)
             .body(body_from_bytes(Bytes::from(
@@ -330,7 +329,7 @@ fn build_response(output: FileOpened) -> Response<ResponseBody> {
             )))
             .unwrap(),
 
-        Some(Err(_)) => builder
+        Some(Err(RangeError::Unsatisfiable)) => builder
             .header(header::CONTENT_RANGE, format!("bytes */{}", size))
             .status(StatusCode::RANGE_NOT_SATISFIABLE)
             .body(empty_body())

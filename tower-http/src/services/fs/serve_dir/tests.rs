@@ -663,7 +663,10 @@ async fn read_partial_errs_on_garbage_header() {
     assert_eq!(
         res.headers()["content-range"],
         &format!("bytes */{}", file_contents.len())
-    )
+    );
+
+    let body = body_into_text(res.into_body()).await;
+    assert!(body.is_empty());
 }
 
 #[tokio::test]
