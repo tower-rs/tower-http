@@ -62,6 +62,7 @@ where
 }
 
 pin_project! {
+    /// consider encapsulating the inner types for added semver safety, see https://github.com/tower-rs/tower-http/tree/main/tower-http/src/limit/future.rs
     #[project = ResFutProj]
     pub enum RequireHeaderFuture<F> {
         Future{ #[pin] future: F },

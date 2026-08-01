@@ -8,7 +8,7 @@ This requires wrapping the response body if the user wishes to leave the inner
 service's body untouched.
 
 This solution is geared towards application code, library author's should
-consider studying [tower_http/limit's body and future implementation](https://github.com/tower-rs/tower-http/tree/main/tower-http/src/limit).
+consider studying [tower_http/limit's body and future implementations instead](https://github.com/tower-rs/tower-http/tree/main/tower-http/src/limit).
 
 ## Running the example
 
