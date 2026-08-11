@@ -163,8 +163,8 @@ impl IfModifiedSince {
     pub(super) fn from_header_value(value: &HeaderValue) -> Option<IfModifiedSince> {
         std::str::from_utf8(value.as_bytes())
             .ok()
-            .and_then(|value| httpdate::parse_http_date(value).ok())
-            .map(|time| IfModifiedSince(time.into()))
+            .and_then(|value| value.parse().ok())
+            .map(IfModifiedSince)
     }
 }
 
@@ -180,8 +180,8 @@ impl IfUnmodifiedSince {
     pub(super) fn from_header_value(value: &HeaderValue) -> Option<IfUnmodifiedSince> {
         std::str::from_utf8(value.as_bytes())
             .ok()
-            .and_then(|value| httpdate::parse_http_date(value).ok())
-            .map(|time| IfUnmodifiedSince(time.into()))
+            .and_then(|value| value.parse().ok())
+            .map(IfUnmodifiedSince)
     }
 }
 
