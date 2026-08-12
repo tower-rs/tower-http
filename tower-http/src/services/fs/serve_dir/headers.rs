@@ -161,10 +161,9 @@ impl IfModifiedSince {
 
     /// Convert a header value into a IfModifiedSince. Invalid values are silently ignored
     pub(super) fn from_header_value(value: &HeaderValue) -> Option<IfModifiedSince> {
-        std::str::from_utf8(value.as_bytes())
-            .ok()
-            .and_then(|value| value.parse().ok())
-            .map(IfModifiedSince)
+        let value = value.to_str().ok()?;
+        let date = value.parse().ok()?;
+        Some(IfModifiedSince(date))
     }
 }
 
@@ -178,10 +177,9 @@ impl IfUnmodifiedSince {
 
     /// Convert a header value into a IfUnmodifiedSince. Invalid values are silently ignored
     pub(super) fn from_header_value(value: &HeaderValue) -> Option<IfUnmodifiedSince> {
-        std::str::from_utf8(value.as_bytes())
-            .ok()
-            .and_then(|value| value.parse().ok())
-            .map(IfUnmodifiedSince)
+        let value = value.to_str().ok()?;
+        let date = value.parse().ok()?;
+        Some(IfUnmodifiedSince(date))
     }
 }
 
