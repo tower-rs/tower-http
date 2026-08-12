@@ -323,9 +323,10 @@ impl<F, B: Backend> ServeDir<F, B> {
     ///
     /// By default `<ServeDir as Service<_>>::call` will handle IO errors and convert them into
     /// responses. It does that by converting [`std::io::ErrorKind::NotFound`] and
-    /// [`std::io::ErrorKind::PermissionDenied`] to `404 Not Found` and any other error to `500
-    /// Internal Server Error`. The error will also be logged with `tracing` in case the `tracing`
-    /// crate feature is enabled.
+    /// [`std::io::ErrorKind::PermissionDenied`] to `404 Not Found`. On Unix, errors indicating
+    /// that a path component is not a directory are also converted to `404 Not Found`. Any other
+    /// error is converted to `500 Internal Server Error` and will also be logged with `tracing` in
+    /// case the `tracing` crate feature is enabled.
     ///
     /// If you want to manually control how the error response is generated you can make a new
     /// service that wraps a `ServeDir` and calls `try_call` instead of `call`.
@@ -485,23 +486,42 @@ where
         let future = self
             .try_call(req)
             .map(|result: Result<_, _>| -> Result<_, Infallible> {
-                let response = result.unwrap_or_else(|_err| {
-                    #[cfg(feature = "tracing")]
-                    tracing::error!(error = %_err, "Failed to read file");
+                let response = result.unwrap_or_else(|err| {
+                    let status = if should_return_not_found(&err) {
+                        StatusCode::NOT_FOUND
+                    } else {
+                        #[cfg(feature = "tracing")]
+                        tracing::error!(error = %err, "Failed to read file");
+
+                        StatusCode::INTERNAL_SERVER_ERROR
+                    };
 
                     let body = ResponseBody::new(UnsyncBoxBody::from_inner(
                         Empty::new().map_err(|err| match err {}).boxed_unsync(),
                     ));
-                    Response::builder()
-                        .status(StatusCode::INTERNAL_SERVER_ERROR)
-                        .body(body)
-                        .unwrap()
+                    Response::builder().status(status).body(body).unwrap()
                 });
                 Ok(response)
             } as _);
 
         InfallibleResponseFuture::new(future)
     }
+}
+
+fn should_return_not_found(err: &io::Error) -> bool {
+    #[cfg(unix)]
+    // 20 = libc::ENOTDIR => "not a directory".
+    // When `io_error_more` lands, this can be changed
+    // to checking for `io::ErrorKind::NotADirectory`.
+    // https://github.com/rust-lang/rust/issues/86442
+    let error_is_not_a_directory = err.raw_os_error() == Some(20);
+    #[cfg(not(unix))]
+    let error_is_not_a_directory = false;
+
+    matches!(
+        err.kind(),
+        io::ErrorKind::NotFound | io::ErrorKind::PermissionDenied
+    ) || error_is_not_a_directory
 }
 
 opaque_future! {

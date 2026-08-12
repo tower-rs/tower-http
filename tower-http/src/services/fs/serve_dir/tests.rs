@@ -351,6 +351,22 @@ async fn not_found() {
     assert!(body.is_empty());
 }
 
+#[tokio::test]
+async fn try_call_returns_not_found_error() {
+    let mut svc = ServeDir::new(REPO_ROOT);
+
+    let req = Request::builder()
+        .uri("/not-found")
+        .body(Body::empty())
+        .unwrap();
+    let err = match svc.try_call(req).await {
+        Ok(_) => panic!("expected a missing file to return an error"),
+        Err(err) => err,
+    };
+
+    assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn not_found_when_not_a_directory() {
