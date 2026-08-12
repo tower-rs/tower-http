@@ -55,7 +55,7 @@ pub(super) struct IfNoneMatch(HeaderValue);
 impl IfNoneMatch {
     pub(super) fn from_header_value(value: &HeaderValue) -> Option<Self> {
         // Reject empty values
-        if value.as_bytes().is_empty() {
+        if value.is_empty() {
             return None;
         }
         Some(IfNoneMatch(value.clone()))
