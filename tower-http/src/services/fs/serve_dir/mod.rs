@@ -321,6 +321,11 @@ impl<F, B: Backend> ServeDir<F, B> {
     /// Call the service and get a future that contains any `std::io::Error` that might have
     /// happened.
     ///
+    /// This only returns I/O errors encountered while serving the request. Invalid request paths
+    /// and unsupported methods are represented as responses. When a fallback is configured,
+    /// errors that the default service would convert to `404 Not Found` call the fallback instead
+    /// of being returned.
+    ///
     /// By default `<ServeDir as Service<_>>::call` will handle IO errors and convert them into
     /// responses. It does that by converting [`std::io::ErrorKind::NotFound`] and
     /// [`std::io::ErrorKind::PermissionDenied`] to `404 Not Found`. On Unix, errors indicating
@@ -362,11 +367,20 @@ impl<F, B: Backend> ServeDir<F, B> {
     ///             Ok(response.map(|body| body.map_err(Into::into).boxed_unsync()))
     ///         }
     ///         Err(err) => {
-    ///             let body = Full::from("Something went wrong...")
+    ///             let not_found = matches!(
+    ///                 err.kind(),
+    ///                 io::ErrorKind::NotFound | io::ErrorKind::PermissionDenied
+    ///             ) || cfg!(unix) && err.raw_os_error() == Some(20);
+    ///             let (status, message) = if not_found {
+    ///                 (StatusCode::NOT_FOUND, "Not found")
+    ///             } else {
+    ///                 (StatusCode::INTERNAL_SERVER_ERROR, "Something went wrong...")
+    ///             };
+    ///             let body = Full::from(message)
     ///                 .map_err(Into::into)
     ///                 .boxed_unsync();
     ///             let response = Response::builder()
-    ///                 .status(StatusCode::INTERNAL_SERVER_ERROR)
+    ///                 .status(status)
     ///                 .body(body)
     ///                 .unwrap();
     ///             Ok(response)

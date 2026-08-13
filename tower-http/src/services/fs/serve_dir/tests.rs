@@ -367,6 +367,39 @@ async fn try_call_returns_not_found_error() {
     assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
 }
 
+#[tokio::test]
+async fn try_call_uses_fallback_for_not_found_error() {
+    async fn fallback<B>(_: Request<B>) -> Result<Response<Body>, Infallible> {
+        Ok(Response::new(Body::from("fallback")))
+    }
+
+    let mut svc = ServeDir::new(REPO_ROOT).fallback(service_fn(fallback));
+    let req = Request::builder()
+        .uri("/not-found")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.try_call(req).await.unwrap();
+
+    assert_eq!(body_into_text(res.into_body()).await, "fallback");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn try_call_returns_not_a_directory_error() {
+    let mut svc = ServeDir::new(TEST_FILES_DIR);
+
+    let req = Request::builder()
+        .uri("/index.html/some_file")
+        .body(Body::empty())
+        .unwrap();
+    let err = match svc.try_call(req).await {
+        Ok(_) => panic!("expected a non-directory path component to return an error"),
+        Err(err) => err,
+    };
+
+    assert_eq!(err.raw_os_error(), Some(20));
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn not_found_when_not_a_directory() {
@@ -1775,6 +1808,8 @@ mod memory_backend {
     struct MemBackend {
         files: Arc<HashMap<PathBuf, Vec<u8>>>,
         dirs: Arc<Vec<PathBuf>>,
+        open_error: Option<io::ErrorKind>,
+        metadata_error: Option<io::ErrorKind>,
     }
 
     impl MemBackend {
@@ -1782,6 +1817,8 @@ mod memory_backend {
             Self {
                 files: Arc::new(HashMap::new()),
                 dirs: Arc::new(Vec::new()),
+                open_error: None,
+                metadata_error: None,
             }
         }
 
@@ -1796,6 +1833,16 @@ mod memory_backend {
             Arc::get_mut(&mut self.dirs).unwrap().push(path.into());
             self
         }
+
+        fn with_open_error(mut self, error: io::ErrorKind) -> Self {
+            self.open_error = Some(error);
+            self
+        }
+
+        fn with_metadata_error(mut self, error: io::ErrorKind) -> Self {
+            self.metadata_error = Some(error);
+            self
+        }
     }
 
     impl Backend for MemBackend {
@@ -1806,7 +1853,11 @@ mod memory_backend {
 
         fn open(&self, path: PathBuf) -> Self::OpenFuture {
             let files = self.files.clone();
+            let error = self.open_error;
             Box::pin(async move {
+                if let Some(error) = error {
+                    return Err(io::Error::new(error, "open failed"));
+                }
                 match files.get(&path) {
                     Some(data) => Ok(MemFile {
                         meta: MemMetadata {
@@ -1824,7 +1875,11 @@ mod memory_backend {
         fn metadata(&self, path: PathBuf) -> Self::MetadataFuture {
             let files = self.files.clone();
             let dirs = self.dirs.clone();
+            let error = self.metadata_error;
             Box::pin(async move {
+                if let Some(error) = error {
+                    return Err(io::Error::new(error, "metadata failed"));
+                }
                 if dirs.contains(&path) {
                     return Ok(MemMetadata {
                         is_dir: true,
@@ -1876,6 +1931,39 @@ mod memory_backend {
         let res = svc.oneshot(req).await.unwrap();
 
         assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn unexpected_open_error_returns_internal_server_error() {
+        let backend = MemBackend::new().with_open_error(io::ErrorKind::Other);
+
+        let svc = ServeDir::with_backend("assets", backend);
+        let req = Request::builder()
+            .uri("/broken.txt")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn try_call_returns_metadata_error() {
+        let backend = MemBackend::new()
+            .with_file("./assets/hello.txt", "Hello, world!")
+            .with_metadata_error(io::ErrorKind::PermissionDenied);
+
+        let mut svc = ServeDir::with_backend("assets", backend);
+        let req = Request::builder()
+            .uri("/hello.txt")
+            .body(Body::empty())
+            .unwrap();
+        let err = match svc.try_call(req).await {
+            Ok(_) => panic!("expected a metadata error"),
+            Err(err) => err,
+        };
+
+        assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
     }
 
     #[tokio::test]
