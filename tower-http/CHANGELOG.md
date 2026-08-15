@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+# Unreleased
+
+[Changes since 0.7.0](https://github.com/tower-rs/tower-http/compare/tower-http-0.7.0...HEAD)
+
+## Fixed
+
+- **breaking:** `fs`: make `ServeDir::try_call` propagate expected filesystem
+  I/O errors when no fallback is configured, as documented, instead of converting
+  them to `404 Not Found` responses ([#718])
+
+[#718]: https://github.com/tower-rs/tower-http/pull/718
+
 # 0.7.0
 
 [Changes since 0.6.11](https://github.com/tower-rs/tower-http/compare/tower-http-0.6.11...tower-http-0.7.0)
