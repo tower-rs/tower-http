@@ -1,4 +1,4 @@
-use std::time::Duration;
+use crate::trace::{Clock, DefaultClock};
 use tracing::Span;
 
 /// Trait used to tell [`Trace`] what to do when a body chunk has been sent.
@@ -7,7 +7,7 @@ use tracing::Span;
 /// `on_body_chunk` callback is called.
 ///
 /// [`Trace`]: super::Trace
-pub trait OnBodyChunk<B> {
+pub trait OnBodyChunk<B, Clk: Clock = DefaultClock> {
     /// Do the thing.
     ///
     /// `latency` is the duration since the response was sent or since the last body chunk as sent.
@@ -24,21 +24,21 @@ pub trait OnBodyChunk<B> {
     /// [hyper]: https://hyper.rs
     /// [`Bytes`]: https://docs.rs/bytes/latest/bytes/struct.Bytes.html
     /// [`TraceLayer::make_span_with`]: crate::trace::TraceLayer::make_span_with
-    fn on_body_chunk(&mut self, chunk: &B, latency: Duration, span: &Span);
+    fn on_body_chunk(&mut self, chunk: &B, latency: Clk::Duration, span: &Span);
 }
 
-impl<B, F> OnBodyChunk<B> for F
+impl<B, Clk: Clock, F> OnBodyChunk<B, Clk> for F
 where
-    F: FnMut(&B, Duration, &Span),
+    F: FnMut(&B, Clk::Duration, &Span),
 {
-    fn on_body_chunk(&mut self, chunk: &B, latency: Duration, span: &Span) {
+    fn on_body_chunk(&mut self, chunk: &B, latency: Clk::Duration, span: &Span) {
         self(chunk, latency, span)
     }
 }
 
-impl<B> OnBodyChunk<B> for () {
+impl<B, Clk: Clock> OnBodyChunk<B, Clk> for () {
     #[inline]
-    fn on_body_chunk(&mut self, _: &B, _: Duration, _: &Span) {}
+    fn on_body_chunk(&mut self, _: &B, _: Clk::Duration, _: &Span) {}
 }
 
 /// The default [`OnBodyChunk`] implementation used by [`Trace`].
@@ -58,7 +58,7 @@ impl DefaultOnBodyChunk {
     }
 }
 
-impl<B> OnBodyChunk<B> for DefaultOnBodyChunk {
+impl<B, Clk: Clock> OnBodyChunk<B, Clk> for DefaultOnBodyChunk {
     #[inline]
-    fn on_body_chunk(&mut self, _: &B, _: Duration, _: &Span) {}
+    fn on_body_chunk(&mut self, _: &B, _: Clk::Duration, _: &Span) {}
 }
