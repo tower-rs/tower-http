@@ -7,7 +7,6 @@ use crate::content_encoding::{Encoding, QValue};
 use bytes::Bytes;
 use http::{header, HeaderValue, Method, Request, Uri};
 use http_body_util::Empty;
-use http_range_header::RangeUnsatisfiableError;
 use std::{
     ffi::OsStr,
     io::{self, ErrorKind, SeekFrom},
@@ -31,12 +30,17 @@ pub(super) enum OpenFileOutput {
     InvalidFilename,
 }
 
+pub(super) enum RangeError {
+    Unsatisfiable,
+    MultipleRangesNotSupported,
+}
+
 pub(super) struct FileOpened {
     pub(super) extent: FileRequestExtent,
     pub(super) chunk_size: usize,
     pub(super) mime_header_value: HeaderValue,
     pub(super) maybe_encoding: Option<Encoding>,
-    pub(super) maybe_range: Option<Result<Vec<RangeInclusive<u64>>, RangeUnsatisfiableError>>,
+    pub(super) maybe_range: Option<Result<RangeInclusive<u64>, RangeError>>,
     pub(super) last_modified: Option<LastModified>,
     pub(super) precompression_configured: bool,
     pub(super) etag: Option<ETag>,
@@ -195,12 +199,8 @@ pub(super) async fn open_file<B: Backend>(
 
         let size = meta.len();
         let maybe_range = try_parse_range(range_header.as_deref(), size);
-        if let Some(Ok(ranges)) = maybe_range.as_ref() {
-            // if there is any other amount of ranges than 1 we'll return an
-            // unsatisfiable later as there isn't yet support for multipart ranges
-            if ranges.len() == 1 {
-                file.seek(SeekFrom::Start(*ranges[0].start())).await?;
-            }
+        if let Some(Ok(range)) = maybe_range.as_ref() {
+            file.seek(SeekFrom::Start(*range.start())).await?;
         }
 
         Ok(OpenFileOutput::FileOpened(Box::new(FileOpened {
@@ -444,10 +444,22 @@ async fn maybe_redirect_or_append_path<B: Backend>(
 fn try_parse_range(
     maybe_range_ref: Option<&str>,
     file_size: u64,
-) -> Option<Result<Vec<RangeInclusive<u64>>, RangeUnsatisfiableError>> {
+) -> Option<Result<RangeInclusive<u64>, RangeError>> {
     maybe_range_ref.map(|header_value| {
-        http_range_header::parse_range_header(header_value)
-            .and_then(|first_pass| first_pass.validate(file_size))
+        let parsed = http_range_header::parse_range_header(header_value)
+            .map_err(|_| RangeError::Unsatisfiable)?;
+
+        if parsed.ranges.len() > 1 {
+            // ServeDir/ServeFile do not support multipart responses, so reject
+            // multi-range requests before validate() runs overlap checks.
+            return Err(RangeError::MultipleRangesNotSupported);
+        }
+
+        let mut ranges = parsed
+            .validate(file_size)
+            .map_err(|_| RangeError::Unsatisfiable)?;
+
+        ranges.pop().ok_or(RangeError::Unsatisfiable)
     })
 }
 

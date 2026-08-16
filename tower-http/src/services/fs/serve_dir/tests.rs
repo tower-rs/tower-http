@@ -712,7 +712,10 @@ async fn read_partial_errs_on_garbage_header() {
     assert_eq!(
         res.headers()["content-range"],
         &format!("bytes */{}", file_contents.len())
-    )
+    );
+
+    let body = body_into_text(res.into_body()).await;
+    assert!(body.is_empty());
 }
 
 #[tokio::test]
@@ -730,6 +733,48 @@ async fn read_partial_errs_on_bad_range() {
         res.headers()["content-range"],
         &format!("bytes */{}", file_contents.len())
     )
+}
+
+#[tokio::test]
+async fn multipart_range_valid_returns_multipart_error_body() {
+    let svc = ServeDir::new(REPO_ROOT);
+    let req = Request::builder()
+        .uri("/README.md")
+        .header("Range", "bytes=0-0,2-2")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+
+    assert_eq!(res.status(), StatusCode::RANGE_NOT_SATISFIABLE);
+    let file_contents = std::fs::read(README_PATH).unwrap();
+    assert_eq!(
+        res.headers()["content-range"],
+        &format!("bytes */{}", file_contents.len())
+    );
+
+    let body = body_into_text(res.into_body()).await;
+    assert_eq!(body, "Cannot serve multipart range requests");
+}
+
+#[tokio::test]
+async fn multipart_range_overlap_returns_multipart_error_body() {
+    let svc = ServeDir::new(REPO_ROOT);
+    let req = Request::builder()
+        .uri("/README.md")
+        .header("Range", "bytes=0-2,1-3")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+
+    assert_eq!(res.status(), StatusCode::RANGE_NOT_SATISFIABLE);
+    let file_contents = std::fs::read(README_PATH).unwrap();
+    assert_eq!(
+        res.headers()["content-range"],
+        &format!("bytes */{}", file_contents.len())
+    );
+
+    let body = body_into_text(res.into_body()).await;
+    assert_eq!(body, "Cannot serve multipart range requests");
 }
 
 #[tokio::test]

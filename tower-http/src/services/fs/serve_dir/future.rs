@@ -1,5 +1,5 @@
 use super::{
-    open_file::{FileOpened, FileRequestExtent, OpenFileOutput},
+    open_file::{FileOpened, FileRequestExtent, OpenFileOutput, RangeError},
     DefaultServeDirFallback, ResponseBody,
 };
 use crate::{
@@ -256,59 +256,43 @@ fn build_response(output: FileOpened) -> Response<ResponseBody> {
     }
 
     match output.maybe_range {
-        Some(Ok(ranges)) => {
-            if let Some(range) = ranges.first() {
-                if ranges.len() > 1 {
-                    builder
-                        .header(header::CONTENT_RANGE, format!("bytes */{}", size))
-                        .status(StatusCode::RANGE_NOT_SATISFIABLE)
-                        .body(body_from_bytes(Bytes::from(
-                            "Cannot serve multipart range requests",
-                        )))
-                        .unwrap()
-                } else {
-                    let body = if let Some(file) = maybe_file {
-                        let range_size = range.end() - range.start() + 1;
-                        ResponseBody::new(UnsyncBoxBody::from_inner(
-                            AsyncReadBody::with_capacity_limited(
-                                file,
-                                output.chunk_size,
-                                range_size,
-                            )
-                            .boxed_unsync(),
-                        ))
-                    } else {
-                        empty_body()
-                    };
-
-                    let content_length = if size == 0 {
-                        0
-                    } else {
-                        range.end() - range.start() + 1
-                    };
-
-                    builder
-                        .header(
-                            header::CONTENT_RANGE,
-                            format!("bytes {}-{}/{}", range.start(), range.end(), size),
-                        )
-                        .header(header::CONTENT_LENGTH, content_length)
-                        .status(StatusCode::PARTIAL_CONTENT)
-                        .body(body)
-                        .unwrap()
-                }
+        Some(Ok(range)) => {
+            let body = if let Some(file) = maybe_file {
+                let range_size = range.end() - range.start() + 1;
+                ResponseBody::new(UnsyncBoxBody::from_inner(
+                    AsyncReadBody::with_capacity_limited(file, output.chunk_size, range_size)
+                        .boxed_unsync(),
+                ))
             } else {
-                builder
-                    .header(header::CONTENT_RANGE, format!("bytes */{}", size))
-                    .status(StatusCode::RANGE_NOT_SATISFIABLE)
-                    .body(body_from_bytes(Bytes::from(
-                        "No range found after parsing range header, please file an issue",
-                    )))
-                    .unwrap()
-            }
+                empty_body()
+            };
+
+            let content_length = if size == 0 {
+                0
+            } else {
+                range.end() - range.start() + 1
+            };
+
+            builder
+                .header(
+                    header::CONTENT_RANGE,
+                    format!("bytes {}-{}/{}", range.start(), range.end(), size),
+                )
+                .header(header::CONTENT_LENGTH, content_length)
+                .status(StatusCode::PARTIAL_CONTENT)
+                .body(body)
+                .unwrap()
         }
 
-        Some(Err(_)) => builder
+        Some(Err(RangeError::MultipleRangesNotSupported)) => builder
+            .header(header::CONTENT_RANGE, format!("bytes */{}", size))
+            .status(StatusCode::RANGE_NOT_SATISFIABLE)
+            .body(body_from_bytes(Bytes::from(
+                "Cannot serve multipart range requests",
+            )))
+            .unwrap(),
+
+        Some(Err(RangeError::Unsatisfiable)) => builder
             .header(header::CONTENT_RANGE, format!("bytes */{}", size))
             .status(StatusCode::RANGE_NOT_SATISFIABLE)
             .body(empty_body())
