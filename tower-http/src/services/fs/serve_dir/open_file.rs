@@ -40,7 +40,7 @@ pub(super) struct FileOpened {
     pub(super) chunk_size: usize,
     pub(super) mime_header_value: HeaderValue,
     pub(super) maybe_encoding: Option<Encoding>,
-    pub(super) maybe_range: Option<Result<Vec<RangeInclusive<u64>>, RangeError>>,
+    pub(super) maybe_range: Option<Result<RangeInclusive<u64>, RangeError>>,
     pub(super) last_modified: Option<LastModified>,
     pub(super) precompression_configured: bool,
     pub(super) etag: Option<ETag>,
@@ -199,10 +199,8 @@ pub(super) async fn open_file<B: Backend>(
 
         let size = meta.len();
         let maybe_range = try_parse_range(range_header.as_deref(), size);
-        if let Some(Ok(ranges)) = maybe_range.as_ref() {
-            if ranges.len() == 1 {
-                file.seek(SeekFrom::Start(*ranges[0].start())).await?;
-            }
+        if let Some(Ok(range)) = maybe_range.as_ref() {
+            file.seek(SeekFrom::Start(*range.start())).await?;
         }
 
         Ok(OpenFileOutput::FileOpened(Box::new(FileOpened {
@@ -446,7 +444,7 @@ async fn maybe_redirect_or_append_path<B: Backend>(
 fn try_parse_range(
     maybe_range_ref: Option<&str>,
     file_size: u64,
-) -> Option<Result<Vec<RangeInclusive<u64>>, RangeError>> {
+) -> Option<Result<RangeInclusive<u64>, RangeError>> {
     maybe_range_ref.map(|header_value| {
         let parsed = http_range_header::parse_range_header(header_value)
             .map_err(|_| RangeError::Unsatisfiable)?;
@@ -457,9 +455,11 @@ fn try_parse_range(
             return Err(RangeError::MultipleRangesNotSupported);
         }
 
-        parsed
+        let mut ranges = parsed
             .validate(file_size)
-            .map_err(|_| RangeError::Unsatisfiable)
+            .map_err(|_| RangeError::Unsatisfiable)?;
+
+        ranges.pop().ok_or(RangeError::Unsatisfiable)
     })
 }
 
