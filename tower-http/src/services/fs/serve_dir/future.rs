@@ -284,19 +284,29 @@ fn build_response(output: FileOpened) -> Response<ResponseBody> {
                 .unwrap()
         }
 
-        Some(Err(RangeError::MultipleRangesNotSupported)) => builder
-            .header(header::CONTENT_RANGE, format!("bytes */{}", size))
-            .status(StatusCode::RANGE_NOT_SATISFIABLE)
-            .body(body_from_bytes(Bytes::from(
-                "Cannot serve multipart range requests",
-            )))
-            .unwrap(),
+        Some(Err(RangeError::MultipleRangesNotSupported)) => {
+            let mut response = builder
+                .header(header::CONTENT_RANGE, format!("bytes */{}", size))
+                .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                .body(body_from_bytes(Bytes::from(
+                    "Cannot serve multipart range requests",
+                )))
+                .unwrap();
+            response.headers_mut().remove(header::CONTENT_TYPE);
+            response.headers_mut().remove(header::CONTENT_ENCODING);
+            response
+        }
 
-        Some(Err(RangeError::Unsatisfiable)) => builder
-            .header(header::CONTENT_RANGE, format!("bytes */{}", size))
-            .status(StatusCode::RANGE_NOT_SATISFIABLE)
-            .body(empty_body())
-            .unwrap(),
+        Some(Err(RangeError::Unsatisfiable)) => {
+            let mut response = builder
+                .header(header::CONTENT_RANGE, format!("bytes */{}", size))
+                .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                .body(empty_body())
+                .unwrap();
+            response.headers_mut().remove(header::CONTENT_TYPE);
+            response.headers_mut().remove(header::CONTENT_ENCODING);
+            response
+        }
 
         // Not a range request
         None => {

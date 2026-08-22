@@ -59,6 +59,7 @@ pub(super) struct OpenFileRequest<B> {
     pub(super) negotiated_encodings: Vec<(Encoding, QValue)>,
     pub(super) range_header: Option<String>,
     pub(super) buf_chunk_size: usize,
+    pub(super) ignore_multi_range_requests: bool,
     pub(super) precompression_configured: bool,
     pub(super) backend: B,
 }
@@ -74,6 +75,7 @@ pub(super) async fn open_file<B: Backend>(
         negotiated_encodings,
         range_header,
         buf_chunk_size,
+        ignore_multi_range_requests,
         precompression_configured,
         backend,
     } = request;
@@ -152,7 +154,11 @@ pub(super) async fn open_file<B: Backend>(
             return Ok(output);
         }
 
-        let maybe_range = try_parse_range(range_header.as_deref(), meta.len());
+        let maybe_range = try_parse_range(
+            range_header.as_deref(),
+            meta.len(),
+            ignore_multi_range_requests,
+        );
 
         Ok(OpenFileOutput::FileOpened(Box::new(FileOpened {
             extent: FileRequestExtent::Head(meta.len()),
@@ -198,7 +204,8 @@ pub(super) async fn open_file<B: Backend>(
         }
 
         let size = meta.len();
-        let maybe_range = try_parse_range(range_header.as_deref(), size);
+        let maybe_range =
+            try_parse_range(range_header.as_deref(), size, ignore_multi_range_requests);
         if let Some(Ok(range)) = maybe_range.as_ref() {
             file.seek(SeekFrom::Start(*range.start())).await?;
         }
@@ -444,23 +451,30 @@ async fn maybe_redirect_or_append_path<B: Backend>(
 fn try_parse_range(
     maybe_range_ref: Option<&str>,
     file_size: u64,
+    ignore_multi_range_requests: bool,
 ) -> Option<Result<RangeInclusive<u64>, RangeError>> {
-    maybe_range_ref.map(|header_value| {
-        let parsed = http_range_header::parse_range_header(header_value)
-            .map_err(|_| RangeError::Unsatisfiable)?;
+    let header_value = maybe_range_ref?;
+    let parsed = match http_range_header::parse_range_header(header_value) {
+        Ok(parsed) => parsed,
+        Err(_) => return Some(Err(RangeError::Unsatisfiable)),
+    };
 
-        if parsed.ranges.len() > 1 {
-            // ServeDir/ServeFile do not support multipart responses, so reject
-            // multi-range requests before validate() runs overlap checks.
-            return Err(RangeError::MultipleRangesNotSupported);
-        }
+    if parsed.ranges.len() > 1 {
+        // ServeDir/ServeFile do not support multipart responses. Optionally ignore
+        // the Range header before validate() runs semantic and overlap checks.
+        return if ignore_multi_range_requests {
+            None
+        } else {
+            Some(Err(RangeError::MultipleRangesNotSupported))
+        };
+    }
 
-        let mut ranges = parsed
+    Some(
+        parsed
             .validate(file_size)
-            .map_err(|_| RangeError::Unsatisfiable)?;
-
-        ranges.pop().ok_or(RangeError::Unsatisfiable)
-    })
+            .map_err(|_| RangeError::Unsatisfiable)
+            .and_then(|mut ranges| ranges.pop().ok_or(RangeError::Unsatisfiable)),
+    )
 }
 
 async fn is_dir<B: Backend>(path_to_file: &Path, backend: &B) -> io::Result<Option<bool>> {

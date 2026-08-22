@@ -57,6 +57,7 @@ pub struct ServeDir<F = DefaultServeDirFallback, B = TokioBackend> {
     base: PathBuf,
     redirect_path_prefix: String,
     buf_chunk_size: usize,
+    ignore_multi_range_requests: bool,
     precompressed_variants: Option<PrecompressedVariants>,
     // This is used to specialize implementation for
     // single files
@@ -79,6 +80,7 @@ impl ServeDir<DefaultServeDirFallback> {
             base,
             redirect_path_prefix: String::new(),
             buf_chunk_size: DEFAULT_CAPACITY,
+            ignore_multi_range_requests: false,
             precompressed_variants: None,
             variant: ServeVariant::Directory {
                 append_index_html_on_directories: true,
@@ -98,6 +100,7 @@ impl ServeDir<DefaultServeDirFallback> {
             base: path.as_ref().to_owned(),
             redirect_path_prefix: String::new(),
             buf_chunk_size: DEFAULT_CAPACITY,
+            ignore_multi_range_requests: false,
             precompressed_variants: None,
             variant: ServeVariant::SingleFile { mime },
             fallback: None,
@@ -121,6 +124,7 @@ impl<B: Backend> ServeDir<DefaultServeDirFallback, B> {
         ServeDir {
             base,
             buf_chunk_size: DEFAULT_CAPACITY,
+            ignore_multi_range_requests: false,
             precompressed_variants: None,
             variant: ServeVariant::Directory {
                 append_index_html_on_directories: true,
@@ -187,6 +191,20 @@ impl<F, B: Backend> ServeDir<F, B> {
     /// The default capacity is 64kb.
     pub fn with_buf_chunk_size(mut self, chunk_size: usize) -> Self {
         self.buf_chunk_size = chunk_size;
+        self
+    }
+
+    /// Configure whether syntactically valid multi-range requests should be ignored.
+    ///
+    /// When enabled, a request containing multiple byte ranges is served as a normal full
+    /// response with status `200 OK`, as if the `Range` header were absent. This check happens
+    /// before semantic range validation, so overlapping, reversed, or otherwise unsatisfiable
+    /// multi-range requests are also ignored. Malformed range headers and unsatisfiable
+    /// single-range requests still result in `416 Range Not Satisfiable`.
+    ///
+    /// Defaults to `false`.
+    pub fn ignore_multi_range_requests(mut self, ignore: bool) -> Self {
+        self.ignore_multi_range_requests = ignore;
         self
     }
 
@@ -281,6 +299,7 @@ impl<F, B: Backend> ServeDir<F, B> {
             redirect_path_prefix: self.redirect_path_prefix,
             base: self.base,
             buf_chunk_size: self.buf_chunk_size,
+            ignore_multi_range_requests: self.ignore_multi_range_requests,
             precompressed_variants: self.precompressed_variants,
             variant: self.variant,
             fallback: Some(new_fallback),
@@ -446,6 +465,7 @@ impl<F, B: Backend> ServeDir<F, B> {
         let redirect_path_prefix = self.redirect_path_prefix.clone();
 
         let buf_chunk_size = self.buf_chunk_size;
+        let ignore_multi_range_requests = self.ignore_multi_range_requests;
         let range_header = req
             .headers()
             .get(header::RANGE)
@@ -467,6 +487,7 @@ impl<F, B: Backend> ServeDir<F, B> {
             negotiated_encodings,
             range_header,
             buf_chunk_size,
+            ignore_multi_range_requests,
             precompression_configured,
             backend: self.backend.clone(),
         }));
