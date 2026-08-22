@@ -105,6 +105,13 @@ impl ServeFile {
         Self(self.0.with_buf_chunk_size(chunk_size))
     }
 
+    /// Configure whether syntactically valid multi-range requests should be ignored.
+    ///
+    /// See [`ServeDir::ignore_multi_range_requests`] for details.
+    pub fn ignore_multi_range_requests(self, ignore: bool) -> Self {
+        Self(self.0.ignore_multi_range_requests(ignore))
+    }
+
     /// Call the service and get a future that contains any `std::io::Error` that might have
     /// happened.
     ///
@@ -189,6 +196,22 @@ mod tests {
         let body = String::from_utf8(body.to_vec()).unwrap();
 
         assert!(body.starts_with("# Tower HTTP"));
+    }
+
+    #[tokio::test]
+    async fn multipart_range_can_be_ignored() {
+        let svc = ServeFile::new(README_PATH).ignore_multi_range_requests(true);
+        let request = Request::builder()
+            .header(header::RANGE, "bytes=0-0,2-2")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(request).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::OK);
+        assert!(res.headers().get(header::CONTENT_RANGE).is_none());
+
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(body.as_ref(), std::fs::read(README_PATH).unwrap());
     }
 
     #[tokio::test]
