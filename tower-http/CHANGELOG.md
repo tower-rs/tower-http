@@ -12,14 +12,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Added
 
 - `fs`: add `ServeDir::redirect_to_trailing_slash()` to serve directory indexes directly instead of first redirecting to the trailing-slash path. The redirect remains the default ([#728])
-
-  ```rust
-  use tower_http::services::ServeDir;
-
-  // Serve `assets/some/dir/index.html` for `GET /some/dir`, without a
-  // 301 to `/some/dir/` first.
-  let service = ServeDir::new("assets").redirect_to_trailing_slash(false);
-  ```
 - `fs`: add `ignore_multi_range_requests()` to `ServeDir` and `ServeFile`, serving the full representation when a request asks for multiple byte ranges. The existing `416 Range Not Satisfiable` response remains the default ([#727])
 - `request-id`: the constructors and accessors on the request-id layers, services, and `RequestId` are now `const fn`, so they can be used in const context ([#716])
 
