@@ -5,17 +5,57 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-# Unreleased
+# 0.7.1
 
-[Changes since 0.7.0](https://github.com/tower-rs/tower-http/compare/tower-http-0.7.0...HEAD)
+[Changes since 0.7.0](https://github.com/tower-rs/tower-http/compare/tower-http-0.7.0...tower-http-0.7.1)
+
+## Added
+
+- `fs`: add `ServeDir::redirect_to_trailing_slash()` to serve directory indexes directly instead of first redirecting to the trailing-slash path. The redirect remains the default ([#728])
+
+  ```rust
+  use tower_http::services::ServeDir;
+
+  // Serve `assets/some/dir/index.html` for `GET /some/dir`, without a
+  // 301 to `/some/dir/` first.
+  let service = ServeDir::new("assets").redirect_to_trailing_slash(false);
+  ```
+- `fs`: add `ignore_multi_range_requests()` to `ServeDir` and `ServeFile`, serving the full representation when a request asks for multiple byte ranges. The existing `416 Range Not Satisfiable` response remains the default ([#727])
+- `request-id`: the constructors and accessors on the request-id layers, services, and `RequestId` are now `const fn`, so they can be used in const context ([#716])
+
+## Changed
+
+- `fs`: the minimum `http-range-header` requirement is now 0.4.2 ([#661])
 
 ## Fixed
 
-- **breaking:** `fs`: make `ServeDir::try_call` propagate expected filesystem
+- **behavioral change:** `fs`: make `ServeDir::try_call` propagate expected filesystem
   I/O errors when no fallback is configured, as documented, instead of converting
   them to `404 Not Found` responses ([#718])
+- `decompression`: don't end the body when a data frame with no remaining bytes
+  arrives after the decompressor reports end-of-stream. Trailers following such a
+  frame were dropped and could not be recovered ([#722])
+- `decompression`: return a body error when a data frame with remaining bytes
+  arrives after the decompressor reports end-of-stream, rather than silently
+  truncating. This regressed in 0.7.0 ([#712])
+- `fs`: multipart range requests are now rejected before range validation, so
+  they consistently return `416 Range Not Satisfiable` with a
+  `Cannot serve multipart range requests` body instead of a generic
+  unsatisfiable-range response ([#661])
+- `fs`: range error responses no longer carry representation headers such as
+  `Content-Type` and `Content-Encoding` ([#727])
+- `set-header`: `SetMultipleResponseHeadersLayer` and `SetMultipleResponseHeader`
+  are now `Clone` regardless of the response body type, matching the fix applied
+  to the request-side types in 0.7.0 ([#714])
 
+[#661]: https://github.com/tower-rs/tower-http/pull/661
+[#712]: https://github.com/tower-rs/tower-http/pull/712
+[#714]: https://github.com/tower-rs/tower-http/pull/714
+[#716]: https://github.com/tower-rs/tower-http/pull/716
 [#718]: https://github.com/tower-rs/tower-http/pull/718
+[#722]: https://github.com/tower-rs/tower-http/pull/722
+[#727]: https://github.com/tower-rs/tower-http/pull/727
+[#728]: https://github.com/tower-rs/tower-http/pull/728
 
 # 0.7.0
 
