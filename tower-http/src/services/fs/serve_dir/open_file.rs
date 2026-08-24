@@ -99,6 +99,7 @@ pub(super) async fn open_file<B: Backend>(
     let mime = match variant {
         ServeVariant::Directory {
             append_index_html_on_directories,
+            redirect_to_trailing_slash,
             html_as_default_extension,
         } => {
             // Might already at this point know a redirect or not found result should be
@@ -109,6 +110,7 @@ pub(super) async fn open_file<B: Backend>(
                 &mut path_to_file,
                 req.uri(),
                 append_index_html_on_directories,
+                redirect_to_trailing_slash,
                 html_as_default_extension,
                 &backend,
             )
@@ -403,6 +405,7 @@ async fn maybe_redirect_or_append_path<B: Backend>(
     path_to_file: &mut PathBuf,
     uri: &Uri,
     append_index_html_on_directories: bool,
+    redirect_to_trailing_slash: bool,
     html_as_default_extension: bool,
     backend: &B,
 ) -> io::Result<Option<OpenFileOutput>> {
@@ -428,7 +431,7 @@ async fn maybe_redirect_or_append_path<B: Backend>(
         return Ok(Some(OpenFileOutput::FileNotFound));
     }
 
-    if uri_path.ends_with('/') {
+    if uri_path.ends_with('/') || !redirect_to_trailing_slash {
         path_to_file.push("index.html");
         Ok(None)
     } else {

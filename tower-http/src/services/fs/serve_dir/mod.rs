@@ -82,6 +82,7 @@ impl ServeDir<DefaultServeDirFallback> {
             precompressed_variants: None,
             variant: ServeVariant::Directory {
                 append_index_html_on_directories: true,
+                redirect_to_trailing_slash: true,
                 html_as_default_extension: false,
             },
             fallback: None,
@@ -124,6 +125,7 @@ impl<B: Backend> ServeDir<DefaultServeDirFallback, B> {
             precompressed_variants: None,
             variant: ServeVariant::Directory {
                 append_index_html_on_directories: true,
+                redirect_to_trailing_slash: true,
                 html_as_default_extension: false,
             },
             fallback: None,
@@ -147,6 +149,26 @@ impl<F, B: Backend> ServeDir<F, B> {
                 ..
             } => {
                 *append_index_html_on_directories = append;
+                self
+            }
+            ServeVariant::SingleFile { mime: _ } => self,
+        }
+    }
+
+    /// Whether to redirect directory requests without a trailing slash.
+    ///
+    /// When enabled, a request to `/dir` redirects to `/dir/`. When disabled,
+    /// `/dir/index.html` is served directly at `/dir` if
+    /// [`append_index_html_on_directories`](Self::append_index_html_on_directories) is enabled.
+    ///
+    /// Defaults to `true`.
+    pub fn redirect_to_trailing_slash(mut self, redirect: bool) -> Self {
+        match &mut self.variant {
+            ServeVariant::Directory {
+                redirect_to_trailing_slash,
+                ..
+            } => {
+                *redirect_to_trailing_slash = redirect;
                 self
             }
             ServeVariant::SingleFile { mime: _ } => self,
@@ -553,6 +575,7 @@ opaque_future! {
 enum ServeVariant {
     Directory {
         append_index_html_on_directories: bool,
+        redirect_to_trailing_slash: bool,
         html_as_default_extension: bool,
     },
     SingleFile {
@@ -565,6 +588,7 @@ impl ServeVariant {
         match self {
             ServeVariant::Directory {
                 append_index_html_on_directories: _,
+                redirect_to_trailing_slash: _,
                 html_as_default_extension: _,
             } => {
                 let path = requested_path.trim_start_matches('/');

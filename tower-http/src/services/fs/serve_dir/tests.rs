@@ -497,6 +497,32 @@ async fn redirect_to_trailing_slash_on_dir() {
 }
 
 #[tokio::test]
+async fn serve_directory_index_without_trailing_slash_redirect() {
+    let svc = ServeDir::new(TEST_FILES_DIR).redirect_to_trailing_slash(false);
+
+    let req = Request::builder().uri("/foo").body(Body::empty()).unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+
+    assert_eq!(res.status(), StatusCode::OK);
+    assert!(res.headers().get(header::LOCATION).is_none());
+    assert_eq!(res.headers()[header::CONTENT_TYPE], "text/html");
+    let body = body_into_text(res.into_body()).await;
+    assert_eq!(body, "<b>HTML!</b>\n");
+}
+
+#[tokio::test]
+async fn no_trailing_slash_redirect_still_respects_disabled_directory_indexes() {
+    let svc = ServeDir::new(TEST_FILES_DIR)
+        .append_index_html_on_directories(false)
+        .redirect_to_trailing_slash(false);
+
+    let req = Request::builder().uri("/foo").body(Body::empty()).unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn redirect_to_trailing_slash_with_redirect_path_prefix() {
     let cases = [
         ("/foo", "/src", "/foo/src/"),
@@ -1237,6 +1263,7 @@ fn test_build_and_validate_path_reserved_dos_names() {
 
     let variant = ServeVariant::Directory {
         append_index_html_on_directories: true,
+        redirect_to_trailing_slash: true,
         html_as_default_extension: false,
     };
     let base = Path::new("/base");
