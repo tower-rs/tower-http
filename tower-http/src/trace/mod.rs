@@ -384,12 +384,13 @@
 //! [`ServerErrorsAsFailures`]: crate::classify::ServerErrorsAsFailures
 //! [`Body::poll_frame`]: http_body::Body::poll_frame
 
-use std::{fmt, time::Duration};
+use std::fmt;
 
 use tracing::Level;
 
 pub use self::{
     body::ResponseBody,
+    clock::{Clock, DefaultClock, DurationExt},
     future::ResponseFuture,
     layer::TraceLayer,
     make_span::{DefaultMakeSpan, MakeSpan},
@@ -491,6 +492,7 @@ macro_rules! event_dynamic_lvl {
 }
 
 mod body;
+mod clock;
 mod future;
 mod layer;
 mod make_span;
@@ -504,12 +506,12 @@ mod service;
 const DEFAULT_MESSAGE_LEVEL: Level = Level::DEBUG;
 const DEFAULT_ERROR_LEVEL: Level = Level::ERROR;
 
-struct Latency {
+struct Latency<D: DurationExt> {
     unit: LatencyUnit,
-    duration: Duration,
+    duration: D,
 }
 
-impl fmt::Display for Latency {
+impl<D: DurationExt> fmt::Display for Latency<D> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.unit {
             LatencyUnit::Seconds => write!(f, "{} s", self.duration.as_secs_f64()),
@@ -529,7 +531,7 @@ mod tests {
     use http::{HeaderMap, Request, Response};
     use once_cell::sync::Lazy;
     use std::{
-        sync::atomic::{AtomicU32, Ordering},
+        sync::atomic::{AtomicU32, AtomicU64, Ordering},
         time::Duration,
     };
     use tower::{BoxError, Service, ServiceBuilder, ServiceExt};
@@ -852,6 +854,226 @@ mod tests {
         assert_eq!(1, ON_EOS.load(Ordering::SeqCst), "eos");
     }
 
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    struct DummyDuration(u64);
+
+    impl DurationExt for DummyDuration {
+        fn as_secs_f64(&self) -> f64 {
+            self.0 as f64
+        }
+        fn as_millis(&self) -> u128 {
+            self.0 as u128
+        }
+        fn as_micros(&self) -> u128 {
+            self.0 as u128
+        }
+        fn as_nanos(&self) -> u128 {
+            self.0 as u128
+        }
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    struct DummyClock(&'static AtomicU64);
+
+    impl DummyClock {
+        fn new() -> Self {
+            Self(Box::leak(Box::new(AtomicU64::new(0))))
+        }
+    }
+
+    impl Clock for DummyClock {
+        type Instant = u64;
+        type Duration = DummyDuration;
+
+        fn now(&self) -> Self::Instant {
+            self.0.fetch_add(1, Ordering::SeqCst)
+        }
+
+        fn elapsed(&self, instant: Self::Instant) -> Self::Duration {
+            DummyDuration(self.0.load(Ordering::SeqCst) - instant)
+        }
+    }
+
+    #[test]
+    fn dummy_clock_increments_and_elapsed() {
+        let clock = DummyClock::new();
+
+        let t0 = clock.now();
+        assert_eq!(t0, 0, "first now() should return 0");
+        let t1 = clock.now();
+        assert_eq!(t1, 1, "second now() should return 1");
+        let t2 = clock.now();
+        assert_eq!(t2, 2, "third now() should return 2");
+
+        let d = clock.elapsed(t0);
+        assert_eq!(
+            d,
+            DummyDuration(3),
+            "elapsed from t0 at counter=3 should be 3"
+        );
+        let d = clock.elapsed(t1);
+        assert_eq!(
+            d,
+            DummyDuration(2),
+            "elapsed from t1 at counter=3 should be 2"
+        );
+    }
+
+    #[test]
+    fn dummy_clock_latency_display() {
+        assert_eq!(
+            Latency {
+                unit: LatencyUnit::Seconds,
+                duration: DummyDuration(3),
+            }
+            .to_string(),
+            "3 s"
+        );
+        assert_eq!(
+            Latency {
+                unit: LatencyUnit::Millis,
+                duration: DummyDuration(42),
+            }
+            .to_string(),
+            "42 ms"
+        );
+        assert_eq!(
+            Latency {
+                unit: LatencyUnit::Micros,
+                duration: DummyDuration(7),
+            }
+            .to_string(),
+            "7 μs"
+        );
+        assert_eq!(
+            Latency {
+                unit: LatencyUnit::Nanos,
+                duration: DummyDuration(100),
+            }
+            .to_string(),
+            "100 ns"
+        );
+    }
+
+    #[tokio::test]
+    async fn trace_with_dummy_clock_on_response() {
+        static ON_RESPONSE_LATENCY: Lazy<AtomicU64> = Lazy::new(|| AtomicU64::new(0));
+
+        let clock = DummyClock::new();
+
+        let mut svc = ServiceBuilder::new()
+            .layer(
+                TraceLayer::new_for_http()
+                    .with_clock(clock)
+                    .on_request(())
+                    .on_body_chunk(())
+                    .on_eos(())
+                    .on_failure(())
+                    .on_response(
+                        |_res: &Response<Body>, latency: DummyDuration, _span: &Span| {
+                            ON_RESPONSE_LATENCY.store(latency.0, Ordering::SeqCst);
+                        },
+                    ),
+            )
+            .service_fn(echo);
+
+        let _res = svc
+            .ready()
+            .await
+            .unwrap()
+            .call(Request::new(Body::from("foobar")))
+            .await
+            .unwrap();
+
+        assert!(
+            ON_RESPONSE_LATENCY.load(Ordering::SeqCst) > 0,
+            "on_response should receive a non-zero latency from DummyClock"
+        );
+    }
+
+    #[tokio::test]
+    async fn trace_with_dummy_clock_streaming() {
+        static ON_BODY_CHUNK_LATENCY: Lazy<AtomicU64> = Lazy::new(|| AtomicU64::new(0));
+        static ON_EOS_DURATION: Lazy<AtomicU64> = Lazy::new(|| AtomicU64::new(0));
+
+        let clock = DummyClock::new();
+
+        let mut svc = ServiceBuilder::new()
+            .layer(
+                TraceLayer::new_for_http()
+                    .with_clock(clock)
+                    .on_request(())
+                    .on_response(())
+                    .on_failure(())
+                    .on_body_chunk(|_chunk: &Bytes, latency: DummyDuration, _span: &Span| {
+                        ON_BODY_CHUNK_LATENCY.store(latency.0, Ordering::SeqCst);
+                    })
+                    .on_eos(
+                        |_trailers: Option<&HeaderMap>, duration: DummyDuration, _span: &Span| {
+                            ON_EOS_DURATION.store(duration.0, Ordering::SeqCst);
+                        },
+                    ),
+            )
+            .service_fn(streaming_body);
+
+        let res = svc
+            .ready()
+            .await
+            .unwrap()
+            .call(Request::new(Body::empty()))
+            .await
+            .unwrap();
+
+        crate::test_helpers::to_bytes(res.into_body())
+            .await
+            .unwrap();
+
+        assert!(
+            ON_BODY_CHUNK_LATENCY.load(Ordering::SeqCst) > 0,
+            "on_body_chunk should receive a non-zero latency from DummyClock"
+        );
+        assert!(
+            ON_EOS_DURATION.load(Ordering::SeqCst) > 0,
+            "on_eos should receive a non-zero stream duration from DummyClock"
+        );
+    }
+
+    #[tokio::test]
+    async fn trace_with_dummy_clock_on_failure() {
+        static ON_FAILURE_LATENCY: Lazy<AtomicU64> = Lazy::new(|| AtomicU64::new(0));
+
+        let clock = DummyClock::new();
+
+        let mut svc = ServiceBuilder::new()
+            .layer(
+                TraceLayer::new_for_http()
+                    .with_clock(clock)
+                    .on_request(())
+                    .on_response(())
+                    .on_body_chunk(())
+                    .on_eos(())
+                    .on_failure(
+                        |_class: ServerErrorsFailureClass, latency: DummyDuration, _span: &Span| {
+                            ON_FAILURE_LATENCY.store(latency.0, Ordering::SeqCst);
+                        },
+                    ),
+            )
+            .service_fn(service_error);
+
+        let _err = svc
+            .ready()
+            .await
+            .unwrap()
+            .call(Request::new(Body::empty()))
+            .await;
+
+        assert!(_err.is_err(), "service_error should return an error");
+        assert!(
+            ON_FAILURE_LATENCY.load(Ordering::SeqCst) > 0,
+            "on_failure should receive a non-zero latency from DummyClock"
+        );
+    }
+
     async fn echo(req: Request<Body>) -> Result<Response<Body>, BoxError> {
         Ok(Response::new(req.into_body()))
     }
@@ -875,6 +1097,10 @@ mod tests {
         trailers.insert("x-test-trailer", "value".parse().unwrap());
         let body = Body::new(Body::from(Bytes::from("data")).with_trailers(trailers));
         Ok(Response::new(body))
+    }
+
+    async fn service_error(_req: Request<Body>) -> Result<Response<Body>, BoxError> {
+        Err(BoxError::from("test error"))
     }
 
     #[derive(Clone)]

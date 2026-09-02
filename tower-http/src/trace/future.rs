@@ -1,6 +1,6 @@
 use super::{
-    DefaultOnBodyChunk, DefaultOnEos, DefaultOnFailure, DefaultOnResponse, OnBodyChunk, OnEos,
-    OnFailure, OnResponse, ResponseBody,
+    clock::Clock, DefaultClock, DefaultOnBodyChunk, DefaultOnEos, DefaultOnFailure,
+    DefaultOnResponse, OnBodyChunk, OnEos, OnFailure, OnResponse, ResponseBody,
 };
 use crate::classify::{ClassifiedResponse, ClassifyResponse};
 use http::Response;
@@ -10,7 +10,6 @@ use std::{
     future::Future,
     pin::Pin,
     task::{ready, Context, Poll},
-    time::Instant,
 };
 use tracing::Span;
 
@@ -18,7 +17,15 @@ pin_project! {
     /// Response future for [`Trace`].
     ///
     /// [`Trace`]: super::Trace
-    pub struct ResponseFuture<F, C, OnResponse = DefaultOnResponse, OnBodyChunk = DefaultOnBodyChunk, OnEos = DefaultOnEos, OnFailure = DefaultOnFailure> {
+    pub struct ResponseFuture<
+        F,
+        C,
+        OnResponse = DefaultOnResponse,
+        OnBodyChunk = DefaultOnBodyChunk,
+        OnEos = DefaultOnEos,
+        OnFailure = DefaultOnFailure,
+        Clk: Clock = DefaultClock
+    > {
         #[pin]
         pub(crate) inner: F,
         pub(crate) span: Span,
@@ -27,33 +34,35 @@ pin_project! {
         pub(crate) on_body_chunk: Option<OnBodyChunk>,
         pub(crate) on_eos: Option<OnEos>,
         pub(crate) on_failure: Option<OnFailure>,
-        pub(crate) start: Instant,
+        pub(crate) start: Clk::Instant,
+        pub(crate) clock: Clk,
     }
 }
 
-impl<Fut, ResBody, E, C, OnResponseT, OnBodyChunkT, OnEosT, OnFailureT> Future
-    for ResponseFuture<Fut, C, OnResponseT, OnBodyChunkT, OnEosT, OnFailureT>
+impl<Fut, ResBody, E, C, OnResponseT, OnBodyChunkT, OnEosT, OnFailureT, Clk> Future
+    for ResponseFuture<Fut, C, OnResponseT, OnBodyChunkT, OnEosT, OnFailureT, Clk>
 where
     Fut: Future<Output = Result<Response<ResBody>, E>>,
     ResBody: Body,
     ResBody::Error: std::fmt::Display + 'static,
     E: std::fmt::Display + 'static,
     C: ClassifyResponse,
-    OnResponseT: OnResponse<ResBody>,
-    OnFailureT: OnFailure<C::FailureClass>,
-    OnBodyChunkT: OnBodyChunk<ResBody::Data>,
-    OnEosT: OnEos,
+    OnResponseT: OnResponse<ResBody, Clk>,
+    OnFailureT: OnFailure<C::FailureClass, Clk>,
+    OnBodyChunkT: OnBodyChunk<ResBody::Data, Clk>,
+    OnEosT: OnEos<Clk>,
+    Clk: Clock,
 {
     type Output = Result<
-        Response<ResponseBody<ResBody, C::ClassifyEos, OnBodyChunkT, OnEosT, OnFailureT>>,
+        Response<ResponseBody<ResBody, C::ClassifyEos, OnBodyChunkT, OnEosT, OnFailureT, Clk>>,
         E,
     >;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let this = self.project();
+        let mut this = self.project();
         let _guard = this.span.enter();
-        let result = ready!(this.inner.poll(cx));
-        let latency = this.start.elapsed();
+        let result = ready!(this.inner.as_mut().poll(cx));
+        let latency = this.clock.elapsed(*this.start);
 
         let classifier = this.classifier.take().unwrap();
         let on_eos = this.on_eos.take();
@@ -64,6 +73,7 @@ where
             Ok(res) => {
                 let classification = classifier.classify_response(&res);
                 let start = *this.start;
+                let clock = *this.clock;
 
                 this.on_response
                     .take()
@@ -80,11 +90,12 @@ where
                         let res = res.map(|body| ResponseBody {
                             inner: body,
                             classify_eos: None,
-                            on_eos: on_eos.zip(Some(Instant::now())),
+                            on_eos: on_eos.zip(Some(this.clock.now())),
                             on_body_chunk,
                             on_failure: Some(on_failure),
                             start,
                             span,
+                            clock,
                         });
 
                         Poll::Ready(Ok(res))
@@ -94,11 +105,12 @@ where
                         let res = res.map(|body| ResponseBody {
                             inner: body,
                             classify_eos: Some(classify_eos),
-                            on_eos: on_eos.zip(Some(Instant::now())),
+                            on_eos: on_eos.zip(Some(this.clock.now())),
                             on_body_chunk,
                             on_failure: Some(on_failure),
                             start,
                             span,
+                            clock,
                         });
 
                         Poll::Ready(Ok(res))

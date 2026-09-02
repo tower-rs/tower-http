@@ -1,7 +1,10 @@
 use super::{Latency, DEFAULT_MESSAGE_LEVEL};
-use crate::{classify::grpc_errors_as_failures::ParsedGrpcStatus, LatencyUnit};
+use crate::{
+    classify::grpc_errors_as_failures::ParsedGrpcStatus,
+    trace::{Clock, DefaultClock},
+    LatencyUnit,
+};
 use http::header::HeaderMap;
-use std::time::Duration;
 use tracing::{Level, Span};
 
 /// Trait used to tell [`Trace`] what to do when a stream closes.
@@ -10,7 +13,7 @@ use tracing::{Level, Span};
 /// callback is called.
 ///
 /// [`Trace`]: super::Trace
-pub trait OnEos {
+pub trait OnEos<Clk: Clock = DefaultClock> {
     /// Do the thing.
     ///
     /// `stream_duration` is the duration since the response was sent.
@@ -22,19 +25,19 @@ pub trait OnEos {
     /// [`Span`]: https://docs.rs/tracing/latest/tracing/span/index.html
     /// [record]: https://docs.rs/tracing/latest/tracing/span/struct.Span.html#method.record
     /// [`TraceLayer::make_span_with`]: crate::trace::TraceLayer::make_span_with
-    fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Duration, span: &Span);
+    fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Clk::Duration, span: &Span);
 }
 
-impl OnEos for () {
+impl<Clk: Clock> OnEos<Clk> for () {
     #[inline]
-    fn on_eos(self, _: Option<&HeaderMap>, _: Duration, _: &Span) {}
+    fn on_eos(self, _: Option<&HeaderMap>, _: Clk::Duration, _: &Span) {}
 }
 
-impl<F> OnEos for F
+impl<Clk: Clock, F> OnEos<Clk> for F
 where
-    F: FnOnce(Option<&HeaderMap>, Duration, &Span),
+    F: FnOnce(Option<&HeaderMap>, Clk::Duration, &Span),
 {
-    fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Duration, span: &Span) {
+    fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Clk::Duration, span: &Span) {
         self(trailers, stream_duration, span)
     }
 }
@@ -83,8 +86,8 @@ impl DefaultOnEos {
     }
 }
 
-impl OnEos for DefaultOnEos {
-    fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Duration, span: &Span) {
+impl<Clk: Clock> OnEos<Clk> for DefaultOnEos {
+    fn on_eos(self, trailers: Option<&HeaderMap>, stream_duration: Clk::Duration, span: &Span) {
         let stream_duration = Latency {
             unit: self.latency_unit,
             duration: stream_duration,
