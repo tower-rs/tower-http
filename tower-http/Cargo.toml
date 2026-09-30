@@ -39,6 +39,9 @@ tracing = { version = "0.1", default-features = false, optional = true }
 httpdate = { version = "1.0", optional = true }
 uuid = { version = "1.0", features = ["v4"], optional = true }
 
+[target.'cfg(unix)'.dependencies]
+libc = { version = "0.2", optional = true }
+
 [dev-dependencies]
 brotli = "8"
 bytes = "1"
@@ -92,7 +95,7 @@ catch-panic = ["tracing", "futures-util/std", "dep:http-body", "dep:http-body-ut
 cors = []
 csrf = []
 follow-redirect = ["futures-util", "dep:http-body", "dep:url", "tower/util"]
-fs = ["dep:tokio", "tokio?/fs", "tokio?/io-util", "futures-core", "futures-util", "dep:http-body", "dep:http-body-util", "tokio-util/io", "dep:http-range-header", "mime_guess", "mime", "httpdate", "set-status", "futures-util/alloc"]
+fs = ["dep:tokio", "tokio?/fs", "tokio?/io-util", "futures-core", "futures-util", "dep:http-body", "dep:http-body-util", "tokio-util/io", "dep:http-range-header", "mime_guess", "mime", "httpdate", "set-status", "futures-util/alloc", "dep:libc"]
 limit = ["dep:http-body", "dep:http-body-util"]
 map-request-body = []
 map-response-body = []
