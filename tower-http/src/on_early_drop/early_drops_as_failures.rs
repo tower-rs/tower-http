@@ -4,9 +4,8 @@
 
 use crate::on_early_drop::failure::{BodyDropped, DroppedFailure, FutureDropped};
 use crate::on_early_drop::traits::{OnBodyDrop, OnDropCallback, OnFutureDrop};
-use crate::trace::OnFailure;
+use crate::trace::{Clock, DefaultClock, OnFailure};
 use http::{response, Request, StatusCode};
-use std::time::Instant;
 use tracing::Span;
 
 /// Bridges early-drop events to [`trace::OnFailure`](crate::trace::OnFailure).
@@ -25,30 +24,52 @@ use tracing::Span;
 ///
 /// [`OnEarlyDropLayer`]: super::OnEarlyDropLayer
 #[derive(Debug, Clone, Copy)]
-pub struct EarlyDropsAsFailures<F> {
+pub struct EarlyDropsAsFailures<F, Clk = DefaultClock>
+where
+    Clk: Clock,
+{
     on_failure: F,
+    clock: Clk,
 }
 
 impl<F> EarlyDropsAsFailures<F> {
-    /// Wrap an [`OnFailure`] implementation.
+    /// Wrap an [`OnFailure`] implementation with [`DefaultClock`].
     pub fn new(on_failure: F) -> Self {
-        Self { on_failure }
+        Self {
+            on_failure,
+            clock: DefaultClock,
+        }
+    }
+}
+
+impl<F, Clk> EarlyDropsAsFailures<F, Clk>
+where
+    Clk: Clock,
+{
+    /// Wrap an [`OnFailure`] implementation with a custom [`Clock`].
+    pub fn with_clock(on_failure: F, clock: Clk) -> Self {
+        Self { on_failure, clock }
     }
 }
 
 /// Future-drop callback produced by [`EarlyDropsAsFailures`].
-pub struct FutureDropFailureCallback<F> {
-    start: Instant,
+pub struct FutureDropFailureCallback<F, Clk = DefaultClock>
+where
+    Clk: Clock,
+{
+    start: Clk::Instant,
     on_failure: F,
     span: Span,
+    clock: Clk,
 }
 
-impl<F> OnDropCallback for FutureDropFailureCallback<F>
+impl<F, Clk> OnDropCallback for FutureDropFailureCallback<F, Clk>
 where
-    F: OnFailure<DroppedFailure> + Send + 'static,
+    Clk: Clock + Send + 'static,
+    F: OnFailure<DroppedFailure, Clk> + Send + 'static,
 {
     fn on_drop(mut self) {
-        let latency = self.start.elapsed();
+        let latency = self.clock.elapsed(self.start);
         let _entered = self.span.enter();
         self.on_failure
             .on_failure(DroppedFailure::Future(FutureDropped), latency, &self.span);
@@ -58,26 +79,35 @@ where
 /// Intermediate produced by [`OnBodyDrop::make_at_call`] for
 /// [`EarlyDropsAsFailures`], carrying state forward to
 /// [`OnBodyDrop::make_at_response`].
-pub struct PreResponseBodyDropCallback<F> {
-    start: Instant,
+pub struct PreResponseBodyDropCallback<F, Clk = DefaultClock>
+where
+    Clk: Clock,
+{
+    start: Clk::Instant,
     on_failure: F,
     span: Span,
+    clock: Clk,
 }
 
 /// Body-drop callback produced by [`EarlyDropsAsFailures`].
-pub struct BodyDropFailureCallback<F> {
-    start: Instant,
+pub struct BodyDropFailureCallback<F, Clk = DefaultClock>
+where
+    Clk: Clock,
+{
+    start: Clk::Instant,
     on_failure: F,
     span: Span,
     status: StatusCode,
+    clock: Clk,
 }
 
-impl<F> OnDropCallback for BodyDropFailureCallback<F>
+impl<F, Clk> OnDropCallback for BodyDropFailureCallback<F, Clk>
 where
-    F: OnFailure<DroppedFailure> + Send + 'static,
+    Clk: Clock + Send + 'static,
+    F: OnFailure<DroppedFailure, Clk> + Send + 'static,
 {
     fn on_drop(mut self) {
-        let latency = self.start.elapsed();
+        let latency = self.clock.elapsed(self.start);
         let _entered = self.span.enter();
         self.on_failure.on_failure(
             DroppedFailure::Body(BodyDropped {
@@ -89,33 +119,37 @@ where
     }
 }
 
-impl<F, ReqB> OnFutureDrop<ReqB> for EarlyDropsAsFailures<F>
+impl<F, Clk, ReqB> OnFutureDrop<ReqB> for EarlyDropsAsFailures<F, Clk>
 where
-    F: OnFailure<DroppedFailure> + Clone + Send + 'static,
+    Clk: Clock + Send + 'static,
+    F: OnFailure<DroppedFailure, Clk> + Clone + Send + 'static,
 {
-    type Callback = FutureDropFailureCallback<F>;
+    type Callback = FutureDropFailureCallback<F, Clk>;
 
     fn make(&mut self, _request: &Request<ReqB>) -> Self::Callback {
         FutureDropFailureCallback {
-            start: Instant::now(),
+            start: self.clock.now(),
             on_failure: self.on_failure.clone(),
             span: Span::current(),
+            clock: self.clock,
         }
     }
 }
 
-impl<F, ReqB> OnBodyDrop<ReqB> for EarlyDropsAsFailures<F>
+impl<F, Clk, ReqB> OnBodyDrop<ReqB> for EarlyDropsAsFailures<F, Clk>
 where
-    F: OnFailure<DroppedFailure> + Clone + Send + 'static,
+    Clk: Clock + Send + 'static,
+    F: OnFailure<DroppedFailure, Clk> + Clone + Send + 'static,
 {
-    type Intermediate = PreResponseBodyDropCallback<F>;
-    type Callback = BodyDropFailureCallback<F>;
+    type Intermediate = PreResponseBodyDropCallback<F, Clk>;
+    type Callback = BodyDropFailureCallback<F, Clk>;
 
     fn make_at_call(&mut self, _request: &Request<ReqB>) -> Self::Intermediate {
         PreResponseBodyDropCallback {
-            start: Instant::now(),
+            start: self.clock.now(),
             on_failure: self.on_failure.clone(),
             span: Span::current(),
+            clock: self.clock,
         }
     }
 
@@ -129,6 +163,7 @@ where
             on_failure: intermediate.on_failure,
             span: intermediate.span,
             status: response_parts.status,
+            clock: intermediate.clock,
         }
     }
 }

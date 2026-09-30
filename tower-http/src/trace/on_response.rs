@@ -1,7 +1,9 @@
 use super::{Latency, DEFAULT_MESSAGE_LEVEL};
-use crate::LatencyUnit;
+use crate::{
+    trace::{Clock, DefaultClock},
+    LatencyUnit,
+};
 use http::Response;
-use std::time::Duration;
 use tracing::Level;
 use tracing::Span;
 
@@ -11,7 +13,7 @@ use tracing::Span;
 /// `on_response` callback is called.
 ///
 /// [`Trace`]: super::Trace
-pub trait OnResponse<B> {
+pub trait OnResponse<B, Clk: Clock = DefaultClock> {
     /// Do the thing.
     ///
     /// `latency` is the duration since the request was received.
@@ -23,19 +25,19 @@ pub trait OnResponse<B> {
     /// [`Span`]: https://docs.rs/tracing/latest/tracing/span/index.html
     /// [record]: https://docs.rs/tracing/latest/tracing/span/struct.Span.html#method.record
     /// [`TraceLayer::make_span_with`]: crate::trace::TraceLayer::make_span_with
-    fn on_response(self, response: &Response<B>, latency: Duration, span: &Span);
+    fn on_response(self, response: &Response<B>, latency: Clk::Duration, span: &Span);
 }
 
-impl<B> OnResponse<B> for () {
+impl<B, Clk: Clock> OnResponse<B, Clk> for () {
     #[inline]
-    fn on_response(self, _: &Response<B>, _: Duration, _: &Span) {}
+    fn on_response(self, _: &Response<B>, _: Clk::Duration, _: &Span) {}
 }
 
-impl<B, F> OnResponse<B> for F
+impl<B, Clk: Clock, F> OnResponse<B, Clk> for F
 where
-    F: FnOnce(&Response<B>, Duration, &Span),
+    F: FnOnce(&Response<B>, Clk::Duration, &Span),
 {
-    fn on_response(self, response: &Response<B>, latency: Duration, span: &Span) {
+    fn on_response(self, response: &Response<B>, latency: Clk::Duration, span: &Span) {
         self(response, latency, span)
     }
 }
@@ -101,8 +103,8 @@ impl DefaultOnResponse {
     }
 }
 
-impl<B> OnResponse<B> for DefaultOnResponse {
-    fn on_response(self, response: &Response<B>, latency: Duration, span: &Span) {
+impl<B, Clk: Clock> OnResponse<B, Clk> for DefaultOnResponse {
+    fn on_response(self, response: &Response<B>, latency: Clk::Duration, span: &Span) {
         let latency = Latency {
             unit: self.latency_unit,
             duration: latency,
