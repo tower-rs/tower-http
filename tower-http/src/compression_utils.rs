@@ -272,8 +272,15 @@ pin_project! {
     {
         #[pin]
         body: B,
+        // Set to true when `Stream::poll_next` has finished yielding data frames.
+        // This happens either when non-data frames (e.g. trailers) are encountered
+        // or when the underlying body reaches EOF.
         yielded_all_data: bool,
         non_data_frame: Option<Frame<B::Data>>,
+        // Set to true once the underlying body has yielded EOF (`Poll::Ready(None)`).
+        // When trailers are present, `yielded_all_data` is true while `body_eof` remains
+        // false until remaining frames are drained.
+        body_eof: bool,
     }
 }
 
@@ -287,6 +294,7 @@ where
             body,
             yielded_all_data: false,
             non_data_frame: None,
+            body_eof: false,
         }
     }
 
@@ -336,6 +344,7 @@ where
                 Some(Err(err)) => return Poll::Ready(Some(Err(err))),
                 None => {
                     *this.yielded_all_data = true;
+                    *this.body_eof = true;
                 }
             }
         }
@@ -366,9 +375,19 @@ where
             return Poll::Ready(Some(Ok(frame)));
         }
 
-        // Yield any remaining frames in the body. There shouldn't be any after the trailers but
-        // you never know.
-        this.body.poll_frame(cx)
+        // If the inner body has already yielded EOF (`Poll::Ready(None)`), avoid re-polling it.
+        // Re-polling an exhausted non-fused body violates stream invariants and panics.
+        if *this.body_eof {
+            return Poll::Ready(None);
+        }
+
+        match std::task::ready!(this.body.poll_frame(cx)) {
+            Some(frame) => Poll::Ready(Some(frame)),
+            None => {
+                *this.body_eof = true;
+                Poll::Ready(None)
+            }
+        }
     }
 
     #[inline]
