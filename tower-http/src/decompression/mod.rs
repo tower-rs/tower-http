@@ -153,6 +153,40 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn decompress_multi_gz() {
+        let mut client = Decompression::new(service_fn(handle_multi_gz));
+
+        let req = Request::builder()
+            .header("accept-encoding", "gzip")
+            .body(Body::empty())
+            .unwrap();
+        let res = client.ready().await.unwrap().call(req).await.unwrap();
+
+        // read the body, it will be decompressed automatically
+        let body = res.into_body();
+        let decompressed_data =
+            String::from_utf8(body.collect().await.unwrap().to_bytes().to_vec()).unwrap();
+
+        assert_eq!(decompressed_data, "Hello, World!");
+    }
+
+    async fn handle_multi_gz(_req: Request<Body>) -> Result<Response<Body>, Infallible> {
+        let mut buf = Vec::new();
+        let mut enc1 = flate2::write::GzEncoder::new(&mut buf, Default::default());
+        enc1.write_all(b"Hello, ").unwrap();
+        enc1.finish().unwrap();
+
+        let mut enc2 = flate2::write::GzEncoder::new(&mut buf, Default::default());
+        enc2.write_all(b"World!").unwrap();
+        enc2.finish().unwrap();
+
+        let mut res = Response::new(Body::from(buf));
+        res.headers_mut()
+            .insert("content-encoding", "gzip".parse().unwrap());
+        Ok(res)
+    }
+
+    #[tokio::test]
     async fn decompress_multi_zstd() {
         let mut client = Decompression::new(service_fn(handle_multi_zstd));
 
