@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+# Unreleased
+
+## Fixed
+
+- `decompression`: re-enable `multiple_members` on the gzip decoder, so responses carrying
+  concatenated gzip members decode in full again. This reverts the decoder change in ([#621]),
+  which is no longer needed now that an impossible member header is rejected as soon as the bytes
+  contradict it (async-compression 0.4.48) ([#738])
+
+[#738]: https://github.com/tower-rs/tower-http/pull/738
+
 # 0.7.1
 
 [Changes since 0.7.0](https://github.com/tower-rs/tower-http/compare/tower-http-0.7.0...tower-http-0.7.1)
