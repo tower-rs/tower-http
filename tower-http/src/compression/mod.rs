@@ -105,6 +105,7 @@ mod tests {
     use std::convert::Infallible;
     use std::io::Read;
     use std::sync::{Arc, RwLock};
+    use std::time::Duration;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio_util::io::StreamReader;
     use tower::{service_fn, BoxError, Service, ServiceExt};
@@ -521,6 +522,111 @@ mod tests {
         assert!(!headers.contains_key(ACCEPT_RANGES));
         assert_eq!(headers[CONTENT_ENCODING], "gzip");
         assert_eq!(decompressed, "Hello, World!");
+    }
+
+    #[tokio::test]
+    async fn gzip_streaming_body_frames_are_flushed_before_next_chunk() {
+        streaming_body_frames_are_flushed_before_next_chunk("gzip").await;
+    }
+
+    #[tokio::test]
+    async fn deflate_streaming_body_frames_are_flushed_before_next_chunk() {
+        streaming_body_frames_are_flushed_before_next_chunk("deflate").await;
+    }
+
+    #[tokio::test]
+    async fn br_streaming_body_frames_are_flushed_before_next_chunk() {
+        streaming_body_frames_are_flushed_before_next_chunk("br").await;
+    }
+
+    #[tokio::test]
+    async fn zstd_streaming_body_frames_are_flushed_before_next_chunk() {
+        streaming_body_frames_are_flushed_before_next_chunk("zstd").await;
+    }
+
+    // A streaming body (think server-sent events) where the producer sends a chunk and then
+    // waits. The compressed bytes for that chunk must reach the client before the producer
+    // sends the next one, instead of being held back inside the encoder.
+    async fn streaming_body_frames_are_flushed_before_next_chunk(encoding: &'static str) {
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Result<Bytes, BoxError>>(8);
+        let stream = futures_util::stream::poll_fn(move |cx| rx.poll_recv(cx));
+        let body = Arc::new(std::sync::Mutex::new(Some(Body::from_stream(stream))));
+        let svc = service_fn(move |_req: Request<Body>| {
+            let body = body.lock().unwrap().take().unwrap();
+            async move { Ok::<_, Infallible>(Response::new(body)) }
+        });
+        let mut svc = Compression::new(svc).compress_when(Always);
+
+        let req = Request::builder()
+            .header(ACCEPT_ENCODING, encoding)
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.ready().await.unwrap().call(req).await.unwrap();
+        assert_eq!(res.headers()[CONTENT_ENCODING], encoding);
+        let mut body = res.into_body();
+
+        tx.send(Ok(Bytes::from_static(b"event: first\n\n")))
+            .await
+            .unwrap();
+
+        // Read compressed frames until the first chunk can be decoded, without sending
+        // anything else. Each frame must arrive promptly: a timeout means the encoder is
+        // holding the data back until more input arrives.
+        let mut compressed = Vec::new();
+        let decoded = loop {
+            let frame = tokio::time::timeout(Duration::from_secs(1), body.frame())
+                .await
+                .expect("compressed frame should be emitted before the next chunk is sent")
+                .expect("body ended prematurely")
+                .unwrap();
+            compressed.extend_from_slice(&frame.into_data().unwrap());
+            let decoded = decode_partial(encoding, &compressed);
+            if !decoded.is_empty() {
+                break decoded;
+            }
+        };
+        assert_eq!(decoded, b"event: first\n\n");
+
+        tx.send(Ok(Bytes::from_static(b"event: second\n\n")))
+            .await
+            .unwrap();
+        drop(tx);
+
+        let rest = tokio::time::timeout(Duration::from_secs(1), body.collect())
+            .await
+            .expect("body should complete")
+            .unwrap()
+            .to_bytes();
+        compressed.extend_from_slice(&rest);
+
+        let mut decompressed = Vec::new();
+        decoder(encoding, &compressed)
+            .read_to_end(&mut decompressed)
+            .unwrap();
+        assert_eq!(decompressed, b"event: first\n\nevent: second\n\n");
+    }
+
+    fn decoder<'a>(encoding: &str, compressed: &'a [u8]) -> Box<dyn Read + 'a> {
+        match encoding {
+            "gzip" => Box::new(GzDecoder::new(compressed)),
+            "deflate" => Box::new(flate2::read::ZlibDecoder::new(compressed)),
+            "br" => Box::new(brotli::Decompressor::new(compressed, 4096)),
+            "zstd" => Box::new(zstd::stream::read::Decoder::new(compressed).unwrap()),
+            other => panic!("unsupported encoding {}", other),
+        }
+    }
+
+    /// Decode as much as possible of a compressed stream that may not be complete yet.
+    fn decode_partial(encoding: &str, compressed: &[u8]) -> Vec<u8> {
+        let mut decoder = decoder(encoding, compressed);
+        let mut out = Vec::new();
+        let mut buf = [0u8; 256];
+        loop {
+            match decoder.read(&mut buf) {
+                Ok(0) | Err(_) => break out,
+                Ok(n) => out.extend_from_slice(&buf[..n]),
+            }
+        }
     }
 
     #[tokio::test]

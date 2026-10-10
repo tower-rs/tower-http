@@ -1,9 +1,9 @@
 #![allow(unused_imports)]
 
+use super::body::EncodeBody;
 use super::{body::BodyInner, CompressionBody};
 use crate::compression::predicate::Predicate;
 use crate::compression::CompressionLevel;
-use crate::compression_utils::WrapBody;
 use crate::content_encoding::Encoding;
 use http::{header, HeaderMap, HeaderValue, Response};
 use http_body::Body;
@@ -98,19 +98,19 @@ where
 
             #[cfg(feature = "compression-gzip")]
             (_, Encoding::Gzip) => {
-                CompressionBody::new(BodyInner::gzip(WrapBody::new(body, self.quality)))
+                CompressionBody::new(BodyInner::gzip(EncodeBody::new(body, self.quality)))
             }
             #[cfg(feature = "compression-deflate")]
             (_, Encoding::Deflate) => {
-                CompressionBody::new(BodyInner::deflate(WrapBody::new(body, self.quality)))
+                CompressionBody::new(BodyInner::deflate(EncodeBody::new(body, self.quality)))
             }
             #[cfg(feature = "compression-br")]
             (_, Encoding::Brotli) => {
-                CompressionBody::new(BodyInner::brotli(WrapBody::new(body, self.quality)))
+                CompressionBody::new(BodyInner::brotli(EncodeBody::new(body, self.quality)))
             }
             #[cfg(feature = "compression-zstd")]
             (_, Encoding::Zstd) => {
-                CompressionBody::new(BodyInner::zstd(WrapBody::new(body, self.quality)))
+                CompressionBody::new(BodyInner::zstd(EncodeBody::new(body, self.quality)))
             }
             #[cfg(feature = "fs")]
             #[allow(unreachable_patterns)]

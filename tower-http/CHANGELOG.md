@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+# Unreleased
+
+[Changes since 0.7.1](https://github.com/tower-rs/tower-http/compare/tower-http-0.7.1...HEAD)
+
+## Fixed
+
+- `compression`: flush the encoder whenever the inner body is pending, so chunks of
+  streaming responses (e.g. server-sent events) are sent as soon as they are produced
+  instead of being held back until the encoder's internal buffer fills up or the body
+  ends. This no longer depends on which `async-compression` version is resolved
+
 # 0.7.1
 
 [Changes since 0.7.0](https://github.com/tower-rs/tower-http/compare/tower-http-0.7.0...tower-http-0.7.1)
