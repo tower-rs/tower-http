@@ -54,6 +54,7 @@ use bytes::{BufMut, BytesMut};
 use http::{header, HeaderMap, HeaderName, HeaderValue, Method, Request, Response};
 use pin_project_lite::pin_project;
 use std::{
+    fmt,
     future::Future,
     mem,
     pin::Pin,
@@ -456,6 +457,55 @@ impl CorsLayer {
         self
     }
 
+    /// Check that the configured CORS rules can be used together.
+    ///
+    /// The CORS specification doesn't allow combining
+    /// `Access-Control-Allow-Credentials: true` with a wildcard (`*`) value for
+    /// `Access-Control-Allow-Origin`, `Access-Control-Allow-Methods`,
+    /// `Access-Control-Allow-Headers` or `Access-Control-Expose-Headers`.
+    ///
+    /// [`Layer::layer`] (and [`Service::poll_ready`] on the [`Cors`] service)
+    /// panic with the same message when given an invalid configuration. Call
+    /// this method first if the configuration comes from user input and you
+    /// want to report the problem instead:
+    ///
+    /// ```
+    /// use tower_http::cors::{Any, CorsLayer};
+    ///
+    /// let layer = CorsLayer::new().allow_credentials(true).allow_origin(Any);
+    ///
+    /// let err = layer.validate().unwrap_err();
+    /// assert_eq!(
+    ///     err.to_string(),
+    ///     "Invalid CORS configuration: Cannot combine \
+    ///      `Access-Control-Allow-Credentials: true` with `Access-Control-Allow-Origin: *`",
+    /// );
+    /// ```
+    ///
+    /// [`Layer::layer`]: tower_layer::Layer::layer
+    /// [`Service::poll_ready`]: tower_service::Service::poll_ready
+    pub fn validate(&self) -> Result<(), CorsConfigurationError> {
+        if self.allow_credentials.is_true() {
+            if self.allow_headers.is_wildcard() {
+                return Err(CorsConfigurationError::CredentialsWithWildcardAllowHeaders);
+            }
+
+            if self.allow_methods.is_wildcard() {
+                return Err(CorsConfigurationError::CredentialsWithWildcardAllowMethods);
+            }
+
+            if self.allow_origin.is_wildcard() {
+                return Err(CorsConfigurationError::CredentialsWithWildcardAllowOrigin);
+            }
+
+            if self.expose_headers.is_wildcard() {
+                return Err(CorsConfigurationError::CredentialsWithWildcardExposeHeaders);
+            }
+        }
+
+        Ok(())
+    }
+
     /// Recomputes the `Vary` header, if it hasn't been set explicitly.
     fn update_vary_header(&mut self) {
         if !self.is_vary_custom {
@@ -495,6 +545,55 @@ pub fn any() -> Any {
     Any
 }
 
+/// Error returned by [`CorsLayer::validate`] and [`Cors::validate`] when the
+/// configured CORS rules can't be used together.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum CorsConfigurationError {
+    /// `Access-Control-Allow-Credentials: true` was combined with
+    /// `Access-Control-Allow-Headers: *`.
+    CredentialsWithWildcardAllowHeaders,
+
+    /// `Access-Control-Allow-Credentials: true` was combined with
+    /// `Access-Control-Allow-Methods: *`.
+    CredentialsWithWildcardAllowMethods,
+
+    /// `Access-Control-Allow-Credentials: true` was combined with
+    /// `Access-Control-Allow-Origin: *`.
+    CredentialsWithWildcardAllowOrigin,
+
+    /// `Access-Control-Allow-Credentials: true` was combined with
+    /// `Access-Control-Expose-Headers: *`.
+    CredentialsWithWildcardExposeHeaders,
+}
+
+impl fmt::Display for CorsConfigurationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let header = match self {
+            CorsConfigurationError::CredentialsWithWildcardAllowHeaders => {
+                "Access-Control-Allow-Headers"
+            }
+            CorsConfigurationError::CredentialsWithWildcardAllowMethods => {
+                "Access-Control-Allow-Methods"
+            }
+            CorsConfigurationError::CredentialsWithWildcardAllowOrigin => {
+                "Access-Control-Allow-Origin"
+            }
+            CorsConfigurationError::CredentialsWithWildcardExposeHeaders => {
+                "Access-Control-Expose-Headers"
+            }
+        };
+
+        write!(
+            f,
+            "Invalid CORS configuration: Cannot combine \
+             `Access-Control-Allow-Credentials: true` with `{header}: *`"
+        )
+    }
+}
+
+impl std::error::Error for CorsConfigurationError {}
+
 fn separated_by_commas<I>(mut iter: I) -> Option<HeaderValue>
 where
     I: Iterator<Item = HeaderValue>,
@@ -523,6 +622,9 @@ impl Default for CorsLayer {
 impl<S> Layer<S> for CorsLayer {
     type Service = Cors<S>;
 
+    /// # Panics
+    ///
+    /// If the configuration is invalid. See [`CorsLayer::validate`].
     fn layer(&self, inner: S) -> Self::Service {
         ensure_usable_cors_rules(self);
 
@@ -671,6 +773,13 @@ impl<S> Cors<S> {
         self.map_layer(|layer| layer.allow_private_network(allow_private_network))
     }
 
+    /// Check that the configured CORS rules can be used together.
+    ///
+    /// See [`CorsLayer::validate`] for more details.
+    pub fn validate(&self) -> Result<(), CorsConfigurationError> {
+        self.layer.validate()
+    }
+
     fn map_layer<F>(mut self, f: F) -> Self
     where
         F: FnOnce(CorsLayer) -> CorsLayer,
@@ -691,6 +800,9 @@ where
     type Error = S::Error;
     type Future = ResponseFuture<S::Future>;
 
+    /// # Panics
+    ///
+    /// If the configuration is invalid. See [`CorsLayer::validate`].
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         ensure_usable_cors_rules(&self.layer);
         self.inner.poll_ready(cx)
@@ -818,30 +930,8 @@ where
 }
 
 fn ensure_usable_cors_rules(layer: &CorsLayer) {
-    if layer.allow_credentials.is_true() {
-        assert!(
-            !layer.allow_headers.is_wildcard(),
-            "Invalid CORS configuration: Cannot combine `Access-Control-Allow-Credentials: true` \
-             with `Access-Control-Allow-Headers: *`"
-        );
-
-        assert!(
-            !layer.allow_methods.is_wildcard(),
-            "Invalid CORS configuration: Cannot combine `Access-Control-Allow-Credentials: true` \
-             with `Access-Control-Allow-Methods: *`"
-        );
-
-        assert!(
-            !layer.allow_origin.is_wildcard(),
-            "Invalid CORS configuration: Cannot combine `Access-Control-Allow-Credentials: true` \
-             with `Access-Control-Allow-Origin: *`"
-        );
-
-        assert!(
-            !layer.expose_headers.is_wildcard(),
-            "Invalid CORS configuration: Cannot combine `Access-Control-Allow-Credentials: true` \
-             with `Access-Control-Expose-Headers: *`"
-        );
+    if let Err(err) = layer.validate() {
+        panic!("{}", err);
     }
 }
 
