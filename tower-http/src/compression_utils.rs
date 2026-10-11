@@ -386,6 +386,7 @@ pin_project! {
     }
 }
 
+#[allow(dead_code)]
 impl<S, E> StreamErrorIntoIoError<S, E> {
     pub(crate) fn new(inner: S) -> Self {
         Self {
