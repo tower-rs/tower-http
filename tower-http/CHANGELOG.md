@@ -10,8 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Added
 
 - `cors`: add `CorsLayer::validate()` and `Cors::validate()`, which return the
-  new `CorsConfigurationError` for configurations that `Layer::layer` panics on
-  (`Access-Control-Allow-Credentials: true` combined with a wildcard value), so
+  new `CorsConfigurationError` for configurations that would later panic otherwise
+  (for example `Access-Control-Allow-Credentials: true` combined with `Access-Control-Allow-Origin: *`), so
   user-supplied configurations can be checked up front
 
 # 0.7.1

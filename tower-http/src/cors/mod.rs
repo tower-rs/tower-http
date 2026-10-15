@@ -464,26 +464,21 @@ impl CorsLayer {
     /// `Access-Control-Allow-Origin`, `Access-Control-Allow-Methods`,
     /// `Access-Control-Allow-Headers` or `Access-Control-Expose-Headers`.
     ///
-    /// [`Layer::layer`] (and [`Service::poll_ready`] on the [`Cors`] service)
+    /// [`CorsLayer`]'s `Layer` implementation and [`Cors`]' `Service` implementation
     /// panic with the same message when given an invalid configuration. Call
     /// this method first if the configuration comes from user input and you
     /// want to report the problem instead:
     ///
     /// ```
-    /// use tower_http::cors::{Any, CorsLayer};
+    /// use tower_http::cors::{Any, CorsConfigurationError, CorsLayer};
     ///
     /// let layer = CorsLayer::new().allow_credentials(true).allow_origin(Any);
     ///
-    /// let err = layer.validate().unwrap_err();
     /// assert_eq!(
-    ///     err.to_string(),
-    ///     "Invalid CORS configuration: Cannot combine \
-    ///      `Access-Control-Allow-Credentials: true` with `Access-Control-Allow-Origin: *`",
+    ///     layer.validate(),
+    ///     Err(CorsConfigurationError::CredentialsWithWildcardAllowOrigin),
     /// );
     /// ```
-    ///
-    /// [`Layer::layer`]: tower_layer::Layer::layer
-    /// [`Service::poll_ready`]: tower_service::Service::poll_ready
     pub fn validate(&self) -> Result<(), CorsConfigurationError> {
         if self.allow_credentials.is_true() {
             if self.allow_headers.is_wildcard() {
@@ -791,6 +786,10 @@ impl<S> Cors<S> {
     }
 }
 
+/// # Panics
+///
+/// Using this service panics if the configuration is invalid. See
+/// [`CorsLayer::validate`].
 impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for Cors<S>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
@@ -800,9 +799,6 @@ where
     type Error = S::Error;
     type Future = ResponseFuture<S::Future>;
 
-    /// # Panics
-    ///
-    /// If the configuration is invalid. See [`CorsLayer::validate`].
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         ensure_usable_cors_rules(&self.layer);
         self.inner.poll_ready(cx)

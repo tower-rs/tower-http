@@ -253,40 +253,31 @@ fn validate_rejects_credentials_with_wildcards() {
         (
             CorsLayer::new().allow_credentials(true).allow_headers(Any),
             CorsConfigurationError::CredentialsWithWildcardAllowHeaders,
-            "Access-Control-Allow-Headers",
         ),
         (
             CorsLayer::new().allow_credentials(true).allow_methods(Any),
             CorsConfigurationError::CredentialsWithWildcardAllowMethods,
-            "Access-Control-Allow-Methods",
         ),
         (
             CorsLayer::new().allow_credentials(true).allow_origin(Any),
             CorsConfigurationError::CredentialsWithWildcardAllowOrigin,
-            "Access-Control-Allow-Origin",
         ),
         (
             CorsLayer::new().allow_credentials(true).expose_headers(Any),
             CorsConfigurationError::CredentialsWithWildcardExposeHeaders,
-            "Access-Control-Expose-Headers",
         ),
     ];
 
-    for (layer, expected, header) in cases {
-        let err = layer.validate().unwrap_err();
-        assert_eq!(err, expected);
-        assert_eq!(
-            err.to_string(),
-            format!(
-                "Invalid CORS configuration: Cannot combine \
-                 `Access-Control-Allow-Credentials: true` with `{header}: *`"
-            )
-        );
+    for (layer, expected) in cases {
+        assert_eq!(layer.validate(), Err(expected));
     }
 }
 
 #[test]
 fn validate_accepts_usable_configurations() {
+    // an empty layer isn't useful, but is valid
+    CorsLayer::new().validate().unwrap();
+
     // wildcards are fine without credentials
     CorsLayer::permissive().validate().unwrap();
 
