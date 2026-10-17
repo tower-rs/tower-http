@@ -186,6 +186,60 @@ mod tests {
         Ok(res)
     }
 
+    fn gzip(data: &[u8]) -> Vec<u8> {
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        encoder.write_all(data).unwrap();
+        encoder.finish().unwrap()
+    }
+
+    #[tokio::test]
+    async fn decompress_uppercase_content_encoding() {
+        let mut client = Decompression::new(service_fn(|_req: Request<Body>| async {
+            let mut res = Response::new(Body::from(gzip(b"Hello, World!")));
+            res.headers_mut()
+                .insert("content-encoding", "GZIP".parse().unwrap());
+            Ok::<_, Infallible>(res)
+        }));
+
+        let req = Request::builder()
+            .header("accept-encoding", "gzip")
+            .body(Body::empty())
+            .unwrap();
+        let res = client.ready().await.unwrap().call(req).await.unwrap();
+
+        assert!(res.headers().get("content-encoding").is_none());
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(body, "Hello, World!");
+    }
+
+    #[tokio::test]
+    async fn content_encoding_on_two_field_lines_is_left_alone() {
+        let twice = gzip(&gzip(b"Hello, World!"));
+        let expected = twice.clone();
+        let mut client = Decompression::new(service_fn(move |_req: Request<Body>| {
+            let twice = twice.clone();
+            async move {
+                let mut res = Response::new(Body::from(twice));
+                res.headers_mut()
+                    .append("content-encoding", "gzip".parse().unwrap());
+                res.headers_mut()
+                    .append("content-encoding", "gzip".parse().unwrap());
+                Ok::<_, Infallible>(res)
+            }
+        }));
+
+        let req = Request::builder()
+            .header("accept-encoding", "gzip")
+            .body(Body::empty())
+            .unwrap();
+        let res = client.ready().await.unwrap().call(req).await.unwrap();
+
+        // Decoding once would hand over gzip data with no Content-Encoding left to say so.
+        assert_eq!(res.headers().get_all("content-encoding").iter().count(), 2);
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(body, expected);
+    }
+
     #[allow(dead_code)]
     async fn is_compatible_with_hyper() {
         let client =
