@@ -38,7 +38,17 @@ where
 
         let res =
             if let header::Entry::Occupied(entry) = parts.headers.entry(header::CONTENT_ENCODING) {
-                let body = match entry.get().as_bytes() {
+                // Each field line is another coding applied on top of the previous one. Only a
+                // single coding is decoded, so leave anything else (and its headers) as it is.
+                if entry.iter().count() > 1 {
+                    return Poll::Ready(Ok(Response::from_parts(
+                        parts,
+                        DecompressionBody::new(BodyInner::identity(body)),
+                    )));
+                }
+
+                // Content codings are case-insensitive (RFC 9110, section 8.4.1).
+                let body = match entry.get().as_bytes().to_ascii_lowercase().as_slice() {
                     #[cfg(feature = "decompression-gzip")]
                     b"gzip" if self.accept.gzip() => DecompressionBody::new(BodyInner::gzip(
                         WrapBody::new(body, CompressionLevel::default()),
