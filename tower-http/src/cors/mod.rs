@@ -46,6 +46,89 @@
 //! ```
 //!
 //! [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
+//!
+//! # Multiple `Vary` header fields
+//!
+//! When this layer and the service or a surrounding layer both set the
+//! [`Vary`][mdn-vary] response header (for example, a compression layer sets
+//! `Vary: Accept-Encoding`), the response carries more than one `Vary` header
+//! field:
+//!
+//! ```text
+//! vary: origin, access-control-request-method, access-control-request-headers
+//! vary: accept-encoding
+//! ```
+//!
+//! Repeating the field is valid HTTP. [RFC 9110 section 5.3][rfc-9110-5-3]
+//! permits multiple fields when the value is a comma-separated list, as `Vary`
+//! is. A recipient may join their values in order with a comma without changing
+//! the semantics. The fields above are therefore equivalent to one `Vary:
+//! origin, access-control-request-method, access-control-request-headers,
+//! accept-encoding` field; a cache sees the same combined value in either form.
+//! This layer appends its own value instead of rewriting the one set by the
+//! inner service.
+//!
+//! If a peer in front of your service does not combine repeated fields and you
+//! need the response to leave this layer's stack with a single `Vary` field,
+//! coalesce the values yourself at the response boundary, for example in a
+//! small layer wrapping the stack. Join every existing value with a comma
+//! without dropping any, leave every other header untouched, and propagate the
+//! fallible error instead of panicking:
+//!
+//! ```rust
+//! use http::header::{self, HeaderMap, HeaderValue};
+//!
+//! /// Combine every `Vary` header field in `headers` into a single field.
+//! ///
+//! /// All existing `Vary` values are preserved in order and all other headers
+//! /// are left untouched. Returns an error if the joined bytes are not a
+//! /// valid header value.
+//! fn coalesce_vary(headers: &mut HeaderMap) -> Result<(), header::InvalidHeaderValue> {
+//!     // A `HeaderValue` is not required to be valid UTF-8, so collect the
+//!     // existing values before taking a mutable borrow of the map.
+//!     let values: Vec<&HeaderValue> = headers.get_all(header::VARY).iter().collect();
+//!     if values.len() <= 1 {
+//!         // Nothing to combine; keep the single (or absent) field as-is.
+//!         return Ok(());
+//!     }
+//!
+//!     let mut buf = Vec::new();
+//!     for (i, value) in values.iter().enumerate() {
+//!         if i != 0 {
+//!             buf.extend_from_slice(b", ");
+//!         }
+//!         buf.extend_from_slice(value.as_bytes());
+//!     }
+//!
+//!     // `from_bytes` is a validating constructor and is therefore fallible.
+//!     let joined = HeaderValue::from_bytes(&buf)?;
+//!     headers.insert(header::VARY, joined);
+//!     Ok(())
+//! }
+//!
+//! // Two layers each appended their own `Vary` value.
+//! let mut headers = HeaderMap::new();
+//! headers.append(
+//!     header::VARY,
+//!     HeaderValue::from_static("origin, access-control-request-method"),
+//! );
+//! headers.append(header::VARY, HeaderValue::from_static("accept-encoding"));
+//! headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/json"));
+//!
+//! coalesce_vary(&mut headers).unwrap();
+//!
+//! let mut vary = headers.get_all(header::VARY).iter();
+//! assert_eq!(
+//!     vary.next().unwrap(),
+//!     "origin, access-control-request-method, accept-encoding"
+//! );
+//! assert_eq!(vary.next(), None);
+//! // Other headers are not modified.
+//! assert_eq!(headers.get(header::CONTENT_TYPE).unwrap(), "application/json");
+//! ```
+//!
+//! [mdn-vary]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Vary
+//! [rfc-9110-5-3]: https://www.rfc-editor.org/rfc/rfc9110#section-5.3
 
 #![allow(clippy::enum_variant_names)]
 
