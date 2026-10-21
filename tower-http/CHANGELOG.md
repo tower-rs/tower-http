@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (for example `Access-Control-Allow-Credentials: true` combined with `Access-Control-Allow-Origin: *`), so
   user-supplied configurations can be checked up front
 
+## Fixed
+
+- `decompression`: match content codings case-insensitively, and leave a response
+  with more than one `Content-Encoding` field line as it is instead of decoding it
+  once and removing every `Content-Encoding` header
+
 # 0.7.1
 
 [Changes since 0.7.0](https://github.com/tower-rs/tower-http/compare/tower-http-0.7.0...tower-http-0.7.1)
