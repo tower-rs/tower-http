@@ -1,6 +1,9 @@
 use super::{Latency, DEFAULT_ERROR_LEVEL};
-use crate::LatencyUnit;
-use std::{fmt, time::Duration};
+use crate::{
+    trace::{Clock, DefaultClock},
+    LatencyUnit,
+};
+use std::fmt;
 use tracing::{Level, Span};
 
 /// Trait used to tell [`Trace`] what to do when a request fails.
@@ -9,7 +12,7 @@ use tracing::{Level, Span};
 /// `on_failure` callback is called.
 ///
 /// [`Trace`]: super::Trace
-pub trait OnFailure<FailureClass> {
+pub trait OnFailure<FailureClass, Clk: Clock = DefaultClock> {
     /// Do the thing.
     ///
     /// `latency` is the duration since the request was received.
@@ -21,19 +24,29 @@ pub trait OnFailure<FailureClass> {
     /// [`Span`]: https://docs.rs/tracing/latest/tracing/span/index.html
     /// [record]: https://docs.rs/tracing/latest/tracing/span/struct.Span.html#method.record
     /// [`TraceLayer::make_span_with`]: crate::trace::TraceLayer::make_span_with
-    fn on_failure(&mut self, failure_classification: FailureClass, latency: Duration, span: &Span);
+    fn on_failure(
+        &mut self,
+        failure_classification: FailureClass,
+        latency: Clk::Duration,
+        span: &Span,
+    );
 }
 
-impl<FailureClass> OnFailure<FailureClass> for () {
+impl<FailureClass, Clk: Clock> OnFailure<FailureClass, Clk> for () {
     #[inline]
-    fn on_failure(&mut self, _: FailureClass, _: Duration, _: &Span) {}
+    fn on_failure(&mut self, _: FailureClass, _: Clk::Duration, _: &Span) {}
 }
 
-impl<F, FailureClass> OnFailure<FailureClass> for F
+impl<F, FailureClass, Clk: Clock> OnFailure<FailureClass, Clk> for F
 where
-    F: FnMut(FailureClass, Duration, &Span),
+    F: FnMut(FailureClass, Clk::Duration, &Span),
 {
-    fn on_failure(&mut self, failure_classification: FailureClass, latency: Duration, span: &Span) {
+    fn on_failure(
+        &mut self,
+        failure_classification: FailureClass,
+        latency: Clk::Duration,
+        span: &Span,
+    ) {
         self(failure_classification, latency, span)
     }
 }
@@ -81,11 +94,16 @@ impl DefaultOnFailure {
     }
 }
 
-impl<FailureClass> OnFailure<FailureClass> for DefaultOnFailure
+impl<FailureClass, Clk: Clock> OnFailure<FailureClass, Clk> for DefaultOnFailure
 where
     FailureClass: fmt::Display,
 {
-    fn on_failure(&mut self, failure_classification: FailureClass, latency: Duration, span: &Span) {
+    fn on_failure(
+        &mut self,
+        failure_classification: FailureClass,
+        latency: Clk::Duration,
+        span: &Span,
+    ) {
         let latency = Latency {
             unit: self.latency_unit,
             duration: latency,
