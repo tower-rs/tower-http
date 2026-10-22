@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (for example `Access-Control-Allow-Credentials: true` combined with `Access-Control-Allow-Origin: *`), so
   user-supplied configurations can be checked up front
 
+## Fixed
+
+- `compression`: don't poll the response body again after it returned `None`.
+  Bodies built from streams that panic when polled past their end, such as
+  `futures_util::stream::unfold` through `Body::from_stream`, panicked once
+  compressed
+
 # 0.7.1
 
 [Changes since 0.7.0](https://github.com/tower-rs/tower-http/compare/tower-http-0.7.0...tower-http-0.7.1)

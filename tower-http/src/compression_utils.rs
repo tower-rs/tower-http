@@ -273,6 +273,8 @@ pin_project! {
         #[pin]
         body: B,
         yielded_all_data: bool,
+        // Whether `body` returned `None`, after which it must not be polled again.
+        body_ended: bool,
         non_data_frame: Option<Frame<B::Data>>,
     }
 }
@@ -286,6 +288,7 @@ where
         Self {
             body,
             yielded_all_data: false,
+            body_ended: false,
             non_data_frame: None,
         }
     }
@@ -336,6 +339,7 @@ where
                 Some(Err(err)) => return Poll::Ready(Some(Err(err))),
                 None => {
                     *this.yielded_all_data = true;
+                    *this.body_ended = true;
                 }
             }
         }
@@ -367,8 +371,15 @@ where
         }
 
         // Yield any remaining frames in the body. There shouldn't be any after the trailers but
-        // you never know.
-        this.body.poll_frame(cx)
+        // you never know. A body that already ended must not be polled again.
+        if *this.body_ended {
+            return Poll::Ready(None);
+        }
+        let frame = std::task::ready!(this.body.poll_frame(cx));
+        if frame.is_none() {
+            *this.body_ended = true;
+        }
+        Poll::Ready(frame)
     }
 
     #[inline]
