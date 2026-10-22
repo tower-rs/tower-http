@@ -215,6 +215,54 @@ mod tests {
         assert_eq!(decompressed, "Hello, World!");
     }
 
+    /// A body that yields one data frame, then the end, and panics if polled past its end, as
+    /// some streams do, such as `futures_util::stream::unfold`.
+    struct PanicsPastEnd {
+        data: Option<Bytes>,
+        ended: bool,
+    }
+
+    impl http_body::Body for PanicsPastEnd {
+        type Data = Bytes;
+        type Error = Infallible;
+
+        fn poll_frame(
+            mut self: std::pin::Pin<&mut Self>,
+            _cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Option<Result<http_body::Frame<Bytes>, Infallible>>> {
+            assert!(!self.ended, "polled after it returned the end");
+            match self.data.take() {
+                Some(data) => std::task::Poll::Ready(Some(Ok(http_body::Frame::data(data)))),
+                None => {
+                    self.ended = true;
+                    std::task::Poll::Ready(None)
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn does_not_poll_a_body_past_its_end() {
+        for encoding in ["gzip", "deflate", "br", "zstd"] {
+            let svc = service_fn(|_req: Request<Body>| async {
+                Ok::<_, Infallible>(Response::new(PanicsPastEnd {
+                    data: Some(Bytes::from_static(b"Hello, World!")),
+                    ended: false,
+                }))
+            });
+            let mut svc = Compression::new(svc).compress_when(Always);
+            let req = Request::builder()
+                .header("accept-encoding", encoding)
+                .body(Body::empty())
+                .unwrap();
+            let res = svc.ready().await.unwrap().call(req).await.unwrap();
+
+            let compressed = res.into_body().collect().await.unwrap().to_bytes();
+
+            assert!(!compressed.is_empty(), "{}", encoding);
+        }
+    }
+
     #[tokio::test]
     async fn no_recompress() {
         const DATA: &str = "Hello, World! I'm already compressed with br!";
