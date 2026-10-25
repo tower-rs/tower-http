@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (for example `Access-Control-Allow-Credentials: true` combined with `Access-Control-Allow-Origin: *`), so
   user-supplied configurations can be checked up front
 
+## Fixed
+
+- `fs`: `ServeDir` and `ServeFile` now honor `If-Range`. A `Range` header is only
+  served when `If-Range` is absent or matches the file's `ETag` (strong comparison)
+  or `Last-Modified` date; otherwise the full file is sent with `200 OK`
+
 # 0.7.1
 
 [Changes since 0.7.0](https://github.com/tower-rs/tower-http/compare/tower-http-0.7.0...tower-http-0.7.1)

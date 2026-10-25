@@ -1,6 +1,8 @@
 use super::{
     backend::{Backend, File as _, Metadata as _},
-    headers::{ETag, IfMatch, IfModifiedSince, IfNoneMatch, IfUnmodifiedSince, LastModified},
+    headers::{
+        ETag, IfMatch, IfModifiedSince, IfNoneMatch, IfRange, IfUnmodifiedSince, LastModified,
+    },
     ServeVariant,
 };
 use crate::content_encoding::{Encoding, QValue};
@@ -97,6 +99,10 @@ pub(super) async fn open_file<B: Backend>(
             .get(header::IF_MODIFIED_SINCE)
             .and_then(IfModifiedSince::from_header_value),
     };
+    let if_range = req
+        .headers()
+        .get(header::IF_RANGE)
+        .map(IfRange::from_header_value);
 
     let mime = match variant {
         ServeVariant::Directory {
@@ -156,6 +162,7 @@ pub(super) async fn open_file<B: Backend>(
             return Ok(output);
         }
 
+        let range_header = honored_range(range_header, if_range, &etag, &last_modified);
         let maybe_range = try_parse_range(
             range_header.as_deref(),
             meta.len(),
@@ -206,6 +213,7 @@ pub(super) async fn open_file<B: Backend>(
         }
 
         let size = meta.len();
+        let range_header = honored_range(range_header, if_range, &etag, &last_modified);
         let maybe_range =
             try_parse_range(range_header.as_deref(), size, ignore_multi_range_requests);
         if let Some(Ok(range)) = maybe_range.as_ref() {
@@ -448,6 +456,19 @@ async fn maybe_redirect_or_append_path<B: Backend>(
         };
         let location = HeaderValue::from_str(&uri.to_string()).unwrap();
         Ok(Some(OpenFileOutput::Redirect { location }))
+    }
+}
+
+/// Drops the Range header when an If-Range header does not match the file (RFC 9110 §13.1.5).
+fn honored_range(
+    range_header: Option<String>,
+    if_range: Option<IfRange>,
+    etag: &Option<ETag>,
+    last_modified: &Option<LastModified>,
+) -> Option<String> {
+    match if_range {
+        Some(if_range) if !if_range.matches(etag.as_ref(), last_modified.as_ref()) => None,
+        _ => range_header,
     }
 }
 
