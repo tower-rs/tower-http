@@ -1646,6 +1646,67 @@ async fn if_none_match_returns_304() {
 }
 
 #[tokio::test]
+async fn if_range_matching_validator_returns_range() {
+    let svc = ServeDir::new(REPO_ROOT);
+    let req = Request::builder()
+        .uri("/README.md")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+    let etag = res.headers().get(header::ETAG).unwrap().clone();
+    let last_modified = res.headers().get(header::LAST_MODIFIED).unwrap().clone();
+
+    for if_range in [etag, last_modified] {
+        let svc = ServeDir::new(REPO_ROOT);
+        let req = Request::builder()
+            .uri("/README.md")
+            .header(header::RANGE, "bytes=0-9")
+            .header(header::IF_RANGE, &if_range)
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::PARTIAL_CONTENT, "{if_range:?}");
+        assert_eq!(res.headers()["content-length"], "10");
+    }
+}
+
+#[tokio::test]
+async fn if_range_not_matching_returns_full_file() {
+    let svc = ServeDir::new(REPO_ROOT);
+    let req = Request::builder()
+        .uri("/README.md")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+    let etag = res
+        .headers()
+        .get(header::ETAG)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_owned();
+    let file_len = std::fs::read(README_PATH).unwrap().len();
+
+    for if_range in [
+        "\"stale\"".to_owned(),
+        format!("W/{etag}"),
+        "Thu, 01 Jan 1970 00:00:00 GMT".to_owned(),
+    ] {
+        let svc = ServeDir::new(REPO_ROOT);
+        let req = Request::builder()
+            .uri("/README.md")
+            .header(header::RANGE, "bytes=0-9")
+            .header(header::IF_RANGE, &if_range)
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK, "{if_range}");
+        assert!(res.headers().get(header::CONTENT_RANGE).is_none());
+        assert_eq!(res.headers()["content-length"], file_len.to_string());
+    }
+}
+
+#[tokio::test]
 async fn if_none_match_with_non_matching_etag_returns_200() {
     let svc = ServeDir::new(REPO_ROOT);
 

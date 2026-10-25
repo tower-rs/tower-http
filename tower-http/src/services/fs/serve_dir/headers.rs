@@ -183,6 +183,38 @@ impl IfUnmodifiedSince {
     }
 }
 
+/// Parsed `If-Range` header (RFC 9110 §13.1.5).
+pub(super) enum IfRange {
+    ETag(HeaderValue),
+    Date(HttpDate),
+}
+
+impl IfRange {
+    /// Convert a header value into an IfRange. Values that are neither an entity tag
+    /// nor a date can never match, so they are kept as an entity tag.
+    pub(super) fn from_header_value(value: &HeaderValue) -> IfRange {
+        match value.to_str().ok().and_then(|value| value.parse().ok()) {
+            Some(date) => IfRange::Date(date),
+            None => IfRange::ETag(value.clone()),
+        }
+    }
+
+    /// Returns true if the Range header should be honored: an entity tag must match
+    /// with the strong comparison, and a date must equal the last modification time.
+    pub(super) fn matches(
+        &self,
+        etag: Option<&ETag>,
+        last_modified: Option<&LastModified>,
+    ) -> bool {
+        match self {
+            IfRange::ETag(value) => etag.map_or(false, |etag| etag.strong_eq(value.as_bytes())),
+            IfRange::Date(date) => {
+                last_modified.map_or(false, |last_modified| *date == last_modified.0)
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
