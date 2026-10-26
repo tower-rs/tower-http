@@ -4,7 +4,9 @@ use crate::{cors::Vary, test_helpers::Body};
 use http::{header, HeaderName, HeaderValue, Method, Request, Response};
 use tower::{service_fn, util::ServiceExt, Layer};
 
-use crate::cors::{AllowHeaders, AllowMethods, AllowOrigin, Any, Cors, CorsLayer};
+use crate::cors::{
+    AllowHeaders, AllowMethods, AllowOrigin, Any, Cors, CorsConfigurationError, CorsLayer,
+};
 
 const INITIAL_VARY_HEADERS: HeaderValue = HeaderValue::from_static("accept, accept-encoding");
 const ADDITIONAL_VARY_HEADERS: [HeaderName; 3] = [
@@ -243,4 +245,82 @@ async fn exact_origin_does_not_emit_origin_vary_header() {
     let res = svc.oneshot(req).await.unwrap();
 
     assert!(res.headers().get(header::VARY).is_none());
+}
+
+#[test]
+fn validate_rejects_credentials_with_wildcards() {
+    let cases = [
+        (
+            CorsLayer::new().allow_credentials(true).allow_headers(Any),
+            CorsConfigurationError::CredentialsWithWildcardAllowHeaders,
+        ),
+        (
+            CorsLayer::new().allow_credentials(true).allow_methods(Any),
+            CorsConfigurationError::CredentialsWithWildcardAllowMethods,
+        ),
+        (
+            CorsLayer::new().allow_credentials(true).allow_origin(Any),
+            CorsConfigurationError::CredentialsWithWildcardAllowOrigin,
+        ),
+        (
+            CorsLayer::new().allow_credentials(true).expose_headers(Any),
+            CorsConfigurationError::CredentialsWithWildcardExposeHeaders,
+        ),
+    ];
+
+    for (layer, expected) in cases {
+        assert_eq!(layer.validate(), Err(expected));
+    }
+}
+
+#[test]
+fn validate_accepts_usable_configurations() {
+    // an empty layer isn't useful, but is valid
+    CorsLayer::new().validate().unwrap();
+
+    // wildcards are fine without credentials
+    CorsLayer::permissive().validate().unwrap();
+
+    // mirroring the request is not a wildcard
+    CorsLayer::very_permissive().validate().unwrap();
+
+    // credentials with explicit values
+    CorsLayer::new()
+        .allow_credentials(true)
+        .allow_origin(HeaderValue::from_static("http://example.com"))
+        .allow_methods([Method::GET])
+        .allow_headers([header::CONTENT_TYPE])
+        .expose_headers([header::CONTENT_ENCODING])
+        .validate()
+        .unwrap();
+}
+
+#[test]
+fn validate_on_service_built_without_layer() {
+    // The `Cors` builder bypasses `Layer::layer`, so without `validate` an
+    // invalid configuration is first detected when a request arrives.
+    let svc = Cors::new(service_fn(|_: Request<Body>| async {
+        Ok::<_, Infallible>(Response::new(Body::empty()))
+    }))
+    .allow_credentials(true)
+    .allow_origin(Any);
+
+    assert_eq!(
+        svc.validate(),
+        Err(CorsConfigurationError::CredentialsWithWildcardAllowOrigin)
+    );
+
+    let svc = svc.allow_origin(HeaderValue::from_static("http://example.com"));
+    assert_eq!(svc.validate(), Ok(()));
+}
+
+#[test]
+#[should_panic(expected = "Invalid CORS configuration: Cannot combine \
+                           `Access-Control-Allow-Credentials: true` with `Access-Control-Allow-Headers: *`")]
+fn layer_panics_with_validation_error_message() {
+    let _ = CorsLayer::permissive()
+        .allow_credentials(true)
+        .layer(service_fn(|_: Request<Body>| async {
+            Ok::<_, Infallible>(Response::new(Body::empty()))
+        }));
 }

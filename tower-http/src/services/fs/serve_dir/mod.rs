@@ -567,18 +567,22 @@ where
 
 fn should_return_not_found(err: &io::Error) -> bool {
     #[cfg(unix)]
-    // 20 = libc::ENOTDIR => "not a directory".
+    // `ENOTDIR` means a path component that should be a directory is a file,
+    // and `ENAMETOOLONG` means a path component exceeds the filesystem limit.
+    // Neither can refer to a resource that can be served.
     // When `io_error_more` lands, this can be changed
-    // to checking for `io::ErrorKind::NotADirectory`.
+    // to checking for `io::ErrorKind::NotADirectory` and
+    // `io::ErrorKind::InvalidFilename`.
     // https://github.com/rust-lang/rust/issues/86442
-    let error_is_not_a_directory = err.raw_os_error() == Some(20);
+    let error_is_invalid_path =
+        matches!(err.raw_os_error(), Some(libc::ENOTDIR | libc::ENAMETOOLONG));
     #[cfg(not(unix))]
-    let error_is_not_a_directory = false;
+    let error_is_invalid_path = false;
 
     matches!(
         err.kind(),
         io::ErrorKind::NotFound | io::ErrorKind::PermissionDenied
-    ) || error_is_not_a_directory
+    ) || error_is_invalid_path
 }
 
 opaque_future! {

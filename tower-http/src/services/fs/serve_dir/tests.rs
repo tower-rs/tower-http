@@ -1646,6 +1646,67 @@ async fn if_none_match_returns_304() {
 }
 
 #[tokio::test]
+async fn if_range_matching_validator_returns_range() {
+    let svc = ServeDir::new(REPO_ROOT);
+    let req = Request::builder()
+        .uri("/README.md")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+    let etag = res.headers().get(header::ETAG).unwrap().clone();
+    let last_modified = res.headers().get(header::LAST_MODIFIED).unwrap().clone();
+
+    for if_range in [etag, last_modified] {
+        let svc = ServeDir::new(REPO_ROOT);
+        let req = Request::builder()
+            .uri("/README.md")
+            .header(header::RANGE, "bytes=0-9")
+            .header(header::IF_RANGE, &if_range)
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::PARTIAL_CONTENT, "{if_range:?}");
+        assert_eq!(res.headers()["content-length"], "10");
+    }
+}
+
+#[tokio::test]
+async fn if_range_not_matching_returns_full_file() {
+    let svc = ServeDir::new(REPO_ROOT);
+    let req = Request::builder()
+        .uri("/README.md")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+    let etag = res
+        .headers()
+        .get(header::ETAG)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_owned();
+    let file_len = std::fs::read(README_PATH).unwrap().len();
+
+    for if_range in [
+        "\"stale\"".to_owned(),
+        format!("W/{etag}"),
+        "Thu, 01 Jan 1970 00:00:00 GMT".to_owned(),
+    ] {
+        let svc = ServeDir::new(REPO_ROOT);
+        let req = Request::builder()
+            .uri("/README.md")
+            .header(header::RANGE, "bytes=0-9")
+            .header(header::IF_RANGE, &if_range)
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK, "{if_range}");
+        assert!(res.headers().get(header::CONTENT_RANGE).is_none());
+        assert_eq!(res.headers()["content-length"], file_len.to_string());
+    }
+}
+
+#[tokio::test]
 async fn if_none_match_with_non_matching_etag_returns_200() {
     let svc = ServeDir::new(REPO_ROOT);
 
@@ -1975,6 +2036,7 @@ mod memory_backend {
         files: Arc<HashMap<PathBuf, Vec<u8>>>,
         dirs: Arc<Vec<PathBuf>>,
         open_error: Option<io::ErrorKind>,
+        raw_open_error: Option<i32>,
         metadata_error: Option<io::ErrorKind>,
     }
 
@@ -1984,6 +2046,7 @@ mod memory_backend {
                 files: Arc::new(HashMap::new()),
                 dirs: Arc::new(Vec::new()),
                 open_error: None,
+                raw_open_error: None,
                 metadata_error: None,
             }
         }
@@ -2005,6 +2068,11 @@ mod memory_backend {
             self
         }
 
+        fn with_raw_open_error(mut self, error: i32) -> Self {
+            self.raw_open_error = Some(error);
+            self
+        }
+
         fn with_metadata_error(mut self, error: io::ErrorKind) -> Self {
             self.metadata_error = Some(error);
             self
@@ -2020,9 +2088,13 @@ mod memory_backend {
         fn open(&self, path: PathBuf) -> Self::OpenFuture {
             let files = self.files.clone();
             let error = self.open_error;
+            let raw_error = self.raw_open_error;
             Box::pin(async move {
                 if let Some(error) = error {
                     return Err(io::Error::new(error, "open failed"));
+                }
+                if let Some(error) = raw_error {
+                    return Err(io::Error::from_raw_os_error(error));
                 }
                 match files.get(&path) {
                     Some(data) => Ok(MemFile {
@@ -2111,6 +2183,21 @@ mod memory_backend {
         let res = svc.oneshot(req).await.unwrap();
 
         assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn filename_too_long_open_error_returns_not_found() {
+        let backend = MemBackend::new().with_raw_open_error(libc::ENAMETOOLONG);
+
+        let svc = ServeDir::with_backend("assets", backend);
+        let req = Request::builder()
+            .uri("/filename-too-long")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]
