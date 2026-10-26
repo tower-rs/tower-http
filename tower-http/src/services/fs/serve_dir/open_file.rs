@@ -10,6 +10,7 @@ use bytes::Bytes;
 use http::{header, HeaderValue, Method, Request, Uri};
 use http_body_util::Empty;
 use std::{
+    borrow::Cow,
     ffi::OsStr,
     io::{self, ErrorKind, SeekFrom},
     ops::RangeInclusive,
@@ -478,7 +479,17 @@ fn try_parse_range(
     ignore_multi_range_requests: bool,
 ) -> Option<Result<RangeInclusive<u64>, RangeError>> {
     let header_value = maybe_range_ref?;
-    let parsed = match http_range_header::parse_range_header(header_value) {
+    // Range units are case-insensitive, and a Range header with a unit other than
+    // bytes is ignored (RFC 9110, sections 14.1 and 14.2).
+    let header_value: Cow<'_, str> = match header_value.split_once('=') {
+        Some(("bytes", _)) => Cow::Borrowed(header_value),
+        Some((unit, ranges)) if unit.eq_ignore_ascii_case("bytes") => {
+            Cow::Owned(format!("bytes={ranges}"))
+        }
+        Some((unit, _)) if is_token(unit) => return None,
+        _ => Cow::Borrowed(header_value),
+    };
+    let parsed = match http_range_header::parse_range_header(&header_value) {
         Ok(parsed) => parsed,
         Err(_) => return Some(Err(RangeError::Unsatisfiable)),
     };
@@ -499,6 +510,13 @@ fn try_parse_range(
             .map_err(|_| RangeError::Unsatisfiable)
             .and_then(|mut ranges| ranges.pop().ok_or(RangeError::Unsatisfiable)),
     )
+}
+
+/// Whether `s` is an RFC 9110 token (section 5.6.2).
+fn is_token(s: &str) -> bool {
+    !s.is_empty()
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&b))
 }
 
 async fn is_dir<B: Backend>(path_to_file: &Path, backend: &B) -> io::Result<Option<bool>> {

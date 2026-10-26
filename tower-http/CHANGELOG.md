@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `fs`: `ServeDir` and `ServeFile` now honor `If-Range`. A `Range` header is only
   served when `If-Range` is absent or matches the file's `ETag` (strong comparison)
   or `Last-Modified` date; otherwise the full file is sent with `200 OK`
+- `fs`: `ServeDir` and `ServeFile` now ignore a `Range` header whose unit is not
+  `bytes` and send the full file with `200 OK` instead of `416 Range Not Satisfiable`,
+  and they accept the `bytes` unit in any case (`Bytes=0-0`)
 
 # 0.7.1
 

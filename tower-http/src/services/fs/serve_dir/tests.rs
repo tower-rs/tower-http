@@ -762,6 +762,42 @@ async fn read_partial_errs_on_bad_range() {
 }
 
 #[tokio::test]
+async fn range_with_other_unit_is_ignored() {
+    let file_contents = std::fs::read(README_PATH).unwrap();
+    for range in ["items=0-5", "none=", "x=bytes=0-5"] {
+        let svc = ServeDir::new(REPO_ROOT);
+        let req = Request::builder()
+            .uri("/README.md")
+            .header("Range", range)
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(req).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::OK, "range: {range}");
+        assert!(res.headers().get("content-range").is_none());
+        assert_eq!(to_bytes(res.into_body()).await.unwrap(), file_contents);
+    }
+}
+
+#[tokio::test]
+async fn range_unit_is_case_insensitive() {
+    let svc = ServeDir::new(REPO_ROOT);
+    let req = Request::builder()
+        .uri("/README.md")
+        .header("Range", "Bytes=0-0")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+
+    assert_eq!(res.status(), StatusCode::PARTIAL_CONTENT);
+    let file_contents = std::fs::read(README_PATH).unwrap();
+    assert_eq!(
+        res.headers()["content-range"],
+        &format!("bytes 0-0/{}", file_contents.len())
+    );
+}
+
+#[tokio::test]
 async fn multipart_range_can_be_ignored() {
     let svc = ServeDir::new(REPO_ROOT).ignore_multi_range_requests(true);
     let req = Request::builder()
