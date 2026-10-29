@@ -1164,6 +1164,43 @@ async fn calls_fallback_on_null() {
 }
 
 #[tokio::test]
+async fn calls_fallback_on_null_head_request() {
+    async fn fallback<T>(_: T) -> Result<Response<Body>, Infallible> {
+        let mut res = Response::new(Body::empty());
+        res.headers_mut()
+            .insert("from-fallback", "1".parse().unwrap());
+        Ok(res)
+    }
+
+    let svc = ServeDir::new(REPO_ROOT).fallback(service_fn(fallback));
+
+    let req = Request::builder()
+        .method(Method::HEAD)
+        .uri("/invalid-path%00")
+        .body(Body::empty())
+        .unwrap();
+
+    let res = svc.oneshot(req).await.unwrap();
+
+    assert_eq!(res.headers()["from-fallback"], "1");
+}
+
+#[tokio::test]
+async fn not_found_on_null_head_request() {
+    let mut svc = ServeDir::new(REPO_ROOT);
+
+    let req = Request::builder()
+        .method(Method::HEAD)
+        .uri("/invalid-path%00")
+        .body(Body::empty())
+        .unwrap();
+
+    let res = svc.try_call(req).await.unwrap();
+
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn not_found_when_file_requested_with_trailing_slash() {
     let svc = ServeDir::new(TEST_FILES_DIR);
 

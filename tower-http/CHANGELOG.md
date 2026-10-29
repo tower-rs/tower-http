@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `fs`: `ServeDir` and `ServeFile` now honor `If-Range`. A `Range` header is only
   served when `If-Range` is absent or matches the file's `ETag` (strong comparison)
   or `Last-Modified` date; otherwise the full file is sent with `200 OK`
+- `fs`: `ServeDir` now treats a `HEAD` request for an invalid filename (such as one containing `%00`) like `GET`: it calls the fallback or returns `404` instead of `500`
 
 # 0.7.1
 
