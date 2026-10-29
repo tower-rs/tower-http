@@ -142,7 +142,14 @@ pub(super) async fn open_file<B: Backend>(
         #[cfg(feature = "tracing")]
         let _path_str = path_to_file.display().to_string();
         let (meta, maybe_encoding) =
-            file_metadata_with_fallback(&backend, path_to_file, negotiated_encodings).await?;
+            match file_metadata_with_fallback(&backend, path_to_file, negotiated_encodings).await {
+                Ok(result) => result,
+
+                Err(err) if is_invalid_filename_error(&err) => {
+                    return Ok(OpenFileOutput::InvalidFilename)
+                }
+                Err(err) => return Err(err),
+            };
 
         let last_modified = meta.modified().ok().map(LastModified::from);
         let etag = meta
