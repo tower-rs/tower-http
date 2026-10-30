@@ -1,4 +1,7 @@
-use super::{DefaultOnBodyChunk, DefaultOnEos, DefaultOnFailure, OnBodyChunk, OnEos, OnFailure};
+use super::{
+    clock::Clock, DefaultClock, DefaultOnBodyChunk, DefaultOnEos, DefaultOnFailure, OnBodyChunk,
+    OnEos, OnFailure,
+};
 use crate::classify::ClassifyEos;
 use http_body::{Body, Frame};
 use pin_project_lite::pin_project;
@@ -6,7 +9,6 @@ use std::{
     fmt,
     pin::Pin,
     task::{ready, Context, Poll},
-    time::Instant,
 };
 use tracing::Span;
 
@@ -14,27 +16,36 @@ pin_project! {
     /// Response body for [`Trace`].
     ///
     /// [`Trace`]: super::Trace
-    pub struct ResponseBody<B, C, OnBodyChunk = DefaultOnBodyChunk, OnEos = DefaultOnEos, OnFailure = DefaultOnFailure> {
+    pub struct ResponseBody<
+        B,
+        C,
+        OnBodyChunk = DefaultOnBodyChunk,
+        OnEos = DefaultOnEos,
+        OnFailure = DefaultOnFailure,
+        Clk: Clock = DefaultClock
+    > {
         #[pin]
         pub(crate) inner: B,
         pub(crate) classify_eos: Option<C>,
-        pub(crate) on_eos: Option<(OnEos, Instant)>,
+        pub(crate) on_eos: Option<(OnEos, Clk::Instant)>,
         pub(crate) on_body_chunk: OnBodyChunk,
         pub(crate) on_failure: Option<OnFailure>,
-        pub(crate) start: Instant,
+        pub(crate) start: Clk::Instant,
         pub(crate) span: Span,
+        pub(crate) clock: Clk,
     }
 }
 
-impl<B, C, OnBodyChunkT, OnEosT, OnFailureT> Body
-    for ResponseBody<B, C, OnBodyChunkT, OnEosT, OnFailureT>
+impl<B, C, OnBodyChunkT, OnEosT, OnFailureT, Clk> Body
+    for ResponseBody<B, C, OnBodyChunkT, OnEosT, OnFailureT, Clk>
 where
     B: Body,
     B::Error: fmt::Display + 'static,
     C: ClassifyEos,
-    OnEosT: OnEos,
-    OnBodyChunkT: OnBodyChunk<B::Data>,
-    OnFailureT: OnFailure<C::FailureClass>,
+    OnEosT: OnEos<Clk>,
+    OnBodyChunkT: OnBodyChunk<B::Data, Clk>,
+    OnFailureT: OnFailure<C::FailureClass, Clk>,
+    Clk: Clock,
 {
     type Data = B::Data;
     type Error = B::Error;
@@ -47,8 +58,8 @@ where
         let _guard = this.span.enter();
         let result = ready!(this.inner.as_mut().poll_frame(cx));
 
-        let latency = this.start.elapsed();
-        *this.start = Instant::now();
+        let latency = this.clock.elapsed(*this.start);
+        *this.start = this.clock.now();
 
         match result {
             Some(Ok(frame)) => {
@@ -70,7 +81,11 @@ where
                             }
                         }
                         if let Some((on_eos, stream_start)) = this.on_eos.take() {
-                            on_eos.on_eos(Some(&trailers), stream_start.elapsed(), this.span);
+                            on_eos.on_eos(
+                                Some(&trailers),
+                                this.clock.elapsed(stream_start),
+                                this.span,
+                            );
                         }
                         Frame::trailers(trailers)
                     }
@@ -89,7 +104,7 @@ where
                         }
                     }
                     if let Some((on_eos, stream_start)) = this.on_eos.take() {
-                        on_eos.on_eos(None, stream_start.elapsed(), this.span);
+                        on_eos.on_eos(None, this.clock.elapsed(stream_start), this.span);
                     }
                 }
 
@@ -114,7 +129,7 @@ where
                     }
                 }
                 if let Some((on_eos, stream_start)) = this.on_eos.take() {
-                    on_eos.on_eos(None, stream_start.elapsed(), this.span);
+                    on_eos.on_eos(None, this.clock.elapsed(stream_start), this.span);
                 }
 
                 Poll::Ready(None)

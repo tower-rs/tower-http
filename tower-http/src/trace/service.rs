@@ -1,7 +1,8 @@
 use super::{
-    DefaultMakeSpan, DefaultOnBodyChunk, DefaultOnEos, DefaultOnFailure, DefaultOnRequest,
-    DefaultOnResponse, GrpcMakeClassifier, HttpMakeClassifier, MakeSpan, OnBodyChunk, OnEos,
-    OnFailure, OnRequest, OnResponse, ResponseBody, ResponseFuture, TraceLayer,
+    clock::Clock, DefaultClock, DefaultMakeSpan, DefaultOnBodyChunk, DefaultOnEos,
+    DefaultOnFailure, DefaultOnRequest, DefaultOnResponse, GrpcMakeClassifier, HttpMakeClassifier,
+    MakeSpan, OnBodyChunk, OnEos, OnFailure, OnRequest, OnResponse, ResponseBody, ResponseFuture,
+    TraceLayer,
 };
 use crate::classify::{
     GrpcErrorsAsFailures, MakeClassifier, ServerErrorsAsFailures, SharedClassifier,
@@ -11,7 +12,6 @@ use http_body::Body;
 use std::{
     fmt,
     task::{Context, Poll},
-    time::Instant,
 };
 use tower_service::Service;
 
@@ -31,6 +31,7 @@ pub struct Trace<
     OnBodyChunk = DefaultOnBodyChunk,
     OnEos = DefaultOnEos,
     OnFailure = DefaultOnFailure,
+    Clk = DefaultClock,
 > {
     pub(crate) inner: S,
     pub(crate) make_classifier: M,
@@ -40,6 +41,7 @@ pub struct Trace<
     pub(crate) on_body_chunk: OnBodyChunk,
     pub(crate) on_eos: OnEos,
     pub(crate) on_failure: OnFailure,
+    pub(crate) clock: Clk,
 }
 
 impl<S, M> Trace<S, M> {
@@ -57,6 +59,7 @@ impl<S, M> Trace<S, M> {
             on_body_chunk: DefaultOnBodyChunk::default(),
             on_eos: DefaultOnEos::default(),
             on_failure: DefaultOnFailure::default(),
+            clock: DefaultClock,
         }
     }
 
@@ -71,8 +74,8 @@ impl<S, M> Trace<S, M> {
     }
 }
 
-impl<S, M, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
-    Trace<S, M, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
+impl<S, M, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure, Clk>
+    Trace<S, M, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure, Clk>
 {
     define_inner_service_accessors!();
 
@@ -84,7 +87,7 @@ impl<S, M, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
     pub fn on_request<NewOnRequest>(
         self,
         new_on_request: NewOnRequest,
-    ) -> Trace<S, M, MakeSpan, NewOnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure> {
+    ) -> Trace<S, M, MakeSpan, NewOnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure, Clk> {
         Trace {
             on_request: new_on_request,
             inner: self.inner,
@@ -94,6 +97,7 @@ impl<S, M, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
             make_span: self.make_span,
             on_response: self.on_response,
             make_classifier: self.make_classifier,
+            clock: self.clock,
         }
     }
 
@@ -105,7 +109,7 @@ impl<S, M, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
     pub fn on_response<NewOnResponse>(
         self,
         new_on_response: NewOnResponse,
-    ) -> Trace<S, M, MakeSpan, OnRequest, NewOnResponse, OnBodyChunk, OnEos, OnFailure> {
+    ) -> Trace<S, M, MakeSpan, OnRequest, NewOnResponse, OnBodyChunk, OnEos, OnFailure, Clk> {
         Trace {
             on_response: new_on_response,
             inner: self.inner,
@@ -115,6 +119,7 @@ impl<S, M, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
             on_eos: self.on_eos,
             make_span: self.make_span,
             make_classifier: self.make_classifier,
+            clock: self.clock,
         }
     }
 
@@ -126,7 +131,7 @@ impl<S, M, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
     pub fn on_body_chunk<NewOnBodyChunk>(
         self,
         new_on_body_chunk: NewOnBodyChunk,
-    ) -> Trace<S, M, MakeSpan, OnRequest, OnResponse, NewOnBodyChunk, OnEos, OnFailure> {
+    ) -> Trace<S, M, MakeSpan, OnRequest, OnResponse, NewOnBodyChunk, OnEos, OnFailure, Clk> {
         Trace {
             on_body_chunk: new_on_body_chunk,
             on_eos: self.on_eos,
@@ -136,6 +141,7 @@ impl<S, M, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
             on_request: self.on_request,
             on_response: self.on_response,
             make_classifier: self.make_classifier,
+            clock: self.clock,
         }
     }
 
@@ -147,7 +153,7 @@ impl<S, M, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
     pub fn on_eos<NewOnEos>(
         self,
         new_on_eos: NewOnEos,
-    ) -> Trace<S, M, MakeSpan, OnRequest, OnResponse, OnBodyChunk, NewOnEos, OnFailure> {
+    ) -> Trace<S, M, MakeSpan, OnRequest, OnResponse, OnBodyChunk, NewOnEos, OnFailure, Clk> {
         Trace {
             on_eos: new_on_eos,
             make_span: self.make_span,
@@ -157,6 +163,7 @@ impl<S, M, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
             on_body_chunk: self.on_body_chunk,
             on_response: self.on_response,
             make_classifier: self.make_classifier,
+            clock: self.clock,
         }
     }
 
@@ -168,7 +175,7 @@ impl<S, M, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
     pub fn on_failure<NewOnFailure>(
         self,
         new_on_failure: NewOnFailure,
-    ) -> Trace<S, M, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, NewOnFailure> {
+    ) -> Trace<S, M, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, NewOnFailure, Clk> {
         Trace {
             on_failure: new_on_failure,
             inner: self.inner,
@@ -178,6 +185,7 @@ impl<S, M, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
             on_eos: self.on_eos,
             on_response: self.on_response,
             make_classifier: self.make_classifier,
+            clock: self.clock,
         }
     }
 
@@ -190,7 +198,7 @@ impl<S, M, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
     pub fn make_span_with<NewMakeSpan>(
         self,
         new_make_span: NewMakeSpan,
-    ) -> Trace<S, M, NewMakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure> {
+    ) -> Trace<S, M, NewMakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure, Clk> {
         Trace {
             make_span: new_make_span,
             inner: self.inner,
@@ -200,6 +208,32 @@ impl<S, M, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure>
             on_response: self.on_response,
             on_eos: self.on_eos,
             make_classifier: self.make_classifier,
+            clock: self.clock,
+        }
+    }
+
+    /// Customize which clock to use for timing.
+    ///
+    /// `NewClock` is expected to implement [`Clock`].
+    ///
+    /// Defaults to [`DefaultClock`] which uses [`std::time::Instant`].
+    ///
+    /// [`Clock`]: super::Clock
+    /// [`DefaultClock`]: super::DefaultClock
+    pub fn with_clock<NewClock>(
+        self,
+        new_clock: NewClock,
+    ) -> Trace<S, M, MakeSpan, OnRequest, OnResponse, OnBodyChunk, OnEos, OnFailure, NewClock> {
+        Trace {
+            clock: new_clock,
+            on_request: self.on_request,
+            on_failure: self.on_failure,
+            on_eos: self.on_eos,
+            on_body_chunk: self.on_body_chunk,
+            make_span: self.make_span,
+            on_response: self.on_response,
+            make_classifier: self.make_classifier,
+            inner: self.inner,
         }
     }
 }
@@ -228,6 +262,7 @@ impl<S>
             on_body_chunk: DefaultOnBodyChunk::default(),
             on_eos: DefaultOnEos::default(),
             on_failure: DefaultOnFailure::default(),
+            clock: DefaultClock,
         }
     }
 }
@@ -256,6 +291,7 @@ impl<S>
             on_body_chunk: DefaultOnBodyChunk::default(),
             on_eos: DefaultOnEos::default(),
             on_failure: DefaultOnFailure::default(),
+            clock: DefaultClock,
         }
     }
 }
@@ -271,8 +307,9 @@ impl<
         OnBodyChunkT,
         OnEosT,
         MakeSpanT,
+        Clk,
     > Service<Request<ReqBody>>
-    for Trace<S, M, MakeSpanT, OnRequestT, OnResponseT, OnBodyChunkT, OnEosT, OnFailureT>
+    for Trace<S, M, MakeSpanT, OnRequestT, OnResponseT, OnBodyChunkT, OnEosT, OnFailureT, Clk>
 where
     S: Service<Request<ReqBody>, Response = Response<ResBody>>,
     ReqBody: Body,
@@ -283,23 +320,31 @@ where
     M::Classifier: Clone,
     MakeSpanT: MakeSpan<ReqBody>,
     OnRequestT: OnRequest<ReqBody>,
-    OnResponseT: OnResponse<ResBody> + Clone,
-    OnBodyChunkT: OnBodyChunk<ResBody::Data> + Clone,
-    OnEosT: OnEos + Clone,
-    OnFailureT: OnFailure<M::FailureClass> + Clone,
+    OnResponseT: OnResponse<ResBody, Clk> + Clone,
+    OnBodyChunkT: OnBodyChunk<ResBody::Data, Clk> + Clone,
+    OnEosT: OnEos<Clk> + Clone,
+    OnFailureT: OnFailure<M::FailureClass, Clk> + Clone,
+    Clk: Clock,
 {
     type Response =
-        Response<ResponseBody<ResBody, M::ClassifyEos, OnBodyChunkT, OnEosT, OnFailureT>>;
+        Response<ResponseBody<ResBody, M::ClassifyEos, OnBodyChunkT, OnEosT, OnFailureT, Clk>>;
     type Error = S::Error;
-    type Future =
-        ResponseFuture<S::Future, M::Classifier, OnResponseT, OnBodyChunkT, OnEosT, OnFailureT>;
+    type Future = ResponseFuture<
+        S::Future,
+        M::Classifier,
+        OnResponseT,
+        OnBodyChunkT,
+        OnEosT,
+        OnFailureT,
+        Clk,
+    >;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx)
     }
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
-        let start = Instant::now();
+        let start = self.clock.now();
 
         let span = self.make_span.make_span(&req);
 
@@ -320,6 +365,7 @@ where
             on_eos: Some(self.on_eos.clone()),
             on_failure: Some(self.on_failure.clone()),
             start,
+            clock: self.clock,
         }
     }
 }
