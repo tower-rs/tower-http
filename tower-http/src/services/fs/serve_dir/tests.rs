@@ -2292,3 +2292,74 @@ mod memory_backend {
         assert_eq!(body, "<h1>Index</h1>");
     }
 }
+
+async fn get_body(
+    uri: &str,
+    range: Option<&str>,
+) -> crate::services::fs::ServeFileSystemResponseBody {
+    let mut req = Request::builder().uri(uri);
+    if let Some(range) = range {
+        req = req.header(header::RANGE, range);
+    }
+    let res = ServeDir::new(REPO_ROOT)
+        .with_buf_chunk_size(1024)
+        .oneshot(req.body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    res.into_body()
+}
+
+// hyper flushes the response head by itself if the first poll of the body is pending, and with
+// Nagle enabled the body then waits for the client's delayed ACK.
+#[tokio::test]
+async fn first_frame_is_ready_with_the_response() {
+    let mut body = Box::pin(get_body("/README.md", None).await);
+    let mut cx = std::task::Context::from_waker(futures_util::task::noop_waker_ref());
+
+    let frame = match body.as_mut().poll_frame(&mut cx) {
+        std::task::Poll::Ready(Some(frame)) => frame.unwrap(),
+        other => panic!("first frame not ready: {:?}", other),
+    };
+    assert_eq!(frame.into_data().unwrap().len(), 1024);
+}
+
+#[tokio::test]
+async fn size_hint_is_exact_and_end_is_known_without_another_read() {
+    let contents = fs::read(README_PATH).unwrap();
+    let mut body = get_body("/README.md", None).await;
+    let mut seen = Vec::new();
+
+    while !body.is_end_stream() {
+        let remaining = (contents.len() - seen.len()) as u64;
+        assert_eq!(body.size_hint().exact(), Some(remaining));
+        let frame = body.frame().await.unwrap().unwrap();
+        seen.extend_from_slice(&frame.into_data().unwrap());
+    }
+
+    assert_eq!(seen, contents);
+    assert_eq!(body.size_hint().exact(), Some(0));
+}
+
+#[tokio::test]
+async fn range_body_ends_with_the_range() {
+    let contents = fs::read(README_PATH).unwrap();
+    let body = get_body("/README.md", Some("bytes=10-2009")).await;
+
+    assert_eq!(body.size_hint().exact(), Some(2000));
+    assert_eq!(to_bytes(body).await.unwrap(), contents[10..2010]);
+}
+
+#[tokio::test]
+async fn empty_file_body_ends_immediately() {
+    let body = get_body("/test-files/empty.txt", None).await;
+
+    assert!(body.is_end_stream());
+    assert_eq!(body.size_hint().exact(), Some(0));
+}
+
+#[tokio::test]
+async fn range_of_an_empty_file_ends_immediately() {
+    let body = get_body("/test-files/empty.txt", Some("bytes=0-")).await;
+
+    assert!(body.is_end_stream());
+}
