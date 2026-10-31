@@ -1022,6 +1022,12 @@ mod tests {
         };
         let subscriber = tracing_subscriber::registry().with(layer.with_filter(DisableSpansFilter));
 
+        // With a single live dispatcher, tracing asks the registering thread's default for a
+        // callsite's interest, so a parallel test without a subscriber can cache `never` for the
+        // events asserted on below. A second dispatcher makes it ask all of them instead.
+        let _second_dispatcher =
+            tracing::Dispatch::new(tracing::subscriber::NoSubscriber::default());
+
         // Use with_default to guarantee cleanup even on panic, avoiding
         // cross-test subscriber pollution.
         with_default(subscriber, || {
