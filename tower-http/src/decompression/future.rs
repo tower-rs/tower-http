@@ -38,11 +38,12 @@ where
 
         let res =
             if let header::Entry::Occupied(entry) = parts.headers.entry(header::CONTENT_ENCODING) {
-                let body = match entry.get().as_bytes() {
+                // Content codings are case-insensitive, and x-gzip means gzip (RFC 9110, 8.4.1).
+                let body = match entry.get().as_bytes().to_ascii_lowercase().as_slice() {
                     #[cfg(feature = "decompression-gzip")]
-                    b"gzip" if self.accept.gzip() => DecompressionBody::new(BodyInner::gzip(
-                        WrapBody::new(body, CompressionLevel::default()),
-                    )),
+                    b"gzip" | b"x-gzip" if self.accept.gzip() => DecompressionBody::new(
+                        BodyInner::gzip(WrapBody::new(body, CompressionLevel::default())),
+                    ),
 
                     #[cfg(feature = "decompression-deflate")]
                     b"deflate" if self.accept.deflate() => DecompressionBody::new(
