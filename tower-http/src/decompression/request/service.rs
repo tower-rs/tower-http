@@ -59,9 +59,10 @@ where
 
         let body =
             if let header::Entry::Occupied(entry) = parts.headers.entry(header::CONTENT_ENCODING) {
-                match entry.get().as_bytes() {
+                // Content codings are case-insensitive, and x-gzip means gzip (RFC 9110, 8.4.1).
+                match entry.get().as_bytes().to_ascii_lowercase().as_slice() {
                     #[cfg(feature = "decompression-gzip")]
-                    b"gzip" if self.accept.gzip() => {
+                    b"gzip" | b"x-gzip" if self.accept.gzip() => {
                         entry.remove();
                         parts.headers.remove(header::CONTENT_LENGTH);
                         BodyInner::gzip(crate::compression_utils::WrapBody::new(

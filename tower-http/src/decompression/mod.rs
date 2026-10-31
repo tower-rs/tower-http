@@ -200,6 +200,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn encoding_is_case_insensitive_and_x_gzip_is_gzip() {
+        for encoding in ["GZIP", "Gzip", "x-gzip", "X-GZIP"] {
+            let mut client = Decompression::new(service_fn(move |_: Request<Body>| async move {
+                let mut encoder =
+                    flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+                encoder.write_all(b"Hello, World!").unwrap();
+                let res = Response::builder()
+                    .header("content-encoding", encoding)
+                    .body(Body::from(encoder.finish().unwrap()))
+                    .unwrap();
+                Ok::<_, Infallible>(res)
+            }));
+
+            let req = Request::new(Body::empty());
+            let res = client.ready().await.unwrap().call(req).await.unwrap();
+
+            assert!(
+                !res.headers().contains_key("content-encoding"),
+                "{}",
+                encoding
+            );
+            let body = res.into_body().collect().await.unwrap().to_bytes();
+            assert_eq!(body, "Hello, World!", "{}", encoding);
+        }
+    }
+
+    #[tokio::test]
     async fn decompress_empty() {
         let mut client = Decompression::new(Compression::new(service_fn(handle_empty)));
 

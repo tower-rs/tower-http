@@ -21,6 +21,16 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn encoding_is_case_insensitive_and_x_gzip_is_gzip() {
+        for encoding in ["GZIP", "Gzip", "x-gzip", "X-GZIP"] {
+            let req = request_gzip_as(encoding);
+            let mut svc = RequestDecompression::new(service_fn(assert_request_is_decompressed));
+            let res = svc.ready().await.unwrap().call(req).await.unwrap();
+            assert_eq!(StatusCode::OK, res.status(), "{}", encoding);
+        }
+    }
+
+    #[tokio::test]
     async fn support_unencoded_body() {
         let req = Request::builder().body(Body::from("Hello?")).unwrap();
         let mut svc = RequestDecompression::new(service_fn(assert_request_is_decompressed));
@@ -75,11 +85,15 @@ mod tests {
     }
 
     fn request_gzip() -> Request<Body> {
+        request_gzip_as("gzip")
+    }
+
+    fn request_gzip_as(encoding: &str) -> Request<Body> {
         let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
         encoder.write_all(b"Hello?").unwrap();
         let body = encoder.finish().unwrap();
         Request::builder()
-            .header(header::CONTENT_ENCODING, "gzip")
+            .header(header::CONTENT_ENCODING, encoding)
             .body(Body::from(body))
             .unwrap()
     }
