@@ -1,10 +1,8 @@
 use super::{
-    open_file::{FileOpened, FileRequestExtent, OpenFileOutput, RangeError},
+    open_file::{range_len, FileOpened, FileRequestExtent, OpenFileOutput, RangeError},
     DefaultServeDirFallback, ResponseBody,
 };
-use crate::{
-    body::UnsyncBoxBody, content_encoding::Encoding, services::fs::AsyncReadBody, BoxError,
-};
+use crate::{body::UnsyncBoxBody, content_encoding::Encoding, services::fs::FileBody, BoxError};
 use bytes::Bytes;
 use futures_core::future::BoxFuture;
 use futures_util::future::{FutureExt, TryFutureExt};
@@ -226,7 +224,7 @@ where
 
 fn build_response(output: FileOpened) -> Response<ResponseBody> {
     let (maybe_file, size) = match output.extent {
-        FileRequestExtent::Full(file, size) => (Some(file), size),
+        FileRequestExtent::Full(file, size, first_chunk) => (Some((file, first_chunk)), size),
         FileRequestExtent::Head(size) => (None, size),
     };
 
@@ -257,20 +255,15 @@ fn build_response(output: FileOpened) -> Response<ResponseBody> {
 
     match output.maybe_range {
         Some(Ok(range)) => {
-            let body = if let Some(file) = maybe_file {
-                let range_size = range.end() - range.start() + 1;
+            let content_length = range_len(&range, size);
+
+            let body = if let Some((file, first_chunk)) = maybe_file {
                 ResponseBody::new(UnsyncBoxBody::from_inner(
-                    AsyncReadBody::with_capacity_limited(file, output.chunk_size, range_size)
+                    FileBody::new(file, first_chunk, content_length, output.chunk_size)
                         .boxed_unsync(),
                 ))
             } else {
                 empty_body()
-            };
-
-            let content_length = if size == 0 {
-                0
-            } else {
-                range.end() - range.start() + 1
             };
 
             builder
@@ -310,9 +303,9 @@ fn build_response(output: FileOpened) -> Response<ResponseBody> {
 
         // Not a range request
         None => {
-            let body = if let Some(file) = maybe_file {
+            let body = if let Some((file, first_chunk)) = maybe_file {
                 ResponseBody::new(UnsyncBoxBody::from_inner(
-                    AsyncReadBody::with_capacity(file, output.chunk_size).boxed_unsync(),
+                    FileBody::new(file, first_chunk, size, output.chunk_size).boxed_unsync(),
                 ))
             } else {
                 empty_body()

@@ -6,7 +6,7 @@ use super::{
     ServeVariant,
 };
 use crate::content_encoding::{Encoding, QValue};
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use http::{header, HeaderValue, Method, Request, Uri};
 use http_body_util::Empty;
 use std::{
@@ -15,7 +15,7 @@ use std::{
     ops::RangeInclusive,
     path::{Path, PathBuf},
 };
-use tokio::io::AsyncSeekExt;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeekExt};
 
 pub(super) enum OpenFileOutput {
     FileOpened(Box<FileOpened>),
@@ -49,7 +49,7 @@ pub(super) struct FileOpened {
 }
 
 pub(super) enum FileRequestExtent {
-    Full(Box<dyn tokio::io::AsyncRead + Unpin + Send>, u64),
+    Full(Box<dyn AsyncRead + Unpin + Send>, u64, Bytes),
     Head(u64),
 }
 
@@ -216,12 +216,18 @@ pub(super) async fn open_file<B: Backend>(
         let range_header = honored_range(range_header, if_range, &etag, &last_modified);
         let maybe_range =
             try_parse_range(range_header.as_deref(), size, ignore_multi_range_requests);
-        if let Some(Ok(range)) = maybe_range.as_ref() {
-            file.seek(SeekFrom::Start(*range.start())).await?;
-        }
+        let body_len = match maybe_range.as_ref() {
+            Some(Ok(range)) => {
+                file.seek(SeekFrom::Start(*range.start())).await?;
+                range_len(range, size)
+            }
+            Some(Err(_)) => 0,
+            None => size,
+        };
+        let first_chunk = read_first_chunk(&mut file, body_len, buf_chunk_size).await?;
 
         Ok(OpenFileOutput::FileOpened(Box::new(FileOpened {
-            extent: FileRequestExtent::Full(Box::new(file), size),
+            extent: FileRequestExtent::Full(Box::new(file), size, first_chunk),
             chunk_size: buf_chunk_size,
             mime_header_value: mime,
             maybe_encoding,
@@ -384,6 +390,29 @@ async fn open_file_with_fallback<B: Backend>(
         }
     };
     Ok((file, encoding))
+}
+
+pub(super) fn range_len(range: &RangeInclusive<u64>, file_size: u64) -> u64 {
+    if file_size == 0 {
+        0
+    } else {
+        range.end() - range.start() + 1
+    }
+}
+
+// hyper flushes the response head on its own when the body isn't ready yet, and with Nagle enabled
+// the body then waits for the client's delayed ACK of the head, about 40 ms on Linux.
+async fn read_first_chunk<R>(file: &mut R, body_len: u64, chunk_size: usize) -> io::Result<Bytes>
+where
+    R: AsyncRead + Unpin,
+{
+    let limit = body_len.min(chunk_size as u64);
+    if limit == 0 {
+        return Ok(Bytes::new());
+    }
+    let mut chunk = BytesMut::with_capacity(limit as usize);
+    file.take(limit).read_buf(&mut chunk).await?;
+    Ok(chunk.freeze())
 }
 
 // Attempts to get the file metadata with any of the possible negotiated_encodings in the
