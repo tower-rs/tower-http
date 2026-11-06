@@ -483,7 +483,7 @@ fn try_parse_range(
         Err(_) => return Some(Err(RangeError::Unsatisfiable)),
     };
 
-    if parsed.ranges.len() > 1 {
+    if parsed.len() > 1 {
         // ServeDir/ServeFile do not support multipart responses. Optionally ignore
         // the Range header before validate() runs semantic and overlap checks.
         return if ignore_multi_range_requests {
