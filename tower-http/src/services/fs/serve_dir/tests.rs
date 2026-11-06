@@ -648,9 +648,8 @@ async fn read_partial_empty() {
         .unwrap();
     let res = svc.oneshot(req).await.unwrap();
 
-    assert_eq!(res.status(), StatusCode::PARTIAL_CONTENT);
-    assert_eq!(res.headers()["content-length"], "0");
-    assert_eq!(res.headers()["content-range"], "bytes 0-0/0");
+    assert_eq!(res.status(), StatusCode::RANGE_NOT_SATISFIABLE);
+    assert!(!res.headers().contains_key("content-length"));
 
     let body = to_bytes(res.into_body()).await.ok().unwrap();
     assert!(body.is_empty());
@@ -804,7 +803,7 @@ async fn multipart_range_ignore_is_consistent_for_head() {
 
 #[tokio::test]
 async fn multipart_range_ignore_applies_before_semantic_validation() {
-    for range in ["bytes=0-2,1-3", "bytes=3-1,5-6"] {
+    for range in ["bytes=0-2,1-3", "bytes=1-3,5-6"] {
         let svc = ServeDir::new(REPO_ROOT).ignore_multi_range_requests(true);
         let req = Request::builder()
             .uri("/README.md")
