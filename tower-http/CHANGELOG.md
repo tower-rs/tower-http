@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Fixed
 
+- `timeout`: `TimeoutBody` now polls the body before its timer. A frame that arrives
+  within the timeout is returned even if the body isn't polled again until after the
+  timeout has elapsed, where it used to fail with `TimeoutError`. A frame that's ready
+  no longer starts and drops a timer
 - `fs`: `ServeDir` and `ServeFile` now honor `If-Range`. A `Range` header is only
   served when `If-Range` is absent or matches the file's `ETag` (strong comparison)
   or `Last-Modified` date; otherwise the full file is sent with `200 OK`

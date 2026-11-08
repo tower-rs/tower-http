@@ -84,6 +84,13 @@ where
     ) -> Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
         let mut this = self.project();
 
+        // Check for body data first, so a frame that's ready needs no `Sleep`.
+        if let Poll::Ready(frame) = this.body.poll_frame(cx) {
+            // A frame is ready. Reset the `Sleep`...
+            this.sleep.set(None);
+            return Poll::Ready(frame.transpose().map_err(Into::into).transpose());
+        }
+
         // Start the `Sleep` if not active.
         let sleep_pinned = if let Some(some) = this.sleep.as_mut().as_pin_mut() {
             some
@@ -93,16 +100,8 @@ where
         };
 
         // Error if the timeout has expired.
-        if let Poll::Ready(()) = sleep_pinned.poll(cx) {
-            return Poll::Ready(Some(Err(Box::new(TimeoutError(())))));
-        }
-
-        // Check for body data.
-        let frame = ready!(this.body.poll_frame(cx));
-        // A frame is ready. Reset the `Sleep`...
-        this.sleep.set(None);
-
-        Poll::Ready(frame.transpose().map_err(Into::into).transpose())
+        ready!(sleep_pinned.poll(cx));
+        Poll::Ready(Some(Err(Box::new(TimeoutError(())))))
     }
 }
 
@@ -125,7 +124,14 @@ mod tests {
     use http_body::Frame;
     use http_body_util::BodyExt;
     use pin_project_lite::pin_project;
-    use std::{error::Error, fmt::Display};
+    use std::{
+        error::Error,
+        fmt::Display,
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc,
+        },
+    };
 
     #[derive(Debug)]
     struct MockError;
@@ -189,5 +195,44 @@ mod tests {
         let timeout_body = TimeoutBody::new(timeout_sleep, mock_body);
 
         assert!(timeout_body.boxed().frame().await.unwrap().is_err());
+    }
+
+    struct GatedBody {
+        open: Arc<AtomicBool>,
+    }
+
+    impl Body for GatedBody {
+        type Data = Bytes;
+        type Error = MockError;
+
+        fn poll_frame(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
+            if self.open.load(Ordering::SeqCst) {
+                Poll::Ready(Some(Ok(Frame::data(vec![].into()))))
+            } else {
+                Poll::Pending
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_body_available_within_timeout_but_polled_after_it() {
+        let open = Arc::new(AtomicBool::new(false));
+        let gated_body = GatedBody { open: open.clone() };
+        let timeout_body = TimeoutBody::new(Duration::from_millis(10), gated_body);
+        tokio::pin!(timeout_body);
+
+        let polled =
+            std::future::poll_fn(|cx| Poll::Ready(timeout_body.as_mut().poll_frame(cx))).await;
+        assert!(polled.is_pending());
+
+        // The data arrives within the timeout, but the body isn't polled again until
+        // after the timeout has elapsed.
+        open.store(true, Ordering::SeqCst);
+        sleep(Duration::from_millis(50)).await;
+
+        assert!(timeout_body.frame().await.expect("no frame").is_ok());
     }
 }
