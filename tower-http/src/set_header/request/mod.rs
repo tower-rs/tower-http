@@ -127,16 +127,55 @@
 //! # }
 //! ```
 //!
+//! # Removing Headers
+//!
+//! Use [`RemoveRequestHeaderLayer`] and [`RemoveRequestHeader`] to remove a
+//! header from requests. All values of the header are removed. This is useful,
+//! for example, to drop headers such as `X-Forwarded-For` that must not be
+//! trusted from clients:
+//!
+//! ```
+//! use http::{Request, Response, header::{HeaderName, HeaderValue}};
+//! use tower::{Service, ServiceExt, ServiceBuilder};
+//! use tower_http::set_header::RemoveRequestHeaderLayer;
+//! use http_body_util::Full;
+//! use bytes::Bytes;
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let mut svc = ServiceBuilder::new()
+//!     .layer(
+//!         // Layer that removes `X-Forwarded-For` from requests.
+//!         RemoveRequestHeaderLayer::new(HeaderName::from_static("x-forwarded-for"))
+//!     )
+//!     .service(tower::service_fn(|req: Request<Full<Bytes>>| async move {
+//!         assert!(req.headers().get("x-forwarded-for").is_none());
+//!         Ok::<_, std::convert::Infallible>(Response::new(Full::<Bytes>::default()))
+//!     }));
+//!
+//! let mut request = Request::new(Full::default());
+//! request.headers_mut().insert(
+//!     HeaderName::from_static("x-forwarded-for"),
+//!     HeaderValue::from_static("203.0.113.7"),
+//! );
+//!
+//! let _response = svc.ready().await?.call(request).await?;
+//! # Ok(())
+//! # }
+//! ```
+//!
 //! # Modes
 //!
 //! - `overriding`: If a previous value exists for the same header, it is removed and replaced with the new value.
 //! - `appending`: The new header is always added, preserving any existing values. If previous values exist, the header will have multiple values.
 //! - `if_not_present`: If a previous value exists for the header, the new value is not inserted.
 //!
-//! See [`SetRequestHeaderLayer`], [`SetRequestHeader`], [`SetMultipleRequestHeadersLayer`], and [`SetMultipleRequestHeader`] for more details.
+//! See [`SetRequestHeaderLayer`], [`SetRequestHeader`], [`SetMultipleRequestHeadersLayer`], [`SetMultipleRequestHeader`], [`RemoveRequestHeaderLayer`], and [`RemoveRequestHeader`] for more details.
 
 mod multiple_headers;
+mod remove_header;
 mod single_header;
 
 pub use multiple_headers::{SetMultipleRequestHeader, SetMultipleRequestHeadersLayer};
+pub use remove_header::{RemoveRequestHeader, RemoveRequestHeaderLayer};
 pub use single_header::{SetRequestHeader, SetRequestHeaderLayer};

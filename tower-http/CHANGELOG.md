@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   new `CorsConfigurationError` for configurations that would later panic otherwise
   (for example `Access-Control-Allow-Credentials: true` combined with `Access-Control-Allow-Origin: *`), so
   user-supplied configurations can be checked up front
+- `set_header`: add `RemoveRequestHeaderLayer`, `RemoveRequestHeader` and
+  `ServiceBuilder::remove_request_header` for removing a request header,
+  including all of its values
 
 ## Fixed
 

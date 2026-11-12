@@ -11,7 +11,9 @@ pub mod response;
 
 #[doc(inline)]
 pub use self::{
-    request::{SetRequestHeader, SetRequestHeaderLayer},
+    request::{
+        RemoveRequestHeader, RemoveRequestHeaderLayer, SetRequestHeader, SetRequestHeaderLayer,
+    },
     response::{SetResponseHeader, SetResponseHeaderLayer},
 };
 
