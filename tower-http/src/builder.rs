@@ -239,6 +239,20 @@ pub trait ServiceBuilderExt<L>: sealed::Sealed<L> + Sized {
         make: M,
     ) -> ServiceBuilder<Stack<crate::set_header::SetRequestHeaderLayer<M>, L>>;
 
+    /// Remove a header from the request.
+    ///
+    /// All values of the header are removed. Removing a header that is not
+    /// present is a no-op.
+    ///
+    /// See [`tower_http::set_header`] for more details.
+    ///
+    /// [`tower_http::set_header`]: crate::set_header
+    #[cfg(feature = "set-header")]
+    fn remove_request_header(
+        self,
+        header_name: HeaderName,
+    ) -> ServiceBuilder<Stack<crate::set_header::RemoveRequestHeaderLayer, L>>;
+
     /// Insert a header into the response.
     ///
     /// If a previous value exists for the same header, it is removed and replaced with the new
@@ -521,6 +535,16 @@ impl<L> ServiceBuilderExt<L> for ServiceBuilder<L> {
         self.layer(crate::set_header::SetRequestHeaderLayer::if_not_present(
             header_name,
             make,
+        ))
+    }
+
+    #[cfg(feature = "set-header")]
+    fn remove_request_header(
+        self,
+        header_name: HeaderName,
+    ) -> ServiceBuilder<Stack<crate::set_header::RemoveRequestHeaderLayer, L>> {
+        self.layer(crate::set_header::RemoveRequestHeaderLayer::new(
+            header_name,
         ))
     }
 
