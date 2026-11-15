@@ -1,3 +1,5 @@
+use std::iter;
+
 use http::header::{self, HeaderName, HeaderValue};
 
 use crate::cors::preflight_request_headers;
@@ -9,7 +11,7 @@ use crate::cors::preflight_request_headers;
 /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Vary
 /// [`CorsLayer::vary`]: super::CorsLayer::vary
 #[derive(Clone, Debug)]
-pub struct Vary(Vec<HeaderValue>);
+pub struct Vary(Option<HeaderValue>);
 
 impl Vary {
     /// Set the list of header names to return as vary header values
@@ -21,20 +23,26 @@ impl Vary {
     where
         I: IntoIterator<Item = HeaderName>,
     {
-        Self(headers.into_iter().map(Into::into).collect())
+        // The list is joined once here rather than for every response.
+        let mut headers = headers.into_iter();
+        let value = headers.next().map(|first| match headers.next() {
+            // A single name keeps its bytes, which are static for standard headers.
+            None => first.into(),
+            Some(second) => {
+                let mut res = first.as_str().as_bytes().to_owned();
+                for name in iter::once(second).chain(headers) {
+                    res.extend_from_slice(b", ");
+                    res.extend_from_slice(name.as_str().as_bytes());
+                }
+                HeaderValue::from_bytes(&res)
+                    .expect("comma-separated list of HeaderNames is always a valid HeaderValue")
+            }
+        });
+        Self(value)
     }
 
     pub(super) fn to_header(&self) -> Option<(HeaderName, HeaderValue)> {
-        let values = &self.0;
-        let mut res = values.first()?.as_bytes().to_owned();
-        for val in &values[1..] {
-            res.extend_from_slice(b", ");
-            res.extend_from_slice(val.as_bytes());
-        }
-
-        let header_val = HeaderValue::from_bytes(&res)
-            .expect("comma-separated list of HeaderValues is always a valid HeaderValue");
-        Some((header::VARY, header_val))
+        self.0.clone().map(|value| (header::VARY, value))
     }
 }
 

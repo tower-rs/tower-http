@@ -808,19 +808,22 @@ where
         let (parts, body) = req.into_parts();
         let origin = parts.headers.get(&header::ORIGIN);
 
-        let mut headers = HeaderMap::new();
-
         // These headers are applied to both preflight and subsequent regular CORS requests:
         // https://fetch.spec.whatwg.org/#http-responses
 
-        headers.extend(self.layer.allow_credentials.to_header(origin, &parts));
-        headers.extend(self.layer.allow_private_network.to_header(origin, &parts));
-        headers.extend(self.layer.vary.to_header());
+        let allow_credentials = self.layer.allow_credentials.to_header(origin, &parts);
+        let allow_private_network = self.layer.allow_private_network.to_header(origin, &parts);
+        let vary = self.layer.vary.to_header();
 
         let allow_origin_future = self.layer.allow_origin.to_future(origin, &parts);
 
         // Return results immediately upon preflight request
         if parts.method == Method::OPTIONS {
+            let mut headers = HeaderMap::new();
+            headers.extend(allow_credentials);
+            headers.extend(allow_private_network);
+            headers.extend(vary);
+
             // These headers are applied only to preflight requests
             headers.extend(self.layer.allow_methods.to_header(&parts));
             headers.extend(self.layer.allow_headers.to_header(&parts));
@@ -834,7 +837,7 @@ where
             }
         } else {
             // This header is applied only to non-preflight requests
-            headers.extend(self.layer.expose_headers.to_header(&parts));
+            let expose_headers = self.layer.expose_headers.to_header(&parts);
 
             let req = Request::from_parts(parts, body);
             ResponseFuture {
@@ -842,7 +845,14 @@ where
                     allow_origin_future,
                     allow_origin_complete: false,
                     future: self.inner.call(req),
-                    headers,
+                    vary: vary.map(|(_, value)| value),
+                    // The last slot is for the allow-origin header, once its future is done.
+                    headers: [
+                        allow_credentials,
+                        allow_private_network,
+                        expose_headers,
+                        None,
+                    ],
                 },
             }
         }
@@ -866,7 +876,9 @@ pin_project! {
             allow_origin_complete: bool,
             #[pin]
             future: F,
-            headers: HeaderMap,
+            vary: Option<HeaderValue>,
+            // At most one value per header name, so no `HeaderMap` is needed.
+            headers: [Option<(HeaderName, HeaderValue)>; 4],
         },
         PreflightCall {
             #[pin]
@@ -889,10 +901,11 @@ where
                 allow_origin_future,
                 allow_origin_complete,
                 future,
+                vary,
                 headers,
             } => {
                 if !*allow_origin_complete {
-                    headers.extend(ready!(allow_origin_future.poll(cx)));
+                    headers[3] = ready!(allow_origin_future.poll(cx));
                     *allow_origin_complete = true;
                 }
 
@@ -902,11 +915,13 @@ where
 
                 // vary header can have multiple values, don't overwrite
                 // previously-set value(s).
-                if let Some(vary) = headers.remove(header::VARY) {
+                if let Some(vary) = vary.take() {
                     response_headers.append(header::VARY, vary);
                 }
-                // extend will overwrite previous headers of remaining names
-                response_headers.extend(headers.drain());
+                // the remaining headers overwrite previous values of the same name
+                for (name, value) in headers.iter_mut().filter_map(Option::take) {
+                    response_headers.insert(name, value);
+                }
 
                 Poll::Ready(Ok(response))
             }
