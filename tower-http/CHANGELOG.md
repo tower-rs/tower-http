@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (for example `Access-Control-Allow-Credentials: true` combined with `Access-Control-Allow-Origin: *`), so
   user-supplied configurations can be checked up front
 
+## Changed
+
+- `cors`: `Cors` no longer builds a `HeaderMap` for every regular (non-preflight)
+  request, and `Vary` joins its header names once instead of for every response
+
 ## Fixed
 
 - `fs`: `ServeDir` and `ServeFile` now honor `If-Range`. A `Range` header is only

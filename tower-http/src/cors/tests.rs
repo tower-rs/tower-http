@@ -96,6 +96,45 @@ async fn permissive_with_inner_and_builder_vary() {
 }
 
 #[tokio::test]
+async fn regular_request_headers_replace_inner_ones_except_vary() {
+    let svc = CorsLayer::new()
+        .allow_origin(AllowOrigin::list([HeaderValue::from_static(
+            "http://example.com",
+        )]))
+        .allow_credentials(true)
+        .expose_headers([HeaderName::from_static("x-foo")])
+        .layer(service_fn(|_: Request<Body>| async {
+            Ok::<_, Infallible>(
+                Response::builder()
+                    .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "http://other.com")
+                    .header(header::VARY, INITIAL_VARY_HEADERS)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+        }));
+
+    let req = Request::builder()
+        .header(header::ORIGIN, "http://example.com")
+        .body(Body::empty())
+        .unwrap();
+    let res = svc.oneshot(req).await.unwrap();
+    let headers = res.headers();
+
+    let origins: Vec<_> = headers
+        .get_all(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+        .iter()
+        .collect();
+    assert_eq!(origins, [&HeaderValue::from_static("http://example.com")]);
+    assert_eq!(headers[header::ACCESS_CONTROL_ALLOW_CREDENTIALS], "true");
+    assert_eq!(headers[header::ACCESS_CONTROL_EXPOSE_HEADERS], "x-foo");
+    let vary: Vec<_> = headers.get_all(header::VARY).iter().collect();
+    assert_eq!(
+        vary,
+        [&INITIAL_VARY_HEADERS, &HeaderValue::from_static("origin")]
+    );
+}
+
+#[tokio::test]
 async fn test_allow_origin_async_predicate() {
     #[derive(Clone)]
     struct Client;
