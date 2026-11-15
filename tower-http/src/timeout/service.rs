@@ -8,7 +8,7 @@ use std::{
     task::{ready, Context, Poll},
     time::Duration,
 };
-use tokio::time::Sleep;
+use tokio::time::{Instant, Sleep};
 use tower_layer::Layer;
 use tower_service::Service;
 
@@ -111,10 +111,11 @@ where
     }
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
-        let sleep = tokio::time::sleep(self.timeout);
         ResponseFuture {
+            start: Instant::now(),
             inner: self.inner.call(req),
-            sleep,
+            sleep: None,
+            timeout: self.timeout,
             status_code: self.status_code,
         }
     }
@@ -126,7 +127,9 @@ pin_project! {
         #[pin]
         inner: F,
         #[pin]
-        sleep: Sleep,
+        sleep: Option<Sleep>,
+        start: Instant,
+        timeout: Duration,
         status_code: StatusCode,
     }
 }
@@ -139,12 +142,33 @@ where
     type Output = Result<Response<B>, E>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let this = self.project();
-
-        if this.sleep.poll(cx).is_ready() {
+        let mut this = self.project();
+        let status_code = *this.status_code;
+        let timeout_response = || {
             let mut res = Response::new(B::default());
-            *res.status_mut() = *this.status_code;
-            return Poll::Ready(Ok(res));
+            *res.status_mut() = status_code;
+            Ok(res)
+        };
+
+        let sleep = if let Some(sleep) = this.sleep.as_mut().as_pin_mut() {
+            sleep
+        } else {
+            // The timer only starts once the inner future is pending, so a response
+            // that's ready on the first poll doesn't need one.
+            if this.start.elapsed() >= *this.timeout {
+                return Poll::Ready(timeout_response());
+            }
+            if let Poll::Ready(res) = this.inner.as_mut().poll(cx) {
+                return Poll::Ready(res);
+            }
+            let remaining = this.timeout.saturating_sub(this.start.elapsed());
+            this.sleep.set(Some(tokio::time::sleep(remaining)));
+            let sleep = this.sleep.as_pin_mut().unwrap();
+            return sleep.poll(cx).map(|()| timeout_response());
+        };
+
+        if sleep.poll(cx).is_ready() {
+            return Poll::Ready(timeout_response());
         }
 
         this.inner.poll(cx)
@@ -472,7 +496,13 @@ mod tests {
     use super::*;
     use crate::test_helpers::Body;
     use http::{Request, Response, StatusCode};
-    use std::time::Duration;
+    use std::{
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc,
+        },
+        time::Duration,
+    };
     use tower::{BoxError, ServiceBuilder, ServiceExt};
 
     #[tokio::test]
@@ -538,6 +568,57 @@ mod tests {
         let res = service.ready().await.unwrap().call(request).await.unwrap();
 
         // Should use default 408 status code
+        assert_eq!(res.status(), StatusCode::REQUEST_TIMEOUT);
+    }
+
+    #[tokio::test]
+    async fn elapsed_timeout_responds_without_polling_the_handler() {
+        let polled = Arc::new(AtomicBool::new(false));
+        let handler_polled = polled.clone();
+        let mut service = ServiceBuilder::new()
+            .layer(TimeoutLayer::with_status_code(
+                StatusCode::REQUEST_TIMEOUT,
+                Duration::ZERO,
+            ))
+            .service_fn(move |_req: Request<Body>| {
+                let handler_polled = handler_polled.clone();
+                async move {
+                    handler_polled.store(true, Ordering::SeqCst);
+                    Ok::<_, BoxError>(Response::new(Body::empty()))
+                }
+            });
+
+        let request = Request::get("/").body(Body::empty()).unwrap();
+        let res = service.ready().await.unwrap().call(request).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::REQUEST_TIMEOUT);
+        assert!(!polled.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn handler_that_exhausts_the_coop_budget_still_times_out() {
+        let mut service = ServiceBuilder::new()
+            .layer(TimeoutLayer::with_status_code(
+                StatusCode::REQUEST_TIMEOUT,
+                Duration::from_millis(10),
+            ))
+            .service_fn(|_req: Request<Body>| async {
+                loop {
+                    tokio::task::consume_budget().await;
+                }
+                #[allow(unreachable_code)]
+                Ok::<_, BoxError>(Response::new(Body::empty()))
+            });
+
+        let request = Request::get("/").body(Body::empty()).unwrap();
+        let res = tokio::time::timeout(
+            Duration::from_secs(5),
+            service.ready().await.unwrap().call(request),
+        )
+        .await
+        .expect("the timeout never fired")
+        .unwrap();
+
         assert_eq!(res.status(), StatusCode::REQUEST_TIMEOUT);
     }
 

@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (for example `Access-Control-Allow-Credentials: true` combined with `Access-Control-Allow-Origin: *`), so
   user-supplied configurations can be checked up front
 
+## Changed
+
+- `timeout`: `Timeout` starts its timer only once the inner future is pending, so a
+  response that's ready on the first poll no longer creates and registers one
+
 ## Fixed
 
 - `fs`: `ServeDir` and `ServeFile` now honor `If-Range`. A `Range` header is only
