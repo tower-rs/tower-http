@@ -113,19 +113,24 @@ macro_rules! opaque_future {
 #[allow(unused_macros)]
 macro_rules! rate_limited {
     ($interval:expr, $call:expr) => {{
-        use std::sync::atomic::{AtomicU64, Ordering};
+        // `AtomicU32` rather than `AtomicU64`, so this also builds on targets
+        // without 64-bit atomics (e.g. ARMv5). Seconds since the epoch fit in
+        // a `u32` until 2106.
+        use std::sync::atomic::{AtomicU32, Ordering};
         use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-        static NEXT_CALL: AtomicU64 = AtomicU64::new(0);
+        static NEXT_CALL: AtomicU32 = AtomicU32::new(0);
 
         let interval: Duration = $interval;
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or(Duration::ZERO)
             .as_secs();
+        let now = now.min(u64::from(u32::MAX)) as u32;
         let next = NEXT_CALL.load(Ordering::Relaxed);
         if now >= next {
-            let new_next = now.saturating_add(interval.as_secs());
+            let interval = interval.as_secs().min(u64::from(u32::MAX)) as u32;
+            let new_next = now.saturating_add(interval);
             if NEXT_CALL
                 .compare_exchange(next, new_next, Ordering::Relaxed, Ordering::Relaxed)
                 .is_ok()
@@ -134,4 +139,16 @@ macro_rules! rate_limited {
             }
         }
     }};
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn rate_limited_runs_once_per_interval() {
+        let mut calls = 0;
+        for _ in 0..3 {
+            rate_limited!(std::time::Duration::from_secs(60), calls += 1);
+        }
+        assert_eq!(calls, 1);
+    }
 }
