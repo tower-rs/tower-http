@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Fixed
 
+- `fs`: fix builds with `tracing` enabled on targets without 64-bit atomics,
+  such as ARMv5
 - `fs`: `ServeDir` and `ServeFile` now honor `If-Range`. A `Range` header is only
   served when `If-Range` is absent or matches the file's `ETag` (strong comparison)
   or `Last-Modified` date; otherwise the full file is sent with `200 OK`

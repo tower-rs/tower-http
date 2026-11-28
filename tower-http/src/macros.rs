@@ -106,32 +106,69 @@ macro_rules! opaque_future {
 
 /// Evaluate `$call` at most once every `$interval` per call site.
 ///
-/// Uses a monotonic clock and atomic timestamp to rate-limit without locks.
+/// Uses an atomic timestamp when supported, otherwise a mutex.
 /// Adapted from dial9-tokio-telemetry's rate_limit module.
 // TODO: Once MSRV >= 1.70, switch to OnceLock<Instant> for monotonic timing.
 // See: https://github.com/dial9-rs/dial9/blob/6772039/dial9-tokio-telemetry/src/rate_limit.rs
 #[allow(unused_macros)]
 macro_rules! rate_limited {
     ($interval:expr, $call:expr) => {{
-        use std::sync::atomic::{AtomicU64, Ordering};
         use std::time::{Duration, SystemTime, UNIX_EPOCH};
-
-        static NEXT_CALL: AtomicU64 = AtomicU64::new(0);
 
         let interval: Duration = $interval;
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or(Duration::ZERO)
             .as_secs();
-        let next = NEXT_CALL.load(Ordering::Relaxed);
-        if now >= next {
-            let new_next = now.saturating_add(interval.as_secs());
-            if NEXT_CALL
-                .compare_exchange(next, new_next, Ordering::Relaxed, Ordering::Relaxed)
-                .is_ok()
-            {
-                $call;
+        let new_next = now.saturating_add(interval.as_secs());
+
+        #[cfg(target_has_atomic = "64")]
+        let should_call = {
+            use std::sync::atomic::{AtomicU64, Ordering};
+
+            static NEXT_CALL: AtomicU64 = AtomicU64::new(0);
+
+            let next = NEXT_CALL.load(Ordering::Relaxed);
+            now >= next
+                && NEXT_CALL
+                    .compare_exchange(next, new_next, Ordering::Relaxed, Ordering::Relaxed)
+                    .is_ok()
+        };
+
+        #[cfg(not(target_has_atomic = "64"))]
+        let should_call = {
+            use std::sync::Mutex;
+
+            static NEXT_CALL: Mutex<u64> = Mutex::new(0);
+
+            let mut next = NEXT_CALL.lock().unwrap();
+            if now >= *next {
+                *next = new_next;
+                true
+            } else {
+                false
             }
+        };
+
+        if should_call {
+            $call;
         }
     }};
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn rate_limit_is_per_call_site() {
+        let interval = std::time::Duration::from_secs(u64::MAX);
+        let mut calls = 0;
+
+        for _ in 0..2 {
+            rate_limited!(interval, calls += 1);
+        }
+        assert_eq!(calls, 1);
+
+        rate_limited!(interval, calls += 1);
+        assert_eq!(calls, 2);
+    }
 }
